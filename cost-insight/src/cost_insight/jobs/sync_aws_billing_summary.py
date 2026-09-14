@@ -25,6 +25,7 @@ from cost_insight.jobs.sync_gcp_billing_summary import (
     write_summary_rows,
 )
 from cost_insight.sources.aws_billing_export import fetch_aws_billing_summary_rows
+from cost_insight.sources.aws_flat_cur_export import fetch_aws_flat_cur_summary_rows
 from cost_insight.sources.aws_split_cost_export import fetch_aws_split_cost_summary_rows
 
 LOG = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ RowFetcher = Callable[..., Iterable[dict[str, Any]]]
 
 AWS_CUR_LEGACY_SCHEMA_VERSION = "aws_cur_legacy_v1"
 AWS_SPLIT_COST_SCHEMA_VERSION = "aws_split_cost_v1"
+AWS_TIDB_CLOUD_F04_SCHEMA_VERSION = "aws_tidb_cloud_f04_v1"
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,7 @@ def run_sync_aws_billing_summary(
     if resolved_source.schema_version not in {
         AWS_CUR_LEGACY_SCHEMA_VERSION,
         AWS_SPLIT_COST_SCHEMA_VERSION,
+        AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
     }:
         raise ValueError(f"Unsupported AWS source schema: {resolved_source.schema_version!r}")
     resolved_fetch_rows = fetch_rows or _default_fetch_rows(resolved_source.schema_version)
@@ -140,6 +143,8 @@ def run_sync_aws_billing_summary(
             overlap_months=settings.export_overlap_months,
             initial_lookback_months=settings.sync_initial_lookback_months,
         )
+        if resolved_start > resolved_end:
+            raise ValueError("export_partition_start must be before or equal to export_partition_end")
         watermark = _watermark(
             account_id=account_id,
             export_partition_start=resolved_start,
@@ -277,6 +282,8 @@ def run_sync_aws_billing_summary(
 def _default_fetch_rows(schema_version: str) -> RowFetcher:
     if schema_version == AWS_SPLIT_COST_SCHEMA_VERSION:
         return fetch_aws_split_cost_summary_rows
+    if schema_version == AWS_TIDB_CLOUD_F04_SCHEMA_VERSION:
+        return fetch_aws_flat_cur_summary_rows
     return fetch_aws_billing_summary_rows
 
 

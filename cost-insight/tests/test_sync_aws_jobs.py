@@ -5,14 +5,17 @@ from sqlalchemy import create_engine, text
 
 import cost_insight.jobs.sync_aws_unmatched_resources as aws_unmatched_resources
 import cost_insight.jobs.sync_gcp_unmatched_resources as gcp_unmatched_resources
+from cost_insight.sources.aws_flat_cur_export import fetch_aws_flat_cur_summary_rows
 from cost_insight.common.config import AwsBillingSettings
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_aws_billing_summary import (
     AWS_SPLIT_COST_SCHEMA_VERSION,
+    AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
     AwsBillingSource,
     JOB_NAME as SUMMARY_JOB_NAME,
     _add_months,
+    _default_fetch_rows,
     _month_floor,
     _start_partition_from_state,
     _watermark as summary_watermark,
@@ -225,6 +228,61 @@ def test_legacy_source_passes_a_bounded_usage_window_to_the_fetcher() -> None:
 
     assert seen["earliest_usage_date"] == date(2026, 6, 1)
     assert seen["usage_end_date"] == date(2026, 6, 5)
+
+
+def test_aws_summary_rejects_reversed_export_partitions() -> None:
+    engine = _sqlite_engine()
+
+    try:
+        with pytest.raises(
+            ValueError,
+            match="export_partition_start must be before or equal to export_partition_end",
+        ):
+            run_sync_aws_billing_summary(
+                engine,
+                settings=AwsBillingSettings(account_id="946646677266"),
+                account_id="946646677266",
+                export_partition_start=date(2026, 9, 1),
+                export_partition_end=date(2026, 8, 1),
+                dry_run=True,
+            )
+    finally:
+        engine.dispose()
+
+
+def test_f04_source_uses_the_dedicated_fetcher_without_extra_configuration() -> None:
+    assert _default_fetch_rows(AWS_TIDB_CLOUD_F04_SCHEMA_VERSION) is fetch_aws_flat_cur_summary_rows
+
+    engine = _sqlite_engine()
+    seen: dict[str, object] = {}
+
+    def fetch_rows(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    try:
+        run_sync_aws_billing_summary(
+            engine,
+            settings=AwsBillingSettings(account_id="380838443567"),
+            account_id="380838443567",
+            export_partition_start=date(2026, 9, 1),
+            export_partition_end=date(2026, 9, 1),
+            earliest_usage_date=date(2026, 9, 1),
+            usage_start_date=date(2026, 9, 1),
+            usage_end_date=date(2026, 9, 5),
+            dry_run=True,
+            source=AwsBillingSource(
+                account_id="380838443567",
+                billing_table="gcp-digital-bi.aws_prod_billing.aws_prod_billing_data",
+                schema_version=AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
+                available_from=date(2026, 9, 2),
+            ),
+            fetch_rows=fetch_rows,
+        )
+    finally:
+        engine.dispose()
+
+    assert seen["earliest_usage_date"] == date(2026, 9, 2)
 
 
 def _resource_row() -> dict[str, object]:

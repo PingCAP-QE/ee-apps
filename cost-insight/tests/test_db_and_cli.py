@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -968,7 +969,7 @@ def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, 
     assert '"billing_rows_seen": 4' in output
 
 
-def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) -> None:
+def test_cli_refresh_attribution_filters_to_selected_source(monkeypatch, capsys) -> None:
     disposed = []
     captured = {}
 
@@ -978,7 +979,7 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
-        aws_billing=AwsBillingSettings(),
+        aws_billing=AwsBillingSettings(account_id="380838443567"),
         tcms_allocation=TcmsAllocationSettings(),
         log_level="INFO",
     )
@@ -993,7 +994,7 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
         tcms_allocation_table=None,
     ):
         captured["engine"] = engine
-        captured["source"] = source
+        captured.setdefault("sources", []).append(source)
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         captured["dry_run"] = dry_run
@@ -1021,6 +1022,10 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
             "2026-05-09",
             "--end-date",
             "2026-05-17",
+            "--vendor",
+            "aws",
+            "--account-id",
+            "380838443567",
             "--dry-run",
         ]
     )
@@ -1030,10 +1035,9 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
     assert disposed == [True]
     assert captured["start_date"] == date(2026, 5, 9)
     assert captured["end_date"] == date(2026, 5, 17)
-    assert captured["source"] == CostAttributionSource(
-        vendor="gcp",
-        account_id="pingcap-testing-account",
-    )
+    assert captured["sources"] == [
+        CostAttributionSource(vendor="aws", account_id="380838443567")
+    ]
     assert captured["tcms_allocation_table"] == "tcms_cost.resource_allocation"
     assert '"summary_rows": 10' in output
 
@@ -1349,6 +1353,15 @@ def test_cli_refresh_attribution_from_summary_split_by_day_runs_each_date(
     assert '"start_date": "2026-05-09"' in capsys.readouterr().out
 
 
+def test_f04_cost_source_migration_seeds_inactive_source() -> None:
+    migration = (
+        Path(__file__).parents[1] / "sql" / "023_add_aws_tidb_cloud_f04_cost_source.sql"
+    ).read_text()
+
+    assert "'TiDB Cloud production us-west-2 f04',\n  0\n)\nON DUPLICATE" in migration
+    assert "is_active = VALUES(is_active)" not in migration
+
+
 def test_cli_source_resolution_prefers_active_registry() -> None:
     engine = _sqlite_source_engine()
     try:
@@ -1375,6 +1388,25 @@ def test_cli_source_resolution_prefers_active_registry() -> None:
             connection.execute(
                 text(
                     """
+                    INSERT INTO cost_sources (
+                      vendor, account_id, display_name, source_schema_version, is_active
+                    ) VALUES ('aws', '380838443567', 'F04', 'aws_tidb_cloud_f04_v1', 1)
+                    """
+                )
+            )
+        assert [source.account_id for source in cli._resolve_aws_sources(
+            engine,
+            settings=AwsBillingSettings(account_id="000000000000"),
+        )] == ["946646677266"]
+        assert [source.account_id for source in cli._resolve_aws_sources(
+            engine,
+            settings=AwsBillingSettings(account_id="000000000000"),
+            account_id="380838443567",
+        )] == ["380838443567"]
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
                     INSERT INTO cost_sources (vendor, account_id, display_name, is_active)
                     VALUES ('aws', '131464424160', 'QA Infra Prod AWS', 1)
                     """
@@ -1393,6 +1425,24 @@ def test_cli_source_resolution_prefers_active_registry() -> None:
         ]
     finally:
         engine.dispose()
+
+
+def test_cli_refresh_requires_vendor_and_account_id_together(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: SimpleNamespace(log_level="INFO"))
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+
+    with pytest.raises(ValueError, match="--vendor and --account-id"):
+        cli.main(
+            [
+                "refresh-cost-attribution-from-summary",
+                "--start-date",
+                "2026-09-02",
+                "--end-date",
+                "2026-09-02",
+                "--vendor",
+                "aws",
+            ]
+        )
 
 
 def test_cli_aws_source_resolution_rejects_split_schema_without_source_table() -> None:

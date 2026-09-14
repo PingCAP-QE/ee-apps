@@ -91,7 +91,7 @@ def ensure_cost_source_enabled(
 ) -> None:
     source = get_cost_source(connection, vendor=vendor, account_id=account_id)
     if source is not None:
-        if not source.is_active:
+        if not source.is_active and not dry_run:
             raise ValueError(f"Cost source {vendor}/{account_id} is inactive")
         return
     if not dry_run:
