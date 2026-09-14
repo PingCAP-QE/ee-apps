@@ -23,7 +23,8 @@ def _sqlite_engine():
             CREATE TABLE cost_sources (
               id INTEGER PRIMARY KEY AUTOINCREMENT, vendor TEXT NOT NULL, account_id TEXT NOT NULL,
               billing_account_id TEXT, display_name TEXT, source_table TEXT,
-              source_schema_version TEXT, source_available_from TEXT, is_active INTEGER DEFAULT 1,
+              source_schema_version TEXT, source_available_from TEXT,
+              is_active INTEGER DEFAULT 1,
               created_at TEXT, updated_at TEXT, UNIQUE(vendor, account_id)
             )
             """,

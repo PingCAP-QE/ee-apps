@@ -34,6 +34,7 @@ from cost_insight.jobs.sync_gcs_cache_last_seen import run_sync_gcs_cache_last_s
 from cost_insight.jobs.sync_aws_billing_summary import (
     AWS_CUR_LEGACY_SCHEMA_VERSION,
     AWS_SPLIT_COST_SCHEMA_VERSION,
+    AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
     AwsBillingSource,
     run_sync_aws_billing_summary,
 )
@@ -246,6 +247,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     refresh_summary_attr.add_argument("--start-date", type=_parse_date, required=True)
     refresh_summary_attr.add_argument("--end-date", type=_parse_date, required=True)
+    refresh_summary_attr.add_argument("--vendor", default=None)
+    refresh_summary_attr.add_argument("--account-id", default=None)
     refresh_summary_attr.add_argument("--dry-run", action="store_true")
     refresh_summary_attr.add_argument(
         "--split-by-day",
@@ -695,6 +698,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "use cutover-aws-split-cost for the approved 946646677266 cutover"
                 )
             for source in sources:
+                if source.schema_version == AWS_TIDB_CLOUD_F04_SCHEMA_VERSION:
+                    logging.getLogger(__name__).info(
+                        "skip AWS unmatched-resource sync for F04 source",
+                        extra={"account_id": source.account_id},
+                    )
+                    continue
                 summaries.append(
                     run_sync_aws_unmatched_resources(
                         engine,
@@ -832,14 +841,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             engine.dispose()
 
     if args.command == "refresh-cost-attribution-from-summary":
+        if (args.vendor is None) != (args.account_id is None):
+            raise ValueError("--vendor and --account-id must be set together")
         engine = build_engine(settings)
         try:
-            summaries = []
-            for source in _resolve_attribution_sources(
+            sources = _resolve_attribution_sources(
                 engine,
                 gcp_settings=settings.gcp_billing,
                 aws_settings=settings.aws_billing,
-            ):
+            )
+            if args.vendor is not None:
+                sources = tuple(
+                    source
+                    for source in sources
+                    if source.vendor == args.vendor and source.account_id == args.account_id
+                )
+                if not sources:
+                    raise ValueError(f"Cost attribution source is not active: {args.vendor}/{args.account_id}")
+            summaries = []
+            for source in sources:
                 summaries.extend(
                     _run_refresh_attribution_from_summary_command(
                         engine,
@@ -1113,6 +1133,13 @@ def _resolve_aws_sources(
         sources = tuple(source for source in sources if source.account_id == account_id)
         if not sources:
             raise ValueError(f"AWS cost source is not active: {account_id}")
+    if not account_id:
+        # F04 is backfilled by its dedicated bounded job, never by the monthly sync.
+        sources = tuple(
+            source
+            for source in sources
+            if source.source_schema_version != AWS_TIDB_CLOUD_F04_SCHEMA_VERSION
+        )
     if sources:
         resolved_sources = []
         for source in sources:

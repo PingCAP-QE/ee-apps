@@ -1375,6 +1375,25 @@ def test_cli_source_resolution_prefers_active_registry() -> None:
             connection.execute(
                 text(
                     """
+                    INSERT INTO cost_sources (
+                      vendor, account_id, display_name, source_schema_version, is_active
+                    ) VALUES ('aws', '380838443567', 'F04', 'aws_tidb_cloud_f04_v1', 1)
+                    """
+                )
+            )
+        assert [source.account_id for source in cli._resolve_aws_sources(
+            engine,
+            settings=AwsBillingSettings(account_id="000000000000"),
+        )] == ["946646677266"]
+        assert [source.account_id for source in cli._resolve_aws_sources(
+            engine,
+            settings=AwsBillingSettings(account_id="000000000000"),
+            account_id="380838443567",
+        )] == ["380838443567"]
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
                     INSERT INTO cost_sources (vendor, account_id, display_name, is_active)
                     VALUES ('aws', '131464424160', 'QA Infra Prod AWS', 1)
                     """
@@ -1393,6 +1412,24 @@ def test_cli_source_resolution_prefers_active_registry() -> None:
         ]
     finally:
         engine.dispose()
+
+
+def test_cli_refresh_requires_vendor_and_account_id_together(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: SimpleNamespace(log_level="INFO"))
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+
+    with pytest.raises(ValueError, match="--vendor and --account-id"):
+        cli.main(
+            [
+                "refresh-cost-attribution-from-summary",
+                "--start-date",
+                "2026-09-02",
+                "--end-date",
+                "2026-09-02",
+                "--vendor",
+                "aws",
+            ]
+        )
 
 
 def test_cli_aws_source_resolution_rejects_split_schema_without_source_table() -> None:
