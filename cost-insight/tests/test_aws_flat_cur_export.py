@@ -13,7 +13,7 @@ def test_build_aws_flat_cur_summary_query_scopes_external_partitions_and_costs()
     )
 
     assert "line_item_usage_account_id = @account_id" in query
-    assert "(year = 2026 AND month = 9)" in query
+    assert "(year = " not in query
     assert "DATE(bill_billing_period_start_date) BETWEEN @export_partition_start" in query
     assert "DATE(line_item_usage_start_date) <= @usage_end_date" in query
     assert "line_item_currency_code = 'USD'" in query

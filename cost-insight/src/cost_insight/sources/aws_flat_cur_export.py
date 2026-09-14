@@ -98,7 +98,6 @@ WITH normalized AS (
     line_item_usage_end_date AS source_export_time
   FROM {_quote_bigquery_table(billing_table)}
   WHERE line_item_usage_account_id = @account_id
-    AND ({_hive_partition_filter(export_partition_start, export_partition_end)})
     AND DATE(bill_billing_period_start_date) BETWEEN @export_partition_start AND @export_partition_end
     AND DATE(line_item_usage_start_date) >= @earliest_usage_date{usage_end_clause}
     AND line_item_currency_code = 'USD'
@@ -151,20 +150,6 @@ ORDER BY
   repo,
   vendor_tags_json{limit_clause}
 """.strip()
-
-
-def _hive_partition_filter(start_date: date, end_date: date) -> str:
-    current = start_date.replace(day=1)
-    end = end_date.replace(day=1)
-    partitions = []
-    while current <= end:
-        partitions.append(f"(year = {current.year} AND month = {current.month})")
-        current = _add_month(current)
-    return " OR ".join(partitions)
-
-
-def _add_month(value: date) -> date:
-    return value.replace(year=value.year + 1, month=1) if value.month == 12 else value.replace(month=value.month + 1)
 
 
 def _quote_bigquery_table(table: str) -> str:

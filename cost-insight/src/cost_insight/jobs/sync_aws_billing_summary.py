@@ -143,6 +143,8 @@ def run_sync_aws_billing_summary(
             overlap_months=settings.export_overlap_months,
             initial_lookback_months=settings.sync_initial_lookback_months,
         )
+        if resolved_start > resolved_end:
+            raise ValueError("export_partition_start must be before or equal to export_partition_end")
         watermark = _watermark(
             account_id=account_id,
             export_partition_start=resolved_start,
