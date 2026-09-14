@@ -36,7 +36,7 @@ def test_normalized_build_row_as_db_params_converts_booleans() -> None:
         total_seconds=None,
         head_sha=None,
         target_branch=None,
-        cloud_phase="IDC",
+        cloud_phase="TENCENT",
         build_system="JENKINS",
         is_flaky=False,
         is_retry_loop=True,

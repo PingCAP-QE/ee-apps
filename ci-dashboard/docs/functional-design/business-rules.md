@@ -33,7 +33,7 @@ Example:
 | Condition | `cloud_phase` |
 | --- | --- |
 | `url` starts with `https://prow.tidb.net/` | `GCP` |
-| all other URLs | `IDC` |
+| all other URLs | `TENCENT` |
 
 ## BR-04: Exact Retest Command Parsing
 

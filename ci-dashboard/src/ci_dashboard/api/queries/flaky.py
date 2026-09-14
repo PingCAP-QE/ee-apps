@@ -282,7 +282,7 @@ def get_distinct_flaky_case_counts_by_branch(
                     {bucket_expr(connection, "b.start_time", "week")} AS week_start,
                     b.start_time,
                     NULLIF(b.normalized_build_url, '') AS normalized_build_url,
-                    UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) AS cloud_phase
+                    UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
                   FROM ci_l1_builds b
                   JOIN target_prs p
                     ON p.repo = b.repo_full_name
@@ -291,7 +291,7 @@ def get_distinct_flaky_case_counts_by_branch(
                     AND b.pr_number IS NOT NULL
                     AND NULLIF(b.normalized_build_url, '') IS NOT NULL
                     {job_scope_sql}
-                    {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) = :cloud_phase")}
+                    {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
                     {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
                     {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
                 ),
@@ -1084,7 +1084,7 @@ def _fetch_issue_weekly_rate_rows(
                 b.start_time,
                 NULLIF(b.normalized_build_url, '') AS normalized_build_url,
                 b.job_name,
-                UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) AS cloud_phase
+                UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
               FROM ci_l1_builds b
               JOIN target_prs p
                 ON p.repo = b.repo_full_name
@@ -1093,7 +1093,7 @@ def _fetch_issue_weekly_rate_rows(
                 AND b.pr_number IS NOT NULL
                 AND NULLIF(b.normalized_build_url, '') IS NOT NULL
                 {job_scope_sql}
-                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) = :cloud_phase")}
+                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
                 {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
                 {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
             ),
@@ -1257,7 +1257,7 @@ def _fetch_weekly_flaky_case_presence(
                 {bucket_expr(connection, "b.start_time", "week")} AS week_start,
                 b.start_time,
                 NULLIF(b.normalized_build_url, '') AS normalized_build_url,
-                UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) AS cloud_phase
+                UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
               FROM ci_l1_builds b
               JOIN target_prs p
                 ON p.repo = b.repo_full_name
@@ -1266,7 +1266,7 @@ def _fetch_weekly_flaky_case_presence(
                 AND b.pr_number IS NOT NULL
                 AND NULLIF(b.normalized_build_url, '') IS NOT NULL
                 {job_scope_sql}
-                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'IDC')) = :cloud_phase")}
+                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
                 {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
                 {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
             ),
@@ -1736,7 +1736,7 @@ def _case_cloud_phase_expr(column_name: str) -> str:
     return (
         "CASE "
         f"WHEN COALESCE({column_name}, '') LIKE 'https://prow.tidb.net/%' THEN 'GCP' "
-        "ELSE 'IDC' "
+        "ELSE 'TENCENT' "
         "END"
     )
 

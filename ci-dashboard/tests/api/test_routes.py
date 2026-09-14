@@ -173,6 +173,7 @@ def _insert_build(
     author: str = "alice",
     error_l1_category: str | None = None,
     error_l2_subcategory: str | None = None,
+    build_system: str = "UNKNOWN",
 ) -> None:
     org, repo = repo_full_name.split("/", 1)
     build_url = normalize_build_url(normalized_build_url or f"/jenkins/job/{source_prow_job_id}")
@@ -188,14 +189,14 @@ def _insert_build(
                   pod_name, pending_time, start_time, completion_time, queue_wait_seconds,
                   run_seconds, total_seconds, head_sha, target_branch, cloud_phase, is_flaky,
                   is_retry_loop, has_flaky_case_match, failure_category, failure_subcategory,
-                  error_l1_category, error_l2_subcategory
+                  error_l1_category, error_l2_subcategory, build_system
                 ) VALUES (
                   :source_prow_row_id, :source_prow_job_id, 'prow', :job_name, 'presubmit', :state,
                   0, 1, :org, :repo, :repo_full_name, :base_ref, :pr_number, 1,
                   'unit-test', :url,
                   :normalized_build_url, :author, 0, 'guid', :build_id, NULL, NULL, :start_time,
                   :start_time, :queue_wait_seconds, :run_seconds, :total_seconds, 'sha', :target_branch, :cloud_phase, :is_flaky,
-                  :is_retry_loop, 0, :failure_category, NULL, :error_l1_category, :error_l2_subcategory
+                  :is_retry_loop, 0, :failure_category, NULL, :error_l1_category, :error_l2_subcategory, :build_system
                 )
                 """
             ),
@@ -224,6 +225,7 @@ def _insert_build(
                 "failure_category": failure_category,
                 "error_l1_category": error_l1_category,
                 "error_l2_subcategory": error_l2_subcategory,
+                "build_system": build_system,
             },
         )
 
@@ -262,6 +264,7 @@ def _insert_success_run_series(
             pr_number=300 + start_source_prow_row_id + index,
             normalized_build_url=f"{normalized_job_path.rstrip('/')}/{start_source_prow_row_id + index}/",
             build_id=f"prow-{start_source_prow_row_id + index}",
+            build_system="JENKINS",
         )
 
 
@@ -847,7 +850,7 @@ def api_client(sqlite_engine, monkeypatch):
         base_ref="master",
         job_name="job-a",
         state="failure",
-        cloud_phase="IDC",
+        cloud_phase="TENCENT",
         is_flaky=0,
         is_retry_loop=1,
         failure_category="FLAKY_TEST",
@@ -929,7 +932,7 @@ def api_client(sqlite_engine, monkeypatch):
         base_ref="release-8.5",
         job_name="job-d",
         state="failure",
-        cloud_phase="IDC",
+        cloud_phase="TENCENT",
         is_flaky=0,
         is_retry_loop=0,
         failure_category=None,
@@ -951,7 +954,7 @@ def api_client(sqlite_engine, monkeypatch):
         base_ref="main",
         job_name="job-e",
         state="success",
-        cloud_phase="IDC",
+        cloud_phase="TENCENT",
         is_flaky=0,
         is_retry_loop=0,
         failure_category=None,
@@ -965,11 +968,11 @@ def api_client(sqlite_engine, monkeypatch):
     _insert_success_run_series(
         sqlite_engine,
         start_source_prow_row_id=100,
-        source_prefix="job-fast-idc",
+        source_prefix="job-fast-gcp",
         repo_full_name="pingcap/tidb",
         target_branch="master",
         job_name="job-fast",
-        cloud_phase="IDC",
+        cloud_phase="GCP",
         normalized_job_path="/jenkins/job/pingcap/job/tidb/job/job-fast",
         start_times=[
             "2026-02-20 09:00:00",
@@ -983,11 +986,11 @@ def api_client(sqlite_engine, monkeypatch):
     _insert_success_run_series(
         sqlite_engine,
         start_source_prow_row_id=110,
-        source_prefix="job-fast-gcp",
+        source_prefix="job-fast-tencent",
         repo_full_name="pingcap/tidb",
         target_branch="master",
         job_name="job-fast",
-        cloud_phase="GCP",
+        cloud_phase="TENCENT",
         normalized_job_path="/jenkins/job/pingcap/job/tidb/job/job-fast",
         start_times=[
             "2026-03-01 09:00:00",
@@ -1002,11 +1005,11 @@ def api_client(sqlite_engine, monkeypatch):
     _insert_success_run_series(
         sqlite_engine,
         start_source_prow_row_id=120,
-        source_prefix="job-slow-idc",
+        source_prefix="job-slow-gcp",
         repo_full_name="pingcap/tidb",
         target_branch="master",
         job_name="job-slow",
-        cloud_phase="IDC",
+        cloud_phase="GCP",
         normalized_job_path="/jenkins/job/pingcap/job/tidb/job/job-slow",
         start_times=[
             "2026-02-20 10:00:00",
@@ -1020,11 +1023,11 @@ def api_client(sqlite_engine, monkeypatch):
     _insert_success_run_series(
         sqlite_engine,
         start_source_prow_row_id=130,
-        source_prefix="job-slow-gcp",
+        source_prefix="job-slow-tencent",
         repo_full_name="pingcap/tidb",
         target_branch="master",
         job_name="job-slow",
-        cloud_phase="GCP",
+        cloud_phase="TENCENT",
         normalized_job_path="/jenkins/job/pingcap/job/tidb/job/job-slow",
         start_times=[
             "2026-03-01 10:00:00",
@@ -1268,7 +1271,7 @@ def test_status_and_filter_endpoints(api_client: TestClient, sqlite_engine) -> N
         base_ref="master",
         job_name="tikv-copr-unit",
         state="success",
-        cloud_phase="IDC",
+        cloud_phase="TENCENT",
         is_flaky=0,
         is_retry_loop=0,
         failure_category=None,
@@ -1337,7 +1340,7 @@ def test_status_and_filter_endpoints(api_client: TestClient, sqlite_engine) -> N
     assert cloud_phases.status_code == 200
     assert cloud_phases.json()["items"] == [
         {"value": "GCP", "label": "GCP"},
-        {"value": "IDC", "label": "IDC"},
+        {"value": "TENCENT", "label": "TENCENT"},
     ]
 
 
@@ -1715,7 +1718,7 @@ def test_case_tables_exclude_cross_cloud_and_stale_build_key_collisions(sqlite_e
         base_ref="master",
         job_name="collision-job",
         state="success",
-        cloud_phase="IDC",
+        cloud_phase="TENCENT",
         is_flaky=0,
         is_retry_loop=0,
         failure_category=None,
@@ -1800,20 +1803,20 @@ def test_distinct_case_counts_match_legacy_do_host_case_runs(sqlite_engine) -> N
     _insert_build(
         sqlite_engine,
         source_prow_row_id=910,
-        source_prow_job_id="legacy-idc-build",
+        source_prow_job_id="legacy-tencent-build",
         repo_full_name="pingcap/tidb",
         target_branch="master",
         base_ref="master",
         job_name="legacy-job",
         state="success",
-        cloud_phase="IDC",
+        cloud_phase="TENCENT",
         is_flaky=0,
         is_retry_loop=0,
         failure_category=None,
         start_time="2026-03-23 15:08:10",
         pr_number=910,
         normalized_build_url="https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/54603/",
-        build_id="prow-legacy-idc",
+        build_id="prow-legacy-tencent",
     )
     _insert_pr_event(
         sqlite_engine,
@@ -1978,12 +1981,12 @@ def test_build_routes(api_client: TestClient) -> None:
     assert cloud_comparison.status_code == 200
     cloud_groups = {item["name"]: item["metrics"] for item in cloud_comparison.json()["groups"]}
     assert cloud_groups["GCP"]["total_builds"] == 4
-    assert cloud_groups["IDC"]["total_builds"] == 1
-    assert cloud_groups["IDC"]["success_rate_pct"] == 0.0
+    assert cloud_groups["TENCENT"]["total_builds"] == 1
+    assert cloud_groups["TENCENT"]["success_rate_pct"] == 0.0
     assert cloud_groups["GCP"]["queue_avg_s"] == 120
     assert cloud_groups["GCP"]["run_avg_s"] == 600
     assert cloud_groups["GCP"]["total_avg_s"] == 720
-    assert cloud_groups["IDC"]["queue_avg_s"] == 0
+    assert cloud_groups["TENCENT"]["queue_avg_s"] == 0
 
     migration_runtime = api_client.get(
         "/api/v1/builds/migration-runtime-comparison",
@@ -2004,26 +2007,26 @@ def test_build_routes(api_client: TestClient) -> None:
         {
             "job_name": "job-fast",
             "normalized_job_path": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-fast/",
-            "idc_baseline_avg_run_s": 600,
-            "gcp_recent_avg_run_s": 300,
+            "gcp_baseline_avg_run_s": 600,
+            "tencent_recent_avg_run_s": 300,
             "delta_run_s": -300,
             "delta_pct": -50.0,
-            "idc_success_count": 5,
             "gcp_success_count": 5,
-            "first_gcp_success_at": "2026-03-01T09:00:00Z",
+            "tencent_success_count": 5,
+            "first_tencent_success_at": "2026-03-01T09:00:00Z",
         }
     ]
     assert migration_body["regressed"] == [
         {
             "job_name": "job-slow",
             "normalized_job_path": "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/job-slow/",
-            "idc_baseline_avg_run_s": 200,
-            "gcp_recent_avg_run_s": 500,
+            "gcp_baseline_avg_run_s": 200,
+            "tencent_recent_avg_run_s": 500,
             "delta_run_s": 300,
             "delta_pct": 150.0,
-            "idc_success_count": 5,
             "gcp_success_count": 5,
-            "first_gcp_success_at": "2026-03-01T10:00:00Z",
+            "tencent_success_count": 5,
+            "first_tencent_success_at": "2026-03-01T10:00:00Z"
         }
     ]
 
@@ -2057,7 +2060,7 @@ def test_failure_routes(api_client: TestClient) -> None:
     assert category_share_body["categories"] == ["FLAKY_TEST", "UNCLASSIFIED"]
     share_groups = {item["name"]: item["values"] for item in category_share_body["groups"]}
     assert share_groups["GCP"] == [2, 1]
-    assert share_groups["IDC"] == [1, 0]
+    assert share_groups["TENCENT"] == [1, 0]
 
 
 def test_page_routes(api_client: TestClient) -> None:
@@ -2107,8 +2110,18 @@ def test_page_routes(api_client: TestClient) -> None:
         "DISK_FULL": 1,
         "JENKINS": 1,
     }
-    assert build_trend_body["cloud_posture_trend"]["meta"]["bucket_granularity"] == "week"
-    assert build_trend_body["cloud_posture_trend"]["series"] == []
+    assert build_trend_body["cloud_posture_trend"]["meta"]["bucket_granularity"] == "day"
+    cloud_posture_series = {
+        item["key"]: item for item in build_trend_body["cloud_posture_trend"]["series"]
+    }
+    assert cloud_posture_series["gcp_build_count"]["points"] == [
+        ["2026-04-10", 2],
+        ["2026-04-11", 2],
+    ]
+    assert cloud_posture_series["tencent_build_count"]["points"] == [
+        ["2026-04-10", 1],
+        ["2026-04-11", 0],
+    ]
     assert build_trend_body["repo_performance_rankings"]["avg_success_duration"]["items"] == [
         {
             "name": "pingcap/tidb",
@@ -2289,8 +2302,8 @@ def test_page_routes(api_client: TestClient) -> None:
             "branches": [{"name": "master", "value": 4, "share_pct": 100.0}],
         }
     ]
-    assert cloud_repo_share["IDC"]["total_builds"] == 3
-    assert cloud_repo_share["IDC"]["items"] == [
+    assert cloud_repo_share["TENCENT"]["total_builds"] == 3
+    assert cloud_repo_share["TENCENT"]["items"] == [
         {
             "name": "pingcap/tidb",
             "value": 2,
@@ -2323,8 +2336,8 @@ def test_page_routes(api_client: TestClient) -> None:
         for item in build_trend_repo_filtered_body["cloud_repo_share"]["clouds"]
     }
     assert cloud_repo_share_with_repo_filter["GCP"]["total_builds"] == 4
-    assert cloud_repo_share_with_repo_filter["IDC"]["total_builds"] == 3
-    assert [item["name"] for item in cloud_repo_share_with_repo_filter["IDC"]["items"]] == [
+    assert cloud_repo_share_with_repo_filter["TENCENT"]["total_builds"] == 3
+    assert [item["name"] for item in cloud_repo_share_with_repo_filter["TENCENT"]["items"]] == [
         "pingcap/tidb",
         "pingcap/tiflash",
     ]
@@ -2343,10 +2356,15 @@ def test_page_routes(api_client: TestClient) -> None:
         item["cloud_phase"]: item
         for item in build_trend_cloud_filtered_body["cloud_repo_share"]["clouds"]
     }
-    assert build_trend_cloud_filtered_body["cloud_posture_trend"]["series"] == []
+    cloud_posture = {
+        item["key"]
+        for item in build_trend_cloud_filtered_body["cloud_posture_trend"]["series"]
+        if any(value for _, value in item["points"])
+    }
+    assert cloud_posture == {"gcp_build_count"}
 
     assert cloud_repo_share_with_cloud_filter["GCP"]["total_builds"] == 4
-    assert cloud_repo_share_with_cloud_filter["IDC"]["total_builds"] == 3
+    assert cloud_repo_share_with_cloud_filter["TENCENT"]["total_builds"] == 3
 
     flaky = api_client.get(
         "/api/v1/pages/flaky",
@@ -6137,16 +6155,16 @@ def test_migration_fixed_window_comparison_rows(
     api_client: TestClient,
 ) -> None:
     fixtures = [
-        (2000, "baseline-tidb-success-1", "pingcap/tidb", "success", "IDC", "2025-12-20 01:00:00", 300),
-        (2001, "baseline-tidb-success-2", "pingcap/tidb", "success", "IDC", "2026-01-10 01:00:00", 420),
-        (2002, "baseline-tidb-failure", "pingcap/tidb", "failure", "IDC", "2026-01-12 01:00:00", 0),
-        (2003, "baseline-ticdc-success", "pingcap/ticdc", "success", "IDC", "2025-12-28 02:00:00", 240),
-        (2004, "baseline-ticdc-failure", "pingcap/ticdc", "failure", "IDC", "2026-01-05 02:00:00", 0),
-        (2010, "recent-tidb-success-1", "pingcap/tidb", "success", "GCP", "2026-04-20 01:00:00", 220),
-        (2011, "recent-tidb-success-2", "pingcap/tidb", "success", "GCP", "2026-05-01 01:00:00", 260),
-        (2012, "recent-tidb-failure", "pingcap/tidb", "failure", "GCP", "2026-05-03 01:00:00", 0),
-        (2013, "recent-ticdc-success", "pingcap/ticdc", "success", "GCP", "2026-04-25 02:00:00", 180),
-        (2014, "recent-ticdc-failure", "pingcap/ticdc", "failure", "GCP", "2026-05-05 02:00:00", 0),
+        (2000, "baseline-tidb-success-1", "pingcap/tidb", "success", "GCP", "2026-08-10 01:00:00", 300),
+        (2001, "baseline-tidb-success-2", "pingcap/tidb", "success", "GCP", "2026-08-20 01:00:00", 420),
+        (2002, "baseline-tidb-failure", "pingcap/tidb", "failure", "GCP", "2026-08-22 01:00:00", 0),
+        (2003, "baseline-ticdc-success", "pingcap/ticdc", "success", "GCP", "2026-08-14 02:00:00", 240),
+        (2004, "baseline-ticdc-failure", "pingcap/ticdc", "failure", "GCP", "2026-08-19 02:00:00", 0),
+        (2010, "recent-tidb-success-1", "pingcap/tidb", "success", "TENCENT", "2026-09-10 01:00:00", 220),
+        (2011, "recent-tidb-success-2", "pingcap/tidb", "success", "TENCENT", "2026-09-11 01:00:00", 260),
+        (2012, "recent-tidb-failure", "pingcap/tidb", "failure", "TENCENT", "2026-09-12 01:00:00", 0),
+        (2013, "recent-ticdc-success", "pingcap/ticdc", "success", "TENCENT", "2026-09-13 02:00:00", 180),
+        (2014, "recent-ticdc-failure", "pingcap/ticdc", "failure", "TENCENT", "2026-09-14 02:00:00", 0),
     ]
     for source_prow_row_id, source_prow_job_id, repo_full_name, state, cloud_phase, start_time, total_seconds in fixtures:
         _insert_build(
@@ -6166,68 +6184,114 @@ def test_migration_fixed_window_comparison_rows(
             run_seconds=max(total_seconds - 20, 0),
             total_seconds=total_seconds,
             pr_number=80000 + source_prow_row_id,
+            build_system="JENKINS",
+        )
+
+    _insert_build(
+        sqlite_engine,
+        source_prow_row_id=2005,
+        source_prow_job_id="baseline-tidb-prow-native",
+        repo_full_name="pingcap/tidb",
+        target_branch="master",
+        base_ref="master",
+        job_name="tidb-prow-native-job",
+        state="success",
+        cloud_phase="GCP",
+        is_flaky=0,
+        is_retry_loop=0,
+        failure_category=None,
+        start_time="2026-08-12 01:00:00",
+        total_seconds=900,
+        build_system="PROW_NATIVE",
+    )
+
+    for source_prow_row_id, cloud_phase, start_time, total_seconds in [
+        (2006, "GCP", "2026-08-23 01:00:00", 1200),
+        (2015, "TENCENT", "2026-09-10 03:00:00", 1000),
+        (2016, "TENCENT", "2026-09-11 03:00:00", 1000),
+        (2017, "TENCENT", "2026-09-12 03:00:00", 1000),
+    ]:
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=source_prow_row_id,
+            source_prow_job_id=f"weighted-tidb-job-{source_prow_row_id}",
+            repo_full_name="pingcap/tidb",
+            target_branch="master",
+            base_ref="master",
+            job_name="tidb-weighted-job",
+            state="success",
+            cloud_phase=cloud_phase,
+            is_flaky=0,
+            is_retry_loop=0,
+            failure_category=None,
+            start_time=start_time,
+            total_seconds=total_seconds,
+            build_system="JENKINS",
         )
 
     response = api_client.get(
         "/api/v1/pages/ci-status",
         params={
             "repo": "pingcap/tidb",
-            "end_date": "2026-05-15",
+            "end_date": "2026-09-14",
         },
     )
     assert response.status_code == 200
-    body = response.json()
-    comparison = body["migration_fixed_window_comparison"]
-    assert comparison["meta"]["baseline_start_date"] == "2025-12-15"
-    assert comparison["meta"]["baseline_end_date"] == "2026-01-14"
-    assert comparison["meta"]["recent_start_date"] == "2026-04-15"
-    assert comparison["meta"]["recent_end_date"] == "2026-05-15"
+    comparison = response.json()["migration_fixed_window_comparison"]
+    assert comparison["meta"]["baseline_start_date"] == "2026-08-10"
+    assert comparison["meta"]["baseline_end_date"] == "2026-08-24"
+    assert comparison["meta"]["recent_start_date"] == "2026-09-10"
+    assert comparison["meta"]["recent_end_date"] == "2026-09-14"
+    assert comparison["meta"]["build_system"] == "JENKINS"
     assert comparison["meta"]["ignores_repo_filter"] is True
 
     rows = {row["scope_key"]: row for row in comparison["rows"]}
+    assert rows["all_repos"]["matched_job_count"] == 3
     assert rows["all_repos"]["baseline"] == {
-        "start_date": "2025-12-15",
-        "end_date": "2026-01-14",
-        "total_build_count": 5,
-        "success_count": 3,
-        "success_rate_pct": 60.0,
-        "success_avg_total_s": 320,
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-24",
+        "total_build_count": 6,
+        "success_count": 4,
+        "success_rate_pct": 66.67,
+        "success_avg_total_s": 760,
     }
-    assert rows["all_repos"]["recent_gcp"] == {
-        "start_date": "2026-04-15",
-        "end_date": "2026-05-15",
-        "total_build_count": 5,
-        "success_count": 3,
-        "success_rate_pct": 60.0,
-        "success_avg_total_s": 220,
+    assert rows["all_repos"]["recent_tencent"] == {
+        "start_date": "2026-09-10",
+        "end_date": "2026-09-14",
+        "total_build_count": 8,
+        "success_count": 6,
+        "success_rate_pct": 75.0,
+        "success_avg_total_s": 610,
     }
+    assert rows["tidb"]["matched_job_count"] == 2
     assert rows["tidb"]["baseline"] == {
-        "start_date": "2025-12-15",
-        "end_date": "2026-01-14",
-        "total_build_count": 3,
-        "success_count": 2,
-        "success_rate_pct": 66.67,
-        "success_avg_total_s": 360,
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-24",
+        "total_build_count": 4,
+        "success_count": 3,
+        "success_rate_pct": 75.0,
+        "success_avg_total_s": 864,
     }
-    assert rows["tidb"]["recent_gcp"] == {
-        "start_date": "2026-04-15",
-        "end_date": "2026-05-15",
-        "total_build_count": 3,
-        "success_count": 2,
-        "success_rate_pct": 66.67,
-        "success_avg_total_s": 240,
+    assert rows["tidb"]["recent_tencent"] == {
+        "start_date": "2026-09-10",
+        "end_date": "2026-09-14",
+        "total_build_count": 6,
+        "success_count": 5,
+        "success_rate_pct": 83.33,
+        "success_avg_total_s": 696,
     }
+    assert rows["ticdc"]["matched_job_count"] == 1
     assert rows["ticdc"]["baseline"] == {
-        "start_date": "2025-12-15",
-        "end_date": "2026-01-14",
+        "start_date": "2026-08-10",
+        "end_date": "2026-08-24",
         "total_build_count": 2,
         "success_count": 1,
         "success_rate_pct": 50.0,
         "success_avg_total_s": 240,
     }
-    assert rows["ticdc"]["recent_gcp"] == {
-        "start_date": "2026-04-15",
-        "end_date": "2026-05-15",
+    assert rows["ticdc"]["recent_tencent"] == {
+        "start_date": "2026-09-10",
+        "end_date": "2026-09-14",
         "total_build_count": 2,
         "success_count": 1,
         "success_rate_pct": 50.0,
@@ -6242,7 +6306,7 @@ def test_ci_status_cloud_migration_summary(
     fixtures = [
         (2200, "migration-share-gcp-1", "GCP", 300),
         (2201, "migration-share-gcp-2", "GCP", 100),
-        (2202, "migration-share-idc-1", "IDC", 400),
+        (2202, "migration-share-tencent-1", "TENCENT", 400),
     ]
     for source_prow_row_id, source_prow_job_id, cloud_phase, total_seconds in fixtures:
         _insert_build(
@@ -6277,13 +6341,13 @@ def test_ci_status_cloud_migration_summary(
     assert response.status_code == 200
     assert response.json()["cloud_migration_summary"] == {
         "gcp_build_count": 2,
-        "idc_build_count": 1,
+        "tencent_build_count": 1,
         "total_build_count": 3,
-        "gcp_build_share_pct": 66.67,
+        "tencent_build_share_pct": 33.33,
         "gcp_total_duration_s": 400,
-        "idc_total_duration_s": 400,
+        "tencent_total_duration_s": 400,
         "total_duration_s": 800,
-        "gcp_duration_share_pct": 50.0,
+        "tencent_duration_share_pct": 50.0,
         "meta": {
             "repo": "pingcap/migration-share",
             "branch": None,
@@ -6299,6 +6363,43 @@ def test_ci_status_cloud_migration_summary(
             "cost_source": None,
         },
     }
+
+    _insert_build(
+        sqlite_engine,
+        source_prow_row_id=2203,
+        source_prow_job_id="migration-share-tencent-2",
+        repo_full_name="pingcap/migration-share",
+        target_branch="master",
+        base_ref="master",
+        job_name="migration-share-job",
+        state="success",
+        cloud_phase="TENCENT",
+        is_flaky=0,
+        is_retry_loop=0,
+        failure_category=None,
+        start_time="2026-06-03 01:00:00",
+        run_seconds=280,
+        total_seconds=300,
+        pr_number=84203,
+    )
+
+    day_response = api_client.get(
+        "/api/v1/pages/ci-status",
+        params={
+            "repo": "pingcap/migration-share",
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-07",
+            "granularity": "day",
+        },
+    )
+
+    assert day_response.status_code == 200
+    cloud_posture = {
+        item["key"]: item for item in day_response.json()["cloud_posture_trend"]["series"]
+    }
+    assert day_response.json()["cloud_posture_trend"]["meta"]["bucket_granularity"] == "day"
+    assert cloud_posture["gcp_build_count"]["points"] == [["2026-06-03", 2]]
+    assert cloud_posture["tencent_build_count"]["points"] == [["2026-06-03", 2]]
 
 
 def test_weekly_series_skip_partial_boundary_weeks(api_client: TestClient) -> None:
@@ -6350,12 +6451,12 @@ def test_weekly_series_skip_partial_boundary_weeks(api_client: TestClient) -> No
         item["key"]: item for item in ci_status.json()["cloud_posture_trend"]["series"]
     }
     assert cloud_posture_series["gcp_build_count"]["points"] == [
-        ["2026-03-30", 8],
-        ["2026-04-06", 6],
-    ]
-    assert cloud_posture_series["idc_build_count"]["points"] == [
         ["2026-03-30", 0],
-        ["2026-04-06", 1],
+        ["2026-04-06", 4],
+    ]
+    assert cloud_posture_series["tencent_build_count"]["points"] == [
+        ["2026-03-30", 8],
+        ["2026-04-06", 3],
     ]
 
 

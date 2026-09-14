@@ -25,11 +25,18 @@ MIGRATION_WINDOW_DAYS = 14
 MIGRATION_MIN_SUCCESS_RUNS = 5
 MIGRATION_IMPROVED_LIMIT = 10
 MIGRATION_REGRESSED_LIMIT = 10
+CLOUD_POSTURE_PHASES = ("GCP", "TENCENT")
+CLOUD_POSTURE_LABELS = {
+    "GCP": "GCP builds",
+    "TENCENT": "Tencent builds",
+}
 BUILD_TREND_JOB_RANKING_LIMIT = 10
 BUILD_COUNT_BREAKDOWN_LIMIT = 8
-MIGRATION_FIXED_BASELINE_START = date(2025, 12, 15)
-MIGRATION_FIXED_BASELINE_END = date(2026, 1, 14)
-MIGRATION_FIXED_RECENT_START = date(2026, 4, 15)
+MIGRATION_COMPARISON_BUILD_SYSTEM = "JENKINS"
+MIGRATION_RUNTIME_HISTORY_START = date(2025, 12, 15)
+MIGRATION_FIXED_BASELINE_START = date(2026, 8, 10)
+MIGRATION_FIXED_BASELINE_END = date(2026, 8, 24)
+MIGRATION_FIXED_RECENT_START = date(2026, 9, 10)
 MIGRATION_FIXED_COMPARISON_SCOPES = (
     ("all_repos", "All repos", None),
     ("tidb", "TiDB", "pingcap/tidb"),
@@ -252,7 +259,7 @@ def get_cloud_posture_trend(engine: Engine, filters: CommonFilters) -> dict[str,
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
         builds_table = builds_table_expr(connection, filters, alias="b")
-        bucket = bucket_expr(connection, "b.start_time", "week")
+        bucket = bucket_expr(connection, "b.start_time", filters.granularity)
         rows = connection.execute(
             text(
                 f"""
@@ -262,27 +269,29 @@ def get_cloud_posture_trend(engine: Engine, filters: CommonFilters) -> dict[str,
                   COUNT(*) AS build_count
                 FROM {builds_table}
                 WHERE {where_clause}
-                  AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
+                  AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'TENCENT')
                 GROUP BY bucket_start, UPPER(COALESCE(b.cloud_phase, ''))
                 ORDER BY bucket_start, UPPER(COALESCE(b.cloud_phase, ''))
                 """
             ),
             params,
         ).mappings()
-        data_rows = filter_complete_week_rows(
-            [dict(row) for row in rows],
-            start_date=filters.start_date,
-            end_date=filters.end_date,
-        )
+        data_rows = [dict(row) for row in rows]
+        if filters.granularity == "week":
+            data_rows = filter_complete_week_rows(
+                data_rows,
+                start_date=filters.start_date,
+                end_date=filters.end_date,
+            )
 
-        weekly_counts = {"GCP": {}, "IDC": {}}
+        bucket_counts = {cloud_phase: {} for cloud_phase in CLOUD_POSTURE_PHASES}
         buckets: set[str] = set()
         for row in data_rows:
             bucket_start = str(row["bucket_start"])
             cloud_phase = str(row["cloud_phase"])
             buckets.add(bucket_start)
-            if cloud_phase in weekly_counts:
-                weekly_counts[cloud_phase][bucket_start] = int(row["build_count"] or 0)
+            if cloud_phase in bucket_counts:
+                bucket_counts[cloud_phase][bucket_start] = int(row["build_count"] or 0)
 
     ordered_buckets = sorted(buckets)
     if not ordered_buckets:
@@ -290,34 +299,26 @@ def get_cloud_posture_trend(engine: Engine, filters: CommonFilters) -> dict[str,
             "series": [],
             "meta": {
                 **filters.meta(),
-                "bucket_granularity": "week",
+                "bucket_granularity": filters.granularity,
             },
         }
 
     return {
         "series": [
             {
-                "key": "gcp_build_count",
-                "label": "GCP builds",
+                "key": f"{cloud_phase.lower()}_build_count",
+                "label": CLOUD_POSTURE_LABELS[cloud_phase],
                 "type": "bar",
                 "points": [
-                    [bucket_start, weekly_counts["GCP"].get(bucket_start, 0)]
+                    [bucket_start, bucket_counts[cloud_phase].get(bucket_start, 0)]
                     for bucket_start in ordered_buckets
                 ],
-            },
-            {
-                "key": "idc_build_count",
-                "label": "IDC builds",
-                "type": "bar",
-                "points": [
-                    [bucket_start, weekly_counts["IDC"].get(bucket_start, 0)]
-                    for bucket_start in ordered_buckets
-                ],
-            },
+            }
+            for cloud_phase in CLOUD_POSTURE_PHASES
         ],
         "meta": {
             **filters.meta(),
-            "bucket_granularity": "week",
+            "bucket_granularity": filters.granularity,
         },
     }
 
@@ -332,40 +333,40 @@ def get_cloud_migration_summary(engine: Engine, filters: CommonFilters) -> dict[
                 SELECT
                   SUM(CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'GCP' THEN 1 ELSE 0 END)
                     AS gcp_build_count,
-                  SUM(CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'IDC' THEN 1 ELSE 0 END)
-                    AS idc_build_count,
+                  SUM(CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'TENCENT' THEN 1 ELSE 0 END)
+                    AS tencent_build_count,
                   SUM(
                     CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'GCP'
                       THEN COALESCE(b.total_seconds, 0) ELSE 0 END
                   ) AS gcp_total_duration_s,
                   SUM(
-                    CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'IDC'
+                    CASE WHEN UPPER(COALESCE(b.cloud_phase, '')) = 'TENCENT'
                       THEN COALESCE(b.total_seconds, 0) ELSE 0 END
-                  ) AS idc_total_duration_s
+                  ) AS tencent_total_duration_s
                 FROM {builds_table}
                 WHERE {where_clause}
-                  AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
+                  AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'TENCENT')
                 """
             ),
             params,
         ).mappings().one()
 
     gcp_build_count = int(row["gcp_build_count"] or 0)
-    idc_build_count = int(row["idc_build_count"] or 0)
+    tencent_build_count = int(row["tencent_build_count"] or 0)
     gcp_total_duration_s = int(row["gcp_total_duration_s"] or 0)
-    idc_total_duration_s = int(row["idc_total_duration_s"] or 0)
-    total_build_count = gcp_build_count + idc_build_count
-    total_duration_s = gcp_total_duration_s + idc_total_duration_s
+    tencent_total_duration_s = int(row["tencent_total_duration_s"] or 0)
+    total_build_count = gcp_build_count + tencent_build_count
+    total_duration_s = gcp_total_duration_s + tencent_total_duration_s
 
     return {
         "gcp_build_count": gcp_build_count,
-        "idc_build_count": idc_build_count,
+        "tencent_build_count": tencent_build_count,
         "total_build_count": total_build_count,
-        "gcp_build_share_pct": rate_pct(gcp_build_count, total_build_count),
+        "tencent_build_share_pct": rate_pct(tencent_build_count, total_build_count),
         "gcp_total_duration_s": gcp_total_duration_s,
-        "idc_total_duration_s": idc_total_duration_s,
+        "tencent_total_duration_s": tencent_total_duration_s,
         "total_duration_s": total_duration_s,
-        "gcp_duration_share_pct": rate_pct(gcp_total_duration_s, total_duration_s),
+        "tencent_duration_share_pct": rate_pct(tencent_total_duration_s, total_duration_s),
         "meta": filters.meta(),
     }
 
@@ -793,7 +794,7 @@ def get_cloud_repo_share(engine: Engine, filters: CommonFilters) -> dict[str, An
                   COUNT(*) AS build_count
                 FROM {builds_table}
                 WHERE {where_clause}
-                  AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
+                  AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'TENCENT')
                 GROUP BY UPPER(COALESCE(b.cloud_phase, '')), b.repo_full_name, {branch_name}
                 ORDER BY UPPER(COALESCE(b.cloud_phase, '')), build_count DESC, b.repo_full_name, {branch_name}
                 """
@@ -801,8 +802,8 @@ def get_cloud_repo_share(engine: Engine, filters: CommonFilters) -> dict[str, An
             params,
         ).mappings()
 
-        cloud_repo_counts: dict[str, dict[str, dict[str, Any]]] = {"GCP": {}, "IDC": {}}
-        cloud_totals = {"GCP": 0, "IDC": 0}
+        cloud_repo_counts: dict[str, dict[str, dict[str, Any]]] = {"GCP": {}, "TENCENT": {}}
+        cloud_totals = {"GCP": 0, "TENCENT": 0}
         for row in rows:
             cloud_phase = str(row["cloud_phase"])
             repo_name = str(row["repo_name"])
@@ -821,7 +822,7 @@ def get_cloud_repo_share(engine: Engine, filters: CommonFilters) -> dict[str, An
             repo_entry["_branch_counts"][branch] = repo_entry["_branch_counts"].get(branch, 0) + build_count
 
     clouds = []
-    for cloud_phase in ("GCP", "IDC"):
+    for cloud_phase in ("GCP", "TENCENT"):
         total_builds = cloud_totals[cloud_phase]
         items = []
         for repo_entry in sorted(
@@ -878,11 +879,12 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
         where_clause, params = build_common_where(scope_filters, table_alias="b")
         builds_table = builds_table_expr(connection, scope_filters, alias="b")
         success_where = success_expr("b")
-        anchor_end_date = filters.end_date or _find_latest_gcp_success_date(
+        anchor_end_date = filters.end_date or _find_latest_tencent_success_date(
             connection,
             where_clause,
             params,
             success_where,
+            build_system=MIGRATION_COMPARISON_BUILD_SYSTEM,
         )
         if anchor_end_date is None:
             return {
@@ -893,14 +895,15 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
                     "anchor_end_date": None,
                     "window_days": MIGRATION_WINDOW_DAYS,
                     "min_success_runs_each_side": MIGRATION_MIN_SUCCESS_RUNS,
-                },
+                    "build_system": MIGRATION_COMPARISON_BUILD_SYSTEM,
+                }
             }
 
         anchor_end_exclusive = datetime.combine(anchor_end_date + timedelta(days=1), time.min)
         recent_window_start = anchor_end_exclusive - timedelta(days=MIGRATION_WINDOW_DAYS)
         baseline_window_start = _datetime_shift_expr(
             connection,
-            "fg.first_gcp_success_at",
+            "ft.first_tencent_success_at",
             -MIGRATION_WINDOW_DAYS,
         )
 
@@ -921,80 +924,82 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
                     AND b.run_seconds IS NOT NULL
                     AND b.start_time >= :migration_history_start
                     AND b.start_time < :anchor_end_exclusive
-                    AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'IDC')
+                    AND UPPER(COALESCE(b.cloud_phase, '')) IN ('GCP', 'TENCENT')
+                    AND b.build_system = :migration_comparison_build_system
                     AND b.repo_full_name IS NOT NULL
                     AND b.job_name IS NOT NULL
                     AND b.normalized_build_url IS NOT NULL
                 ),
-                first_gcp AS (
+                first_tencent AS (
                   SELECT
                     s.repo_full_name,
                     s.job_name,
-                    MIN(s.start_time) AS first_gcp_success_at
+                    MIN(s.start_time) AS first_tencent_success_at
                   FROM scoped_success_builds s
-                  WHERE s.cloud_phase = 'GCP'
+                  WHERE s.cloud_phase = 'TENCENT'
                   GROUP BY s.repo_full_name, s.job_name
                 ),
-                recent_gcp AS (
+                recent_tencent AS (
                   SELECT
                     s.repo_full_name,
                     s.job_name,
                     MIN(s.normalized_build_url) AS sample_build_url,
-                    COUNT(*) AS gcp_success_count,
-                    AVG(s.run_seconds) AS gcp_recent_avg_run_s
+                    COUNT(*) AS tencent_success_count,
+                    AVG(s.run_seconds) AS tencent_recent_avg_run_s
                   FROM scoped_success_builds s
-                  WHERE s.cloud_phase = 'GCP'
+                  WHERE s.cloud_phase = 'TENCENT'
                     AND s.start_time >= :recent_window_start
                   GROUP BY s.repo_full_name, s.job_name
                 ),
-                idc_baseline AS (
+                gcp_baseline AS (
                   SELECT
                     s.repo_full_name,
                     s.job_name,
-                    COUNT(*) AS idc_success_count,
-                    AVG(s.run_seconds) AS idc_baseline_avg_run_s
+                    COUNT(*) AS gcp_success_count,
+                    AVG(s.run_seconds) AS gcp_baseline_avg_run_s
                   FROM scoped_success_builds s
-                  JOIN first_gcp fg
-                    ON fg.repo_full_name = s.repo_full_name
-                   AND fg.job_name = s.job_name
-                  WHERE s.cloud_phase = 'IDC'
+                  JOIN first_tencent ft
+                    ON ft.repo_full_name = s.repo_full_name
+                   AND ft.job_name = s.job_name
+                  WHERE s.cloud_phase = 'GCP'
                     AND s.start_time >= {baseline_window_start}
-                    AND s.start_time < fg.first_gcp_success_at
+                    AND s.start_time < ft.first_tencent_success_at
                   GROUP BY s.repo_full_name, s.job_name
                 )
                 SELECT
-                  fg.repo_full_name,
-                  fg.job_name,
-                  rg.sample_build_url,
-                  fg.first_gcp_success_at,
-                  ib.idc_success_count,
-                  rg.gcp_success_count,
-                  ib.idc_baseline_avg_run_s,
-                  rg.gcp_recent_avg_run_s,
-                  rg.gcp_recent_avg_run_s - ib.idc_baseline_avg_run_s AS delta_run_s,
+                  ft.repo_full_name,
+                  ft.job_name,
+                  rt.sample_build_url,
+                  ft.first_tencent_success_at,
+                  gb.gcp_success_count,
+                  rt.tencent_success_count,
+                  gb.gcp_baseline_avg_run_s,
+                  rt.tencent_recent_avg_run_s,
+                  rt.tencent_recent_avg_run_s - gb.gcp_baseline_avg_run_s AS delta_run_s,
                   CASE
-                    WHEN ib.idc_baseline_avg_run_s = 0 THEN 0
+                    WHEN gb.gcp_baseline_avg_run_s = 0 THEN 0
                     ELSE ROUND(
-                      ((rg.gcp_recent_avg_run_s - ib.idc_baseline_avg_run_s) * 100.0)
-                      / ib.idc_baseline_avg_run_s,
+                      ((rt.tencent_recent_avg_run_s - gb.gcp_baseline_avg_run_s) * 100.0)
+                      / gb.gcp_baseline_avg_run_s,
                       2
                     )
                   END AS delta_pct
-                FROM first_gcp fg
-                JOIN recent_gcp rg
-                  ON rg.repo_full_name = fg.repo_full_name
-                 AND rg.job_name = fg.job_name
-                JOIN idc_baseline ib
-                  ON ib.repo_full_name = fg.repo_full_name
-                 AND ib.job_name = fg.job_name
-                WHERE ib.idc_success_count >= :min_success_runs_each_side
-                  AND rg.gcp_success_count >= :min_success_runs_each_side
-                ORDER BY delta_run_s ASC, fg.repo_full_name ASC, fg.job_name ASC
+                FROM first_tencent ft
+                JOIN recent_tencent rt
+                  ON rt.repo_full_name = ft.repo_full_name
+                 AND rt.job_name = ft.job_name
+                JOIN gcp_baseline gb
+                  ON gb.repo_full_name = ft.repo_full_name
+                 AND gb.job_name = ft.job_name
+                WHERE gb.gcp_success_count >= :min_success_runs_each_side
+                  AND rt.tencent_success_count >= :min_success_runs_each_side
+                ORDER BY delta_run_s ASC, ft.repo_full_name ASC, ft.job_name ASC
                 """
             ),
             {
                 **params,
-                "migration_history_start": MIGRATION_FIXED_BASELINE_START,
+                "migration_history_start": MIGRATION_RUNTIME_HISTORY_START,
+                "migration_comparison_build_system": MIGRATION_COMPARISON_BUILD_SYSTEM,
                 "anchor_end_exclusive": anchor_end_exclusive,
                 "recent_window_start": recent_window_start,
                 "min_success_runs_each_side": MIGRATION_MIN_SUCCESS_RUNS,
@@ -1010,13 +1015,13 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
                 {
                     "job_name": str(row["job_name"]),
                     "normalized_job_path": normalized_job_path,
-                    "idc_baseline_avg_run_s": round(float(row["idc_baseline_avg_run_s"] or 0)),
-                    "gcp_recent_avg_run_s": round(float(row["gcp_recent_avg_run_s"] or 0)),
+                    "gcp_baseline_avg_run_s": round(float(row["gcp_baseline_avg_run_s"] or 0)),
+                    "tencent_recent_avg_run_s": round(float(row["tencent_recent_avg_run_s"] or 0)),
                     "delta_run_s": round(float(row["delta_run_s"] or 0)),
                     "delta_pct": round(float(row["delta_pct"] or 0), 2),
-                    "idc_success_count": int(row["idc_success_count"] or 0),
                     "gcp_success_count": int(row["gcp_success_count"] or 0),
-                    "first_gcp_success_at": _coerce_isoformat_utc(row["first_gcp_success_at"]),
+                    "tencent_success_count": int(row["tencent_success_count"] or 0),
+                    "first_tencent_success_at": _coerce_isoformat_utc(row["first_tencent_success_at"]),
                 }
             )
 
@@ -1039,6 +1044,7 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
             "improved_limit": MIGRATION_IMPROVED_LIMIT,
             "regressed_limit": MIGRATION_REGRESSED_LIMIT,
             "comparison_key": "normalized_job_path",
+            "build_system": MIGRATION_COMPARISON_BUILD_SYSTEM,
         },
     }
 
@@ -1046,11 +1052,12 @@ def get_migration_runtime_comparison(engine: Engine, filters: CommonFilters) -> 
 def get_migration_fixed_window_comparison(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     with engine.begin() as connection:
         success_where = success_expr("b")
-        recent_end_date = filters.end_date or _find_latest_gcp_success_date(
+        recent_end_date = filters.end_date or _find_latest_tencent_success_date(
             connection,
             "1=1",
             {},
             success_where,
+            build_system=MIGRATION_COMPARISON_BUILD_SYSTEM,
         )
 
         rows = [
@@ -1058,19 +1065,10 @@ def get_migration_fixed_window_comparison(engine: Engine, filters: CommonFilters
                 "scope_key": scope_key,
                 "scope_label": scope_label,
                 "repo_full_name": repo_full_name,
-                "baseline": _fetch_migration_window_summary(
+                **_fetch_matched_migration_window_comparison(
                     connection,
                     repo_full_name=repo_full_name,
-                    start_date=MIGRATION_FIXED_BASELINE_START,
-                    end_date=MIGRATION_FIXED_BASELINE_END,
-                    cloud_phase=None,
-                ),
-                "recent_gcp": _fetch_migration_window_summary(
-                    connection,
-                    repo_full_name=repo_full_name,
-                    start_date=MIGRATION_FIXED_RECENT_START,
-                    end_date=recent_end_date,
-                    cloud_phase="GCP",
+                    recent_end_date=recent_end_date,
                 ),
             }
             for scope_key, scope_label, repo_full_name in MIGRATION_FIXED_COMPARISON_SCOPES
@@ -1084,6 +1082,7 @@ def get_migration_fixed_window_comparison(engine: Engine, filters: CommonFilters
             "baseline_end_date": MIGRATION_FIXED_BASELINE_END.isoformat(),
             "recent_start_date": MIGRATION_FIXED_RECENT_START.isoformat(),
             "recent_end_date": recent_end_date.isoformat() if recent_end_date else None,
+            "build_system": MIGRATION_COMPARISON_BUILD_SYSTEM,
             "scopes": [
                 {"scope_key": scope_key, "scope_label": scope_label, "repo_full_name": repo_full_name}
                 for scope_key, scope_label, repo_full_name in MIGRATION_FIXED_COMPARISON_SCOPES
@@ -1098,11 +1097,13 @@ def get_migration_fixed_window_comparison(engine: Engine, filters: CommonFilters
     }
 
 
-def _find_latest_gcp_success_date(
+def _find_latest_tencent_success_date(
     connection,
     where_clause: str,
     params: dict[str, Any],
     success_where: str,
+    *,
+    build_system: str | None = None,
 ):
     row = connection.execute(
         text(
@@ -1111,10 +1112,11 @@ def _find_latest_gcp_success_date(
             FROM {builds_table_expr(connection, CommonFilters(), alias='b')}
             WHERE {where_clause}
               AND {success_where}
-              AND UPPER(COALESCE(b.cloud_phase, '')) = 'GCP'
+              AND UPPER(COALESCE(b.cloud_phase, '')) = 'TENCENT'
+              AND (:build_system IS NULL OR b.build_system = :build_system)
             """
         ),
-        params,
+        {**params, "build_system": build_system},
     ).mappings().one()
     if row["anchor_end_date"] is None:
         return None
@@ -1163,15 +1165,13 @@ def _coerce_isoformat_utc(value: Any) -> str | None:
     return isoformat_utc(value)
 
 
-def _fetch_migration_window_summary(
+def _fetch_matched_migration_window_comparison(
     connection,
     *,
     repo_full_name: str | None,
-    start_date: date,
-    end_date: date | None,
-    cloud_phase: str | None,
+    recent_end_date: date | None,
 ) -> dict[str, Any]:
-    if end_date is None or end_date < start_date:
+    def empty_summary(start_date: date, end_date: date | None) -> dict[str, Any]:
         return {
             "start_date": start_date.isoformat(),
             "end_date": end_date.isoformat() if end_date else None,
@@ -1181,36 +1181,112 @@ def _fetch_migration_window_summary(
             "success_avg_total_s": 0,
         }
 
+    if recent_end_date is None or recent_end_date < MIGRATION_FIXED_RECENT_START:
+        return {
+            "matched_job_count": 0,
+            "baseline": empty_summary(MIGRATION_FIXED_BASELINE_START, MIGRATION_FIXED_BASELINE_END),
+            "recent_tencent": empty_summary(MIGRATION_FIXED_RECENT_START, recent_end_date),
+        }
+
     filters = CommonFilters(
         repo=repo_full_name,
-        start_date=start_date,
-        end_date=end_date,
-        cloud_phase=cloud_phase,
+        start_date=MIGRATION_FIXED_BASELINE_START,
+        end_date=recent_end_date,
     )
-    where_clause, params = build_common_where(filters, table_alias="b")
     builds_table = builds_table_expr(connection, filters, alias="b")
+    repo_clause = "" if repo_full_name is None else "AND b.repo_full_name = :repo_full_name"
     success_where = success_expr("b")
     row = connection.execute(
         text(
             f"""
+            WITH gcp_jobs AS (
+              SELECT
+                b.job_name,
+                COUNT(*) AS total_build_count,
+                SUM(CASE WHEN {success_where} THEN 1 ELSE 0 END) AS success_count,
+                AVG(CASE WHEN {success_where} THEN b.total_seconds END) AS success_avg_total_s
+              FROM {builds_table}
+              WHERE b.start_time >= :gcp_start_time
+                AND b.start_time < :gcp_end_time
+                AND UPPER(COALESCE(b.cloud_phase, '')) = 'GCP'
+                AND b.build_system = :build_system
+                AND b.job_name IS NOT NULL
+                {repo_clause}
+              GROUP BY b.job_name
+            ),
+            tencent_jobs AS (
+              SELECT
+                b.job_name,
+                COUNT(*) AS total_build_count,
+                SUM(CASE WHEN {success_where} THEN 1 ELSE 0 END) AS success_count,
+                AVG(CASE WHEN {success_where} THEN b.total_seconds END) AS success_avg_total_s
+              FROM {builds_table}
+              WHERE b.start_time >= :tencent_start_time
+                AND b.start_time < :tencent_end_time
+                AND UPPER(COALESCE(b.cloud_phase, '')) = 'TENCENT'
+                AND b.build_system = :build_system
+                AND b.job_name IS NOT NULL
+                {repo_clause}
+              GROUP BY b.job_name
+            ),
+            matched_jobs AS (
+              SELECT
+                g.total_build_count AS gcp_total_build_count,
+                g.success_count AS gcp_success_count,
+                g.success_avg_total_s AS gcp_success_avg_total_s,
+                t.total_build_count AS tencent_total_build_count,
+                t.success_count AS tencent_success_count,
+                t.success_avg_total_s AS tencent_success_avg_total_s
+              FROM gcp_jobs g
+              JOIN tencent_jobs t ON t.job_name = g.job_name
+              WHERE g.success_count > 0
+                AND t.success_count > 0
+                AND g.success_avg_total_s IS NOT NULL
+                AND t.success_avg_total_s IS NOT NULL
+            )
             SELECT
-              COUNT(*) AS total_build_count,
-              SUM(CASE WHEN {success_where} THEN 1 ELSE 0 END) AS success_count,
-              AVG(CASE WHEN {success_where} THEN b.total_seconds END) AS success_avg_total_s
-            FROM {builds_table}
-            WHERE {where_clause}
+              COUNT(*) AS matched_job_count,
+              SUM(gcp_total_build_count) AS gcp_total_build_count,
+              SUM(gcp_success_count) AS gcp_success_count,
+              SUM(tencent_success_count * gcp_success_avg_total_s)
+                / NULLIF(SUM(tencent_success_count), 0) AS gcp_reweighted_success_avg_total_s,
+              SUM(tencent_total_build_count) AS tencent_total_build_count,
+              SUM(tencent_success_count) AS tencent_success_count,
+              SUM(tencent_success_count * tencent_success_avg_total_s)
+                / NULLIF(SUM(tencent_success_count), 0) AS tencent_success_avg_total_s
+            FROM matched_jobs
             """
         ),
-        params,
+        {
+            "repo_full_name": repo_full_name,
+            "build_system": MIGRATION_COMPARISON_BUILD_SYSTEM,
+            "gcp_start_time": datetime.combine(MIGRATION_FIXED_BASELINE_START, time.min),
+            "gcp_end_time": datetime.combine(MIGRATION_FIXED_BASELINE_END + timedelta(days=1), time.min),
+            "tencent_start_time": datetime.combine(MIGRATION_FIXED_RECENT_START, time.min),
+            "tencent_end_time": datetime.combine(recent_end_date + timedelta(days=1), time.min),
+        },
     ).mappings().one()
 
-    total_build_count = int(row["total_build_count"] or 0)
-    success_count = int(row["success_count"] or 0)
+    gcp_total_build_count = int(row["gcp_total_build_count"] or 0)
+    gcp_success_count = int(row["gcp_success_count"] or 0)
+    tencent_total_build_count = int(row["tencent_total_build_count"] or 0)
+    tencent_success_count = int(row["tencent_success_count"] or 0)
     return {
-        "start_date": start_date.isoformat(),
-        "end_date": end_date.isoformat(),
-        "total_build_count": total_build_count,
-        "success_count": success_count,
-        "success_rate_pct": rate_pct(success_count, total_build_count),
-        "success_avg_total_s": round(float(row["success_avg_total_s"] or 0)),
+        "matched_job_count": int(row["matched_job_count"] or 0),
+        "baseline": {
+            "start_date": MIGRATION_FIXED_BASELINE_START.isoformat(),
+            "end_date": MIGRATION_FIXED_BASELINE_END.isoformat(),
+            "total_build_count": gcp_total_build_count,
+            "success_count": gcp_success_count,
+            "success_rate_pct": rate_pct(gcp_success_count, gcp_total_build_count),
+            "success_avg_total_s": round(float(row["gcp_reweighted_success_avg_total_s"] or 0)),
+        },
+        "recent_tencent": {
+            "start_date": MIGRATION_FIXED_RECENT_START.isoformat(),
+            "end_date": recent_end_date.isoformat(),
+            "total_build_count": tencent_total_build_count,
+            "success_count": tencent_success_count,
+            "success_rate_pct": rate_pct(tencent_success_count, tencent_total_build_count),
+            "success_avg_total_s": round(float(row["tencent_success_avg_total_s"] or 0)),
+        },
     }

@@ -240,6 +240,16 @@ def test_refresh_build_derived_enriches_problem_case_run_derived_columns(sqlite_
                 """
             )
         )
+        connection.execute(
+            text(
+                """
+                UPDATE problem_case_runs
+                SET normalized_build_key = 'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/123/',
+                    cloud_phase = 'IDC'
+                WHERE case_name = 'case-a'
+                """
+            )
+        )
 
     summary = run_refresh_build_derived(sqlite_engine, _settings(batch_size=5))
 

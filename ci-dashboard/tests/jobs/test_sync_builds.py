@@ -131,7 +131,30 @@ def test_map_build_row_allows_missing_optional_status_fields() -> None:
     assert build.normalized_build_url == "https://do.pingcap.net/jenkins/job/abc/"
     assert build.build_id is None
     assert build.pod_name is None
-    assert build.cloud_phase == "IDC"
+    assert build.cloud_phase == "TENCENT"
+    assert build.build_system == "JENKINS"
+
+
+def test_map_build_row_classifies_tencent_staging_jobs() -> None:
+    row = {
+        "id": 202,
+        "prowJobId": "job-202",
+        "namespace": "prow",
+        "jobName": "pull-check-deps",
+        "type": "presubmit",
+        "state": "success",
+        "org": "pingcap",
+        "repo": "tidb",
+        "url": "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/pull-check-deps/2046433013478199296",
+        "startTime": "2026-04-13T10:00:00Z",
+        "status": {},
+        "spec": {},
+    }
+
+    build = map_build_row(row)
+
+    assert build.normalized_build_url == "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/pull-check-deps/2046433013478199296/"
+    assert build.cloud_phase == "TENCENT"
     assert build.build_system == "JENKINS"
 
 
@@ -308,7 +331,7 @@ def test_sync_builds_end_to_end_with_sqlite(sqlite_engine) -> None:
     assert rows[0]["is_pr_build"] == 1
     assert rows[0]["cloud_phase"] == "GCP"
     assert rows[0]["build_system"] == "JENKINS"
-    assert rows[1]["cloud_phase"] == "IDC"
+    assert rows[1]["cloud_phase"] == "TENCENT"
     assert rows[1]["build_system"] == "JENKINS"
     assert rows[1]["normalized_build_url"] == "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/nightly/2/"
     assert state is not None

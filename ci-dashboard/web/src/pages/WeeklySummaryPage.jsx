@@ -187,7 +187,7 @@ export default function WeeklySummaryPage() {
               previousMetrics.avgTotal,
             )}
           />
-          <GcpMigrationCard
+          <TencentMigrationCard
             current={currentMigration}
             previous={previousMigration}
             hasComparison={hasCiComparison}
@@ -397,18 +397,18 @@ function CostAccountCard({ item }) {
   );
 }
 
-function GcpMigrationCard({ current, previous, hasComparison }) {
-  const buildShare = Number(current.gcp_build_share_pct || 0);
-  const previousBuildShare = Number(previous.gcp_build_share_pct || 0);
-  const durationShare = Number(current.gcp_duration_share_pct || 0);
-  const previousDurationShare = Number(previous.gcp_duration_share_pct || 0);
+function TencentMigrationCard({ current, previous, hasComparison }) {
+  const buildShare = Number(current.tencent_build_share_pct || 0);
+  const previousBuildShare = Number(previous.tencent_build_share_pct || 0);
+  const durationShare = Number(current.tencent_duration_share_pct || 0);
+  const previousDurationShare = Number(previous.tencent_duration_share_pct || 0);
 
   return (
     <article className="stat-card stat-card--teal migration-rate-card">
-      <span className="stat-card__label">GCP Migration rate</span>
+      <span className="stat-card__label">Tencent Migration rate</span>
       <div className="migration-rate-card__metrics">
         <div className="migration-rate-card__metric">
-          <span>GCP job runs</span>
+          <span>Tencent job runs</span>
           <div>
             <strong>{formatPercent(buildShare)}</strong>
             <span
@@ -431,8 +431,8 @@ function GcpMigrationCard({ current, previous, hasComparison }) {
         </div>
       </div>
       <span className="migration-rate-card__detail">
-        {formatCompact(current.gcp_build_count || 0)} of{" "}
-        {formatCompact(current.total_build_count || 0)} GCP or IDC job runs
+        {formatCompact(current.tencent_build_count || 0)} of{" "}
+        {formatCompact(current.total_build_count || 0)} GCP or Tencent job runs
       </span>
     </article>
   );
