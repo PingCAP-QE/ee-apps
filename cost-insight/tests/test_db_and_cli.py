@@ -968,7 +968,7 @@ def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, 
     assert '"billing_rows_seen": 4' in output
 
 
-def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) -> None:
+def test_cli_refresh_attribution_filters_to_selected_source(monkeypatch, capsys) -> None:
     disposed = []
     captured = {}
 
@@ -978,7 +978,7 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
 
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
-        aws_billing=AwsBillingSettings(),
+        aws_billing=AwsBillingSettings(account_id="380838443567"),
         tcms_allocation=TcmsAllocationSettings(),
         log_level="INFO",
     )
@@ -993,7 +993,7 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
         tcms_allocation_table=None,
     ):
         captured["engine"] = engine
-        captured["source"] = source
+        captured.setdefault("sources", []).append(source)
         captured["start_date"] = start_date
         captured["end_date"] = end_date
         captured["dry_run"] = dry_run
@@ -1021,6 +1021,10 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
             "2026-05-09",
             "--end-date",
             "2026-05-17",
+            "--vendor",
+            "aws",
+            "--account-id",
+            "380838443567",
             "--dry-run",
         ]
     )
@@ -1030,10 +1034,9 @@ def test_cli_runs_refresh_attribution_from_summary_command(monkeypatch, capsys) 
     assert disposed == [True]
     assert captured["start_date"] == date(2026, 5, 9)
     assert captured["end_date"] == date(2026, 5, 17)
-    assert captured["source"] == CostAttributionSource(
-        vendor="gcp",
-        account_id="pingcap-testing-account",
-    )
+    assert captured["sources"] == [
+        CostAttributionSource(vendor="aws", account_id="380838443567")
+    ]
     assert captured["tcms_allocation_table"] == "tcms_cost.resource_allocation"
     assert '"summary_rows": 10' in output
 

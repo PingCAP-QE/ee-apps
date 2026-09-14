@@ -33,6 +33,7 @@ def fetch_aws_flat_cur_summary_rows(
     )
     query_parameters = [
         bigquery.ScalarQueryParameter("account_id", "STRING", account_id),
+        bigquery.ScalarQueryParameter("usedby", "STRING", _AWS_TIDB_CLOUD_F04_USEDBY),
         bigquery.ScalarQueryParameter(
             "export_partition_start", "DATE", export_partition_start.isoformat()
         ),
@@ -101,7 +102,7 @@ WITH normalized AS (
     AND DATE(bill_billing_period_start_date) BETWEEN @export_partition_start AND @export_partition_end
     AND DATE(line_item_usage_start_date) >= @earliest_usage_date{usage_end_clause}
     AND line_item_currency_code = 'USD'
-    AND resource_tags_user_usedby = '{_AWS_TIDB_CLOUD_F04_USEDBY}'
+    AND resource_tags_user_usedby = @usedby
     AND line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
 )
 SELECT
