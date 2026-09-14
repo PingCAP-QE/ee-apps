@@ -7,7 +7,15 @@ import {
   formatPercent,
   useApiData,
 } from "../lib/api";
-import { DonutShareChart, PageIntro, Panel, StatCard, TrendChart } from "../components/charts";
+import {
+  DonutShareChart,
+  donutColor,
+  LabeledDonutShareChart,
+  PageIntro,
+  Panel,
+  StatCard,
+  TrendChart,
+} from "../components/charts";
 import { buildDimensionChipClassName, SegmentedControl } from "../components/controls";
 
 const WEEKLY_COST_VENDOR_ORDER = ["aws", "gcp", "azure"];
@@ -42,6 +50,7 @@ export default function WeeklyCostPage() {
   const [selectedCostSource, setSelectedCostSource] = useState("");
   const [accountSort, setAccountSort] = useState({ field: null, direction: "desc" });
   const [allocationPeriod, setAllocationPeriod] = useState("week");
+  const [selectedBudgetScenarioKey, setSelectedBudgetScenarioKey] = useState("");
   const monthlyAllocation = useApiData(
     "/api/v1/pages/weekly-cost/allocation",
     { period: "month" },
@@ -55,6 +64,9 @@ export default function WeeklyCostPage() {
   const allocation = allocationPeriod === "month" ? monthlyAllocation.data : report.data;
   const budgetPace = allocation?.budget_pace || report.data?.budget_pace;
   const teamCost = budgetPace?.team_cost;
+  const budgetScenarios = configuredBudgetScenarios(budgetPace?.projects || []);
+  const selectedBudgetScenario =
+    budgetScenarios.find((item) => item.key === selectedBudgetScenarioKey) || budgetScenarios[0];
   const currentMonthBudget =
     allocationPeriod === "week" ? currentMonthAllocation.data?.budget_pace?.overall : null;
   const teamShare = allocation?.team_share || report.data?.team_share;
@@ -148,18 +160,12 @@ export default function WeeklyCostPage() {
             <BudgetPaceList
               className="weekly-cost__budget-projects"
               title="Budget Scenario utilization"
-              items={budgetPace.projects}
+              items={budgetScenarios}
+              selectedKey={selectedBudgetScenario?.key}
+              onSelect={setSelectedBudgetScenarioKey}
               emptyMessage="No budget scenario matched this period."
             />
-            <DonutShareChart
-              title="Project allocation"
-              subtitle="Cross-account QA project allocation"
-              items={teamShare?.projects?.items || []}
-              totalValue={teamShare?.total_list_cost}
-              totalLabel="list cost"
-              emptyMessage="No project share data for this week."
-              className="weekly-cost__share-card weekly-cost__budget-project-share"
-            />
+            <BudgetScenarioUsageChart item={selectedBudgetScenario} />
           </div>
         </Panel>
       ) : null}
@@ -481,51 +487,48 @@ function BudgetPaceCard({ title, item = {}, showMonthlyCumulativeCost = false })
   );
 }
 
-function BudgetPaceList({ title, items = [], emptyMessage, className = "" }) {
-  const matchedItems = items.filter(
-    (item) => item.period_budget !== null && item.period_budget !== undefined,
-  );
-
+function BudgetPaceList({ title, items = [], selectedKey, onSelect, emptyMessage, className = "" }) {
   return (
     <article className={["weekly-cost__budget-card", className].filter(Boolean).join(" ")}>
       <h4>{title}</h4>
-      {matchedItems.length ? (
+      {items.length ? (
         <div className="weekly-cost__budget-list">
-          {matchedItems.map((item) => {
-            const isConfigured = item.period_budget !== null && item.period_budget !== undefined;
+          {items.map((item) => {
             const utilization = Number(item.utilization_pct || 0);
             const progress = Math.min(Math.max(utilization, 0), 100);
             const tone = budgetUtilizationTone(item.utilization_pct);
 
             return (
-              <div className="weekly-cost__budget-row" key={item.key || item.name}>
+              <div
+                className={`weekly-cost__budget-row weekly-cost__budget-row--selectable${
+                  item.key === selectedKey ? " weekly-cost__budget-row--selected" : ""
+                }`}
+                key={item.key || item.name}
+                role="button"
+                tabIndex={0}
+                aria-label={`Select ${item.name} budget scenario: ${formatCurrency(item.actual_list_cost)} of ${formatCurrency(item.period_budget)}, ${formatNullablePercent(item.utilization_pct)} utilization`}
+                aria-pressed={item.key === selectedKey}
+                onClick={() => onSelect(item.key)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(item.key);
+                  }
+                }}
+              >
                 <div className="weekly-cost__budget-row-head">
                   <strong>{item.name}</strong>
                   <span>
-                    {formatCurrency(item.actual_list_cost)}
-                    {isConfigured
-                      ? ` / ${formatCurrency(item.period_budget)} · ${formatNullablePercent(item.utilization_pct)}`
-                      : " · Not configured"}
+                    {formatCurrency(item.actual_list_cost)} / {formatCurrency(item.period_budget)} ·{" "}
+                    {formatNullablePercent(item.utilization_pct)}
                   </span>
                 </div>
-                {isConfigured ? (
-                  <div
-                    className="weekly-cost__budget-meter"
-                    role="progressbar"
-                    aria-label={`${item.name} budget utilization`}
-                    aria-valuemin="0"
-                    aria-valuemax="100"
-                    aria-valuenow={Math.round(progress)}
-                  >
-                    <span
-                      className={`weekly-cost__budget-fill weekly-cost__budget-fill--${tone}`}
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
-                ) : null}
-                {item.project_account_usage?.length > 1 ? (
-                  <BudgetUsageCharts item={item} />
-                ) : null}
+                <div className="weekly-cost__budget-meter" aria-hidden="true">
+                  <span
+                    className={`weekly-cost__budget-fill weekly-cost__budget-fill--${tone}`}
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
               </div>
             );
           })}
@@ -537,63 +540,92 @@ function BudgetPaceList({ title, items = [], emptyMessage, className = "" }) {
   );
 }
 
-function BudgetUsageCharts({ item }) {
-  const accountItems = budgetUsageShareItems(item.project_account_usage, "account");
-  const projectItems = budgetUsageShareItems(item.project_account_usage, "project");
-  const planUsage = formatNullablePercent(item.utilization_pct);
+function BudgetScenarioUsageChart({ item }) {
+  const usageItems = budgetUsageShareItems(item?.project_account_usage);
+  const usageTotal = usageItems.reduce((total, usageItem) => total + usageItem.value, 0);
+  const usageByKey = new Map(
+    (item?.project_account_usage || []).map((usage) => [usage.key, usage]),
+  );
+  const dailySeries = usageItems.flatMap((usageItem, index) => {
+    const usage = usageByKey.get(usageItem.key);
+    if (!usage?.daily_list_cost?.length) {
+      return [];
+    }
+    return [
+      {
+        key: usage.key,
+        label: usageItem.name,
+        color: donutColor(usageItem.name, index),
+        type: "bar",
+        points: usage.daily_list_cost.map((point) => [point.date, point.cumulative_list_cost]),
+      },
+    ];
+  });
 
   return (
-    <details className="weekly-cost__budget-usage">
-      <summary>{item.project_account_usage.length} project/account allocations</summary>
-      <div className="weekly-cost__budget-usage-charts">
-        <DonutShareChart
-          title="Account usage"
-          subtitle="100% = this plan's spend"
-          items={accountItems}
-          totalValue={item.actual_list_cost}
-          totalLabel="plan spend"
-          centerValue={planUsage}
-          centerLabel="of plan budget"
-          emptyMessage="No account usage for this plan."
-          className="weekly-cost__budget-usage-chart"
+    <div
+      className="weekly-cost__budget-scenario"
+      role="group"
+      aria-label={`Selected budget scenario: ${item?.name || "none"}`}
+    >
+      <LabeledDonutShareChart
+        title="Budget Scenario utilization breakdown"
+        subtitle={item ? `${item.name}. 100% = positive allocated spend` : "Select a budget scenario."}
+        items={usageItems}
+        totalValue={usageTotal}
+        totalLabel="allocated spend"
+        centerValue={item ? formatNullablePercent(item.utilization_pct) : null}
+        centerLabel="budget utilization"
+        metricValueFormatter={formatCurrency}
+        emptyMessage="No account/project usage for this budget scenario."
+        className="weekly-cost__share-card weekly-cost__budget-project-share weekly-cost__scenario-pie"
+      />
+      <article className="weekly-cost__budget-scenario-trend">
+        <header>
+          <strong>Daily cumulative cost</strong>
+          <span>Stacked by account / project</span>
+        </header>
+        <TrendChart
+          series={dailySeries}
+          ariaLabel="Budget scenario daily cumulative cost chart"
+          yFormatter={formatCompactCurrency}
+          stackBars
+          preserveLabelOrder
+          xLabelFormatter={formatMonthlyCostDay}
+          tooltipLabelFormatter={formatMonthlyCostDay}
+          bottomLabelSize={9}
+          rotateBottomLabels
+          showTooltipSum
+          height={Math.max(250, 76 + dailySeries.length * 18)}
+          compactY
         />
-        <DonutShareChart
-          title="Project usage"
-          subtitle="100% = this plan's spend"
-          items={projectItems}
-          totalValue={item.actual_list_cost}
-          totalLabel="plan spend"
-          centerValue={planUsage}
-          centerLabel="of plan budget"
-          emptyMessage="No project usage for this plan."
-          className="weekly-cost__budget-usage-chart"
-        />
-      </div>
-    </details>
+      </article>
+    </div>
   );
 }
 
-function budgetUsageShareItems(items, dimension) {
-  const groups = new Map();
-  for (const item of items || []) {
-    const value = Number(item.actual_list_cost || 0);
-    if (value <= 0) {
-      continue;
-    }
-    const isAccount = dimension === "account";
-    const key = isAccount ? `${item.vendor}:${item.account_id}` : item.project;
-    const name = isAccount
-      ? `${String(item.vendor || "").toUpperCase()} / ${item.account_id}`
-      : item.project;
-    const group = groups.get(key) || { key, name, value: 0 };
-    group.value += value;
-    groups.set(key, group);
-  }
+function configuredBudgetScenarios(items) {
+  return items.filter((item) => Number(item.period_budget) > 0);
+}
 
-  const total = [...groups.values()].reduce((sum, item) => sum + item.value, 0);
-  return [...groups.values()]
-    .map((item) => ({ ...item, share_pct: total ? (item.value / total) * 100 : 0 }))
-    .sort((left, right) => right.value - left.value || left.name.localeCompare(right.name));
+function budgetUsageShareItems(items) {
+  const positiveItems = (items || [])
+    .map((item) => ({
+      key: item.key,
+      name: formatBudgetProjectAccountLabel(item),
+      value: Number(item.actual_list_cost || 0),
+    }))
+    .filter((item) => item.value > 0);
+  const total = positiveItems.reduce((sum, item) => sum + item.value, 0);
+
+  return positiveItems.map((item) => ({
+    ...item,
+    share_pct: total ? (item.value / total) * 100 : 0,
+  }));
+}
+
+function formatBudgetProjectAccountLabel(item) {
+  return `${String(item.vendor || "").toUpperCase()} / ${item.account_id} / ${item.project}`;
 }
 
 function TeamCostList({ title, items = [], emptyMessage }) {

@@ -1427,30 +1427,48 @@ def _weekly_cost_current_budget_pace(
         sources = _weekly_cost_budget_sources(row, qa_sources)
         if not sources:
             continue
+        label_filters = _weekly_cost_label_filters(row["label_filters"])
+        has_unsupported_scope = (
+            row["group_id"] is not None
+            or row["manager_id"] is not None
+            or bool(str(row["repo"] or "").strip())
+            or set(label_filters) - {"project"}
+        )
+        if has_unsupported_scope:
+            continue
         projects = _weekly_cost_string_list(row["projects"])
         if not projects:
-            projects = _weekly_cost_string_list(
-                _weekly_cost_label_filters(row["label_filters"]).get("project")
-            )
+            projects = _weekly_cost_string_list(label_filters.get("project"))
         overall_budget += period_budget
         has_overall_budget = True
         if projects:
             planned_projects.update(projects)
+        if projects or period_budget > 0:
             plan_key = f"budget-plan:{row['id']}"
-            plan_name = str(row["budget_name"] or " / ".join(projects))
+            plan_name = str(
+                row["budget_name"]
+                or " / ".join(projects)
+                or (
+                    " / ".join(
+                        f"{vendor.upper()} / {account_id}"
+                        for vendor, account_id in sorted(sources)
+                    )
+                    + f" (plan {row['id']})"
+                )
+            )
             project_values[plan_key] = {
                 "name": plan_name,
                 "value": _weekly_cost_scoped_actual(
                     dimensions,
                     sources,
-                    set(projects),
+                    set(projects) or None,
                     scope_start,
                     scope_end,
                 ),
                 "project_account_usage": _weekly_cost_project_account_usage(
                     dimensions,
                     sources,
-                    set(projects),
+                    set(projects) or None,
                     scope_start,
                     scope_end,
                     period_budget,
@@ -1552,7 +1570,7 @@ def _weekly_cost_budget_sources(
 def _weekly_cost_scoped_actual(
     dimensions: Mapping[str, Any],
     sources: set[tuple[str, str]],
-    projects: set[str],
+    projects: set[str] | None,
     start_date: date,
     end_date: date,
 ) -> Decimal:
@@ -1563,7 +1581,7 @@ def _weekly_cost_scoped_actual(
                 "source_project_values"
             ].items()
             if (vendor, account_id) in sources
-            and project in projects
+            and (projects is None or project in projects)
             and start_date <= usage_date <= end_date
         ),
         Decimal(0),
@@ -1574,39 +1592,65 @@ def _weekly_cost_scoped_actual(
 def _weekly_cost_project_account_usage(
     dimensions: Mapping[str, Any],
     sources: set[tuple[str, str]],
-    projects: set[str],
+    projects: set[str] | None,
     start_date: date,
     end_date: date,
     period_budget: Decimal,
 ) -> list[dict[str, Any]]:
     values: dict[tuple[str, str, str], Decimal] = {}
+    daily_values: dict[tuple[str, str, str], dict[date, Decimal]] = {}
     for (vendor, account_id, usage_date, project), amount in dimensions[
         "source_project_values"
     ].items():
         if (
             (vendor, account_id) not in sources
-            or project not in projects
+            or (projects is not None and project not in projects)
             or not start_date <= usage_date <= end_date
         ):
             continue
         key = (project, vendor, account_id)
         values[key] = values.get(key, Decimal(0)) + amount
+        daily_values.setdefault(key, {})
+        daily_values[key][usage_date] = daily_values[key].get(usage_date, Decimal(0)) + amount
 
     budget = _money(period_budget)
-    return [
-        {
-            "key": f"project-account:{project}:{vendor}:{account_id}",
-            "project": project,
-            "vendor": vendor,
-            "account_id": account_id,
-            "actual_list_cost": _money(actual),
-            "utilization_pct": _nullable_rate_pct(_money(actual), budget),
-        }
-        for (project, vendor, account_id), actual in sorted(
-            values.items(), key=lambda item: (-item[1], *item[0])
+    items = []
+    for (project, vendor, account_id), actual in values.items():
+        if not actual:
+            continue
+        cumulative = Decimal(0)
+        daily_list_cost = []
+        for offset in range((end_date - start_date).days + 1):
+            usage_date = start_date + timedelta(days=offset)
+            list_cost = daily_values[(project, vendor, account_id)].get(usage_date, Decimal(0))
+            cumulative += list_cost
+            daily_list_cost.append(
+                {
+                    "date": usage_date.isoformat(),
+                    "list_cost": _money(list_cost),
+                    "cumulative_list_cost": _money(cumulative),
+                }
+            )
+        items.append(
+            {
+                "key": f"project-account:{project}:{vendor}:{account_id}",
+                "project": project,
+                "vendor": vendor,
+                "account_id": account_id,
+                "actual_list_cost": _money(actual),
+                "utilization_pct": _nullable_rate_pct(_money(actual), budget),
+                "daily_list_cost": daily_list_cost,
+            }
         )
-        if actual
-    ]
+    return sorted(
+        items,
+        key=lambda item: (
+            -item["actual_list_cost"],
+            item["project"],
+            item["vendor"],
+            item["account_id"],
+        ),
+    )
 
 
 def _weekly_cost_budget_items(

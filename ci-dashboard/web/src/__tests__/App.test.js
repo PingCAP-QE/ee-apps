@@ -12,6 +12,8 @@ const incomingCostUrl = "/cost?start_date=2026-08-10&end_date=2026-08-10&cost_so
 
 let App;
 let CostPage;
+let getDashboardVersion;
+let LabeledDonutShareChart;
 let WeeklyCostPage;
 let server;
 
@@ -24,6 +26,8 @@ before(async () => {
   });
   ({ default: App } = await server.ssrLoadModule("/src/App.jsx"));
   ({ default: CostPage } = await server.ssrLoadModule("/src/pages/CostPage.jsx"));
+  ({ getDashboardVersion } = await server.ssrLoadModule("/src/components/layout.jsx"));
+  ({ LabeledDonutShareChart } = await server.ssrLoadModule("/src/components/charts.jsx"));
   ({ default: WeeklyCostPage } = await server.ssrLoadModule("/src/pages/WeeklyCostPage.jsx"));
 });
 
@@ -72,6 +76,42 @@ function weeklyCostHistory(series = []) {
     series,
   };
 }
+
+test("dashboard version uses the runtime meta value and falls back locally", () => {
+  const originalDocument = globalThis.document;
+  try {
+    globalThis.document = {
+      querySelector: () => ({ getAttribute: () => "1.8.2" }),
+    };
+    assert.equal(getDashboardVersion(), "1.8.2");
+
+    globalThis.document = {
+      querySelector: () => ({ getAttribute: () => "__CI_DASHBOARD_VERSION__" }),
+    };
+    assert.equal(getDashboardVersion(), "local");
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test("labeled donut chart expands for crowded account/project labels", () => {
+  const items = Array.from({ length: 16 }, (_item, index) => ({
+    name: `AWS / 123456789012 / Crowded project ${index + 1}`,
+    value: 1,
+    share_pct: 6.25,
+  }));
+  const renderer = TestRenderer.create(
+    React.createElement(LabeledDonutShareChart, {
+      title: "Crowded allocations",
+      items,
+      totalValue: 16,
+    }),
+  );
+
+  const chart = renderer.root.findByProps({ role: "img", "aria-label": "Crowded allocations share chart" });
+  assert.ok(Number(chart.props.viewBox.split(" ").at(-1)) > 390);
+  renderer.unmount();
+});
 
 test("QA Cost Weekly direct route uses its fixed API URL and explains an old source schema", async () => {
   const requests = [];
@@ -201,6 +241,9 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
               account_id: "qa-aws",
               actual_list_cost: 120,
               utilization_pct: 80.22,
+              daily_list_cost: [
+                { date: "2026-07-13", list_cost: 120, cumulative_list_cost: 120 },
+              ],
             },
             {
               key: "project-account:Beta:aws:qa-aws",
@@ -209,11 +252,34 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
               account_id: "qa-aws",
               actual_list_cost: 30,
               utilization_pct: 20.05,
+              daily_list_cost: [
+                { date: "2026-07-13", list_cost: 30, cumulative_list_cost: 30 },
+              ],
             },
           ],
         },
         { key: "project:beta", name: "Beta", actual_list_cost: 50, period_budget: null, utilization_pct: null },
-        { key: "project:gamma", name: "Gamma", actual_list_cost: 90, period_budget: 100, utilization_pct: 90 },
+        { key: "project:zero", name: "Zero", actual_list_cost: 0, period_budget: 0, utilization_pct: null },
+        {
+          key: "project:gamma",
+          name: "Gamma",
+          actual_list_cost: 90,
+          period_budget: 100,
+          utilization_pct: 90,
+          project_account_usage: [
+            {
+              key: "project-account:Gamma:gcp:qa-gcp",
+              project: "Gamma",
+              vendor: "gcp",
+              account_id: "qa-gcp",
+              actual_list_cost: 90,
+              utilization_pct: 90,
+              daily_list_cost: [
+                { date: "2026-07-13", list_cost: 90, cumulative_list_cost: 90 },
+              ],
+            },
+          ],
+        }
       ],
       team_cost: {
         metric: "list_cost",
@@ -250,29 +316,59 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
     assert.match(rendered, /Overall budget pace/);
     assert.match(rendered, /Current month budget utilization/);
     assert.match(rendered, /Budget Scenario utilization/);
+    assert.doesNotMatch(rendered, /Zero/);
     assert.doesNotMatch(rendered, /Not configured/);
     assert.match(rendered, /Team test cost/);
     assert.match(rendered, /Team share/);
-    assert.equal(
-      renderer.root.findByType("summary").children.join(""),
-      "2 project/account allocations",
-    );
+    assert.equal(renderer.root.findAllByType("details").length, 0);
+    assert.ok(renderer.root.findByProps({ "aria-label": "Selected budget scenario: Alpha" }));
+    const alphaScenarioLabel = "Select Alpha budget scenario: $150.00 of $149.59, 100.3% utilization";
+    const gammaScenarioLabel = "Select Gamma budget scenario: $90.00 of $100.00, 90.0% utilization";
+    assert.equal(renderer.root.findByProps({ "aria-label": alphaScenarioLabel }).props["aria-pressed"], true);
+    assert.equal(renderer.root.findByProps({ "aria-label": gammaScenarioLabel }).props["aria-pressed"], false);
     assert.equal(renderer.root.findAllByProps({ "aria-label": "Budget pace period" }).length, 1);
     assert.equal(
       renderer.root.findAllByProps({ "aria-label": "Budget pace and team share period" }).length,
       0,
     );
-    assert.equal(renderer.root.findAllByType("details").length, 1);
-    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Account usage share chart" }));
-    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Project usage share chart" }));
     assert.ok(
-      renderer.root
-        .findAllByProps({ className: "donut-chart__center-value" })
-        .some((value) => value.children.join("") === "100.3%"),
+      renderer.root.findByProps({ role: "img", "aria-label": "Budget Scenario utilization breakdown share chart" }),
     );
+    assert.ok(
+      renderer.root.findByProps({ role: "img", "aria-label": "Budget scenario daily cumulative cost chart" }),
+    );
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": gammaScenarioLabel }).props.onClick();
+    });
+    assert.ok(renderer.root.findByProps({ "aria-label": "Selected budget scenario: Gamma" }));
+    assert.equal(renderer.root.findByProps({ "aria-label": alphaScenarioLabel }).props["aria-pressed"], false);
+    assert.equal(renderer.root.findByProps({ "aria-label": gammaScenarioLabel }).props["aria-pressed"], true);
+    const selectedScenario = renderer.root.findByProps({ "aria-label": "Selected budget scenario: Gamma" });
+    const centerValues = selectedScenario.findAllByProps({ className: "donut-chart__center-value" });
+    assert.equal(centerValues.length, 1);
+    assert.equal(centerValues[0].children.join(""), "90.0%");
+    assert.equal(
+      selectedScenario.findByProps({ className: "donut-chart__center-label" }).children.join(""),
+      "budget utilization",
+    );
+    assert.equal(selectedScenario.findAllByProps({ className: "donut-legend" }).length, 0);
+    const fullRing = selectedScenario
+      .findAllByType("path")
+      .find((path) => path.props["aria-label"] === "GCP / qa-gcp / Gamma: 90 allocated spend, 100.0%");
+    assert.ok(fullRing);
+    assert.match(fullRing.props.d, /A 106 106 0 1 1/);
+    assert.match(fullRing.props.d, /A 64 64 0 1 0/);
+    const dailyBars = selectedScenario
+      .findAllByType("rect")
+      .filter((rect) => Number(rect.props.opacity) === 0.78);
+    assert.equal(dailyBars.length, 1);
+    assert.equal(dailyBars[0].props.fill, fullRing.props.fill);
+    const metricLabels = selectedScenario.findAllByProps({ className: "labeled-donut-chart__label-metric" });
+    assert.equal(metricLabels.length, 1);
+    assert.equal(metricLabels[0].children.join(""), "$90.00 · 100.0%");
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Level 1 groups share chart" }));
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Level 2 teams share chart" }));
-    assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Project allocation share chart" }));
+    assert.equal(renderer.root.findAllByProps({ role: "img", "aria-label": "Project allocation share chart" }).length, 0);
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Owner share share chart" }));
     const overallGauge = renderer.root.findByProps({
       "aria-label": "Overall budget pace utilization gauge",
@@ -286,14 +382,16 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
     );
     assert.match(
       renderer.root
-        .findByProps({ "aria-label": "Alpha budget utilization" })
-        .findByType("span").props.className,
+        .findByProps({ "aria-label": alphaScenarioLabel })
+        .findAllByType("span")
+        .find((span) => span.props.className?.includes("weekly-cost__budget-fill")).props.className,
       /weekly-cost__budget-fill--danger/,
     );
     assert.match(
       renderer.root
-        .findByProps({ "aria-label": "Gamma budget utilization" })
-        .findByType("span").props.className,
+        .findByProps({ "aria-label": gammaScenarioLabel })
+        .findAllByType("span")
+        .find((span) => span.props.className?.includes("weekly-cost__budget-fill")).props.className,
       /weekly-cost__budget-fill--warning/,
     );
     assert.match(

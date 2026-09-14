@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+from hashlib import sha256
+from html import escape
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -30,6 +32,10 @@ async def healthz() -> dict[str, str]:
 
 async def livez() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def _dashboard_version() -> str:
+    return (os.environ.get("CI_DASHBOARD_VERSION") or "").strip()
 
 
 def _check_database() -> None:
@@ -73,20 +79,47 @@ def _attach_frontend(app: FastAPI) -> None:
     if assets_dir.is_dir():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    def frontend(full_path: str) -> FileResponse:
+    index_file = static_dir / "index.html"
+    cached_index: tuple[tuple[int, int, str], str, str] | None = None
+
+    def frontend_index() -> tuple[str, str] | None:
+        nonlocal cached_index
+        if not index_file.is_file():
+            return None
+        stat = index_file.stat()
+        cache_key = (stat.st_mtime_ns, stat.st_size, _dashboard_version())
+        if cached_index is None or cached_index[0] != cache_key:
+            content = index_file.read_text(encoding="utf-8").replace(
+                "__CI_DASHBOARD_VERSION__",
+                escape(cache_key[2], quote=True),
+            )
+            etag = f'"{sha256(":".join(map(str, cache_key)).encode()).hexdigest()}"'
+            cached_index = (cache_key, content, etag)
+        return cached_index[1], cached_index[2]
+
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+    def frontend(full_path: str, request: Request) -> FileResponse | HTMLResponse | Response:
         if full_path.startswith("api/") or full_path in {"healthz", "livez", "readyz"}:
             raise HTTPException(status_code=404, detail="Not found")
 
         if full_path:
             candidate = (static_dir / full_path).resolve()
-            if candidate.is_file() and candidate.is_relative_to(static_dir):
+            if (
+                candidate.is_file()
+                and candidate.is_relative_to(static_dir)
+                and candidate != index_file
+            ):
                 return FileResponse(candidate)
 
-        index_file = static_dir / "index.html"
-        if index_file.is_file():
-            return FileResponse(index_file)
-        raise HTTPException(status_code=404, detail="Frontend build not found")
+        rendered_index = frontend_index()
+        if rendered_index is None:
+            raise HTTPException(status_code=404, detail="Frontend build not found")
+        content, etag = rendered_index
+        headers = {"Cache-Control": "no-cache", "ETag": etag}
+        validators = {value.strip() for value in request.headers.get("if-none-match", "").split(",")}
+        if "*" in validators or etag in validators:
+            return Response(status_code=304, headers=headers)
+        return HTMLResponse(content, headers=headers)
 
 
 def create_app() -> FastAPI:

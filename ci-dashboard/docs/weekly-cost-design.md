@@ -190,8 +190,12 @@ The additive `budget_pace` object contains `{metric, period, overall,
 projects, team_cost}`. `overall` and every project item provide
 `actual_list_cost`, nullable `period_budget`, and nullable `utilization_pct`;
 plan-scoped project items additionally use a stable `budget-plan:<id>` key.
-`team_cost` has its own list-cost total and cross-account team items with
-`actual_list_cost` and `share_pct`, but no budget fields.
+When an unnamed source-wide plan has no projects, its name falls back to its
+source memberships plus `(plan <id>)` so the scenario remains distinguishable.
+Each `project_account_usage` item contains `daily_list_cost`, with one `{date,
+list_cost, cumulative_list_cost}` entry for every date in the plan/report
+intersection. `team_cost` has its own list-cost total and cross-account team
+items with `actual_list_cost` and `share_pct`, but no budget fields.
 The additive `team_share` object contains the same metric, the positive
 `total_list_cost` denominator, and `level1`, `level2`, `projects`, and `owners` item lists.
 Each share item has `{key, name, value, share_pct, interactive:false}`. These
@@ -247,13 +251,17 @@ utilization percentage.
   percentage of the current natural month's full budget. A current plan is selected only when `platform = 'QA'` and its
   `vendor` plus JSON `accounts` membership intersects the fixed QA sources; a
   plan amount is counted once, even when it names several accounts or projects.
-- **Budget Scenario utilization** lists each configured project plan by `budget_name`.
-  Its actual is scoped to the plan's `vendor`, JSON `accounts`, JSON
-  `projects` membership, and date overlap with the report week. This preserves the one plan target for a
-  multi-account/multi-project plan instead of copying it into every named
-  project. Multi-project plan rows can reveal account and project allocation
-  donuts: their segments sum to the plan's actual spend, while each donut
-  center retains the plan's utilization of its single budget. Attributed
+- **Budget Scenario utilization** lists each configured positive-budget plan by
+  `budget_name`. Its actual is scoped to the plan's `vendor`, JSON `accounts`,
+  JSON `projects` membership, and date overlap with the report week. A plan
+  without `projects` is source-wide and uses all its scoped account costs, so it
+  also has a utilization breakdown. Selecting a plan refreshes the right-side
+  account/project allocation donut; each segment is one account/project pair
+  and is labeled directly with a connector, including its dollar cost and
+  percentage, with no separate legend. Its center shows the selected plan's
+  budget utilization. A stacked daily cumulative-cost chart below it uses the
+  same account/project allocations. The segments sum to positive allocated
+  spend; credits remain reflected in the plan-utilization value. Attributed
   projects not covered by a plan are omitted from this card.
 - **Team test cost** is not a budget view. It aggregates list cost across all
   qualifying QA sources by the same cross-account Level-2 roster-team mapping
@@ -264,9 +272,10 @@ utilization percentage.
 An unmatched project target remains `null` in the API response and is omitted
 from **Budget Scenario utilization**; it is never converted to a zero budget. Legacy source-scoped `cost_budgets` rows remain supported for the
 older `vendor`/`account_id` schema, but current QA plans use JSON memberships.
-Budget rows with unsupported group, manager, or repo filters are excluded from
-legacy aggregate cards. Legacy rows scoped to a `group_id` are also excluded because
-the legacy schema does not provide group-aware aggregate budget matching. A
+Budget rows with unsupported group, manager, repo, or non-project label filters
+are excluded because their scoped actual cannot be derived from account/project
+allocations. Legacy rows scoped to a `group_id` are also excluded because the
+legacy schema does not provide group-aware aggregate budget matching. A
 single logical plan still must not be duplicated across
 separate budget rows merely to model cross-account reporting. Every configured
 Budget pace utilization uses the same capped threshold: green below 80%, yellow
@@ -274,19 +283,17 @@ from 80% through 95%, and red above 95%. `Overall budget pace` uses a
 semi-circular gauge and `Budget Scenario utilization` uses linear progress
 bars. `Team test cost` uses a neutral QA-cost-share bar rather than a budget
 utilization color. In the desktop three-lane layout, `Overall budget pace` and
-`Team test cost` stack in the first lane, the project budget list is in the
-second lane, and the Project share donut is in the third lane.
+`Team test cost` stack in the first lane, the budget-scenario list is in the
+second lane, and its selected-scenario breakdown is in the third lane.
 
 ### Team share
 
-For the last complete week, the page displays four list-cost shares:
+For the last complete week, the page displays three list-cost shares:
 
 1. Level 1 groups — the direct children of the active `Engineering Group` roster
    node;
 2. Level 2 teams — direct children of those Level-1 groups; and
-3. Project share — normalized project names aggregated across every qualifying
-   QA source; and
-4. Owner share — normalized billing-report `owner` values aggregated across
+3. Owner share — normalized billing-report `owner` values aggregated across
    every qualifying QA source, with `(no owner)` for blank values.
 
 Current `roster_groups.path` determines the hierarchy. Cost with a missing
@@ -295,10 +302,9 @@ explicit `Unattributed` bucket rather than being omitted. Level-2 legend labels
 use only that Level-2 group's name; they do not repeat the Level-1 parent.
 The charts render at most eight non-zero-share entries: the largest categories
 and, when needed, an `Others` segment that combines the tail, matching the
-existing Cost Insight share-chart behavior. Values rounded to the UI's displayed `0.0%` are not shown. The Project share
-donut is presented in Budget pace's third lane; Team share's three lanes contain
-Level 1, Level 2, and Owner share. A `(no project)` bucket remains visible for
-missing project attribution.
+existing Cost Insight share-chart behavior. Values rounded to the UI's displayed
+`0.0%` are not shown. Team share's three lanes contain Level 1, Level 2, and
+Owner share.
 
 ## Table and chart presentation
 

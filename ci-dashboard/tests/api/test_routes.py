@@ -1188,6 +1188,32 @@ def test_frontend_uses_configured_static_dir(tmp_path: Path, monkeypatch) -> Non
     assert response.text == "configured-ok"
 
 
+def test_frontend_injects_ops_controlled_version(tmp_path: Path, monkeypatch) -> None:
+    dist_dir = tmp_path / "custom-dist"
+    dist_dir.mkdir()
+    (dist_dir / "index.html").write_text(
+        '<meta name="ci-dashboard-version" content="__CI_DASHBOARD_VERSION__">',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CI_DASHBOARD_STATIC_DIR", str(dist_dir))
+    monkeypatch.setenv("CI_DASHBOARD_VERSION", "1.8.2")
+
+    test_app = create_app()
+    with TestClient(test_app) as client:
+        response = client.get("/")
+        cached_response = client.get("/", headers={"If-None-Match": response.headers["etag"]})
+        multi_validator_response = client.get(
+            "/",
+            headers={"If-None-Match": f'"other", {response.headers["etag"]}'},
+        )
+
+    assert response.status_code == 200
+    assert response.text == '<meta name="ci-dashboard-version" content="1.8.2">'
+    assert response.headers["cache-control"] == "no-cache"
+    assert cached_response.status_code == 304
+    assert multi_validator_response.status_code == 304
+
+
 def test_status_and_filter_endpoints(api_client: TestClient, sqlite_engine) -> None:
     freshness = api_client.get("/api/v1/status/freshness")
     assert freshness.status_code == 200
@@ -4404,9 +4430,10 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
         connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN projects TEXT"))
         connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN team TEXT"))
         connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN platform TEXT"))
-    for budget_name, amount, projects in [
-        ("QA source plan", 36500, None),
-        ("QA Alpha and Beta plan", 7300, '["Alpha", "Beta"]'),
+    for budget_name, amount, projects, group_id in [
+        (None, 36500, None, None),
+        ("QA Alpha and Beta plan", 7300, '["Alpha", "Beta"]', None),
+        ("Unsupported filtered plan", 3650, None, 1),
     ]:
         _insert_cost_budget(
             sqlite_engine,
@@ -4425,8 +4452,9 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
                     SET accounts = :accounts,
                         projects = :projects,
                         team = :team,
-                        platform = :platform
-                    WHERE budget_name = :budget_name
+                        platform = :platform,
+                        group_id = :group_id
+                    WHERE budget_name IS :budget_name
                     """
                 ),
                 {
@@ -4434,6 +4462,7 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
                     "projects": projects,
                     "team": "Efficiency & Quality",
                     "platform": "QA",
+                    "group_id": group_id,
                     "budget_name": budget_name,
                 },
             )
@@ -4447,6 +4476,30 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
         "period_budget": 840.0,
         "utilization_pct": 17.86,
     }
+    for plan in budget_pace["projects"]:
+        for allocation in plan["project_account_usage"]:
+            daily_list_cost = allocation.pop("daily_list_cost")
+            assert [point["date"] for point in daily_list_cost] == [
+                "2026-07-13",
+                "2026-07-14",
+                "2026-07-15",
+                "2026-07-16",
+                "2026-07-17",
+                "2026-07-18",
+                "2026-07-19",
+            ]
+            assert [point["list_cost"] for point in daily_list_cost] == [
+                allocation["actual_list_cost"],
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+            ]
+            assert [point["cumulative_list_cost"] for point in daily_list_cost] == [
+                allocation["actual_list_cost"]
+            ] * 7
     assert budget_pace["projects"] == [
         {
             "key": "budget-plan:2",
@@ -4472,7 +4525,32 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
                     "utilization_pct": 35.71,
                 },
             ],
-        }
+        },
+        {
+            "key": "budget-plan:1",
+            "name": "AWS / qa-aws (plan 1)",
+            "actual_list_cost": 150.0,
+            "period_budget": 700.0,
+            "utilization_pct": 21.43,
+            "project_account_usage": [
+                {
+                    "key": "project-account:Alpha:aws:qa-aws",
+                    "project": "Alpha",
+                    "vendor": "aws",
+                    "account_id": "qa-aws",
+                    "actual_list_cost": 100.0,
+                    "utilization_pct": 14.29,
+                },
+                {
+                    "key": "project-account:Beta:aws:qa-aws",
+                    "project": "Beta",
+                    "vendor": "aws",
+                    "account_id": "qa-aws",
+                    "actual_list_cost": 50.0,
+                    "utilization_pct": 7.14,
+                },
+            ],
+        },
     ]
     assert budget_pace["team_cost"] == {
         "metric": "list_cost",

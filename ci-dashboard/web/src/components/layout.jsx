@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import packageInfo from "../../package.json";
 
 import { COST_PATH, WEEKLY_COST_PATH } from "../lib/filterUrl";
 
@@ -12,7 +11,7 @@ export function DashboardLayout({
   showFilters = true,
   children,
 }) {
-  const currentVersion = packageInfo.version;
+  const currentVersion = getDashboardVersion();
 
   return (
     <div className="app-shell">
@@ -88,6 +87,14 @@ export function DashboardLayout({
       </div>
     </div>
   );
+}
+
+export function getDashboardVersion() {
+  const value = globalThis.document
+    ?.querySelector('meta[name="ci-dashboard-version"]')
+    ?.getAttribute("content")
+    ?.trim();
+  return value && value !== "__CI_DASHBOARD_VERSION__" ? value : "local";
 }
 
 function NavItem({ to, search = "", label, caption }) {
