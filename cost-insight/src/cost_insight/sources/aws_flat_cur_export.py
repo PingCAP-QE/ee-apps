@@ -93,6 +93,8 @@ WITH normalized AS (
     NULLIF(TRIM(resource_tags_user_tenant), '') AS org,
     NULLIF(TRIM(resource_tags_user_project), '') AS repo,
     NULLIF(TRIM(resource_tags_user_cluster), '') AS `cluster`,
+    -- This flattened F04 CUR has neither net-unblended-cost nor shared-pool fields.
+    -- Its usage rows therefore use unblended cost as both effective and net cost.
     CAST(COALESCE(line_item_unblended_cost, 0) AS BIGNUMERIC) AS list_cost,
     CAST(COALESCE(line_item_unblended_cost, line_item_blended_cost, 0) AS BIGNUMERIC)
       AS effective_cost,

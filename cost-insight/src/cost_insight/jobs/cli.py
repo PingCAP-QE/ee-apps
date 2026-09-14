@@ -698,12 +698,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "use cutover-aws-split-cost for the approved 946646677266 cutover"
                 )
             for source in sources:
-                if source.schema_version == AWS_TIDB_CLOUD_F04_SCHEMA_VERSION:
-                    logging.getLogger(__name__).info(
-                        "skip AWS unmatched-resource sync for F04 source",
-                        extra={"account_id": source.account_id},
-                    )
-                    continue
                 summaries.append(
                     run_sync_aws_unmatched_resources(
                         engine,
