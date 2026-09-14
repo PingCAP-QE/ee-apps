@@ -1359,6 +1359,7 @@ def test_f04_cost_source_migration_seeds_inactive_source() -> None:
     ).read_text()
 
     assert "'TiDB Cloud production us-west-2 f04',\n  0\n)\nON DUPLICATE" in migration
+    assert "is_active = VALUES(is_active)" not in migration
 
 
 def test_cli_source_resolution_prefers_active_registry() -> None:

@@ -30,5 +30,4 @@ ON DUPLICATE KEY UPDATE
   source_schema_version = VALUES(source_schema_version),
   source_available_from = VALUES(source_available_from),
   purpose = VALUES(purpose),
-  is_active = VALUES(is_active),
   updated_at = CURRENT_TIMESTAMP;
