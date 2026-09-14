@@ -243,21 +243,22 @@ def test_f04_source_uses_the_dedicated_fetcher_without_extra_configuration() -> 
             account_id="380838443567",
             export_partition_start=date(2026, 9, 1),
             export_partition_end=date(2026, 9, 1),
-            earliest_usage_date=date(2026, 9, 2),
-            usage_start_date=date(2026, 9, 2),
+            earliest_usage_date=date(2026, 9, 1),
+            usage_start_date=date(2026, 9, 1),
             usage_end_date=date(2026, 9, 5),
             dry_run=True,
             source=AwsBillingSource(
                 account_id="380838443567",
                 billing_table="gcp-digital-bi.aws_prod_billing.aws_prod_billing_data",
                 schema_version=AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
+                available_from=date(2026, 9, 2),
             ),
             fetch_rows=fetch_rows,
         )
     finally:
         engine.dispose()
 
-    assert "usedby" not in seen
+    assert seen["earliest_usage_date"] == date(2026, 9, 2)
 
 
 def _resource_row() -> dict[str, object]:
