@@ -1,5 +1,5 @@
 -- Keep F04 disabled until the matching jobs image and its bounded CronJob are deployed.
--- After a successful bounded validation, enable only this source with:
+-- After a successful bounded dry-run validation, enable only this source with:
 -- UPDATE cost_sources SET is_active = 1
 -- WHERE vendor = 'aws' AND account_id = '380838443567';
 INSERT INTO cost_sources (

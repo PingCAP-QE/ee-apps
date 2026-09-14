@@ -7,6 +7,7 @@ from typing import Any
 
 _BIGQUERY_TABLE_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$")
 _AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
+# Bound to the dedicated F04 source registered by migration 023.
 _AWS_TIDB_CLOUD_F04_USEDBY = "prod-us-west-2-f04"
 
 
@@ -104,6 +105,7 @@ WITH normalized AS (
   WHERE line_item_usage_account_id = @account_id
     AND DATE(bill_billing_period_start_date) BETWEEN @export_partition_start AND @export_partition_end
     AND DATE(line_item_usage_start_date) >= @earliest_usage_date{usage_end_clause}
+    -- F04 is billed in USD; reject any future non-USD rows rather than mixing currencies.
     AND line_item_currency_code = 'USD'
     AND resource_tags_user_usedby = @usedby
     AND line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})

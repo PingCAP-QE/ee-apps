@@ -118,7 +118,7 @@ def test_ensure_cost_source_enabled_inserts_only_when_not_dry_run() -> None:
         engine.dispose()
 
 
-def test_ensure_cost_source_enabled_rejects_inactive_source() -> None:
+def test_ensure_cost_source_enabled_allows_dry_run_but_rejects_writes_for_inactive_source() -> None:
     engine = _sqlite_engine()
     try:
         with engine.begin() as connection:
@@ -129,6 +129,12 @@ def test_ensure_cost_source_enabled_rejects_inactive_source() -> None:
                     VALUES ('aws', '946646677266', 'AWS Inactive', 0)
                     """
                 )
+            )
+            ensure_cost_source_enabled(
+                connection,
+                vendor="aws",
+                account_id="946646677266",
+                dry_run=True,
             )
             try:
                 ensure_cost_source_enabled(
