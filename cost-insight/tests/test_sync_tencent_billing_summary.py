@@ -682,11 +682,13 @@ def test_month_coverage_uses_the_current_month_partition() -> None:
         date(2026, 8, 1),
         scheduled_coverage_start=scheduled_start,
         first_export_partition_date=date(2026, 8, 1),
+        completed_range_covers_month=False,
     ) == date(2026, 8, 1)
     assert _month_coverage_start(
         date(2026, 10, 1),
         scheduled_coverage_start=scheduled_start,
         first_export_partition_date=None,
+        completed_range_covers_month=False,
     ) == scheduled_start
 
 
@@ -1039,7 +1041,7 @@ def test_month_close_unready_summary_is_nonfatal_and_retried() -> None:
         engine.dispose()
 
 
-def test_month_close_rechecks_partial_month_after_range_backfill() -> None:
+def test_month_close_rechecks_partial_month_after_completed_range_backfill() -> None:
     engine = _engine()
     day = date(2026, 8, 15)
     try:
@@ -1095,29 +1097,33 @@ def test_month_close_rechecks_partial_month_after_range_backfill() -> None:
             "coverage_start": day.isoformat(),
         }
 
-        first_day = date(2026, 8, 1)
-        run_sync_tencent_billing_summary(
-            engine,
-            settings=TencentBillingSettings(account_id=ACCOUNT_ID),
-            bill_day_start=first_day,
-            bill_day_end=first_day,
-            fetch_page=_page_fetcher(
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_job_state (job_name, watermark_json, last_status, updated_at)
+                    VALUES (:name, :watermark, 'succeeded', CURRENT_TIMESTAMP)
+                    """
+                ),
                 {
-                    (first_day.isoformat(), 0): TencentBillPage(
-                        (_detail(2, day=first_day.isoformat()),), 1, None
-                    )
+                    "name": f"{job_name}:range:2026-08-01:2026-08-31",
+                    "watermark": json.dumps(
+                        {
+                            "account_id": ACCOUNT_ID,
+                            "range_start": "2026-08-01",
+                            "range_end": "2026-08-31",
+                            "last_completed_bill_day": "2026-08-31",
+                        }
+                    ),
                 },
-                [],
-            ),
-            sleep=lambda _seconds: None,
-        )
+            )
         run_sync_tencent_billing_summary(
             engine,
             settings=TencentBillingSettings(account_id=ACCOUNT_ID, earliest_bill_day=day),
             now=datetime(2026, 9, 10, 6, tzinfo=UTC),
             fetch_page=lambda **kwargs: pytest.fail("no page fetch expected"),
             fetch_month_summary=lambda **_kwargs: TencentBillMonthSummary(
-                "2026-08", Decimal("4"), Decimal("3")
+                "2026-08", Decimal("2"), Decimal("1.5")
             ),
             sleep=lambda _seconds: None,
         )

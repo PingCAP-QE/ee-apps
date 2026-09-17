@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import time
 from collections.abc import Callable
@@ -750,6 +751,7 @@ def _reconcile_closed_months(
         return
 
     reconciled = dict(watermark.get("reconciled_months") or {})
+    completed_backfills = _completed_range_backfills(engine, state_job_name=state_job_name)
     scheduled_coverage_start = _as_date(watermark.get("first_completed_bill_day"))
     beijing_now = now.astimezone(_BEIJING)
     month = min_usage.replace(day=1)
@@ -790,6 +792,7 @@ def _reconcile_closed_months(
             month,
             scheduled_coverage_start=scheduled_coverage_start,
             first_export_partition_date=_as_date(imported["first_export_partition_date"]),
+            completed_range_covers_month=_range_covers_month(completed_backfills, month),
         )
         coverage_start_text = coverage_start.isoformat() if coverage_start is not None else None
         if (
@@ -873,16 +876,59 @@ def _reconcile_closed_months(
         month = _next_month(month)
 
 
+def _completed_range_backfills(
+    engine: Engine,
+    *,
+    state_job_name: str,
+) -> tuple[tuple[date, date], ...]:
+    with engine.connect() as connection:
+        rows = tuple(
+            connection.execute(
+                text(
+                    """
+                    SELECT watermark_json
+                    FROM cost_job_state
+                    WHERE job_name LIKE :range_prefix AND last_status = 'succeeded'
+                    """
+                ),
+                {"range_prefix": f"{state_job_name}:range:%"},
+            ).scalars()
+        )
+    completed: list[tuple[date, date]] = []
+    for value in rows:
+        watermark = value if isinstance(value, dict) else json.loads(str(value))
+        range_start = _as_date(watermark.get("range_start"))
+        range_end = _as_date(watermark.get("range_end"))
+        last_completed = _as_date(watermark.get("last_completed_bill_day"))
+        if (
+            range_start is not None
+            and range_end is not None
+            and last_completed is not None
+            and last_completed >= range_end
+        ):
+            completed.append((range_start, range_end))
+    return tuple(completed)
+
+
+def _range_covers_month(ranges: tuple[tuple[date, date], ...], month: date) -> bool:
+    return any(
+        range_start <= month and range_end >= _month_end(month)
+        for range_start, range_end in ranges
+    )
+
+
 def _month_coverage_start(
     month: date,
     *,
     scheduled_coverage_start: date | None,
     first_export_partition_date: date | None,
+    completed_range_covers_month: bool,
 ) -> date | None:
-    starts = [first_export_partition_date]
+    starts = [first_export_partition_date, month if completed_range_covers_month else None]
     if scheduled_coverage_start is not None and scheduled_coverage_start <= _month_end(month):
         starts.append(scheduled_coverage_start)
-    return min(start for start in starts if start is not None) if any(starts) else None
+    available = [start for start in starts if start is not None]
+    return min(available) if available else None
 
 
 def _month_precedes_coverage(month: date, coverage_start: date | None) -> bool:

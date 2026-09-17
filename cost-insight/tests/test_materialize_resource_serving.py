@@ -416,12 +416,21 @@ _SCHEMA = (
 )
 
 
-def test_serving_schema_requires_currency() -> None:
+@pytest.mark.parametrize(
+    "table",
+    (
+        "cost_attribution_daily",
+        "cost_unmatched_resource_daily",
+        "cost_resource_serving_daily",
+        "cost_resource_serving_publication",
+    ),
+)
+def test_serving_schema_requires_currency(table: str) -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     try:
         with engine.begin() as connection:
             for statement in _SCHEMA:
-                if "CREATE TABLE cost_resource_serving_daily" in statement:
+                if f"CREATE TABLE {table}" in statement:
                     statement = statement.replace(
                         ", currency TEXT NOT NULL DEFAULT 'USD'", ""
                     )

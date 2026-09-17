@@ -392,10 +392,13 @@ def _serving_schema_ready(engine: Engine) -> bool:
         return all(_table_exists(connection, table) for table in required_tables) and all(
             _table_has_column(connection, table, column)
             for table, column in (
+                ("cost_attribution_daily", "currency"),
                 ("cost_unmatched_resource_daily", "resource_id"),
+                ("cost_unmatched_resource_daily", "currency"),
                 ("cost_resource_serving_daily", "resource_id"),
                 ("cost_resource_serving_daily", "project"),
                 ("cost_resource_serving_daily", "currency"),
+                ("cost_resource_serving_publication", "currency"),
             )
         )
 
