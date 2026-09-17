@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import time
 from collections.abc import Callable
@@ -881,22 +880,31 @@ def _completed_range_backfills(
     *,
     state_job_name: str,
 ) -> tuple[tuple[date, date], ...]:
+    range_prefix = f"{state_job_name}:range:"
     with engine.connect() as connection:
         rows = tuple(
             connection.execute(
                 text(
                     """
-                    SELECT watermark_json
+                    SELECT job_name, watermark_json
                     FROM cost_job_state
-                    WHERE job_name LIKE :range_prefix AND last_status = 'succeeded'
+                    WHERE last_status = 'succeeded'
+                      AND SUBSTR(job_name, 1, :prefix_length) = :range_prefix
                     """
                 ),
-                {"range_prefix": f"{state_job_name}:range:%"},
-            ).scalars()
+                {"range_prefix": range_prefix, "prefix_length": len(range_prefix)},
+            ).mappings()
         )
     completed: list[tuple[date, date]] = []
-    for value in rows:
-        watermark = value if isinstance(value, dict) else json.loads(str(value))
+    for row in rows:
+        try:
+            watermark = state_store._parse_watermark(row["watermark_json"])
+        except ValueError:
+            LOG.warning(
+                "Ignoring malformed Tencent range-backfill state",
+                extra={"job_name": row["job_name"]},
+            )
+            continue
         range_start = _as_date(watermark.get("range_start"))
         range_end = _as_date(watermark.get("range_end"))
         last_completed = _as_date(watermark.get("last_completed_bill_day"))

@@ -1117,6 +1117,15 @@ def test_month_close_rechecks_partial_month_after_completed_range_backfill() -> 
                     ),
                 },
             )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_job_state (job_name, watermark_json, last_status, updated_at)
+                    VALUES (:name, '{not-json}', 'succeeded', CURRENT_TIMESTAMP)
+                    """
+                ),
+                {"name": f"{job_name}:range:malformed"},
+            )
         run_sync_tencent_billing_summary(
             engine,
             settings=TencentBillingSettings(account_id=ACCOUNT_ID, earliest_bill_day=day),
