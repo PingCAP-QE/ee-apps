@@ -557,28 +557,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 bill_day_end=args.bill_day_end,
                 dry_run=args.dry_run,
             )
-            print(
-                json.dumps(
-                    {
-                        "account_id": summary.account_id,
-                        "bill_days_completed": [
-                            value.isoformat() for value in summary.bill_days_completed
-                        ],
-                        "bill_days_verified": [
-                            value.isoformat() for value in summary.bill_days_verified
-                        ],
-                        "outer_rows_seen": summary.outer_rows_seen,
-                        "component_rows_seen": summary.component_rows_seen,
-                        "rows_written": summary.rows_written,
-                        "touched_usage_dates": [
-                            value.isoformat() for value in summary.touched_usage_dates
-                        ],
-                        "dry_run": summary.dry_run,
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
-            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
             return 0
         finally:
             engine.dispose()

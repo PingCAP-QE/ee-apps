@@ -121,6 +121,32 @@ def test_checkpoint_rejects_missing_job_state() -> None:
         engine.dispose()
 
 
+def test_checkpoint_accepts_indeterminate_rowcount_when_state_exists() -> None:
+    class Dialect:
+        name = "mysql"
+
+    class UpdateResult:
+        rowcount = -1
+
+    class ExistsResult:
+        def scalar(self):
+            return 1
+
+    class Connection:
+        dialect = Dialect()
+
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, *_args, **_kwargs):
+            self.calls += 1
+            return UpdateResult() if self.calls == 1 else ExistsResult()
+
+    connection = Connection()
+    state_store.checkpoint_job_watermark(connection, "job", {"offset": 100})
+    assert connection.calls == 2
+
+
 def test_build_upsert_statement_uses_mysql_for_non_sqlite() -> None:
     class Dialect:
         name = "mysql"

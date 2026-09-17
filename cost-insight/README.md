@@ -13,6 +13,7 @@ The current implementation supports multiple active sources through
 - Azure subscription `aaa5414d-7537-4e24-99bd-a7a841221810` (`azure-testing-infra-dev`)
 - Azure subscription `abd27163-b965-4217-8cba-2a4c799579fe` (`azure-testing-infra-prod-dataplane`)
 - Alibaba Cloud owner account `5028760335873601` (`alicloud-testing-infra-dev`)
+- Tencent Cloud organization account `100050658403` (disabled until validated)
 
 Current design:
 
@@ -20,6 +21,7 @@ Current design:
 - [BigQuery cost optimization design](docs/bigquery-cost-optimization-design.md)
 - [AWS split-cost source adaptation design](docs/aws-split-cost-schema-migration.md)
 - [Alibaba billing import design](docs/alibaba-billing-import-design.md)
+- [Tencent billing import design](docs/tencent-billing-import-design.md)
 - [Target branch cost dimension design](docs/target-branch-cost-dimension-design.md)
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
 - [Cost schema retirement design](docs/cost-schema-retirement-design.md)
@@ -86,6 +88,20 @@ Useful Alibaba Cloud settings:
 | `COST_INSIGHT_ALIBABA_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
 | `COST_INSIGHT_ALIBABA_SYNC_PAGE_SIZE` | `5000` |
 
+Useful Tencent Cloud settings:
+
+| Env | Default |
+| --- | --- |
+| `COST_INSIGHT_TENCENT_ACCOUNT_ID` | `100050658403` |
+| `COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY` | required for the first scheduled run |
+| `COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS` | `3` |
+| `COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS` | `5` |
+| `COST_INSIGHT_TENCENT_PAGE_SIZE` | `100` |
+
+Tencent credentials use the SDK environment variables `TENCENTCLOUD_SECRET_ID` and
+`TENCENTCLOUD_SECRET_KEY`. The source seeded by `sql/025_add_tencent_billing_cost_source.sql`
+starts disabled; enable it only after an authenticated dry run and currency migration validation.
+
 Useful AWS settings:
 
 | Env | Default |
@@ -114,6 +130,8 @@ and source-purpose migrations before the seed:
 mysql < sql/010_add_aws_split_cost_dimensions.sql
 mysql < sql/019_add_cost_source_purpose.sql
 mysql < sql/002_seed_initial_cost_sources.sql
+mysql < sql/024_add_cost_currency.sql
+mysql < sql/025_add_tencent_billing_cost_source.sql
 ```
 
 All recurring summary, unmatched-resource, and attribution jobs discover active
@@ -160,6 +178,19 @@ The importer selects `owner_account_id`, preserves `partition_date` as the expor
 partition independently from `DATE(usage_start_time)`, and maps the Alibaba gross
 amount to `list_cost`. See [Alibaba billing import design](docs/alibaba-billing-import-design.md)
 for all dimensions and amount mappings.
+
+Tencent organization billing import uses page checkpoints and preserves invoice CNY:
+
+```bash
+cost-insight sync-tencent-billing-summary \
+  --bill-day-start 2026-09-13 \
+  --bill-day-end 2026-09-13 \
+  --dry-run
+```
+
+The scheduled command imports the next D+3 `BillDay`; explicit ranges are for dry-run,
+backfill, or repair. See [Tencent billing import design](docs/tencent-billing-import-design.md)
+for the D+5 verification and month-close reconciliation behavior.
 
 AWS summary import uses the same `cost_bq_export_summary_daily` table:
 

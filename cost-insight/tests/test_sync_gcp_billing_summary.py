@@ -366,6 +366,12 @@ def test_run_sync_gcp_billing_summary_rejects_invalid_scoped_replacement() -> No
         engine.dispose()
 
 
+@pytest.mark.parametrize("currency", ["EUR", "US"])
+def test_normalize_summary_row_rejects_unsupported_currency(currency: str) -> None:
+    with pytest.raises(ValueError, match="Unsupported billing currency"):
+        _normalize_summary_row({**_summary_row(), "currency": currency})
+
+
 def test_replace_summary_usage_dates_keeps_existing_rows_for_empty_source() -> None:
     engine = _sqlite_engine()
     row = _normalize_summary_row(_summary_row())

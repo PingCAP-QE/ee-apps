@@ -197,7 +197,8 @@ fully completed version.
 | Pod exits after response but before commit | Replay one page; idempotent upsert |
 | DB transaction fails | Page rows and checkpoint both roll back |
 | Context expires | Retry the persisted offset without Context |
-| Empty D+3 partition | Do not advance the day; retry next schedule |
+| Empty scheduled D+3 partition | Do not advance the day; retry next schedule |
+| Empty explicit backfill day | Record the known empty day without creating cost facts |
 | Non-target `BillDay` appears | Fail without advancing the page checkpoint |
 
 A durable raw-response staging table or object-store spool is unnecessary unless production
@@ -214,8 +215,6 @@ BillId
 OrderId
 ResourceId
 FeeBeginTime
-FeeEndTime
-PayTime
 OwnerUin
 OperateUin
 BusinessCode
@@ -239,6 +238,8 @@ cost amounts
 Tags
 resource display name
 product/component display names
+FeeEndTime
+PayTime
 ```
 
 This lets replay update the same fact if a payload changes instead of inserting duplicate cost.
@@ -388,11 +389,12 @@ TotalCost      ↔ SUM(list_cost)
 RealTotalCost  ↔ SUM(net_cost)
 ```
 
-Use `Decimal`, not binary floating point. If `Ready=0`, leave the month unreconciled so a later
-schedule retries it. If Tencent returns `TotalCost="-"`, reconcile `RealTotalCost` only and record
-that reduced check explicitly. If available totals match, perform no detail reads or writes. If
-they do not match, report the difference and invoke an explicit operator-controlled repair. Do not
-make a full monthly detail scan part of the normal schedule.
+Use `Decimal`, not binary floating point. Skip a month whose scheduled import began after its
+first day, because it has incomplete coverage. If `Ready=0`, record a non-fatal `unready` result so
+a later schedule retries it. If Tencent returns `TotalCost="-"`, reconcile `RealTotalCost` only and
+record that reduced check explicitly. A mismatch fails once and is retried only after an explicit
+repair changes the stored monthly totals. If available totals match, perform no detail reads or
+writes. Do not make a full monthly detail scan part of the normal schedule.
 
 ## Relationship to existing vendor collectors
 
@@ -420,7 +422,6 @@ COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY=YYYY-MM-DD
 COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS=3
 COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS=5
 COST_INSIGHT_TENCENT_PAGE_SIZE=100
-COST_INSIGHT_CNY_PER_USD=6.5
 ```
 
 Validate page size as `1..100`. `account_id` must match every returned `OwnerUin`; a mismatch fails
@@ -496,6 +497,7 @@ Alert when:
 
 - an in-flight day is not completed by the next schedule;
 - D+5 `Total` increases or a confirmation scan finds fewer or changed records;
+- a month-close summary remains unready or requires an explicit repair;
 - page identity collisions occur;
 - OwnerUin differs from the configured source;
 - month-close list or net totals do not reconcile;
@@ -517,7 +519,7 @@ Unit and SQLite integration tests must cover:
 8. restart from the committed offset;
 9. expired Context fallback to the same offset;
 10. target-day and OwnerUin validation;
-11. empty D+3 data not advancing completion;
+11. empty scheduled D+3 data not advancing completion, while an explicit backfill can complete a known empty day;
 12. D+5 equal/increased/decreased `Total` behavior, including read-only confirmation after a
     persistent smaller value;
 13. completed-only downstream refresh;
@@ -553,7 +555,7 @@ mutation rollout. It does not block importing general Tencent resource cost.
 
 ### Deployment phases
 
-1. Apply currency schema and verify existing USD totals are unchanged.
+1. Apply currency schema and Tencent source seed migrations; the source remains disabled until the credential and dry-run pass. Verify existing USD totals are unchanged.
 2. Run one explicit Tencent bill day in dry-run and reconcile source counts and amounts.
 3. Run pagewise import for that day and verify idempotent replay.
 4. Enable the CronJob with `concurrencyPolicy: Forbid` after Gate 1 selects the initial lag.

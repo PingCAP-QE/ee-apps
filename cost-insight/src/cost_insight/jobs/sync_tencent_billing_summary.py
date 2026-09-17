@@ -21,6 +21,7 @@ from cost_insight.jobs.sync_gcp_billing_summary import _write_summary_rows
 from cost_insight.sources.tencent_billing import (
     TencentBillMonthSummary,
     TencentBillPage,
+    TencentBillSummaryNotReady,
     expand_tencent_bill_details,
     fetch_tencent_bill_detail_page,
     fetch_tencent_bill_month_summary,
@@ -30,6 +31,8 @@ LOG = logging.getLogger(__name__)
 JOB_NAME = "sync_tencent_billing_summary"
 VENDOR = "tencent"
 _BEIJING = ZoneInfo("Asia/Shanghai")
+_AMOUNT_QUANTUM = Decimal("0.000000001")
+_MATCHED_MONTH_STATUSES = frozenset({"matched", "matched-real-cost-only", "partial-coverage"})
 _INFLIGHT_KEYS = (
     "inflight_bill_day",
     "next_offset",
@@ -176,6 +179,7 @@ def run_sync_tencent_billing_summary(
                 fetch_page=fetch_page,
                 sleep=sleep,
                 completed_at=now,
+                allow_empty=explicit_range,
             )
             completed_days.append(next_day)
             touched_usage_dates.update(usage_dates)
@@ -295,6 +299,7 @@ def _import_bill_day(
     fetch_page: FetchPage,
     sleep: Sleep,
     completed_at: datetime,
+    allow_empty: bool = False,
 ) -> tuple[dict[str, Any], tuple[date, ...]]:
     while True:
         offset = int(watermark.get("next_offset") or 0)
@@ -312,7 +317,11 @@ def _import_bill_day(
             expected_bill_day=bill_day,
             account_id=settings.account_id,
         )
-        if not page.details and int(watermark.get("outer_rows_written") or 0) == 0:
+        if (
+            not allow_empty
+            and not page.details
+            and int(watermark.get("outer_rows_written") or 0) == 0
+        ):
             raise ValueError(f"Tencent bill day {bill_day} is empty; refusing to advance")
 
         final_page = len(page.details) < settings.page_size
@@ -358,6 +367,7 @@ def _import_bill_day(
                 pending = dict(watermark.get("pending_verification") or {})
                 pending[bill_day.isoformat()] = evidence
                 watermark["pending_verification"] = pending
+                watermark.setdefault("first_completed_bill_day", bill_day.isoformat())
                 previous_completed = watermark.get("last_completed_bill_day")
                 watermark["last_completed_bill_day"] = max(
                     filter(None, (previous_completed, bill_day.isoformat()))
@@ -677,16 +687,18 @@ def _partition_usage_dates(
 
 
 def _same_completion_evidence(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    keys = (
+    for key in (
         "outer_row_count",
         "component_row_count",
         "identity_fingerprint",
-        "list_cost_cny",
-        "effective_cost_cny",
-        "net_cost_cny",
         "latest_pay_time",
+    ):
+        if left.get(key) != right.get(key):
+            return False
+    return all(
+        abs(_as_decimal(left.get(key)) - _as_decimal(right.get(key))) <= _AMOUNT_QUANTUM
+        for key in ("list_cost_cny", "effective_cost_cny", "net_cost_cny")
     )
-    return all(left.get(key) == right.get(key) for key in keys)
 
 
 def _as_decimal(value: Any) -> Decimal:
@@ -712,12 +724,7 @@ def _reconcile_closed_months(
     sleep: Sleep,
     now: datetime,
 ) -> None:
-    """Reconcile closed months against DescribeBillSummaryForOrganization totals.
-
-    One summary request per closed month; never reread monthly details. A mismatch is
-    recorded in the watermark and raises once so operators trigger an explicit repair
-    without blocking later D+3 imports.
-    """
+    """Reconcile complete closed months without blocking daily imports on an unready summary."""
     with engine.begin() as connection:
         usage_bounds = connection.execute(
             text(
@@ -735,73 +742,124 @@ def _reconcile_closed_months(
         return
 
     reconciled = dict(watermark.get("reconciled_months") or {})
+    coverage_start = _as_date(watermark.get("first_completed_bill_day"))
     beijing_now = now.astimezone(_BEIJING)
     month = min_usage.replace(day=1)
     last_month = max_usage.replace(day=1)
     while month <= last_month:
         month_key = f"{month.year:04d}-{month.month:02d}"
-        closed_at = _month_close_time(month)
-        if month_key not in reconciled and beijing_now >= closed_at:
-            summary = _fetch_month_summary_with_retry(
-                fetch_month_summary,
-                month=month_key,
-                sleep=sleep,
-            )
-            with engine.begin() as connection:
-                imported = connection.execute(
-                    text(
-                        """
-                        SELECT
-                          COALESCE(SUM(list_cost), 0) AS list_cost,
-                          COALESCE(SUM(net_cost), 0) AS net_cost
-                        FROM cost_bq_export_summary_daily
-                        WHERE vendor = 'tencent'
-                          AND account_id = :account_id
-                          AND usage_date BETWEEN :month_start AND :month_end
-                        """
-                    ),
-                    {
-                        "account_id": settings.account_id,
-                        "month_start": month,
-                        "month_end": _month_end(month),
-                    },
-                ).mappings().one()
-            imported_list = _as_decimal(imported["list_cost"])
-            imported_net = _as_decimal(imported["net_cost"])
-            mismatches = []
-            if summary.total_cost is not None and imported_list != summary.total_cost:
-                mismatches.append(f"list {imported_list} != {summary.total_cost}")
-            if imported_net != summary.real_total_cost:
-                mismatches.append(f"net {imported_net} != {summary.real_total_cost}")
-            matched = not mismatches
+        record = dict(reconciled.get(month_key) or {})
+        if beijing_now < _month_close_time(month):
+            month = _next_month(month)
+            continue
+        if record.get("status") in _MATCHED_MONTH_STATUSES:
+            month = _next_month(month)
+            continue
+        if _month_precedes_coverage(month, coverage_start):
             reconciled[month_key] = {
-                "status": (
-                    "matched-real-cost-only"
-                    if matched and summary.total_cost is None
-                    else "matched" if matched else "mismatch"
-                ),
-                "source_total_cost": (
-                    _decimal_text(summary.total_cost)
-                    if summary.total_cost is not None
-                    else None
-                ),
-                "source_real_total_cost": _decimal_text(summary.real_total_cost),
-                "imported_list_cost": _decimal_text(imported_list),
-                "imported_net_cost": _decimal_text(imported_net),
+                "status": "partial-coverage",
+                "first_completed_bill_day": coverage_start.isoformat(),
             }
             watermark["reconciled_months"] = reconciled
             with engine.begin() as connection:
                 state_store.checkpoint_job_watermark(connection, state_job_name, watermark)
-            if not matched:
-                raise ValueError(
-                    f"Tencent month-close reconciliation failed for {month_key}: "
-                    f"{', '.join(mismatches)}; explicit repair required"
-                )
-            LOG.info(
-                "Tencent month-close reconciliation matched",
-                extra={"month": month_key, **reconciled[month_key]},
+            month = _next_month(month)
+            continue
+
+        with engine.begin() as connection:
+            imported = connection.execute(
+                text(
+                    """
+                    SELECT
+                      COALESCE(SUM(list_cost), 0) AS list_cost,
+                      COALESCE(SUM(net_cost), 0) AS net_cost
+                    FROM cost_bq_export_summary_daily
+                    WHERE vendor = 'tencent'
+                      AND account_id = :account_id
+                      AND usage_date BETWEEN :month_start AND :month_end
+                    """
+                ),
+                {
+                    "account_id": settings.account_id,
+                    "month_start": month,
+                    "month_end": _month_end(month),
+                },
+            ).mappings().one()
+        imported_list = _as_decimal(imported["list_cost"])
+        imported_net = _as_decimal(imported["net_cost"])
+        if record.get("status") == "mismatch" and _same_imported_month_totals(
+            record,
+            imported_list=imported_list,
+            imported_net=imported_net,
+        ):
+            month = _next_month(month)
+            continue
+
+        summary = _fetch_month_summary_with_retry(
+            fetch_month_summary,
+            month=month_key,
+            sleep=sleep,
+        )
+        if summary is None:
+            reconciled[month_key] = {"status": "unready", "checked_at": now.isoformat()}
+            watermark["reconciled_months"] = reconciled
+            with engine.begin() as connection:
+                state_store.checkpoint_job_watermark(connection, state_job_name, watermark)
+            LOG.warning("Tencent month-close summary is not ready", extra={"month": month_key})
+            month = _next_month(month)
+            continue
+
+        mismatches = []
+        if summary.total_cost is not None and imported_list != summary.total_cost:
+            mismatches.append(f"list {imported_list} != {summary.total_cost}")
+        if imported_net != summary.real_total_cost:
+            mismatches.append(f"net {imported_net} != {summary.real_total_cost}")
+        matched = not mismatches
+        reconciled[month_key] = {
+            "status": (
+                "matched-real-cost-only"
+                if matched and summary.total_cost is None
+                else "matched" if matched else "mismatch"
+            ),
+            "source_total_cost": (
+                _decimal_text(summary.total_cost) if summary.total_cost is not None else None
+            ),
+            "source_real_total_cost": _decimal_text(summary.real_total_cost),
+            "imported_list_cost": _decimal_text(imported_list),
+            "imported_net_cost": _decimal_text(imported_net),
+        }
+        watermark["reconciled_months"] = reconciled
+        with engine.begin() as connection:
+            state_store.checkpoint_job_watermark(connection, state_job_name, watermark)
+        if not matched:
+            raise ValueError(
+                f"Tencent month-close reconciliation failed for {month_key}: "
+                f"{', '.join(mismatches)}; explicit repair required"
             )
+        LOG.info(
+            "Tencent month-close reconciliation matched",
+            extra={"month": month_key, **reconciled[month_key]},
+        )
         month = _next_month(month)
+
+
+def _month_precedes_coverage(month: date, coverage_start: date | None) -> bool:
+    if coverage_start is None:
+        return False
+    coverage_month = coverage_start.replace(day=1)
+    return month < coverage_month or (month == coverage_month and coverage_start.day != 1)
+
+
+def _same_imported_month_totals(
+    record: dict[str, Any],
+    *,
+    imported_list: Decimal,
+    imported_net: Decimal,
+) -> bool:
+    return (
+        record.get("imported_list_cost") == _decimal_text(imported_list)
+        and record.get("imported_net_cost") == _decimal_text(imported_net)
+    )
 
 
 def _fetch_month_summary_with_retry(
@@ -809,11 +867,13 @@ def _fetch_month_summary_with_retry(
     *,
     month: str,
     sleep: Sleep,
-) -> TencentBillMonthSummary:
+) -> TencentBillMonthSummary | None:
     last_error: Exception | None = None
     for attempt in range(3):
         try:
             return fetch_month_summary(month=month)
+        except TencentBillSummaryNotReady:
+            return None
         except Exception as exc:  # SDK error types vary by transport and API code.
             last_error = exc
             if attempt < 2:

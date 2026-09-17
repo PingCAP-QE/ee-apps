@@ -24,6 +24,10 @@ class TencentBillMonthSummary:
     real_total_cost: Decimal
 
 
+class TencentBillSummaryNotReady(RuntimeError):
+    pass
+
+
 def _default_client() -> Any:
     from tencentcloud.billing.v20180709.billing_client import BillingClient
     from tencentcloud.common.credential import EnvironmentVariableCredential
@@ -59,7 +63,7 @@ def fetch_tencent_bill_month_summary(
     response = client.DescribeBillSummaryForOrganization(request)
     payload = json.loads(response.to_json_string())
     if int(payload.get("Ready") or 0) != 1:
-        raise RuntimeError(f"Tencent bill summary for {month} is not ready")
+        raise TencentBillSummaryNotReady(f"Tencent bill summary for {month} is not ready")
 
     total_cost: Decimal | None = Decimal(0)
     real_total_cost = Decimal(0)
@@ -245,8 +249,6 @@ def _source_row_hash(
         detail.get("OrderId"),
         detail.get("ResourceId"),
         detail.get("FeeBeginTime"),
-        detail.get("FeeEndTime"),
-        detail.get("PayTime"),
         detail.get("OwnerUin"),
         detail.get("OperateUin"),
         detail.get("BusinessCode"),

@@ -217,10 +217,12 @@ def test_expand_tencent_components_maps_cny_tags_and_resource_identity() -> None
     assert cpu["currency"] == "CNY"
 
 
-def test_tencent_identity_ignores_component_order_amounts_and_tags() -> None:
+def test_tencent_identity_ignores_component_order_amounts_tags_and_settlement_times() -> None:
     original = _detail()
     changed = _detail(
         Tags=[{"TagKey": "author", "TagValue": "bob"}],
+        FeeEndTime="2026-09-13 02:00:00",
+        PayTime="2026-09-15 08:20:52",
         ComponentSet=list(reversed(_detail()["ComponentSet"])),
     )
     changed["ComponentSet"][0]["RealCost"] = "99.0"

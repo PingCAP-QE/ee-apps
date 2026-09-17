@@ -19,6 +19,14 @@ class JobState:
     last_error: str | None
 
 
+_SELECT_JOB_STATE_EXISTS = text(
+    """
+    SELECT 1
+    FROM cost_job_state
+    WHERE job_name = :job_name
+    """
+)
+
 _SELECT_JOB_STATE = text(
     """
     SELECT
@@ -90,7 +98,9 @@ def checkpoint_job_watermark(
             "watermark_json": json.dumps(watermark, sort_keys=True),
         },
     )
-    if result.rowcount != 1:
+    if result.rowcount != 1 and connection.execute(
+        _SELECT_JOB_STATE_EXISTS, {"job_name": job_name}
+    ).scalar() != 1:
         raise ValueError(f"Cannot checkpoint missing job state: {job_name}")
 
 

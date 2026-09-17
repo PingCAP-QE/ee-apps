@@ -12,9 +12,14 @@ from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_tencent_billing_summary import (
     JOB_NAME,
     SyncTencentBillingSummaryResult,
+    _same_completion_evidence,
     run_sync_tencent_billing_summary,
 )
-from cost_insight.sources.tencent_billing import TencentBillMonthSummary, TencentBillPage
+from cost_insight.sources.tencent_billing import (
+    TencentBillMonthSummary,
+    TencentBillPage,
+    TencentBillSummaryNotReady,
+)
 
 ACCOUNT_ID = "100050658403"
 
@@ -418,6 +423,36 @@ def test_tencent_dry_run_requires_range_and_does_not_write() -> None:
         engine.dispose()
 
 
+def test_explicit_empty_bill_day_completes_without_cost_facts() -> None:
+    engine = _engine()
+    day = date(2026, 9, 13)
+    try:
+        result = run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(account_id=ACCOUNT_ID),
+            bill_day_start=day,
+            bill_day_end=day,
+            fetch_page=lambda **_kwargs: TencentBillPage((), 0, None),
+            sleep=lambda _seconds: None,
+        )
+
+        assert result.bill_days_completed == (day,)
+        assert result.component_rows_seen == 0
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT COUNT(*) FROM cost_bq_export_summary_daily")
+            ).scalar_one() == 0
+            watermark = json.loads(
+                connection.execute(
+                    text("SELECT watermark_json FROM cost_job_state WHERE job_name=:name"),
+                    {"name": _range_job_name(day)},
+                ).scalar_one()
+            )
+        assert watermark["first_completed_bill_day"] == day.isoformat()
+    finally:
+        engine.dispose()
+
+
 def test_scheduled_run_verifies_pending_day_with_single_count_probe() -> None:
     engine = _engine()
     pending_day = date(2026, 9, 11)
@@ -600,6 +635,25 @@ def test_d5_persistently_smaller_total_uses_read_only_confirmation() -> None:
         engine.dispose()
 
 
+def test_completion_evidence_tolerates_summary_column_precision() -> None:
+    evidence = {
+        "outer_row_count": 1,
+        "component_row_count": 1,
+        "identity_fingerprint": "hash",
+        "latest_pay_time": "2026-09-14T08:20:52",
+        "list_cost_cny": "1.000000000",
+        "effective_cost_cny": "2.000000000",
+        "net_cost_cny": "3.000000000",
+    }
+    rounded = {**evidence, "list_cost_cny": "1.0000000004"}
+
+    assert _same_completion_evidence(evidence, rounded)
+    assert not _same_completion_evidence(
+        evidence,
+        {**evidence, "list_cost_cny": "1.0000000011"},
+    )
+
+
 @pytest.mark.parametrize(
     ("source_total", "expected_status", "expected_source_total"),
     [
@@ -746,7 +800,7 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
             )
         assert watermark["reconciled_months"]["2026-08"]["status"] == "mismatch"
 
-        # The recorded mismatch is not re-detected, so the next schedule keeps flowing.
+        # An unchanged mismatch is not re-detected, so the next schedule keeps flowing.
         run_sync_tencent_billing_summary(
             engine,
             settings=TencentBillingSettings(
@@ -759,6 +813,172 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
             sleep=lambda _seconds: None,
         )
         assert calls == ["2026-08"]
+
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_bq_export_summary_daily
+                    SET list_cost = 9.99, effective_cost = 9.99, net_cost = 9.99
+                    WHERE vendor = 'tencent' AND account_id = :account_id
+                    """
+                ),
+                {"account_id": ACCOUNT_ID},
+            )
+        run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(
+                account_id=ACCOUNT_ID,
+                earliest_bill_day=date(2026, 8, 1),
+            ),
+            now=datetime(2026, 9, 11, 6, tzinfo=UTC),
+            fetch_page=lambda **kwargs: pytest.fail("no page fetch expected"),
+            fetch_month_summary=fetch_summary,
+            sleep=lambda _seconds: None,
+        )
+        assert calls == ["2026-08", "2026-08"]
+        with engine.connect() as connection:
+            watermark = json.loads(
+                connection.execute(
+                    text("SELECT watermark_json FROM cost_job_state WHERE job_name=:name"),
+                    {"name": job_name},
+                ).scalar_one()
+            )
+        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched"
+    finally:
+        engine.dispose()
+
+
+def test_month_close_unready_summary_is_nonfatal_and_retried() -> None:
+    engine = _engine()
+    day = date(2026, 8, 15)
+    try:
+        run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(account_id=ACCOUNT_ID),
+            bill_day_start=day,
+            bill_day_end=day,
+            fetch_page=_page_fetcher(
+                {(day.isoformat(), 0): TencentBillPage((_detail(1, day=day.isoformat()),), 1, None)},
+                [],
+            ),
+            sleep=lambda _seconds: None,
+        )
+        job_name = source_job_name(JOB_NAME, vendor="tencent", account_id=ACCOUNT_ID)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_job_state (job_name, watermark_json, last_status, updated_at)
+                    VALUES (:name, :watermark, 'succeeded', CURRENT_TIMESTAMP)
+                    """
+                ),
+                {
+                    "name": job_name,
+                    "watermark": json.dumps(
+                        {
+                            "account_id": ACCOUNT_ID,
+                            "first_completed_bill_day": "2026-08-01",
+                            "last_completed_bill_day": "2026-09-08",
+                        }
+                    ),
+                },
+            )
+
+        calls = []
+
+        def fetch_summary(**kwargs):
+            calls.append(kwargs["month"])
+            if len(calls) == 1:
+                raise TencentBillSummaryNotReady("initializing")
+            return TencentBillMonthSummary(kwargs["month"], Decimal("2"), Decimal("1.5"))
+
+        first = run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(account_id=ACCOUNT_ID, earliest_bill_day=date(2026, 8, 1)),
+            now=datetime(2026, 9, 10, 6, tzinfo=UTC),
+            fetch_page=lambda **kwargs: pytest.fail("no page fetch expected"),
+            fetch_month_summary=fetch_summary,
+            sleep=lambda _seconds: None,
+        )
+        assert first.bill_days_completed == ()
+        with engine.connect() as connection:
+            watermark = json.loads(
+                connection.execute(
+                    text("SELECT watermark_json FROM cost_job_state WHERE job_name=:name"),
+                    {"name": job_name},
+                ).scalar_one()
+            )
+        assert watermark["reconciled_months"]["2026-08"]["status"] == "unready"
+
+        run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(account_id=ACCOUNT_ID, earliest_bill_day=date(2026, 8, 1)),
+            now=datetime(2026, 9, 11, 6, tzinfo=UTC),
+            fetch_page=lambda **kwargs: pytest.fail("no page fetch expected"),
+            fetch_month_summary=fetch_summary,
+            sleep=lambda _seconds: None,
+        )
+        assert calls == ["2026-08", "2026-08"]
+    finally:
+        engine.dispose()
+
+
+def test_month_close_skips_initial_partial_month() -> None:
+    engine = _engine()
+    day = date(2026, 8, 15)
+    try:
+        run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(account_id=ACCOUNT_ID),
+            bill_day_start=day,
+            bill_day_end=day,
+            fetch_page=_page_fetcher(
+                {(day.isoformat(), 0): TencentBillPage((_detail(1, day=day.isoformat()),), 1, None)},
+                [],
+            ),
+            sleep=lambda _seconds: None,
+        )
+        job_name = source_job_name(JOB_NAME, vendor="tencent", account_id=ACCOUNT_ID)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_job_state (job_name, watermark_json, last_status, updated_at)
+                    VALUES (:name, :watermark, 'succeeded', CURRENT_TIMESTAMP)
+                    """
+                ),
+                {
+                    "name": job_name,
+                    "watermark": json.dumps(
+                        {
+                            "account_id": ACCOUNT_ID,
+                            "first_completed_bill_day": day.isoformat(),
+                            "last_completed_bill_day": "2026-09-08",
+                        }
+                    ),
+                },
+            )
+
+        run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(account_id=ACCOUNT_ID, earliest_bill_day=day),
+            now=datetime(2026, 9, 10, 6, tzinfo=UTC),
+            fetch_page=lambda **kwargs: pytest.fail("no page fetch expected"),
+            fetch_month_summary=lambda **kwargs: pytest.fail("no summary fetch expected"),
+            sleep=lambda _seconds: None,
+        )
+        with engine.connect() as connection:
+            watermark = json.loads(
+                connection.execute(
+                    text("SELECT watermark_json FROM cost_job_state WHERE job_name=:name"),
+                    {"name": job_name},
+                ).scalar_one()
+            )
+        assert watermark["reconciled_months"]["2026-08"] == {
+            "status": "partial-coverage",
+            "first_completed_bill_day": day.isoformat(),
+        }
     finally:
         engine.dispose()
 

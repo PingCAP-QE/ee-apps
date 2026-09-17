@@ -36,6 +36,7 @@ LOG = logging.getLogger(__name__)
 JOB_NAME = "sync_gcp_billing_summary"
 OWNER_OVERRIDE_DELETE_CHUNK_SIZE = 1000
 SUMMARY_TABLE = "cost_bq_export_summary_daily"
+SUPPORTED_CURRENCIES = frozenset({"USD", "CNY"})
 _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 # usage_type and cost_driver_key are derived display fields, not source row identity.
 
@@ -353,8 +354,8 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "source_export_time": coerce_datetime(row.get("source_export_time")),
     }
     normalized["cost_driver_key"] = classify_cost_driver(normalized)
-    if not re.fullmatch(r"[A-Z]{3}", normalized["currency"]):
-        raise ValueError(f"Invalid currency in billing summary row: {normalized['currency']!r}")
+    if normalized["currency"] not in SUPPORTED_CURRENCIES:
+        raise ValueError(f"Unsupported billing currency: {normalized['currency']!r}")
     if normalized["account_id"] is None:
         raise ValueError(f"Missing account_id in billing summary row: {row!r}")
     if normalized["export_partition_date"] is None:
