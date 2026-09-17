@@ -243,6 +243,8 @@ PayTime
 ```
 
 This lets replay update the same fact if a payload changes instead of inserting duplicate cost.
+If Tencent emits two deductions with the same stable component identity, the importer deliberately
+fails with an identity collision rather than using mutable settlement fields as a discriminator.
 The unique destination key remains:
 
 ```text
@@ -368,9 +370,10 @@ Compare `Total` with the completed import's outer-row count:
   completion evidence.
 
 If that read-only scan matches the completion evidence, record the probe as a stale `Total` and
-mark the day verified without writing cost rows. If it confirms fewer or changed records, or if
-month-close finds an amount-only mismatch, stop automatic repair and require an explicit partition
-replacement plan.
+mark the day verified without writing cost rows. API totals are compared to DB-backed completion
+evidence with a `1e-9` Decimal tolerance, matching the stored amount precision. If it confirms
+fewer or changed records, or if month-close finds an amount-only mismatch, stop automatic repair
+and require an explicit partition replacement plan.
 
 This works because Tencent documents L3 as one record per deduction; refunds, adjustments, and
 re-settlement normally add transactions rather than editing historical usage totals in place.
@@ -389,12 +392,14 @@ TotalCost      ↔ SUM(list_cost)
 RealTotalCost  ↔ SUM(net_cost)
 ```
 
-Use `Decimal`, not binary floating point. Skip a month whose scheduled import began after its
-first day, because it has incomplete coverage. If `Ready=0`, record a non-fatal `unready` result so
-a later schedule retries it. If Tencent returns `TotalCost="-"`, reconcile `RealTotalCost` only and
-record that reduced check explicitly. A mismatch fails once and is retried only after an explicit
-repair changes the stored monthly totals. If available totals match, perform no detail reads or
-writes. Do not make a full monthly detail scan part of the normal schedule.
+Use `Decimal`, not binary floating point. Coverage starts at the earlier of the scheduled job's
+first completed day and the earliest stored Tencent `export_partition_date`, so an approved range
+backfill can make an earlier month eligible. Skip a month whose coverage begins after its first day.
+If `Ready=0`, record a non-fatal `unready` result so a later schedule retries it. If Tencent returns
+`TotalCost="-"`, reconcile `RealTotalCost` only and record that reduced check explicitly. A mismatch
+fails once and is retried only after an explicit repair changes the stored monthly totals. If
+available totals match, perform no detail reads or writes. Do not make a full monthly detail scan
+part of the normal schedule.
 
 ## Relationship to existing vendor collectors
 
@@ -425,8 +430,9 @@ COST_INSIGHT_TENCENT_PAGE_SIZE=100
 ```
 
 Validate page size as `1..100`. `account_id` must match every returned `OwnerUin`; a mismatch fails
-the page before checkpoint advancement. Leave `billing_account_id` null until the organization
-payer identity is independently available from an authoritative source.
+the page before checkpoint advancement. The `source_available_from` value in the Tencent source
+seed must equal the configured `COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY`. Leave `billing_account_id`
+null until the organization payer identity is independently available from an authoritative source.
 
 ## CLI and code boundaries
 
@@ -491,6 +497,8 @@ source list/effective/net totals
 last PayTime
 completion timestamp
 D+5 verification status and observed Total
+first_completed_bill_day
+reconciled_months, including partial-coverage, unready, matched, and mismatch states
 ```
 
 Alert when:

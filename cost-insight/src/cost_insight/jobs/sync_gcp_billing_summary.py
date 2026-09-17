@@ -312,7 +312,11 @@ def _select_billing_account_id(billing_account_ids: set[str]) -> str | None:
     return min(billing_account_ids)
 
 
-def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
+def _normalize_summary_row(
+    row: dict[str, Any],
+    *,
+    preserve_source_row_hash: bool = False,
+) -> dict[str, Any]:
     is_split_source = bool(row.get("source_schema_version")) or row.get(
         "source_allocation_scope"
     ) not in {None, "direct"}
@@ -363,7 +367,11 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
     if normalized["usage_date"] is None:
         raise ValueError(f"Missing usage_date in billing summary row: {row!r}")
     normalized["is_split_source"] = is_split_source
-    normalized["source_row_hash"] = build_summary_row_hash(normalized)
+    normalized["source_row_hash"] = (
+        str(row["source_row_hash"])
+        if preserve_source_row_hash
+        else build_summary_row_hash(normalized)
+    )
     return normalized
 
 

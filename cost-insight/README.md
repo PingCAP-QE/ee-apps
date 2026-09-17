@@ -101,6 +101,8 @@ Useful Tencent Cloud settings:
 Tencent credentials use the SDK environment variables `TENCENTCLOUD_SECRET_ID` and
 `TENCENTCLOUD_SECRET_KEY`. The source seeded by `sql/025_add_tencent_billing_cost_source.sql`
 starts disabled; enable it only after an authenticated dry run and currency migration validation.
+Set its `source_available_from` migration value to the same date as
+`COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY`.
 
 Useful AWS settings:
 

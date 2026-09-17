@@ -17,7 +17,10 @@ from cost_insight.common.config import TencentBillingSettings
 from cost_insight.jobs import state_store
 from cost_insight.jobs.cost_sources import ensure_cost_source_enabled
 from cost_insight.jobs.job_keys import source_job_name
-from cost_insight.jobs.sync_gcp_billing_summary import _write_summary_rows
+from cost_insight.jobs.sync_gcp_billing_summary import (
+    _normalize_summary_row,
+    _write_summary_rows,
+)
 from cost_insight.sources.tencent_billing import (
     TencentBillMonthSummary,
     TencentBillPage,
@@ -32,7 +35,7 @@ JOB_NAME = "sync_tencent_billing_summary"
 VENDOR = "tencent"
 _BEIJING = ZoneInfo("Asia/Shanghai")
 _AMOUNT_QUANTUM = Decimal("0.000000001")
-_MATCHED_MONTH_STATUSES = frozenset({"matched", "matched-real-cost-only", "partial-coverage"})
+_MATCHED_MONTH_STATUSES = frozenset({"matched", "matched-real-cost-only"})
 _INFLIGHT_KEYS = (
     "inflight_bill_day",
     "next_offset",
@@ -90,6 +93,7 @@ def run_sync_tencent_billing_summary(
                 settings=settings,
                 fetch_page=fetch_page,
                 sleep=sleep,
+                allow_empty=True,
             )
             completed.append(bill_day)
             outer_rows += int(evidence["outer_row_count"])
@@ -312,10 +316,13 @@ def _import_bill_day(
             need_record_num=offset == 0,
             sleep=sleep,
         )
-        summary_rows = expand_tencent_bill_details(
-            page.details,
-            expected_bill_day=bill_day,
-            account_id=settings.account_id,
+        summary_rows = tuple(
+            _normalize_summary_row(row, preserve_source_row_hash=True)
+            for row in expand_tencent_bill_details(
+                page.details,
+                expected_bill_day=bill_day,
+                account_id=settings.account_id,
+            )
         )
         if (
             not allow_empty
@@ -533,6 +540,7 @@ def _scan_bill_day(
     settings: TencentBillingSettings,
     fetch_page: FetchPage,
     sleep: Sleep,
+    allow_empty: bool = False,
 ) -> tuple[dict[str, Any], tuple[date, ...]]:
     offset = 0
     context: str | None = None
@@ -559,7 +567,7 @@ def _scan_bill_day(
             break
         offset += len(page.details)
         context = page.context
-    if outer_count == 0:
+    if outer_count == 0 and not allow_empty:
         raise ValueError(f"Tencent bill day {bill_day} is empty; refusing to advance")
     hashes = [str(row["source_row_hash"]) for row in rows]
     if len(hashes) != len(set(hashes)):
@@ -729,7 +737,10 @@ def _reconcile_closed_months(
         usage_bounds = connection.execute(
             text(
                 """
-                SELECT MIN(usage_date) AS min_usage_date, MAX(usage_date) AS max_usage_date
+                SELECT
+                  MIN(usage_date) AS min_usage_date,
+                  MAX(usage_date) AS max_usage_date,
+                  MIN(export_partition_date) AS min_export_partition_date
                 FROM cost_bq_export_summary_daily
                 WHERE vendor = 'tencent' AND account_id = :account_id
                 """
@@ -742,7 +753,11 @@ def _reconcile_closed_months(
         return
 
     reconciled = dict(watermark.get("reconciled_months") or {})
-    coverage_start = _as_date(watermark.get("first_completed_bill_day"))
+    coverage_starts = (
+        _as_date(watermark.get("first_completed_bill_day")),
+        _as_date(usage_bounds["min_export_partition_date"]),
+    )
+    coverage_start = min(value for value in coverage_starts if value is not None)
     beijing_now = now.astimezone(_BEIJING)
     month = min_usage.replace(day=1)
     last_month = max_usage.replace(day=1)
@@ -755,10 +770,16 @@ def _reconcile_closed_months(
         if record.get("status") in _MATCHED_MONTH_STATUSES:
             month = _next_month(month)
             continue
+        if (
+            record.get("status") == "partial-coverage"
+            and record.get("coverage_start") == coverage_start.isoformat()
+        ):
+            month = _next_month(month)
+            continue
         if _month_precedes_coverage(month, coverage_start):
             reconciled[month_key] = {
                 "status": "partial-coverage",
-                "first_completed_bill_day": coverage_start.isoformat(),
+                "coverage_start": coverage_start.isoformat(),
             }
             watermark["reconciled_months"] = reconciled
             with engine.begin() as connection:
@@ -801,7 +822,12 @@ def _reconcile_closed_months(
             sleep=sleep,
         )
         if summary is None:
-            reconciled[month_key] = {"status": "unready", "checked_at": now.isoformat()}
+            reconciled[month_key] = {
+                **record,
+                "status": record.get("status") if record.get("status") == "mismatch" else "unready",
+                "checked_at": now.isoformat(),
+                "summary_ready": False,
+            }
             watermark["reconciled_months"] = reconciled
             with engine.begin() as connection:
                 state_store.checkpoint_job_watermark(connection, state_job_name, watermark)

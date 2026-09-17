@@ -366,6 +366,15 @@ def test_run_sync_gcp_billing_summary_rejects_invalid_scoped_replacement() -> No
         engine.dispose()
 
 
+def test_normalize_summary_row_can_preserve_source_specific_identity() -> None:
+    normalized = _normalize_summary_row(
+        {**_summary_row(), "source_row_hash": "tencent-stable-hash"},
+        preserve_source_row_hash=True,
+    )
+
+    assert normalized["source_row_hash"] == "tencent-stable-hash"
+
+
 @pytest.mark.parametrize("currency", ["EUR", "US"])
 def test_normalize_summary_row_rejects_unsupported_currency(currency: str) -> None:
     with pytest.raises(ValueError, match="Unsupported billing currency"):
