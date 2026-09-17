@@ -712,15 +712,16 @@ def test_completion_evidence_tolerates_summary_column_precision() -> None:
 
 
 @pytest.mark.parametrize(
-    ("source_total", "expected_status", "expected_source_total"),
+    ("source_total", "expected_source_total"),
     [
-        (Decimal("4.0"), "matched", "4"),
-        (None, "matched-real-cost-only", None),
+        (Decimal("4.0"), "4"),
+        # Detail ComponentSet.Cost need not equal the organization summary TotalCost.
+        (Decimal("9.99"), "9.99"),
+        (None, None),
     ],
 )
-def test_scheduled_run_reconciles_closed_month_with_single_summary_request(
+def test_scheduled_run_reconciles_closed_month_real_cost_with_single_summary_request(
     source_total,
-    expected_status: str,
     expected_source_total: str | None,
 ) -> None:
     engine = _engine()
@@ -789,7 +790,7 @@ def test_scheduled_run_reconciles_closed_month_with_single_summary_request(
                 ).scalar_one()
             )
         month_evidence = watermark["reconciled_months"]["2026-08"]
-        assert month_evidence["status"] == expected_status
+        assert month_evidence["status"] == "matched-real-cost-only"
         assert month_evidence["source_total_cost"] == expected_source_total
         assert month_evidence["imported_list_cost"] == "4"
         assert month_evidence["imported_net_cost"] == "3"
@@ -882,6 +883,32 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
         )
         assert calls == ["2026-08"]
 
+        # ComponentSet.Cost is observational at month close: changing it alone
+        # must not re-open a previously recorded net-cost mismatch.
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_bq_export_summary_daily
+                    SET list_cost = 8, effective_cost = 8
+                    WHERE vendor = 'tencent' AND account_id = :account_id
+                    """
+                ),
+                {"account_id": ACCOUNT_ID},
+            )
+        run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(
+                account_id=ACCOUNT_ID,
+                earliest_bill_day=date(2026, 8, 1),
+            ),
+            now=datetime(2026, 9, 11, 6, tzinfo=UTC),
+            fetch_page=lambda **kwargs: pytest.fail("no page fetch expected"),
+            fetch_month_summary=fetch_summary,
+            sleep=lambda _seconds: None,
+        )
+        assert calls == ["2026-08"]
+
         with engine.begin() as connection:
             connection.execute(
                 text(
@@ -961,7 +988,7 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
                     {"name": job_name},
                 ).scalar_one()
             )
-        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched"
+        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched-real-cost-only"
     finally:
         engine.dispose()
 
@@ -1143,7 +1170,7 @@ def test_month_close_rechecks_partial_month_after_completed_range_backfill() -> 
                     {"name": job_name},
                 ).scalar_one()
             )
-        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched"
+        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched-real-cost-only"
     finally:
         engine.dispose()
 

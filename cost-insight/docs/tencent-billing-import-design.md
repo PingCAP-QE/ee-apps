@@ -46,7 +46,7 @@ The design uses a cheap D+5 verification instead of blindly rereading recent ful
 - Store Tencent amounts in CNY and display cross-cloud totals in USD at a fixed
   `6.5 CNY/USD` rate.
 - Avoid normal-path month scans, rolling full-day overlap, and partition replacement.
-- Preserve exact source-cost reconciliation and idempotent replay.
+- Preserve exact billed-cost reconciliation and idempotent replay.
 
 ## Non-goals
 
@@ -385,12 +385,17 @@ After 19:00 Beijing time on the first day of the following month, call
 `DescribeBillSummaryForOrganization` once for the closed month. Read-only validation confirmed
 that a single business-grouped request returns organization summary totals.
 
-Compare source and imported monthly totals for at least:
+Record the source `TotalCost`, but reconcile the billed amount only:
 
 ```text
-TotalCost      ↔ SUM(list_cost)
 RealTotalCost  ↔ SUM(net_cost)
 ```
+
+`DescribeBillDetailForOrganization` supplies `ComponentSet.Cost` and `RealCost`,
+but no detail-level `TotalCost`. Production validation showed that the component
+`Cost` sum need not equal `DescribeBillSummaryForOrganization.TotalCost`, while
+component `RealCost` exactly matched `RealTotalCost`. `TotalCost` is therefore
+observational only; `RealTotalCost` is the month-close correctness gate.
 
 Use `Decimal`, not binary floating point. For each month, coverage starts from the scheduled job's
 first completed day when it predates that month, that month's earliest stored Tencent
@@ -398,9 +403,8 @@ first completed day when it predates that month, that month's earliest stored Te
 makes a full backfill eligible even if its opening bill day has no rows. A month with neither source
 rows nor applicable scheduled/range coverage is recorded as `partial-coverage` with a null
 `coverage_start`; skip any month whose coverage begins after its first day. If `Ready=0`, record a
-non-fatal `unready` result so a later schedule retries it. If Tencent returns `TotalCost="-"`,
-reconcile `RealTotalCost` only and record that reduced check explicitly. A mismatch fails once and
-is retried only after an explicit repair changes the stored monthly totals, except that an
+non-fatal `unready` result so a later schedule retries it. A `RealTotalCost` mismatch fails once and
+is retried only after an explicit repair changes the stored monthly net total, except that an
 intervening unready summary is probed again on the next schedule. If available totals match,
 perform no detail reads or writes. Do not make a full monthly detail scan part of the normal
 schedule.
@@ -502,7 +506,7 @@ last PayTime
 completion timestamp
 D+5 verification status and observed Total
 first_completed_bill_day
-reconciled_months, including partial-coverage, unready, matched, and mismatch states
+reconciled_months, including partial-coverage, unready, matched-real-cost-only, legacy matched, and mismatch states
 ```
 
 Alert when:
@@ -512,7 +516,7 @@ Alert when:
 - a month-close summary remains unready or requires an explicit repair;
 - page identity collisions occur;
 - OwnerUin differs from the configured source;
-- month-close list or net totals do not reconcile;
+- month-close net total does not reconcile;
 - Tencent API throttling/retry exhaustion occurs.
 
 ## Tests
@@ -582,7 +586,7 @@ mutation rollout. It does not block importing general Tencent resource cost.
 - Restart resumes from the last committed page and page replay cannot duplicate cost.
 - Completed stable days are not fully reread unless a D+5 or month-close check finds a discrepancy.
 - No normal path deletes or replaces a month or day.
-- Tencent source totals reconcile in CNY.
+- Tencent billed (`RealTotalCost`) totals reconcile in CNY.
 - Existing vendor totals remain USD.
 - No dimension hash, grouping, conservation check, or publication total combines currencies before
   conversion.

@@ -813,11 +813,7 @@ def _reconcile_closed_months(
         if (
             record.get("status") == "mismatch"
             and record.get("summary_ready") is not False
-            and _same_imported_month_totals(
-                record,
-                imported_list=imported_list,
-                imported_net=imported_net,
-            )
+            and record.get("imported_net_cost") == _decimal_text(imported_net)
         ):
             month = _next_month(month)
             continue
@@ -841,18 +837,13 @@ def _reconcile_closed_months(
             month = _next_month(month)
             continue
 
-        mismatches = []
-        if summary.total_cost is not None and imported_list != summary.total_cost:
-            mismatches.append(f"list {imported_list} != {summary.total_cost}")
-        if imported_net != summary.real_total_cost:
-            mismatches.append(f"net {imported_net} != {summary.real_total_cost}")
-        matched = not mismatches
+        # Tencent's organization detail API exposes ComponentSet.Cost but not a
+        # detail-level TotalCost. Production validation showed its component sum is
+        # not comparable to DescribeBillSummaryForOrganization.TotalCost; RealCost
+        # does match RealTotalCost exactly and is the billed amount we publish.
+        matched = imported_net == summary.real_total_cost
         reconciled[month_key] = {
-            "status": (
-                "matched-real-cost-only"
-                if matched and summary.total_cost is None
-                else "matched" if matched else "mismatch"
-            ),
+            "status": "matched-real-cost-only" if matched else "mismatch",
             "source_total_cost": (
                 _decimal_text(summary.total_cost) if summary.total_cost is not None else None
             ),
@@ -866,7 +857,7 @@ def _reconcile_closed_months(
         if not matched:
             raise ValueError(
                 f"Tencent month-close reconciliation failed for {month_key}: "
-                f"{', '.join(mismatches)}; explicit repair required"
+                f"net {imported_net} != {summary.real_total_cost}; explicit repair required"
             )
         LOG.info(
             "Tencent month-close reconciliation matched",
@@ -944,18 +935,6 @@ def _month_precedes_coverage(month: date, coverage_start: date | None) -> bool:
         return False
     coverage_month = coverage_start.replace(day=1)
     return month < coverage_month or (month == coverage_month and coverage_start.day != 1)
-
-
-def _same_imported_month_totals(
-    record: dict[str, Any],
-    *,
-    imported_list: Decimal,
-    imported_net: Decimal,
-) -> bool:
-    return (
-        record.get("imported_list_cost") == _decimal_text(imported_list)
-        and record.get("imported_net_cost") == _decimal_text(imported_net)
-    )
 
 
 def _fetch_month_summary_with_retry(
