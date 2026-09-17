@@ -90,6 +90,11 @@ def test_eq_chargeback_uses_native_direct_list_cost_and_keeps_daily_account_boun
     assert sum((row["list_cost"] for row in rows), Decimal()) == Decimal("170.00")
 
 
+def test_kubernetes_staging_queries_are_explicitly_usd() -> None:
+    assert "'USD' AS currency" in str(materialize_cost_allocations._SELECT_KUBERNETES)
+    assert "'USD' AS currency" in str(materialize_cost_allocations._SELECT_KUBERNETES_SOURCES)
+
+
 def test_eq_chargeback_preserves_grouped_kubernetes_source_lineage() -> None:
     grouped = {
         **_fact(group_id=1, list_cost="100.00", source_scope="gke_residual"),

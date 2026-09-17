@@ -367,10 +367,11 @@ def _normalize_summary_row(
     if normalized["usage_date"] is None:
         raise ValueError(f"Missing usage_date in billing summary row: {row!r}")
     normalized["is_split_source"] = is_split_source
+    source_row_hash = str(row.get("source_row_hash") or "")
+    if preserve_source_row_hash and not source_row_hash:
+        raise ValueError(f"Missing source_row_hash in billing summary row: {row!r}")
     normalized["source_row_hash"] = (
-        str(row["source_row_hash"])
-        if preserve_source_row_hash
-        else build_summary_row_hash(normalized)
+        source_row_hash if preserve_source_row_hash else build_summary_row_hash(normalized)
     )
     return normalized
 

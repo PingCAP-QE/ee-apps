@@ -890,7 +890,8 @@ _SELECT_MATERIALIZED_TOTALS = text(
 )
 _SELECT_KUBERNETES = text(
     """
-    SELECT usage_date, vendor, account_id, cluster_location, allocation_scope,
+    -- Kubernetes allocation staging is USD-only until a non-USD collector is added.
+    SELECT usage_date, vendor, account_id, 'USD' AS currency, cluster_location, allocation_scope,
       namespace, workload_name, workload_type, author, org, repo, target_branch,
       list_cost, allocation_weight, allocation_method, dimension_hash,
       source_summary_row_hash, allocation_group_hash
@@ -901,7 +902,8 @@ _SELECT_KUBERNETES = text(
 )
 _SELECT_KUBERNETES_SOURCES = text(
     """
-    SELECT usage_date, vendor, account_id, source_summary_row_hash,
+    -- Kubernetes allocation staging is USD-only until a non-USD collector is added.
+    SELECT usage_date, vendor, account_id, 'USD' AS currency, source_summary_row_hash,
       allocation_group_hash, source_list_cost
     FROM cost_kubernetes_workload_allocation_source_daily
     WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id

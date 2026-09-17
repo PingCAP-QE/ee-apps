@@ -424,6 +424,23 @@ def test_resource_read_is_native_only() -> None:
     assert result["meta"]["pending_dates"] == ["2026-08-10"]
 
 
+def test_missing_serving_currency_returns_pending() -> None:
+    engine = _engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE cost_resource_serving_daily"))
+            connection.execute(
+                text("CREATE TABLE cost_resource_serving_daily (id INTEGER PRIMARY KEY)")
+            )
+
+        result = get_unmatched_resources(engine, _filters())
+
+        assert result["items"] == []
+        assert result["meta"]["pending_dates"] == ["2026-08-10"]
+    finally:
+        engine.dispose()
+
+
 def test_publication_without_its_serving_rows_returns_pending() -> None:
     engine = _engine()
     with engine.begin() as connection:

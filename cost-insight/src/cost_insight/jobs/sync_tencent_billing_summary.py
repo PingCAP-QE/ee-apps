@@ -737,10 +737,7 @@ def _reconcile_closed_months(
         usage_bounds = connection.execute(
             text(
                 """
-                SELECT
-                  MIN(usage_date) AS min_usage_date,
-                  MAX(usage_date) AS max_usage_date,
-                  MIN(export_partition_date) AS min_export_partition_date
+                SELECT MIN(usage_date) AS min_usage_date, MAX(usage_date) AS max_usage_date
                 FROM cost_bq_export_summary_daily
                 WHERE vendor = 'tencent' AND account_id = :account_id
                 """
@@ -753,11 +750,7 @@ def _reconcile_closed_months(
         return
 
     reconciled = dict(watermark.get("reconciled_months") or {})
-    coverage_starts = (
-        _as_date(watermark.get("first_completed_bill_day")),
-        _as_date(usage_bounds["min_export_partition_date"]),
-    )
-    coverage_start = min(value for value in coverage_starts if value is not None)
+    scheduled_coverage_start = _as_date(watermark.get("first_completed_bill_day"))
     beijing_now = now.astimezone(_BEIJING)
     month = min_usage.replace(day=1)
     last_month = max_usage.replace(day=1)
@@ -770,22 +763,6 @@ def _reconcile_closed_months(
         if record.get("status") in _MATCHED_MONTH_STATUSES:
             month = _next_month(month)
             continue
-        if (
-            record.get("status") == "partial-coverage"
-            and record.get("coverage_start") == coverage_start.isoformat()
-        ):
-            month = _next_month(month)
-            continue
-        if _month_precedes_coverage(month, coverage_start):
-            reconciled[month_key] = {
-                "status": "partial-coverage",
-                "coverage_start": coverage_start.isoformat(),
-            }
-            watermark["reconciled_months"] = reconciled
-            with engine.begin() as connection:
-                state_store.checkpoint_job_watermark(connection, state_job_name, watermark)
-            month = _next_month(month)
-            continue
 
         with engine.begin() as connection:
             imported = connection.execute(
@@ -793,7 +770,8 @@ def _reconcile_closed_months(
                     """
                     SELECT
                       COALESCE(SUM(list_cost), 0) AS list_cost,
-                      COALESCE(SUM(net_cost), 0) AS net_cost
+                      COALESCE(SUM(net_cost), 0) AS net_cost,
+                      MIN(export_partition_date) AS first_export_partition_date
                     FROM cost_bq_export_summary_daily
                     WHERE vendor = 'tencent'
                       AND account_id = :account_id
@@ -808,10 +786,36 @@ def _reconcile_closed_months(
             ).mappings().one()
         imported_list = _as_decimal(imported["list_cost"])
         imported_net = _as_decimal(imported["net_cost"])
-        if record.get("status") == "mismatch" and _same_imported_month_totals(
-            record,
-            imported_list=imported_list,
-            imported_net=imported_net,
+        coverage_start = _month_coverage_start(
+            month,
+            scheduled_coverage_start=scheduled_coverage_start,
+            first_export_partition_date=_as_date(imported["first_export_partition_date"]),
+        )
+        coverage_start_text = coverage_start.isoformat() if coverage_start is not None else None
+        if (
+            record.get("status") == "partial-coverage"
+            and record.get("coverage_start") == coverage_start_text
+        ):
+            month = _next_month(month)
+            continue
+        if coverage_start is None or _month_precedes_coverage(month, coverage_start):
+            reconciled[month_key] = {
+                "status": "partial-coverage",
+                "coverage_start": coverage_start_text,
+            }
+            watermark["reconciled_months"] = reconciled
+            with engine.begin() as connection:
+                state_store.checkpoint_job_watermark(connection, state_job_name, watermark)
+            month = _next_month(month)
+            continue
+        if (
+            record.get("status") == "mismatch"
+            and record.get("summary_ready") is not False
+            and _same_imported_month_totals(
+                record,
+                imported_list=imported_list,
+                imported_net=imported_net,
+            )
         ):
             month = _next_month(month)
             continue
@@ -867,6 +871,18 @@ def _reconcile_closed_months(
             extra={"month": month_key, **reconciled[month_key]},
         )
         month = _next_month(month)
+
+
+def _month_coverage_start(
+    month: date,
+    *,
+    scheduled_coverage_start: date | None,
+    first_export_partition_date: date | None,
+) -> date | None:
+    starts = [first_export_partition_date]
+    if scheduled_coverage_start is not None and scheduled_coverage_start <= _month_end(month):
+        starts.append(scheduled_coverage_start)
+    return min(start for start in starts if start is not None) if any(starts) else None
 
 
 def _month_precedes_coverage(month: date, coverage_start: date | None) -> bool:

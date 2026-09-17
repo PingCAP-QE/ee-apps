@@ -392,14 +392,15 @@ TotalCost      ↔ SUM(list_cost)
 RealTotalCost  ↔ SUM(net_cost)
 ```
 
-Use `Decimal`, not binary floating point. Coverage starts at the earlier of the scheduled job's
-first completed day and the earliest stored Tencent `export_partition_date`, so an approved range
-backfill can make an earlier month eligible. Skip a month whose coverage begins after its first day.
-If `Ready=0`, record a non-fatal `unready` result so a later schedule retries it. If Tencent returns
-`TotalCost="-"`, reconcile `RealTotalCost` only and record that reduced check explicitly. A mismatch
-fails once and is retried only after an explicit repair changes the stored monthly totals. If
-available totals match, perform no detail reads or writes. Do not make a full monthly detail scan
-part of the normal schedule.
+Use `Decimal`, not binary floating point. For each month, coverage starts from the scheduled job's
+first completed day when it predates that month, or from that month's earliest stored Tencent
+`export_partition_date`; an approved range backfill can therefore make only its own earlier month
+eligible. Skip a month whose coverage begins after its first day. If `Ready=0`, record a non-fatal
+`unready` result so a later schedule retries it. If Tencent returns `TotalCost="-"`, reconcile
+`RealTotalCost` only and record that reduced check explicitly. A mismatch fails once and is retried
+only after an explicit repair changes the stored monthly totals, except that an intervening
+unready summary is probed again on the next schedule. If available totals match, perform no detail
+reads or writes. Do not make a full monthly detail scan part of the normal schedule.
 
 ## Relationship to existing vendor collectors
 

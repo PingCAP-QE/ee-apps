@@ -2036,8 +2036,10 @@ def _get_published_unmatched_resources(
                 or _parse_date(source["source_available_from"]) <= usage_date
             )
         }
-        has_serving_tables = _table_exists(connection, "cost_resource_serving_daily") and _table_exists(
-            connection, "cost_resource_serving_publication"
+        has_serving_tables = (
+            _table_exists(connection, "cost_resource_serving_daily")
+            and _table_exists(connection, "cost_resource_serving_publication")
+            and _table_has_column(connection, "cost_resource_serving_daily", "currency")
         )
         publication_rows: dict[tuple[str, str, date], Mapping[str, Any]] = {}
         if has_serving_tables and expected_dates:

@@ -5,6 +5,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import create_engine, text
 
+from cost_insight.jobs import materialize_resource_serving as job
 from cost_insight.jobs.materialize_resource_serving import (
     build_resource_serving_rows,
     run_materialize_resource_serving,
@@ -413,6 +414,21 @@ _SCHEMA = (
     )
     """,
 )
+
+
+def test_serving_schema_requires_currency() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    try:
+        with engine.begin() as connection:
+            for statement in _SCHEMA:
+                if "CREATE TABLE cost_resource_serving_daily" in statement:
+                    statement = statement.replace(
+                        ", currency TEXT NOT NULL DEFAULT 'USD'", ""
+                    )
+                connection.execute(text(statement))
+        assert not job._serving_schema_ready(engine)
+    finally:
+        engine.dispose()
 
 
 def test_serving_identity_and_conservation_separate_currencies() -> None:

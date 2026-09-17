@@ -395,6 +395,7 @@ def _serving_schema_ready(engine: Engine) -> bool:
                 ("cost_unmatched_resource_daily", "resource_id"),
                 ("cost_resource_serving_daily", "resource_id"),
                 ("cost_resource_serving_daily", "project"),
+                ("cost_resource_serving_daily", "currency"),
             )
         )
 

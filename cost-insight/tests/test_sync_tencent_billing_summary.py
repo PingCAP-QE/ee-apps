@@ -13,6 +13,7 @@ from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_tencent_billing_summary import (
     JOB_NAME,
     SyncTencentBillingSummaryResult,
+    _month_coverage_start,
     _same_completion_evidence,
     run_sync_tencent_billing_summary,
 )
@@ -674,6 +675,21 @@ def test_d5_persistently_smaller_total_uses_read_only_confirmation() -> None:
         engine.dispose()
 
 
+def test_month_coverage_uses_the_current_month_partition() -> None:
+    scheduled_start = date(2026, 9, 1)
+
+    assert _month_coverage_start(
+        date(2026, 8, 1),
+        scheduled_coverage_start=scheduled_start,
+        first_export_partition_date=date(2026, 8, 1),
+    ) == date(2026, 8, 1)
+    assert _month_coverage_start(
+        date(2026, 10, 1),
+        scheduled_coverage_start=scheduled_start,
+        first_export_partition_date=None,
+    ) == scheduled_start
+
+
 def test_completion_evidence_tolerates_summary_column_precision() -> None:
     evidence = {
         "outer_row_count": 1,
@@ -896,6 +912,22 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
             )
         assert watermark["reconciled_months"]["2026-08"]["status"] == "mismatch"
         assert watermark["reconciled_months"]["2026-08"]["source_total_cost"] == "9.99"
+        assert watermark["reconciled_months"]["2026-08"]["summary_ready"] is False
+
+        not_ready = False
+        with pytest.raises(ValueError, match="month-close reconciliation failed"):
+            run_sync_tencent_billing_summary(
+                engine,
+                settings=TencentBillingSettings(
+                    account_id=ACCOUNT_ID,
+                    earliest_bill_day=date(2026, 8, 1),
+                ),
+                now=datetime(2026, 9, 11, 6, tzinfo=UTC),
+                fetch_page=lambda **kwargs: pytest.fail("no page fetch expected"),
+                fetch_month_summary=fetch_summary,
+                sleep=lambda _seconds: None,
+            )
+        assert calls == ["2026-08", "2026-08", "2026-08"]
 
         with engine.begin() as connection:
             connection.execute(
@@ -908,7 +940,6 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
                 ),
                 {"account_id": ACCOUNT_ID},
             )
-        not_ready = False
         run_sync_tencent_billing_summary(
             engine,
             settings=TencentBillingSettings(
@@ -920,7 +951,7 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
             fetch_month_summary=fetch_summary,
             sleep=lambda _seconds: None,
         )
-        assert calls == ["2026-08", "2026-08", "2026-08"]
+        assert calls == ["2026-08", "2026-08", "2026-08", "2026-08"]
         with engine.connect() as connection:
             watermark = json.loads(
                 connection.execute(
