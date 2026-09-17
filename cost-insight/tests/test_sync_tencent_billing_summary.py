@@ -883,6 +883,32 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
         )
         assert calls == ["2026-08"]
 
+        # ComponentSet.Cost is observational at month close: changing it alone
+        # must not re-open a previously recorded net-cost mismatch.
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_bq_export_summary_daily
+                    SET list_cost = 8, effective_cost = 8
+                    WHERE vendor = 'tencent' AND account_id = :account_id
+                    """
+                ),
+                {"account_id": ACCOUNT_ID},
+            )
+        run_sync_tencent_billing_summary(
+            engine,
+            settings=TencentBillingSettings(
+                account_id=ACCOUNT_ID,
+                earliest_bill_day=date(2026, 8, 1),
+            ),
+            now=datetime(2026, 9, 11, 6, tzinfo=UTC),
+            fetch_page=lambda **kwargs: pytest.fail("no page fetch expected"),
+            fetch_month_summary=fetch_summary,
+            sleep=lambda _seconds: None,
+        )
+        assert calls == ["2026-08"]
+
         with engine.begin() as connection:
             connection.execute(
                 text(

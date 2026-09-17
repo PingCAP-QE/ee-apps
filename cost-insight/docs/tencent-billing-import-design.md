@@ -506,7 +506,7 @@ last PayTime
 completion timestamp
 D+5 verification status and observed Total
 first_completed_bill_day
-reconciled_months, including partial-coverage, unready, matched, and mismatch states
+reconciled_months, including partial-coverage, unready, matched-real-cost-only, legacy matched, and mismatch states
 ```
 
 Alert when:
