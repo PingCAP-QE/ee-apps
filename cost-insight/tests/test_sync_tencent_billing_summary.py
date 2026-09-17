@@ -712,15 +712,16 @@ def test_completion_evidence_tolerates_summary_column_precision() -> None:
 
 
 @pytest.mark.parametrize(
-    ("source_total", "expected_status", "expected_source_total"),
+    ("source_total", "expected_source_total"),
     [
-        (Decimal("4.0"), "matched", "4"),
-        (None, "matched-real-cost-only", None),
+        (Decimal("4.0"), "4"),
+        # Detail ComponentSet.Cost need not equal the organization summary TotalCost.
+        (Decimal("9.99"), "9.99"),
+        (None, None),
     ],
 )
-def test_scheduled_run_reconciles_closed_month_with_single_summary_request(
+def test_scheduled_run_reconciles_closed_month_real_cost_with_single_summary_request(
     source_total,
-    expected_status: str,
     expected_source_total: str | None,
 ) -> None:
     engine = _engine()
@@ -789,7 +790,7 @@ def test_scheduled_run_reconciles_closed_month_with_single_summary_request(
                 ).scalar_one()
             )
         month_evidence = watermark["reconciled_months"]["2026-08"]
-        assert month_evidence["status"] == expected_status
+        assert month_evidence["status"] == "matched-real-cost-only"
         assert month_evidence["source_total_cost"] == expected_source_total
         assert month_evidence["imported_list_cost"] == "4"
         assert month_evidence["imported_net_cost"] == "3"
@@ -961,7 +962,7 @@ def test_month_close_mismatch_raises_once_and_skips_refetch_on_next_run() -> Non
                     {"name": job_name},
                 ).scalar_one()
             )
-        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched"
+        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched-real-cost-only"
     finally:
         engine.dispose()
 
@@ -1143,7 +1144,7 @@ def test_month_close_rechecks_partial_month_after_completed_range_backfill() -> 
                     {"name": job_name},
                 ).scalar_one()
             )
-        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched"
+        assert watermark["reconciled_months"]["2026-08"]["status"] == "matched-real-cost-only"
     finally:
         engine.dispose()
 

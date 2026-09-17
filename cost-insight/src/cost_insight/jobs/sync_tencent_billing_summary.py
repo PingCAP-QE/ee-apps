@@ -841,18 +841,16 @@ def _reconcile_closed_months(
             month = _next_month(month)
             continue
 
+        # Tencent's organization detail API exposes ComponentSet.Cost but not a
+        # detail-level TotalCost. Production validation showed its component sum is
+        # not comparable to DescribeBillSummaryForOrganization.TotalCost; RealCost
+        # does match RealTotalCost exactly and is the billed amount we publish.
         mismatches = []
-        if summary.total_cost is not None and imported_list != summary.total_cost:
-            mismatches.append(f"list {imported_list} != {summary.total_cost}")
         if imported_net != summary.real_total_cost:
             mismatches.append(f"net {imported_net} != {summary.real_total_cost}")
         matched = not mismatches
         reconciled[month_key] = {
-            "status": (
-                "matched-real-cost-only"
-                if matched and summary.total_cost is None
-                else "matched" if matched else "mismatch"
-            ),
+            "status": "matched-real-cost-only" if matched else "mismatch",
             "source_total_cost": (
                 _decimal_text(summary.total_cost) if summary.total_cost is not None else None
             ),
