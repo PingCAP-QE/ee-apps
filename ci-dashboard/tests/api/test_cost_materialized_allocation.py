@@ -12,7 +12,7 @@ def test_cost_trend_reads_native_attribution_only() -> None:
             CREATE TABLE cost_attribution_daily (
               usage_date TEXT, vendor TEXT, account_id TEXT, target_branch TEXT,
               sku_name TEXT, list_cost REAL, effective_cost REAL, net_cost REAL,
-              attribution_status TEXT
+              currency TEXT NOT NULL DEFAULT 'USD', attribution_status TEXT
             )
         """))
         connection.execute(text("""
@@ -24,7 +24,7 @@ def test_cost_trend_reads_native_attribution_only() -> None:
         """))
         connection.execute(text("""
             INSERT INTO cost_attribution_daily VALUES
-              ('2026-08-10', 'gcp', 'project-1', NULL, 'sku', 10, 10, 10, 'matched')
+              ('2026-08-10', 'gcp', 'project-1', NULL, 'sku', 10, 10, 10, 'USD', 'matched')
         """))
 
     result = get_cost_trend(engine, CommonFilters(
@@ -36,6 +36,31 @@ def test_cost_trend_reads_native_attribution_only() -> None:
     assert result["meta"]["summary"]["net_cost"] == 10
 
 
+def test_cost_trend_converts_cny_to_usd_before_aggregation() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE cost_attribution_daily (
+              usage_date TEXT, vendor TEXT, account_id TEXT, target_branch TEXT,
+              sku_name TEXT, list_cost REAL, effective_cost REAL, net_cost REAL,
+              currency TEXT NOT NULL DEFAULT 'USD', attribution_status TEXT
+            )
+        """))
+        connection.execute(text("""
+            INSERT INTO cost_attribution_daily VALUES
+              ('2026-08-10', 'gcp', 'project-1', NULL, 'sku', 10, 10, 10, 'USD', 'matched'),
+              ('2026-08-10', 'tencent', 'account-1', NULL, 'sku', 65, 65, 65, 'CNY', 'matched')
+        """))
+
+    result = get_cost_trend(engine, CommonFilters(
+        start_date=date(2026, 8, 10), end_date=date(2026, 8, 10), granularity="week"
+    ))
+
+    assert result["meta"]["summary"]["list_cost"] == 20
+    assert result["meta"]["summary"]["effective_cost"] == 20
+    assert result["meta"]["summary"]["net_cost"] == 20
+
+
 def test_cost_trend_aggregates_resource_coverage_with_trend_rows() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     with engine.begin() as connection:
@@ -43,7 +68,7 @@ def test_cost_trend_aggregates_resource_coverage_with_trend_rows() -> None:
             CREATE TABLE cost_attribution_daily (
               usage_date TEXT, vendor TEXT, account_id TEXT, target_branch TEXT,
               sku_name TEXT, list_cost REAL, effective_cost REAL, net_cost REAL,
-              attribution_status TEXT
+              currency TEXT NOT NULL DEFAULT 'USD', attribution_status TEXT
             )
         """))
         connection.execute(text("""

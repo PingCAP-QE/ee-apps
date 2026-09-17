@@ -98,6 +98,7 @@ def _sqlite_engine():
                   effective_cost REAL,
                   credit_amount REAL,
                   net_cost REAL,
+                  currency TEXT NOT NULL DEFAULT 'USD',
                   source_export_time TEXT,
                   source_row_hash TEXT NOT NULL,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -363,6 +364,26 @@ def test_run_sync_gcp_billing_summary_rejects_invalid_scoped_replacement() -> No
             )
     finally:
         engine.dispose()
+
+
+def test_normalize_summary_row_rejects_missing_preserved_identity() -> None:
+    with pytest.raises(ValueError, match="Missing source_row_hash"):
+        _normalize_summary_row(_summary_row(), preserve_source_row_hash=True)
+
+
+def test_normalize_summary_row_can_preserve_source_specific_identity() -> None:
+    normalized = _normalize_summary_row(
+        {**_summary_row(), "source_row_hash": "tencent-stable-hash"},
+        preserve_source_row_hash=True,
+    )
+
+    assert normalized["source_row_hash"] == "tencent-stable-hash"
+
+
+@pytest.mark.parametrize("currency", ["EUR", "US"])
+def test_normalize_summary_row_rejects_unsupported_currency(currency: str) -> None:
+    with pytest.raises(ValueError, match="Unsupported billing currency"):
+        _normalize_summary_row({**_summary_row(), "currency": currency})
 
 
 def test_replace_summary_usage_dates_keeps_existing_rows_for_empty_source() -> None:

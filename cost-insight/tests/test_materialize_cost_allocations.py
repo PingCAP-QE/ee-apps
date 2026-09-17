@@ -90,6 +90,11 @@ def test_eq_chargeback_uses_native_direct_list_cost_and_keeps_daily_account_boun
     assert sum((row["list_cost"] for row in rows), Decimal()) == Decimal("170.00")
 
 
+def test_kubernetes_staging_queries_are_explicitly_usd() -> None:
+    assert "'USD' AS currency" in str(materialize_cost_allocations._SELECT_KUBERNETES)
+    assert "'USD' AS currency" in str(materialize_cost_allocations._SELECT_KUBERNETES_SOURCES)
+
+
 def test_eq_chargeback_preserves_grouped_kubernetes_source_lineage() -> None:
     grouped = {
         **_fact(group_id=1, list_cost="100.00", source_scope="gke_residual"),
@@ -615,7 +620,7 @@ _MATERIALIZE_SCHEMA = (
       attribution_key TEXT, attribution_source TEXT, attribution_status TEXT,
       allocate_method TEXT, employee_id INTEGER, group_id INTEGER, manager_id INTEGER,
       usage_seconds REAL, list_cost REAL, effective_cost REAL, credit_amount REAL,
-      net_cost REAL, source_rows INTEGER, source_summary_row_hash TEXT, dimension_hash TEXT
+      net_cost REAL, currency TEXT NOT NULL DEFAULT 'USD', source_rows INTEGER, source_summary_row_hash TEXT, dimension_hash TEXT
     )
     """,
     """
@@ -644,7 +649,7 @@ _MATERIALIZE_SCHEMA = (
       attribution_source TEXT, attribution_status TEXT, allocate_method TEXT,
       employee_id INTEGER, group_id INTEGER, manager_id INTEGER, usage_seconds REAL,
       list_cost REAL, effective_cost REAL, credit_amount REAL, net_cost REAL,
-      source_rows INTEGER, source_summary_row_hash TEXT, source_fact_hash TEXT,
+      currency TEXT NOT NULL DEFAULT 'USD', source_rows INTEGER, source_summary_row_hash TEXT, source_fact_hash TEXT,
       source_owner TEXT, source_group_id INTEGER, source_manager_id INTEGER,
       target_group_id INTEGER, target_manager_id INTEGER, allocation_scope TEXT,
       allocation_method TEXT, allocation_weight REAL, roster_resolved_at TEXT,
@@ -657,3 +662,66 @@ _MATERIALIZE_SCHEMA = (
     )
     """,
 )
+
+
+def test_dimension_hash_separates_currencies() -> None:
+    base = {
+        "usage_date": date(2026, 8, 10),
+        "vendor": "tencent",
+        "account_id": "account-1",
+        "basis_key": "eq_allocated",
+        "allocation_version": "v1",
+    }
+
+    assert materialize_cost_allocations._dimension_hash(
+        {**base, "currency": "CNY"}
+    ) != materialize_cost_allocations._dimension_hash({**base, "currency": "USD"})
+    assert materialize_cost_allocations._dimension_hash(
+        base
+    ) == materialize_cost_allocations._dimension_hash({**base, "currency": "USD"})
+
+
+def test_assert_conserved_checks_each_currency_separately() -> None:
+    usd_source = (_fact(group_id=1, list_cost="30.00"),)
+    cny_output = ({**_fact(group_id=1, list_cost="30.00"), "currency": "CNY"},)
+    with pytest.raises(RuntimeError, match="conserve"):
+        materialize_cost_allocations._assert_conserved(usd_source, cny_output)
+
+
+def test_eq_chargeback_keeps_cny_within_cny_basis() -> None:
+    eq_source = {**_fact(group_id=1, list_cost="30.00"), "currency": "CNY"}
+    non_eq = {**_fact(group_id=2, list_cost="75.00"), "currency": "CNY"}
+    native = (eq_source, non_eq)
+
+    rows = build_eq_allocated_rows(
+        input_rows=native,
+        native_rows=native,
+        eq_group_ids={1},
+        group_managers={2: 20},
+        allocation_version="v1",
+        roster_resolved_at=datetime(2026, 8, 23),
+    )
+
+    assert {row["currency"] for row in rows} == {"CNY"}
+    materialize_cost_allocations._assert_conserved(native, rows)
+
+
+def test_eq_chargeback_does_not_cross_currencies() -> None:
+    eq_source = _fact(group_id=1, list_cost="30.00")
+    cny_basis = {**_fact(group_id=2, list_cost="75.00"), "currency": "CNY"}
+    native = (eq_source, cny_basis)
+
+    rows = build_eq_allocated_rows(
+        input_rows=native,
+        native_rows=native,
+        eq_group_ids={1},
+        group_managers={2: 20},
+        allocation_version="v1",
+        roster_resolved_at=datetime(2026, 8, 23),
+    )
+
+    charged = [row for row in rows if row["group_id"] == 2]
+    assert len(charged) == 1
+    assert charged[0]["allocation_method"] == "pass_through"
+    assert materialize_cost_allocations._currency(charged[0]) == "CNY"
+    materialize_cost_allocations._assert_conserved(native, rows)

@@ -572,7 +572,8 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
-                      net_cost REAL
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD'
                     )
                     """
                 )
@@ -614,6 +615,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                       effective_cost REAL,
                       credit_amount REAL,
                       net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD',
                       source_rows INTEGER,
                       dimension_hash TEXT,
                       source_summary_row_hash TEXT
@@ -815,7 +817,8 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
-                      net_cost REAL
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD'
                     )
                     """
                 )
@@ -858,6 +861,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       effective_cost REAL,
                       credit_amount REAL,
                       net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD',
                       source_rows INTEGER,
                       dimension_hash TEXT,
                       source_summary_row_hash TEXT
@@ -1439,7 +1443,8 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
-                      net_cost REAL
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD'
                     )
                     """
                 )
@@ -1482,6 +1487,7 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       effective_cost REAL,
                       credit_amount REAL,
                       net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD',
                       source_rows INTEGER,
                       dimension_hash TEXT,
                       source_summary_row_hash TEXT
@@ -1739,3 +1745,145 @@ def test_non_aws_summary_insert_uses_existing_statement() -> None:
     )
 
     assert statements == (_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,)
+
+
+def test_attribution_carries_currency_and_separates_dimension_hashes() -> None:
+    engine = _sqlite_engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE roster_employees (
+                      id INTEGER PRIMARY KEY, email TEXT, github_id TEXT,
+                      en_name TEXT, group_id INTEGER, manager_id INTEGER
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE roster_groups (
+                      id INTEGER PRIMARY KEY, is_active INTEGER, manager_id INTEGER
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cost_bq_export_summary_daily (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      usage_date TEXT NOT NULL,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT NOT NULL,
+                      service_name TEXT,
+                      sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
+                      region TEXT,
+                      org TEXT,
+                      repo TEXT,
+                      target_branch TEXT,
+                      resource_name TEXT,
+                      vendor_tags_json TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
+                      author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
+                      source_row_hash TEXT,
+                      list_cost REAL,
+                      effective_cost REAL,
+                      credit_amount REAL,
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD'
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cost_attribution_daily (
+                      usage_date TEXT NOT NULL,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT NOT NULL,
+                      service_name TEXT,
+                      sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
+                      region TEXT,
+                      org TEXT,
+                      repo TEXT,
+                      target_branch TEXT,
+                      resource_name TEXT,
+                      vendor_tags_json TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
+                      author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
+                      attribution_key TEXT,
+                      attribution_source TEXT,
+                      attribution_status TEXT,
+                      employee_id INTEGER,
+                      group_id INTEGER,
+                      manager_id INTEGER,
+                      usage_seconds REAL,
+                      list_cost REAL,
+                      effective_cost REAL,
+                      credit_amount REAL,
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD',
+                      source_rows INTEGER,
+                      dimension_hash TEXT,
+                      source_summary_row_hash TEXT
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      usage_date, vendor, account_id, author, list_cost,
+                      effective_cost, credit_amount, net_cost, currency, source_row_hash
+                    ) VALUES
+                      ('2026-08-16', 'gcp', 'pingcap-testing-account', 'alice',
+                       10, 10, 0, 10, 'CNY', 'summary-cny'),
+                      ('2026-08-16', 'gcp', 'pingcap-testing-account', 'alice',
+                       10, 10, 0, 10, 'USD', 'summary-usd')
+                    """
+                )
+            )
+
+        summary = run_refresh_cost_attribution_from_summary(
+            engine,
+            source=SOURCE,
+            start_date=date(2026, 8, 16),
+            end_date=date(2026, 8, 16),
+        )
+        assert summary.rows_inserted == 2
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT currency, net_cost, dimension_hash FROM cost_attribution_daily "
+                    "ORDER BY currency"
+                )
+            ).mappings().all()
+        assert [row["currency"] for row in rows] == ["CNY", "USD"]
+        assert [row["net_cost"] for row in rows] == [10.0, 10.0]
+        assert len({row["dimension_hash"] for row in rows}) == 2
+    finally:
+        engine.dispose()

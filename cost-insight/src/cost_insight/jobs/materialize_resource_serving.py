@@ -181,6 +181,13 @@ def _detail_or_fallback_contributions(
     calculated_at: datetime,
 ) -> list[dict[str, Any]]:
     source_list = _decimal(source.get("list_cost"))
+    source_currency = _currency(source)
+    for detail in details:
+        if _currency(detail) != source_currency:
+            raise RuntimeError(
+                "Unmatched resource detail currency differs from its source fact: "
+                f"{detail.get('currency')} != {source_currency}"
+            )
     detail_total = sum((_decimal(detail.get("list_cost")) for detail in details), Decimal())
     # A positive source cost can expose only the detail share that is actually
     # present.  Cap at one to retain conservation for late/corrected exports.
@@ -262,6 +269,7 @@ def _base_serving_row(
 ) -> dict[str, Any]:
     vendor = str(source.get("vendor") or "")
     account_id = str(source.get("account_id") or "")
+    currency = _currency(source)
     owner = str(source.get("owner") or "")
     source_identity = str(source.get("source_fact_hash") or source.get("dimension_hash") or "")
     if detail is not None:
@@ -270,9 +278,9 @@ def _base_serving_row(
         parent = str(detail.get("parent_resource_name") or "")
         service_name = detail.get("service_name") or source.get("service_name")
         group_identity = (
-            (vendor, account_id, resource_id)
+            (vendor, account_id, resource_id, currency)
             if resource_id is not None
-            else (vendor, account_id, resource_name, parent)
+            else (vendor, account_id, resource_name, parent, currency)
         )
         identity = (
             *group_identity,
@@ -292,6 +300,7 @@ def _base_serving_row(
             "attribution_fallback",
             source.get("group_id"),
             source.get("project"),
+            currency,
         )
         group_identity = identity
         labels = source.get("vendor_tags_json")
@@ -301,6 +310,7 @@ def _base_serving_row(
         "usage_date": source["usage_date"],
         "vendor": vendor,
         "account_id": account_id,
+        "currency": currency,
         "owner_key": _sha256(owner),
         "owner": owner,
         "group_id": source.get("group_id"),
@@ -344,6 +354,7 @@ def _aggregate_contributions(rows: Iterable[Mapping[str, Any]]) -> tuple[dict[st
             row["owner_key"],
             row["resource_key"],
             row.get("target_branch"),
+            _currency(row),
         )
         current = grouped.get(key)
         if current is None:
@@ -381,9 +392,13 @@ def _serving_schema_ready(engine: Engine) -> bool:
         return all(_table_exists(connection, table) for table in required_tables) and all(
             _table_has_column(connection, table, column)
             for table, column in (
+                ("cost_attribution_daily", "currency"),
                 ("cost_unmatched_resource_daily", "resource_id"),
+                ("cost_unmatched_resource_daily", "currency"),
                 ("cost_resource_serving_daily", "resource_id"),
                 ("cost_resource_serving_daily", "project"),
+                ("cost_resource_serving_daily", "currency"),
+                ("cost_resource_serving_publication", "currency"),
             )
         )
 
@@ -533,12 +548,18 @@ def _publish_window(
     account_id: str,
 ) -> None:
     with engine.begin() as connection:
+        currencies = {_currency(row) for row in rows}
+        if len(currencies) > 1:
+            raise ValueError(
+                f"Resource serving window mixes currencies: {sorted(currencies)}"
+            )
         params = {
             "basis_key": basis_key, "vendor": vendor, "account_id": account_id,
             "usage_date": usage_date, "materialization_version": materialization_version,
             "detail_list_cost": sum((_decimal(row.get("detail_list_cost")) for row in rows), Decimal()),
             "total_list_cost": sum((_decimal(row.get("list_cost")) for row in source_rows), Decimal()),
             "source_row_count": sum((int(row.get("source_rows") or 1) for row in source_rows)),
+            "currency": next(iter(currencies), "USD"),
         }
         connection.execute(
             _UPSERT_PUBLICATION_SQLITE if connection.dialect.name == "sqlite" else _UPSERT_PUBLICATION_MYSQL,
@@ -549,11 +570,20 @@ def _publish_window(
 def _assert_conserved(source_rows: Iterable[Mapping[str, Any]], serving_rows: Iterable[Mapping[str, Any]]) -> None:
     source = tuple(source_rows)
     serving = tuple(serving_rows)
-    for amount in _AMOUNTS:
-        expected = sum((_decimal(row.get(amount)) for row in source), Decimal())
-        actual = sum((_decimal(row.get(amount)) for row in serving), Decimal())
-        if abs(expected - actual) > _AMOUNT_QUANTUM:
-            raise RuntimeError(f"Resource serving does not conserve {amount}: {expected} != {actual}")
+    for currency in sorted({_currency(row) for row in source} | {_currency(row) for row in serving}):
+        for amount in _AMOUNTS:
+            expected = sum(
+                (_decimal(row.get(amount)) for row in source if _currency(row) == currency),
+                Decimal(),
+            )
+            actual = sum(
+                (_decimal(row.get(amount)) for row in serving if _currency(row) == currency),
+                Decimal(),
+            )
+            if abs(expected - actual) > _AMOUNT_QUANTUM:
+                raise RuntimeError(
+                    f"Resource serving does not conserve {currency} {amount}: {expected} != {actual}"
+                )
     expected_list = sum((_decimal(row.get("list_cost")) for row in serving), Decimal())
     components = sum((_decimal(row.get("detail_list_cost")) + _decimal(row.get("fallback_list_cost")) for row in serving), Decimal())
     if abs(expected_list - components) > _AMOUNT_QUANTUM:
@@ -562,6 +592,10 @@ def _assert_conserved(source_rows: Iterable[Mapping[str, Any]], serving_rows: It
 
 def _decimal(value: Any) -> Decimal:
     return _decimal_or_none(value) or Decimal()
+
+
+def _currency(row: Mapping[str, Any]) -> str:
+    return str(row.get("currency") or "USD").upper()
 
 
 def _decimal_or_none(value: Any) -> Decimal | None:
@@ -595,7 +629,7 @@ ORDER BY usage_date
 _SOURCE_COLUMNS = """
 usage_date, vendor, account_id, service_name, sku_name, region, org, repo, project, target_branch,
 resource_name, vendor_tags_json, owner, group_id, manager_id, usage_seconds,
-effective_cost, credit_amount, net_cost, source_rows, source_summary_row_hash
+effective_cost, credit_amount, net_cost, currency, source_rows, source_summary_row_hash
 """
 _NATIVE_SOURCES = text(f"""
 SELECT {_SOURCE_COLUMNS},
@@ -611,7 +645,7 @@ ORDER BY dimension_hash
 """)
 _DETAIL_ROWS = text("""
 SELECT source_summary_row_hash, resource_name, resource_id, parent_resource_name, service_name,
-  vendor_tags_json, usage_seconds, list_cost
+  vendor_tags_json, usage_seconds, list_cost, currency
 FROM cost_unmatched_resource_daily
 WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
   AND source_summary_row_hash IS NOT NULL AND source_summary_row_hash <> ''
@@ -628,40 +662,40 @@ INSERT INTO cost_resource_serving_daily (
   group_id, manager_id, project, target_branch, resource_group_key, resource_key, resource_name, resource_id,
   service_name, resource_identity_kind, representative_labels_json, metadata_variant_count,
   detail_list_cost, fallback_list_cost, usage_seconds, list_cost, effective_cost, credit_amount,
-  net_cost, source_row_count, calculated_at
+  net_cost, currency, source_row_count, calculated_at
 ) VALUES (
   :materialization_version, :basis_key, :usage_date, :vendor, :account_id, :owner_key, :owner,
   :group_id, :manager_id, :project, :target_branch, :resource_group_key, :resource_key, :resource_name, :resource_id,
   :service_name, :resource_identity_kind, :representative_labels_json, :metadata_variant_count,
   :detail_list_cost, :fallback_list_cost, :usage_seconds, :list_cost, :effective_cost, :credit_amount,
-  :net_cost, :source_row_count, :calculated_at
+  :net_cost, :currency, :source_row_count, :calculated_at
 )
 """)
 _UPSERT_PUBLICATION_SQLITE = text("""
 INSERT INTO cost_resource_serving_publication (
   basis_key, vendor, account_id, usage_date, active_materialization_version,
-  detail_list_cost, total_list_cost, source_row_count, tiflash_ready_at
+  detail_list_cost, total_list_cost, currency, source_row_count, tiflash_ready_at
 ) VALUES (
   :basis_key, :vendor, :account_id, :usage_date, :materialization_version,
-  :detail_list_cost, :total_list_cost, :source_row_count, NULL
+  :detail_list_cost, :total_list_cost, :currency, :source_row_count, NULL
 )
 ON CONFLICT(basis_key, vendor, account_id, usage_date) DO UPDATE SET
   active_materialization_version = excluded.active_materialization_version,
   detail_list_cost = excluded.detail_list_cost, total_list_cost = excluded.total_list_cost,
-  source_row_count = excluded.source_row_count, published_at = CURRENT_TIMESTAMP,
-  tiflash_ready_at = NULL
+  currency = excluded.currency, source_row_count = excluded.source_row_count,
+  published_at = CURRENT_TIMESTAMP, tiflash_ready_at = NULL
 """)
 _UPSERT_PUBLICATION_MYSQL = text("""
 INSERT INTO cost_resource_serving_publication (
   basis_key, vendor, account_id, usage_date, active_materialization_version,
-  detail_list_cost, total_list_cost, source_row_count, tiflash_ready_at
+  detail_list_cost, total_list_cost, currency, source_row_count, tiflash_ready_at
 ) VALUES (
   :basis_key, :vendor, :account_id, :usage_date, :materialization_version,
-  :detail_list_cost, :total_list_cost, :source_row_count, NULL
+  :detail_list_cost, :total_list_cost, :currency, :source_row_count, NULL
 )
 ON DUPLICATE KEY UPDATE
   active_materialization_version = VALUES(active_materialization_version),
   detail_list_cost = VALUES(detail_list_cost), total_list_cost = VALUES(total_list_cost),
-  source_row_count = VALUES(source_row_count), published_at = CURRENT_TIMESTAMP,
-  tiflash_ready_at = NULL
+  currency = VALUES(currency), source_row_count = VALUES(source_row_count),
+  published_at = CURRENT_TIMESTAMP, tiflash_ready_at = NULL
 """)

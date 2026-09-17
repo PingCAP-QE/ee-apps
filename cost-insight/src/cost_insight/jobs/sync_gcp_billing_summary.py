@@ -36,6 +36,7 @@ LOG = logging.getLogger(__name__)
 JOB_NAME = "sync_gcp_billing_summary"
 OWNER_OVERRIDE_DELETE_CHUNK_SIZE = 1000
 SUMMARY_TABLE = "cost_bq_export_summary_daily"
+SUPPORTED_CURRENCIES = frozenset({"USD", "CNY"})
 _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 # usage_type and cost_driver_key are derived display fields, not source row identity.
 
@@ -311,7 +312,11 @@ def _select_billing_account_id(billing_account_ids: set[str]) -> str | None:
     return min(billing_account_ids)
 
 
-def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
+def _normalize_summary_row(
+    row: dict[str, Any],
+    *,
+    preserve_source_row_hash: bool = False,
+) -> dict[str, Any]:
     is_split_source = bool(row.get("source_schema_version")) or row.get(
         "source_allocation_scope"
     ) not in {None, "direct"}
@@ -345,6 +350,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "service": nullable_text(row.get("service")),
         "project": nullable_text(row.get("project")),
         "service_exec_id": nullable_text(row.get("service_exec_id")),
+        "currency": (nullable_text(row.get("currency")) or "USD").upper(),
         "list_cost": decimal_or_none(row.get("list_cost")),
         "effective_cost": decimal_or_none(row.get("effective_cost")),
         "credit_amount": decimal_or_none(row.get("credit_amount")),
@@ -352,6 +358,8 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "source_export_time": coerce_datetime(row.get("source_export_time")),
     }
     normalized["cost_driver_key"] = classify_cost_driver(normalized)
+    if normalized["currency"] not in SUPPORTED_CURRENCIES:
+        raise ValueError(f"Unsupported billing currency: {normalized['currency']!r}")
     if normalized["account_id"] is None:
         raise ValueError(f"Missing account_id in billing summary row: {row!r}")
     if normalized["export_partition_date"] is None:
@@ -359,7 +367,12 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
     if normalized["usage_date"] is None:
         raise ValueError(f"Missing usage_date in billing summary row: {row!r}")
     normalized["is_split_source"] = is_split_source
-    normalized["source_row_hash"] = build_summary_row_hash(normalized)
+    source_row_hash = str(row.get("source_row_hash") or "")
+    if preserve_source_row_hash and not source_row_hash:
+        raise ValueError(f"Missing source_row_hash in billing summary row: {row!r}")
+    normalized["source_row_hash"] = (
+        source_row_hash if preserve_source_row_hash else build_summary_row_hash(normalized)
+    )
     return normalized
 
 
@@ -792,6 +805,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
               effective_cost,
               credit_amount,
               net_cost,
+              currency,
               source_export_time,
               source_row_hash
             ) VALUES (
@@ -829,6 +843,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
               :effective_cost,
               :credit_amount,
               :net_cost,
+              :currency,
               :source_export_time,
               :source_row_hash
             )
@@ -844,7 +859,10 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           usage_type = excluded.usage_type,
           cost_driver_key = excluded.cost_driver_key,
           region = excluded.region,
+          author = excluded.author,
           org = excluded.org,
+          repo = excluded.repo,
+          target_branch = excluded.target_branch,
           resource_name = excluded.resource_name,
           vendor_tags_json = excluded.vendor_tags_json,
           source_schema_version = excluded.source_schema_version,
@@ -861,6 +879,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           service = excluded.service,
           project = excluded.project,
           service_exec_id = excluded.service_exec_id,
+          currency = excluded.currency,
           source_export_time = excluded.source_export_time,
           updated_at = CURRENT_TIMESTAMP
         """
@@ -902,6 +921,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           effective_cost,
           credit_amount,
           net_cost,
+          currency,
           source_export_time,
           source_row_hash
         ) VALUES (
@@ -939,6 +959,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           :effective_cost,
           :credit_amount,
           :net_cost,
+          :currency,
           :source_export_time,
           :source_row_hash
         )
@@ -954,7 +975,10 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           usage_type = VALUES(usage_type),
           cost_driver_key = VALUES(cost_driver_key),
           region = VALUES(region),
+          author = VALUES(author),
           org = VALUES(org),
+          repo = VALUES(repo),
+          target_branch = VALUES(target_branch),
           resource_name = VALUES(resource_name),
           vendor_tags_json = VALUES(vendor_tags_json),
           source_schema_version = VALUES(source_schema_version),
@@ -971,6 +995,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           service = VALUES(service),
           project = VALUES(project),
           service_exec_id = VALUES(service_exec_id),
+          currency = VALUES(currency),
           source_export_time = VALUES(source_export_time),
           updated_at = CURRENT_TIMESTAMP
         """

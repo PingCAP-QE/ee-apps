@@ -385,6 +385,7 @@ def _create_test_schema(engine: Engine) -> None:
           effective_cost REAL NULL,
           credit_amount REAL NULL,
           net_cost REAL NULL,
+          currency TEXT NOT NULL DEFAULT 'USD',
           source_rows INTEGER NOT NULL DEFAULT 0,
           dimension_hash TEXT NOT NULL,
           source_summary_row_hash TEXT NULL,
