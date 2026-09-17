@@ -937,7 +937,6 @@ def _month_precedes_coverage(month: date, coverage_start: date | None) -> bool:
     return month < coverage_month or (month == coverage_month and coverage_start.day != 1)
 
 
-
 def _fetch_month_summary_with_retry(
     fetch_month_summary: FetchMonthSummary,
     *,

@@ -404,7 +404,7 @@ makes a full backfill eligible even if its opening bill day has no rows. A month
 rows nor applicable scheduled/range coverage is recorded as `partial-coverage` with a null
 `coverage_start`; skip any month whose coverage begins after its first day. If `Ready=0`, record a
 non-fatal `unready` result so a later schedule retries it. A `RealTotalCost` mismatch fails once and
-is retried only after an explicit repair changes the stored monthly totals, except that an
+is retried only after an explicit repair changes the stored monthly net total, except that an
 intervening unready summary is probed again on the next schedule. If available totals match,
 perform no detail reads or writes. Do not make a full monthly detail scan part of the normal
 schedule.
