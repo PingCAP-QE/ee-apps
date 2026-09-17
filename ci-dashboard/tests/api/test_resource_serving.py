@@ -71,6 +71,7 @@ def _serving_row(
     fallback_list_cost: float = 0,
     group_id: int | None = None,
     project: str | None = None,
+    currency: str = "USD",
 ) -> None:
     connection.execute(
         text(
@@ -79,13 +80,14 @@ def _serving_row(
               materialization_version, basis_key, usage_date, vendor, account_id, owner_key, owner,
               group_id, project, target_branch, resource_group_key, resource_key, resource_name, resource_id, service_name,
               resource_identity_kind, representative_labels_json, metadata_variant_count,
-              detail_list_cost, fallback_list_cost, usage_seconds, list_cost, source_row_count
+              detail_list_cost, fallback_list_cost, usage_seconds, list_cost, currency,
+              source_row_count
             ) VALUES (
               'v1', 'native', :usage_date, 'gcp', 'project-1',
               'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', '',
               :group_id, :project, 'master', :resource_group_key, :resource_key, :resource_name, :resource_id, :service_name,
               'resource_detail', :labels, 1, :detail_list_cost, :fallback_list_cost,
-              :usage_seconds, :list_cost, 1
+              :usage_seconds, :list_cost, :currency, 1
             )
             """
         ),
@@ -103,6 +105,7 @@ def _serving_row(
             "project": project,
             "usage_seconds": usage_seconds,
             "list_cost": list_cost,
+            "currency": currency,
         },
     )
 
@@ -292,6 +295,10 @@ def test_resource_drilldown_aggregates_ids_labels_services_and_pages() -> None:
             "attribution_status": "",
             "usage_seconds": None,
             "list_cost": 3.0,
+            "display_currency": "USD",
+            "source_list_cost": 3.0,
+            "source_currency": "USD",
+            "cny_per_usd": None,
             "resource_data_source": "resource_detail",
             "resource_detail_cost": 3.0,
         }
@@ -318,6 +325,33 @@ def test_resource_drilldown_aggregates_ids_labels_services_and_pages() -> None:
     )
     assert duration_first_page["items"][0]["resource_id"] == "i-0123456789abcdef0"
     assert duration_second_page["items"][0]["resource_name"] == "bucket-name"
+
+
+def test_resource_drilldown_converts_cny_and_keeps_source_amount() -> None:
+    engine = _engine()
+    with engine.begin() as connection:
+        _publish(connection, "2026-08-10")
+        _serving_row(
+            connection,
+            usage_date="2026-08-10",
+            resource_group_key="tencent-resource",
+            resource_key="tencent-resource-1",
+            resource_name="eks-123",
+            resource_id="eks-123",
+            service_name="TKE Serverless",
+            labels=None,
+            usage_seconds=3600,
+            list_cost=65,
+            currency="CNY",
+        )
+
+    item = get_unmatched_resources(engine, _filters())["items"][0]
+
+    assert item["list_cost"] == 10
+    assert item["display_currency"] == "USD"
+    assert item["source_list_cost"] == 65
+    assert item["source_currency"] == "CNY"
+    assert item["cny_per_usd"] == 6.5
 
 
 def test_resource_drilldown_filters_project_and_team_scopes() -> None:
@@ -480,7 +514,8 @@ _SCHEMA = (
       resource_key TEXT, resource_name TEXT, resource_id TEXT, service_name TEXT,
       resource_identity_kind TEXT, representative_labels_json TEXT, metadata_variant_count INTEGER,
       detail_list_cost REAL, fallback_list_cost REAL, usage_seconds REAL, list_cost REAL,
-      effective_cost REAL, credit_amount REAL, net_cost REAL, source_row_count INTEGER
+      effective_cost REAL, credit_amount REAL, net_cost REAL,
+      currency TEXT NOT NULL DEFAULT 'USD', source_row_count INTEGER
     )
     """,
     """
@@ -492,7 +527,8 @@ _SCHEMA = (
     CREATE TABLE cost_resource_serving_publication (
       basis_key TEXT, vendor TEXT, account_id TEXT, usage_date TEXT,
       active_materialization_version TEXT, source_allocation_version TEXT,
-      detail_list_cost REAL, total_list_cost REAL, source_row_count INTEGER,
+      detail_list_cost REAL, total_list_cost REAL,
+      currency TEXT NOT NULL DEFAULT 'USD', source_row_count INTEGER,
       published_at TEXT, tiflash_ready_at TEXT,
       PRIMARY KEY (basis_key, vendor, account_id, usage_date)
     )

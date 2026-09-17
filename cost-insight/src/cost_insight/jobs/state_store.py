@@ -59,6 +59,41 @@ def mark_job_started(connection: Connection, job_name: str, watermark: dict[str,
     )
 
 
+def checkpoint_job_watermark(
+    connection: Connection,
+    job_name: str,
+    watermark: dict[str, Any],
+) -> None:
+    statement = (
+        text(
+            """
+            UPDATE cost_job_state
+            SET watermark_json = :watermark_json,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE job_name = :job_name
+            """
+        )
+        if connection.dialect.name == "sqlite"
+        else text(
+            """
+            UPDATE cost_job_state
+            SET watermark_json = CAST(:watermark_json AS JSON),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE job_name = :job_name
+            """
+        )
+    )
+    result = connection.execute(
+        statement,
+        {
+            "job_name": job_name,
+            "watermark_json": json.dumps(watermark, sort_keys=True),
+        },
+    )
+    if result.rowcount != 1:
+        raise ValueError(f"Cannot checkpoint missing job state: {job_name}")
+
+
 def mark_job_succeeded(connection: Connection, job_name: str, watermark: dict[str, Any]) -> None:
     _upsert_job_state(
         connection,

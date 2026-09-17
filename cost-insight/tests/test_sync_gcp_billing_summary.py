@@ -98,6 +98,7 @@ def _sqlite_engine():
                   effective_cost REAL,
                   credit_amount REAL,
                   net_cost REAL,
+                  currency TEXT NOT NULL DEFAULT 'USD',
                   source_export_time TEXT,
                   source_row_hash TEXT NOT NULL,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,

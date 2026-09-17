@@ -290,33 +290,42 @@ def publish_materialized_cost_allocations(
                 "allocation_version": allocation_version,
             }
             with engine.begin() as connection:
-                native = connection.execute(_SELECT_NATIVE_TOTALS, params).mappings().one()
-                if int(native["row_count"]) == 0:
+                native = tuple(
+                    connection.execute(_SELECT_NATIVE_TOTALS, params).mappings()
+                )
+                if not native:
                     continue
                 expected_windows += 1
                 materialized = {
-                    basis_key: connection.execute(
-                        _SELECT_MATERIALIZED_TOTALS,
-                        {**params, "basis_key": basis_key},
-                    ).mappings().one()
+                    basis_key: tuple(
+                        connection.execute(
+                            _SELECT_MATERIALIZED_TOTALS,
+                            {**params, "basis_key": basis_key},
+                        ).mappings()
+                    )
                     for basis_key in (
                         "kubernetes_allocated",
                         "eq_allocated",
                         "kubernetes_eq_allocated",
                     )
                 }
-            for basis_key, row in materialized.items():
-                if int(row["row_count"]) == 0:
-                    raise ValueError(
-                        f"Incomplete materialization window for {current} "
-                        f"{source['vendor']}/{source['account_id']} {basis_key}"
-                    )
-                for amount in _AMOUNTS:
-                    if abs(_decimal(row[amount]) - _decimal(native[amount])) > _AMOUNT_QUANTUM:
+            for basis_key, materialized_rows in materialized.items():
+                by_currency = {_currency(row): row for row in materialized_rows}
+                for native_row in native:
+                    currency = _currency(native_row)
+                    row = by_currency.get(currency)
+                    if row is None or int(row["row_count"]) == 0:
                         raise ValueError(
-                            f"Materialization conservation failed for {basis_key} "
-                            f"{current} {source['vendor']}/{source['account_id']} {amount}"
+                            f"Incomplete materialization window for {current} "
+                            f"{source['vendor']}/{source['account_id']} {basis_key} {currency}"
                         )
+                    for amount in _AMOUNTS:
+                        if abs(_decimal(row[amount]) - _decimal(native_row[amount])) > _AMOUNT_QUANTUM:
+                            raise ValueError(
+                                f"Materialization conservation failed for {basis_key} "
+                                f"{current} {source['vendor']}/{source['account_id']} "
+                                f"{currency} {amount}"
+                            )
         current += timedelta(days=1)
 
     if expected_windows == 0:
@@ -408,8 +417,8 @@ def build_kubernetes_allocated_rows(
 ) -> tuple[dict[str, Any], ...]:
     """Replace only fully reconciled source groups with Kubernetes allocations."""
     native = tuple(native_rows)
-    source_by_hash: dict[tuple[Any, Any, Any, Any], Mapping[str, Any]] = {}
-    duplicate_sources: set[tuple[Any, Any, Any, Any]] = set()
+    source_by_hash: dict[tuple[Any, ...], Mapping[str, Any]] = {}
+    duplicate_sources: set[tuple[Any, ...]] = set()
     for row in native:
         source_hash = row.get("source_summary_row_hash")
         if not source_hash:
@@ -420,14 +429,14 @@ def build_kubernetes_allocated_rows(
         else:
             source_by_hash[key] = row
 
-    mappings_by_group: dict[tuple[Any, Any, Any, Any], list[Mapping[str, Any]]] = defaultdict(list)
+    mappings_by_group: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
     for mapping in source_mappings:
         mappings_by_group[(*_boundary(mapping), mapping.get("allocation_group_hash"))].append(mapping)
-    allocations_by_group: dict[tuple[Any, Any, Any, Any], list[Mapping[str, Any]]] = defaultdict(list)
+    allocations_by_group: dict[tuple[Any, ...], list[Mapping[str, Any]]] = defaultdict(list)
     for row in allocation_rows:
         allocations_by_group[(*_boundary(row), row.get("allocation_group_hash"))].append(row)
 
-    replaced: set[tuple[Any, Any, Any, Any]] = set()
+    replaced: set[tuple[Any, ...]] = set()
     output: list[dict[str, Any]] = []
     for group_key in sorted(mappings_by_group, key=lambda key: tuple(str(value) for value in key)):
         mappings = mappings_by_group[group_key]
@@ -435,7 +444,7 @@ def build_kubernetes_allocated_rows(
             allocations_by_group.get(group_key, []),
             key=lambda row: str(row.get("dimension_hash") or ""),
         )
-        source_keys = [(*group_key[:3], mapping.get("source_summary_row_hash")) for mapping in mappings]
+        source_keys = [(*group_key[:4], mapping.get("source_summary_row_hash")) for mapping in mappings]
         if (
             not allocations
             or any(key in duplicate_sources or key not in source_by_hash for key in source_keys)
@@ -542,7 +551,7 @@ def build_eq_allocated_rows(
     basis_key: str = "eq_allocated",
 ) -> tuple[dict[str, Any], ...]:
     """Charge current-EQ rows to same-day/account non-EQ direct-cost groups."""
-    basis: dict[tuple[Any, Any, Any], dict[int, Decimal]] = defaultdict(
+    basis: dict[tuple[Any, Any, Any, Any], dict[int, Decimal]] = defaultdict(
         lambda: defaultdict(Decimal)
     )
     for row in native_rows:
@@ -635,8 +644,17 @@ def _is_native_direct(row: Mapping[str, Any]) -> bool:
     )
 
 
-def _boundary(row: Mapping[str, Any]) -> tuple[Any, Any, Any]:
-    return row.get("usage_date"), row.get("vendor"), row.get("account_id")
+def _boundary(row: Mapping[str, Any]) -> tuple[Any, Any, Any, Any]:
+    return (
+        row.get("usage_date"),
+        row.get("vendor"),
+        row.get("account_id"),
+        _currency(row),
+    )
+
+
+def _currency(row: Mapping[str, Any]) -> str:
+    return str(row.get("currency") or "USD").upper()
 
 
 def _common_source(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
@@ -735,7 +753,8 @@ def _allocation_scope(
 def _dimension_hash(row: Mapping[str, Any]) -> str:
     payload = {
         key: str(
-            (row.get("dimension_hash") if key == "input_dimension_hash" else row.get(key)) or ""
+            (_currency(row) if key == "currency" else row.get("dimension_hash") if key == "input_dimension_hash" else row.get(key))
+            or ""
         )
         for key in (
             "basis_key",
@@ -743,6 +762,7 @@ def _dimension_hash(row: Mapping[str, Any]) -> str:
             "usage_date",
             "vendor",
             "account_id",
+            "currency",
             "source_fact_hash",
             "input_dimension_hash",
             "target_group_id",
@@ -794,13 +814,21 @@ def _assert_conserved(
 ) -> None:
     source = tuple(source_rows)
     output = tuple(output_rows)
-    for amount in _AMOUNTS:
-        source_total = sum((_decimal(row.get(amount)) for row in source), Decimal())
-        output_total = sum((_decimal(row.get(amount)) for row in output), Decimal())
-        if abs(source_total - output_total) > _AMOUNT_QUANTUM:
-            raise RuntimeError(
-                f"Cost allocation does not conserve {amount}: {source_total} != {output_total}"
+    for currency in sorted({_currency(row) for row in source} | {_currency(row) for row in output}):
+        for amount in _AMOUNTS:
+            source_total = sum(
+                (_decimal(row.get(amount)) for row in source if _currency(row) == currency),
+                Decimal(),
             )
+            output_total = sum(
+                (_decimal(row.get(amount)) for row in output if _currency(row) == currency),
+                Decimal(),
+            )
+            if abs(source_total - output_total) > _AMOUNT_QUANTUM:
+                raise RuntimeError(
+                    f"Cost allocation does not conserve {currency} {amount}: "
+                    f"{source_total} != {output_total}"
+                )
 
 
 def _write_materialized_rows(
@@ -820,7 +848,8 @@ _ATTRIBUTION_COLUMNS = """
   workload_type, author, owner, service, project, service_exec_id,
   attribution_key, attribution_source, attribution_status, allocate_method,
   employee_id, group_id, manager_id, usage_seconds, list_cost, effective_cost,
-  credit_amount, net_cost, source_rows, source_summary_row_hash, dimension_hash
+  credit_amount, net_cost, currency, source_rows, source_summary_row_hash,
+  dimension_hash
 """
 
 _SELECT_NATIVE = text(
@@ -833,18 +862,21 @@ _SELECT_NATIVE = text(
 )
 _SELECT_NATIVE_TOTALS = text(
     """
-    SELECT COUNT(*) AS row_count,
+    SELECT currency,
+      COUNT(*) AS row_count,
       COALESCE(SUM(list_cost), 0) AS list_cost,
       COALESCE(SUM(effective_cost), 0) AS effective_cost,
       COALESCE(SUM(credit_amount), 0) AS credit_amount,
       COALESCE(SUM(net_cost), 0) AS net_cost
     FROM cost_attribution_daily
     WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
+    GROUP BY currency
     """
 )
 _SELECT_MATERIALIZED_TOTALS = text(
     """
-    SELECT COUNT(*) AS row_count,
+    SELECT currency,
+      COUNT(*) AS row_count,
       COALESCE(SUM(list_cost), 0) AS list_cost,
       COALESCE(SUM(effective_cost), 0) AS effective_cost,
       COALESCE(SUM(credit_amount), 0) AS credit_amount,
@@ -853,6 +885,7 @@ _SELECT_MATERIALIZED_TOTALS = text(
     WHERE basis_key = :basis_key
       AND allocation_version = :allocation_version
       AND usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
+    GROUP BY currency
     """
 )
 _SELECT_KUBERNETES = text(
@@ -906,7 +939,7 @@ _INSERT_MATERIALIZED = text(
       owner, service, project, service_exec_id, attribution_key,
       attribution_source, attribution_status, allocate_method, employee_id,
       group_id, manager_id, usage_seconds, list_cost, effective_cost,
-      credit_amount, net_cost, source_rows, source_summary_row_hash,
+      credit_amount, net_cost, currency, source_rows, source_summary_row_hash,
       source_fact_hash, source_owner, source_group_id, source_manager_id,
       target_group_id, target_manager_id, allocation_scope, allocation_method,
       allocation_weight, roster_resolved_at, dimension_hash
@@ -918,7 +951,7 @@ _INSERT_MATERIALIZED = text(
       :owner, :service, :project, :service_exec_id, :attribution_key,
       :attribution_source, :attribution_status, :allocate_method, :employee_id,
       :group_id, :manager_id, :usage_seconds, :list_cost, :effective_cost,
-      :credit_amount, :net_cost, :source_rows, :source_summary_row_hash,
+      :credit_amount, :net_cost, :currency, :source_rows, :source_summary_row_hash,
       :source_fact_hash, :source_owner, :source_group_id, :source_manager_id,
       :target_group_id, :target_manager_id, :allocation_scope, :allocation_method,
       :allocation_weight, :roster_resolved_at, :dimension_hash

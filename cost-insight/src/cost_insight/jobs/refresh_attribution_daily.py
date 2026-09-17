@@ -392,6 +392,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       effective_cost,
       credit_amount,
       net_cost,
+      currency,
       source_rows,
       dimension_hash,
       source_summary_row_hash
@@ -430,6 +431,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       SUM(attributed.effective_cost) AS effective_cost,
       SUM(attributed.credit_amount) AS credit_amount,
       SUM(attributed.net_cost) AS net_cost,
+      attributed.currency AS currency,
       COUNT(*) AS source_rows,
       SHA2(
         CONCAT_WS(
@@ -456,6 +458,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
           COALESCE(attributed.service, ''),
           COALESCE(attributed.project, ''),
           COALESCE(attributed.service_exec_id, ''),
+          COALESCE(attributed.currency, 'USD'),
           COALESCE(attributed.attribution_key, ''),
           COALESCE(attributed.attribution_source, ''),
           COALESCE(attributed.attribution_status, ''),
@@ -556,7 +559,8 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.list_cost,
         summary.effective_cost,
         summary.credit_amount,
-        summary.net_cost
+        summary.net_cost,
+        summary.currency
       FROM cost_bq_export_summary_daily summary
       LEFT JOIN (
         SELECT
@@ -645,6 +649,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.service,
       attributed.project,
       attributed.service_exec_id,
+      attributed.currency,
       attributed.attribution_key,
       attributed.attribution_source,
       attributed.attribution_status,
@@ -694,6 +699,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           effective_cost,
           credit_amount,
           net_cost,
+          currency,
           source_rows,
           dimension_hash,
           source_summary_row_hash
@@ -733,6 +739,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           SUM(attributed.effective_cost) AS effective_cost,
           SUM(attributed.credit_amount) AS credit_amount,
           SUM(attributed.net_cost) AS net_cost,
+          attributed.currency AS currency,
           COUNT(*) AS source_rows,
           CASE
             WHEN attributed.source_allocation_scope <> 'direct'
@@ -763,6 +770,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.service, ''),
               COALESCE(attributed.project, ''),
               COALESCE(attributed.service_exec_id, ''),
+              COALESCE(attributed.currency, 'USD'),
               COALESCE(attributed.attribution_key, ''),
               COALESCE(attributed.attribution_source, ''),
               COALESCE(attributed.attribution_status, ''),
@@ -792,6 +800,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.service, ''),
               COALESCE(attributed.project, ''),
               COALESCE(attributed.service_exec_id, ''),
+              COALESCE(attributed.currency, 'USD'),
               COALESCE(attributed.attribution_key, ''),
               COALESCE(attributed.attribution_source, ''),
               COALESCE(attributed.attribution_status, ''),
@@ -899,7 +908,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             base.list_cost,
             base.effective_cost,
             base.credit_amount,
-            base.net_cost
+            base.net_cost,
+            base.currency
           FROM (
             SELECT
               summary.usage_date,
@@ -967,7 +977,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               summary.list_cost,
               summary.effective_cost,
               summary.credit_amount,
-              summary.net_cost
+              summary.net_cost,
+              summary.currency
             FROM cost_bq_export_summary_daily summary
             LEFT JOIN (
               SELECT *
@@ -1131,6 +1142,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.service,
           attributed.project,
           attributed.service_exec_id,
+          attributed.currency,
           attributed.attribution_key,
           attributed.attribution_source,
           attributed.attribution_status,

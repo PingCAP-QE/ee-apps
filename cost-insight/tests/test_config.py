@@ -95,6 +95,42 @@ def test_load_settings_reads_aws_billing_settings() -> None:
     assert settings.aws_billing.page_size == 1000
 
 
+def test_load_settings_reads_tencent_billing_settings() -> None:
+    settings = load_settings(
+        {
+            "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost_insight",
+            "COST_INSIGHT_TENCENT_ACCOUNT_ID": "100000000001",
+            "COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY": "2026-09-01",
+            "COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS": "4",
+            "COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS": "6",
+            "COST_INSIGHT_TENCENT_PAGE_SIZE": "50",
+        }
+    ).tencent_billing
+
+    assert settings.account_id == "100000000001"
+    assert settings.earliest_bill_day == date(2026, 9, 1)
+    assert settings.import_lag_days == 4
+    assert settings.verify_lag_days == 6
+    assert settings.page_size == 50
+
+
+def test_load_settings_rejects_invalid_tencent_settings() -> None:
+    with pytest.raises(ValueError, match="must be between 1 and 100"):
+        load_settings(
+            {
+                "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@host/db",
+                "COST_INSIGHT_TENCENT_PAGE_SIZE": "101",
+            }
+        )
+    with pytest.raises(ValueError, match="VERIFY_LAG_DAYS"):
+        load_settings(
+            {
+                "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@host/db",
+                "COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS": "5",
+                "COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS": "3",
+            }
+        )
+
 def test_load_settings_reads_tcms_allocation_settings() -> None:
     settings = load_settings(
         {

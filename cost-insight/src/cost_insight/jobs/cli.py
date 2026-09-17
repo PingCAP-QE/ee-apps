@@ -54,6 +54,7 @@ from cost_insight.jobs.sync_alibaba_billing_summary import (
     ALIBABA_ACCOUNT_DISPLAY_NAMES,
     run_sync_alibaba_billing_summary,
 )
+from cost_insight.jobs.sync_tencent_billing_summary import run_sync_tencent_billing_summary
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     run_sync_gcp_kubernetes_workload_allocations,
 )
@@ -138,6 +139,14 @@ def build_parser() -> argparse.ArgumentParser:
     sync_alibaba_summary.add_argument("--replace-existing-partitions", action="store_true")
     sync_alibaba_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
     sync_alibaba_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
+
+    sync_tencent_summary = subparsers.add_parser(
+        "sync-tencent-billing-summary",
+        help="Sync Tencent organization billing details into cost_bq_export_summary_daily",
+    )
+    sync_tencent_summary.add_argument("--bill-day-start", type=_parse_date, default=None)
+    sync_tencent_summary.add_argument("--bill-day-end", type=_parse_date, default=None)
+    sync_tencent_summary.add_argument("--dry-run", action="store_true")
 
     sync_aws_summary = subparsers.add_parser(
         "sync-aws-billing-summary",
@@ -530,6 +539,46 @@ def main(argv: Sequence[str] | None = None) -> int:
                 replacement_usage_end_date=args.replace_usage_end_date,
             )
             print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-tencent-billing-summary":
+        if (args.bill_day_start is None) != (args.bill_day_end is None):
+            raise ValueError("--bill-day-start and --bill-day-end must be set together")
+        if args.dry_run and args.bill_day_start is None:
+            raise ValueError("--dry-run requires --bill-day-start and --bill-day-end")
+        engine = build_engine(settings)
+        try:
+            summary = run_sync_tencent_billing_summary(
+                engine,
+                settings=settings.tencent_billing,
+                bill_day_start=args.bill_day_start,
+                bill_day_end=args.bill_day_end,
+                dry_run=args.dry_run,
+            )
+            print(
+                json.dumps(
+                    {
+                        "account_id": summary.account_id,
+                        "bill_days_completed": [
+                            value.isoformat() for value in summary.bill_days_completed
+                        ],
+                        "bill_days_verified": [
+                            value.isoformat() for value in summary.bill_days_verified
+                        ],
+                        "outer_rows_seen": summary.outer_rows_seen,
+                        "component_rows_seen": summary.component_rows_seen,
+                        "rows_written": summary.rows_written,
+                        "touched_usage_dates": [
+                            value.isoformat() for value in summary.touched_usage_dates
+                        ],
+                        "dry_run": summary.dry_run,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
             return 0
         finally:
             engine.dispose()

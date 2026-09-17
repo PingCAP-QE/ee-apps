@@ -2,6 +2,7 @@ import json
 from datetime import date, datetime
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import create_engine, text
 
 from cost_insight.jobs.materialize_resource_serving import (
@@ -245,7 +246,7 @@ def test_materialize_resource_serving_stages_and_publishes_native_window() -> No
                 """
                 INSERT INTO cost_unmatched_resource_daily VALUES
                   ('2026-08-10', 'gcp', 'project-1', 'summary-1', 'instance-1', NULL, NULL,
-                   'Compute Engine', '{"cluster":"prow"}', 40, 40, 'detail-1')
+                   'Compute Engine', '{"cluster":"prow"}', 40, 40, 'USD', 'detail-1')
                 """
             )
         )
@@ -378,14 +379,15 @@ _SCHEMA = (
       region TEXT, org TEXT, repo TEXT, project TEXT, target_branch TEXT, resource_name TEXT,
       vendor_tags_json TEXT, owner TEXT, group_id INTEGER, manager_id INTEGER,
       usage_seconds REAL, list_cost REAL, effective_cost REAL, credit_amount REAL,
-      net_cost REAL, source_rows INTEGER, source_summary_row_hash TEXT, dimension_hash TEXT
+      net_cost REAL, currency TEXT NOT NULL DEFAULT 'USD',
+      source_rows INTEGER, source_summary_row_hash TEXT, dimension_hash TEXT
     )
     """,
     """
     CREATE TABLE cost_unmatched_resource_daily (
       usage_date TEXT, vendor TEXT, account_id TEXT, source_summary_row_hash TEXT,
       resource_name TEXT, resource_id TEXT, parent_resource_name TEXT, service_name TEXT, vendor_tags_json TEXT,
-      usage_seconds REAL, list_cost REAL, source_row_hash TEXT
+      usage_seconds REAL, list_cost REAL, currency TEXT NOT NULL DEFAULT 'USD', source_row_hash TEXT
     )
     """,
     """
@@ -396,7 +398,7 @@ _SCHEMA = (
       resource_key TEXT, resource_name TEXT, resource_id TEXT, service_name TEXT, resource_identity_kind TEXT,
       representative_labels_json TEXT, metadata_variant_count INTEGER, detail_list_cost REAL,
       fallback_list_cost REAL, usage_seconds REAL, list_cost REAL, effective_cost REAL,
-      credit_amount REAL, net_cost REAL, source_row_count INTEGER, calculated_at TEXT,
+      credit_amount REAL, net_cost REAL, currency TEXT NOT NULL DEFAULT 'USD', source_row_count INTEGER, calculated_at TEXT,
       UNIQUE (materialization_version, basis_key, vendor, account_id, usage_date,
               owner_key, resource_key, target_branch)
     )
@@ -405,9 +407,50 @@ _SCHEMA = (
     CREATE TABLE cost_resource_serving_publication (
       basis_key TEXT, vendor TEXT, account_id TEXT, usage_date TEXT,
       active_materialization_version TEXT, source_allocation_version TEXT,
-      detail_list_cost REAL, total_list_cost REAL, source_row_count INTEGER,
+      detail_list_cost REAL, total_list_cost REAL, currency TEXT NOT NULL DEFAULT 'USD', source_row_count INTEGER,
       published_at TEXT DEFAULT CURRENT_TIMESTAMP, tiflash_ready_at TEXT,
       PRIMARY KEY (basis_key, vendor, account_id, usage_date)
     )
     """,
 )
+
+
+def test_serving_identity_and_conservation_separate_currencies() -> None:
+    usd = _source()
+    cny = _source(currency="CNY")
+
+    rows = build_resource_serving_rows(
+        source_rows=(usd, cny),
+        detail_rows=(),
+        basis_key="native",
+        materialization_version="v1",
+        calculated_at=datetime(2026, 8, 11),
+    )
+
+    by_currency = {row["currency"]: row for row in rows}
+    assert set(by_currency) == {"USD", "CNY"}
+    assert by_currency["USD"]["resource_key"] != by_currency["CNY"]["resource_key"]
+    assert by_currency["USD"]["resource_group_key"] != by_currency["CNY"]["resource_group_key"]
+    assert sum((row["list_cost"] for row in rows), Decimal()) == Decimal("200")
+
+
+def test_serving_rejects_detail_currency_mismatch() -> None:
+    with pytest.raises(RuntimeError, match="currency differs"):
+        build_resource_serving_rows(
+            source_rows=(_source(),),
+            detail_rows=(
+                {
+                    "source_summary_row_hash": "summary-1",
+                    "resource_name": "instance-1",
+                    "parent_resource_name": None,
+                    "service_name": "Compute Engine",
+                    "vendor_tags_json": None,
+                    "usage_seconds": Decimal("40"),
+                    "list_cost": Decimal("40"),
+                    "currency": "CNY",
+                },
+            ),
+            basis_key="native",
+            materialization_version="v1",
+            calculated_at=datetime(2026, 8, 11),
+        )

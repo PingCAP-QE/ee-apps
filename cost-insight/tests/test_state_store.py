@@ -40,6 +40,15 @@ def test_job_state_lifecycle_on_sqlite() -> None:
         assert started.last_status == "running"
         assert started.last_started_at is not None
 
+        started_at = started.last_started_at
+        state_store.checkpoint_job_watermark(connection, "job", {"offset": 100})
+        checkpointed = state_store.get_job_state(connection, "job")
+        assert checkpointed is not None
+        assert checkpointed.watermark == {"offset": 100}
+        assert checkpointed.last_status == "running"
+        assert checkpointed.last_started_at == started_at
+        assert checkpointed.last_succeeded_at is None
+
         state_store.mark_job_succeeded(connection, "job", {"end_date": "2026-05-19"})
         succeeded = state_store.get_job_state(connection, "job")
         assert succeeded is not None
@@ -100,6 +109,16 @@ def test_parse_watermark_rejects_invalid_payload() -> None:
 def test_coerce_datetime_rejects_invalid_payload() -> None:
     with pytest.raises(ValueError, match="Unsupported datetime value"):
         state_store._coerce_datetime(123)
+
+
+def test_checkpoint_rejects_missing_job_state() -> None:
+    engine, connection = _sqlite_connection()
+    try:
+        with pytest.raises(ValueError, match="Cannot checkpoint missing job state"):
+            state_store.checkpoint_job_watermark(connection, "missing", {"offset": 100})
+    finally:
+        connection.close()
+        engine.dispose()
 
 
 def test_build_upsert_statement_uses_mysql_for_non_sqlite() -> None:

@@ -53,6 +53,7 @@ RESOURCE_BREAKDOWN_SCOPE_DIMENSIONS = frozenset({"team", "project"})
 NO_OWNER_LABEL = "(no owner)"
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
+CNY_PER_USD = Decimal("6.5")
 FORECAST_WINDOW_DAYS = 14
 BUDGET_FALLBACK_MAX_DAYS = 31
 CURRENT_ATTRIBUTION_BASIS = "current_attribution"
@@ -140,14 +141,16 @@ def get_cost_trend(
             params = {**params, **drilldown["params"]}
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         list_cost_expr = _billing_report_list_cost_expr("c")
+        net_cost_expr = _usd_cost_expr("c", "c.net_cost")
+        effective_cost_expr = _usd_cost_expr("c", "c.effective_cost")
         rows = connection.execute(
             text(
                 f"""
                 WITH bucketed AS (
                   SELECT {index_hint}
                     {bucket} AS bucket_start,
-                    SUM(c.net_cost) AS net_cost,
-                    SUM(c.effective_cost) AS effective_cost,
+                    SUM({net_cost_expr}) AS net_cost,
+                    SUM({effective_cost_expr}) AS effective_cost,
                     SUM({list_cost_expr}) AS list_cost,
                     SUM(CASE WHEN c.list_cost IS NOT NULL THEN {list_cost_expr} ELSE 0 END) AS total_resource_cost,
                     SUM(CASE WHEN c.list_cost IS NOT NULL AND c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
@@ -1843,6 +1846,7 @@ def get_weekly_account_summaries(
     }
     if cost_filters.branch:
         params["branch"] = cost_filters.branch
+    net_cost_expr = _usd_cost_expr("c", "c.net_cost")
 
     with engine.begin() as connection:
         rows = connection.execute(
@@ -1854,11 +1858,11 @@ def get_weekly_account_summaries(
                   s.display_name,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :current_start AND :current_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({net_cost_expr}, 0) ELSE 0 END
                   ) AS net_cost,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :previous_start AND :previous_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({net_cost_expr}, 0) ELSE 0 END
                   ) AS previous_net_cost
                 FROM cost_sources s
                 LEFT JOIN cost_attribution_daily c
@@ -2153,6 +2157,9 @@ def _get_published_unmatched_resources(
         if filters.branch:
             params["branch"] = filters.branch
         validity_clause = "s.basis_key = 'native'"
+        serving_list_cost_usd = _usd_cost_expr("s", "s.list_cost")
+        serving_detail_cost_usd = _usd_cost_expr("s", "s.detail_list_cost")
+        serving_fallback_cost_usd = _usd_cost_expr("s", "s.fallback_list_cost")
         service_rows = connection.execute(
             text(
                 f"""
@@ -2189,9 +2196,12 @@ def _get_published_unmatched_resources(
                     f"""
                     WITH filtered AS (
                       SELECT s.resource_group_key, s.resource_id, s.resource_name, s.service_name,
-                        s.representative_labels_json, s.usage_seconds, s.list_cost,
-                        s.detail_list_cost, s.fallback_list_cost, s.usage_date, s.resource_key,
-                        s.target_branch
+                        s.representative_labels_json, s.usage_seconds, s.currency,
+                        s.list_cost AS source_list_cost,
+                        {serving_list_cost_usd} AS list_cost,
+                        {serving_detail_cost_usd} AS detail_list_cost,
+                        {serving_fallback_cost_usd} AS fallback_list_cost,
+                        s.usage_date, s.resource_key, s.target_branch
                       FROM cost_resource_serving_daily s
                       JOIN cost_resource_serving_publication p
                         ON p.basis_key = s.basis_key AND p.vendor = s.vendor
@@ -2219,6 +2229,8 @@ def _get_published_unmatched_resources(
                         MAX(CASE WHEN label_rank = 1 THEN representative_labels_json END)
                           AS representative_labels_json,
                         SUM(usage_seconds) AS usage_seconds,
+                        MAX(currency) AS source_currency,
+                        SUM(source_list_cost) AS source_list_cost,
                         SUM(list_cost) AS list_cost,
                         SUM(detail_list_cost) AS detail_list_cost,
                         SUM(fallback_list_cost) AS fallback_list_cost,
@@ -2231,7 +2243,8 @@ def _get_published_unmatched_resources(
                     )
                     SELECT a.resource_group_key, a.resource_id, a.resource_name,
                       a.service_name, a.representative_labels_json, a.usage_seconds,
-                      a.list_cost, a.detail_list_cost, a.fallback_list_cost,
+                      a.source_currency, a.source_list_cost, a.list_cost,
+                      a.detail_list_cost, a.fallback_list_cost,
                       a.total_detail_list_cost, a.total_fallback_list_cost, a.total_list_cost
                     FROM aggregated a
                     WHERE {cursor_clause}
@@ -2258,9 +2271,9 @@ def _get_published_unmatched_resources(
                       COALESCE(SUM(g.list_cost), 0) AS total_list_cost
                     FROM (
                       SELECT resource_group_key,
-                        SUM(s.detail_list_cost) AS detail_list_cost,
-                        SUM(s.fallback_list_cost) AS fallback_list_cost,
-                        SUM(s.list_cost) AS list_cost
+                        SUM({serving_detail_cost_usd}) AS detail_list_cost,
+                        SUM({serving_fallback_cost_usd}) AS fallback_list_cost,
+                        SUM({serving_list_cost_usd}) AS list_cost
                       FROM cost_resource_serving_daily s
                       JOIN cost_resource_serving_publication p
                         ON p.basis_key = s.basis_key AND p.vendor = s.vendor
@@ -2272,7 +2285,7 @@ def _get_published_unmatched_resources(
                         AND (:service_name IS NULL OR s.service_name = :service_name)
                         AND {validity_clause} {branch_clause}
                       GROUP BY s.resource_group_key
-                      HAVING SUM(s.list_cost) <> 0
+                      HAVING SUM({serving_list_cost_usd}) <> 0
                     ) g
                     """
                 ),
@@ -2303,6 +2316,12 @@ def _get_published_unmatched_resources(
                     "attribution_status": "",
                     "usage_seconds": None if usage_seconds is None else round(float(usage_seconds), 2),
                     "list_cost": _money(row["list_cost"]),
+                    "display_currency": "USD",
+                    "source_list_cost": _money(row["source_list_cost"]),
+                    "source_currency": str(row["source_currency"] or "USD"),
+                    "cny_per_usd": (
+                        float(CNY_PER_USD) if row["source_currency"] == "CNY" else None
+                    ),
                     "resource_data_source": (
                         "mixed" if detail != 0 and fallback != 0 else
                         "resource_detail" if detail != 0 else "attribution_fallback"
@@ -2593,12 +2612,13 @@ def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, f
     where_clause, params = _build_cost_where(filters, table_alias="c")
     index_hint = _cost_aggregate_read_hint(connection, filters)
     list_cost_expr = _billing_report_list_cost_expr("c")
+    net_cost_expr = _usd_cost_expr("c", "c.net_cost")
     row = connection.execute(
         text(
             f"""
             SELECT {index_hint}
               SUM({list_cost_expr}) AS list_cost,
-              SUM(c.net_cost) AS net_cost
+              SUM({net_cost_expr}) AS net_cost
             FROM cost_attribution_daily c
             WHERE {where_clause}
             """
@@ -3155,12 +3175,23 @@ def _source_date_index_hint(
 
 def _billing_report_list_cost_expr(table_alias: str) -> str:
     prefix = f"{table_alias}." if table_alias else ""
-    return (
+    source_amount = (
         "CASE "
         f"WHEN {prefix}vendor = 'gcp' "
         f"AND {prefix}sku_name LIKE 'Compute Flexible Committed Use Discounts%' "
         "THEN 0 "
         f"ELSE {prefix}list_cost "
+        "END"
+    )
+    return _usd_cost_expr(table_alias, source_amount)
+
+
+def _usd_cost_expr(table_alias: str, source_amount: str) -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    return (
+        "CASE "
+        f"WHEN {prefix}currency = 'CNY' THEN ({source_amount}) / {CNY_PER_USD} "
+        f"ELSE {source_amount} "
         "END"
     )
 
