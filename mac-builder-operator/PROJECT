@@ -14,7 +14,6 @@ resources:
     namespaced: true
   controller: true
   domain: tibuild.pingcap.net
-  group: build
   kind: MacBuild
   path: github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1
   version: v1alpha1

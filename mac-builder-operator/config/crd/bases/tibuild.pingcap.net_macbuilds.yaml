@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: macbuilds.build.tibuild.pingcap.net
+  name: macbuilds.tibuild.pingcap.net
 spec:
-  group: build.tibuild.pingcap.net
+  group: tibuild.pingcap.net
   names:
     kind: MacBuild
     listKind: MacBuildList
