@@ -742,6 +742,11 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                             'summary-direct-override'
                       ),
                       (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'email-author', 'alice@pingcap.com', NULL, 38, 38, 0, 38,
+                            'summary-email-author'
+                      ),
+                      (
                         '2026-08-16', 'tencent', '100050658403',
                             '容器服务 TKE', 'native node', 'owner-label', 'bob', 'alice', 40, 40, 0, 40,
                             'summary-owner-label'
@@ -802,7 +807,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             end_date=date(2026, 8, 16),
         )
 
-        assert summary.rows_inserted == 6
+        assert summary.rows_inserted == 7
         with engine.begin() as connection:
             rows = {
                 row["resource_name"]: dict(row)
@@ -889,6 +894,18 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             "employee_id": 9,
             "net_cost": 37.0,
             "source_summary_row_hash": "summary-direct-override",
+        }
+        assert rows["email-author"] == {
+            "resource_name": "email-author",
+            "author": "alice@pingcap.com",
+            "org": None,
+            "repo": None,
+            "owner": "alice@pingcap.com",
+            "attribution_source": "author_email",
+            "attribution_status": "matched",
+            "employee_id": 1,
+            "net_cost": 38.0,
+            "source_summary_row_hash": "summary-email-author",
         }
         tencent_source = CostAttributionSource(vendor="tencent", account_id="100050658403")
         summary = run_refresh_cost_attribution_from_summary(
@@ -2004,6 +2021,7 @@ def test_aws_summary_insert_statement_keeps_tcms_matching_without_pool_weighting
     assert "summary.owner IS NOT NULL THEN 'source_label'" in logical_sql
     assert "shared_weighted" not in logical_sql
     assert "label_shared" not in logical_sql
+    assert "NOT EXISTS" not in logical_sql
 
 
 def test_non_aws_summary_insert_uses_existing_statement() -> None:
