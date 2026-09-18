@@ -654,7 +654,15 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                     INSERT INTO roster_employees (id, email, github_id, en_name, group_id, manager_id)
                     VALUES
                       (1, 'alice@pingcap.com', 'alice', 'Alice', 10, 100),
-                      (2, 'bob@pingcap.com', 'bob', 'Bob', 20, 200)
+                      (2, 'bob@pingcap.com', 'bob', 'Bob', 20, 200),
+                      (3, 'no-github-1@pingcap.com', NULL, 'No Github One', 30, 300),
+                      (4, 'no-github-2@pingcap.com', NULL, 'No Github Two', 40, 400),
+                      (5, 'shared@one.com', 'shared-one', 'Shared One', 30, 300),
+                      (6, 'shared@two.com', 'shared-two', 'Shared Two', 40, 400),
+                      (7, 'flare.zuo@pingcap.com', 'wuhui.zuo', 'Flare Zuo', 30, 300),
+                      (8, 'local-only@pingcap.com', 'not-local-only', 'Local Only', 40, 400),
+                      (9, 'yinsu@pingcap.com', 'yinsu', 'Yinsu', 10, 100),
+                      (10, 'collision@pingcap.com', 'no_github_1', 'Collision', 40, 400)
                     """
                 )
             )
@@ -687,6 +695,10 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                       (
                         'gcp', 'pingcap-testing-account', 'pvc-direct-author', 'uid-direct',
                         'alice', 'pingcap', 'tidb'
+                      ),
+                      (
+                        'gcp', 'pingcap-testing-account', 'pvc-override', 'uid-override',
+                        'flaky-claw', 'pingcap', 'tidb'
                       )
                     """
                 )
@@ -696,23 +708,88 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                     """
                         INSERT INTO cost_bq_export_summary_daily (
                           usage_date, vendor, account_id, service_name, sku_name,
-                          resource_name, author, list_cost, effective_cost, credit_amount, net_cost,
+                          resource_name, author, owner, list_cost, effective_cost, credit_amount, net_cost,
                           source_row_hash
                     ) VALUES
                       (
                         '2026-08-16', 'gcp', 'pingcap-testing-account',
-                            'Compute Engine', 'Persistent Disk', 'pvc-unique', NULL, 10, 10, 0, 10,
+                            'Compute Engine', 'Persistent Disk', 'pvc-unique', NULL, NULL, 10, 10, 0, 10,
                             'summary-pvc-unique'
                       ),
                       (
                         '2026-08-16', 'gcp', 'pingcap-testing-account',
-                            'Compute Engine', 'Persistent Disk', 'pvc-shared', NULL, 20, 20, 0, 20,
+                            'Compute Engine', 'Persistent Disk', 'pvc-shared', NULL, NULL, 20, 20, 0, 20,
                             'summary-pvc-shared'
                       ),
                       (
                         '2026-08-16', 'gcp', 'pingcap-testing-account',
-                            'Compute Engine', 'Persistent Disk', 'pvc-direct-author', 'bob', 30, 30, 0, 30,
+                            'Compute Engine', 'Persistent Disk', 'pvc-direct-author', 'bob', NULL, 30, 30, 0, 30,
                             'summary-pvc-direct-author'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'unmatched-gcp-author', 'unknown-author', NULL, 35, 35, 0, 35,
+                            'summary-unmatched-gcp-author'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'pvc-override', '', NULL, 36, 36, 0, 36,
+                            'summary-pvc-override'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'direct-override', ' flaky-claw ', NULL, 37, 37, 0, 37,
+                            'summary-direct-override'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'owner-label', 'bob', 'alice', 40, 40, 0, 40,
+                            'summary-owner-label'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'owner-fallback', NULL, 'alice', 50, 50, 0, 50,
+                            'summary-owner-fallback'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'owner-placeholder', NULL, '-', 60, 60, 0, 60,
+                            'summary-owner-placeholder'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'owner-literal', NULL, 'data_at_rest', 70, 70, 0, 70,
+                            'summary-owner-literal'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'ambiguous-author', 'shared', NULL, 80, 80, 0, 80,
+                            'summary-ambiguous-author'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'empty-author', '', NULL, 90, 90, 0, 90,
+                            'summary-empty-author'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'author-wins', 'unknown-author', 'alice', 100, 100, 0, 100,
+                            'summary-author-wins'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'owner-email', NULL, 'local-only', 110, 110, 0, 110,
+                            'summary-owner-email'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'owner-normalized', NULL, 'flare_zuo', 120, 120, 0, 120,
+                            'summary-owner-normalized'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658403',
+                            '容器服务 TKE', 'native node', 'email-normalized-collision', 'no-github-1', NULL, 130, 130, 0, 130,
+                            'summary-email-normalized-collision'
                       )
                     """
                 )
@@ -725,7 +802,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             end_date=date(2026, 8, 16),
         )
 
-        assert summary.rows_inserted == 3
+        assert summary.rows_inserted == 6
         with engine.begin() as connection:
             rows = {
                 row["resource_name"]: dict(row)
@@ -735,6 +812,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                         SELECT resource_name, author, org, repo, owner, attribution_source,
                                attribution_status, employee_id, net_cost, source_summary_row_hash
                         FROM cost_attribution_daily
+                        WHERE vendor = 'gcp'
                         """
                     )
                 ).mappings()
@@ -775,6 +853,187 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             "employee_id": 2,
             "net_cost": 30.0,
             "source_summary_row_hash": "summary-pvc-direct-author",
+        }
+        assert rows["unmatched-gcp-author"] == {
+            "resource_name": "unmatched-gcp-author",
+            "author": "unknown-author",
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "author_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 35.0,
+            "source_summary_row_hash": "summary-unmatched-gcp-author",
+        }
+        assert rows["pvc-override"] == {
+            "resource_name": "pvc-override",
+            "author": "flaky-claw",
+            "org": "pingcap",
+            "repo": "tidb",
+            "owner": "yinsu@pingcap.com",
+            "attribution_source": "pvc_pod_override",
+            "attribution_status": "matched",
+            "employee_id": 9,
+            "net_cost": 36.0,
+            "source_summary_row_hash": "summary-pvc-override",
+        }
+        assert rows["direct-override"] == {
+            "resource_name": "direct-override",
+            "author": "flaky-claw",
+            "org": None,
+            "repo": None,
+            "owner": "yinsu@pingcap.com",
+            "attribution_source": "author_override",
+            "attribution_status": "matched",
+            "employee_id": 9,
+            "net_cost": 37.0,
+            "source_summary_row_hash": "summary-direct-override",
+        }
+        tencent_source = CostAttributionSource(vendor="tencent", account_id="100050658403")
+        summary = run_refresh_cost_attribution_from_summary(
+            engine,
+            source=tencent_source,
+            start_date=date(2026, 8, 16),
+            end_date=date(2026, 8, 16),
+        )
+
+        assert summary.rows_inserted == 10
+        with engine.begin() as connection:
+            attribution_rows = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT resource_name, author, org, repo, owner, attribution_source,
+                               attribution_status, employee_id, net_cost, source_summary_row_hash
+                        FROM cost_attribution_daily
+                        WHERE vendor = 'tencent'
+                        """
+                    )
+                ).mappings()
+            ]
+        rows = {row["resource_name"]: row for row in attribution_rows}
+        assert sum(row["resource_name"] == "owner-placeholder" for row in attribution_rows) == 1
+        assert rows["owner-label"] == {
+            "resource_name": "owner-label",
+            "author": "bob",
+            "org": None,
+            "repo": None,
+            "owner": "bob@pingcap.com",
+            "attribution_source": "author_github",
+            "attribution_status": "matched",
+            "employee_id": 2,
+            "net_cost": 40.0,
+            "source_summary_row_hash": "summary-owner-label",
+        }
+        assert rows["owner-fallback"] == {
+            "resource_name": "owner-fallback",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": "alice@pingcap.com",
+            "attribution_source": "owner_github",
+            "attribution_status": "matched",
+            "employee_id": 1,
+            "net_cost": 50.0,
+            "source_summary_row_hash": "summary-owner-fallback",
+        }
+        assert rows["owner-placeholder"] == {
+            "resource_name": "owner-placeholder",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "owner_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 60.0,
+            "source_summary_row_hash": "summary-owner-placeholder",
+        }
+        assert rows["owner-literal"] == {
+            "resource_name": "owner-literal",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "owner_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 70.0,
+            "source_summary_row_hash": "summary-owner-literal",
+        }
+        assert rows["ambiguous-author"] == {
+            "resource_name": "ambiguous-author",
+            "author": "shared",
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "author_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 80.0,
+            "source_summary_row_hash": "summary-ambiguous-author",
+        }
+        assert rows["email-normalized-collision"] == {
+            "resource_name": "email-normalized-collision",
+            "author": "no-github-1",
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "author_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 130.0,
+            "source_summary_row_hash": "summary-email-normalized-collision",
+        }
+        assert rows["empty-author"] == {
+            "resource_name": "empty-author",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "missing_author",
+            "attribution_status": "unattributed",
+            "employee_id": None,
+            "net_cost": 90.0,
+            "source_summary_row_hash": "summary-empty-author",
+        }
+        assert rows["author-wins"] == {
+            "resource_name": "author-wins",
+            "author": "unknown-author",
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "author_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 100.0,
+            "source_summary_row_hash": "summary-author-wins",
+        }
+        assert rows["owner-email"] == {
+            "resource_name": "owner-email",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": "local-only@pingcap.com",
+            "attribution_source": "owner_email",
+            "attribution_status": "matched",
+            "employee_id": 8,
+            "net_cost": 110.0,
+            "source_summary_row_hash": "summary-owner-email",
+        }
+        assert rows["owner-normalized"] == {
+            "resource_name": "owner-normalized",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": "flare.zuo@pingcap.com",
+            "attribution_source": "owner_normalized",
+            "attribution_status": "matched",
+            "employee_id": 7,
+            "net_cost": 120.0,
+            "source_summary_row_hash": "summary-owner-normalized",
         }
     finally:
         engine.dispose()
@@ -1691,7 +1950,15 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert "github_employee.is_active" not in sql
     assert "email_employee.is_active" not in sql
     assert "normalized_employee.is_active" not in sql
-    assert "LOWER(github_employee.github_id) = LOWER(COALESCE(summary.author, pvc_mapping.author))" in sql
+    summary_identity = (
+        "COALESCE(NULLIF(TRIM(summary.author), ''), "
+        "NULLIF(TRIM(pvc_mapping.author), ''), NULLIF(TRIM(summary.owner), ''))"
+    )
+    assert f"LOWER(github_employee.github_id) = LOWER({summary_identity})" in sql
+    assert f"AND {normalized_identity_sql(summary_identity)} <> ''" in sql
+    assert "FROM roster_employees other_email_employee" in sql
+    assert "FROM roster_employees other_normalized_employee" in sql
+    assert "owner_github" in sql
     assert "FROM cost_kubernetes_pvc_pod_mapping" in sql
     assert "HAVING COUNT(DISTINCT pod_uid) = 1" in sql
     assert "pvc_pod_github" in sql

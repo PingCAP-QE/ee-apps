@@ -3000,6 +3000,83 @@ def test_cost_share_route_groups_by_cost_driver(
     assert stack_body["series"][2]["key"] == "cost_driver__other"
 
 
+def test_tencent_sku_breakdown_uses_console_product_name(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="ee-apps",
+        group_id=110,
+        net_cost=70,
+        list_cost=70,
+        vendor="tencent",
+        account_id="100050658403",
+        service_name="容器服务 TKE",
+        sku_name="原生节点 SA9 / CPU",
+        usage_type="按量计费小时结",
+        dimension_hash="tencent-tke",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="ee-apps",
+        group_id=110,
+        net_cost=30,
+        list_cost=30,
+        vendor="tencent",
+        account_id="100050658403",
+        service_name="云硬盘CBS",
+        sku_name="增强型 SSD 云硬盘 / 存储空间",
+        usage_type="按量计费小时结",
+        dimension_hash="tencent-cbs",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="ee-apps",
+        group_id=110,
+        net_cost=10,
+        list_cost=10,
+        vendor="tencent",
+        account_id="100050658403",
+        service_name="",
+        sku_name="原生节点 S9 / CPU",
+        usage_type="按量计费小时结",
+        dimension_hash="tencent-no-product",
+    )
+    params = {
+        "start_date": "2026-04-01",
+        "end_date": "2026-04-30",
+        "cost_source": "tencent:100050658403",
+    }
+
+    share_response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={**params, "dimension": "sku"},
+    )
+
+    assert share_response.status_code == 200
+    assert share_response.json()["items"] == [
+        {"name": "容器服务 TKE", "value": 70.0, "share_pct": 63.64, "interactive": False},
+        {"name": "云硬盘CBS", "value": 30.0, "share_pct": 27.27, "interactive": False},
+        {"name": "原生节点 S9 / CPU", "value": 10.0, "share_pct": 9.09, "interactive": False},
+    ]
+
+    stack_response = api_client.get(
+        "/api/v1/pages/cost-repo-group-stack",
+        params={**params, "group_by": "sku"},
+    )
+
+    assert stack_response.status_code == 200
+    assert [item["name"] for item in stack_response.json()["items"]] == [
+        "容器服务 TKE",
+        "云硬盘CBS",
+        "原生节点 S9 / CPU",
+    ]
+
+
 def test_cost_breakdown_drilldown_filters_sku_class_to_skus(
     sqlite_engine,
     api_client: TestClient,

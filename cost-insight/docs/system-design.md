@@ -235,11 +235,12 @@ Sample:
 
 Attribution rules for V1:
 
-1. CI usage uses `author` as the primary key.
-2. `owner` is supported but lower priority because current CI labels mainly use
-   `author`.
-3. Match `author` to `roster_employees.github_id` first.
-4. If the value looks like an email, match `roster_employees.email`.
+1. CI usage uses a nonblank `author` as the primary identity; a nonblank
+   `owner` is the fallback because current CI labels mainly use `author`.
+2. Match the selected identity to `roster_employees.github_id` first.
+3. If GitHub ID does not match, try `roster_employees.email` and email local-part.
+4. A local-part or normalized fallback that matches multiple roster employees is
+   ambiguous: do not choose arbitrarily or duplicate the cost; leave it unmatched.
 5. Attach `group_id` and `manager_id` from the current active roster.
 6. System namespaces such as `kube-system` and `flux-system` are marked
    `system` unless labels clearly identify an owner.
@@ -373,9 +374,11 @@ Rules:
 
 1. Build a working set for affected dates.
 2. Read normalized billing and allocation columns from the summary ledger.
-3. Use `author` first for CI attribution.
-4. Join `author` to `roster_employees.github_id`.
-5. If GitHub ID does not match, try employee email and email local-part.
+3. Use nonblank `author` first, then nonblank `owner` for CI attribution.
+4. Join the selected identity to `roster_employees.github_id`.
+5. If GitHub ID does not match, try employee email and email local-part. A
+   local-part or normalized fallback matching multiple employees remains
+   unmatched rather than choosing one employee or duplicating cost.
 6. Attach `group_id` and `manager_id` from current roster tables. If an
    employee manager is missing, fall back to the roster group's manager.
 7. Aggregate by day, vendor, account, service, SKU, org, repo, resource, author,
@@ -387,14 +390,27 @@ Rules:
 10. Run larger refreshes with `--split-by-day` so each TiDB query stays within
     the single-query memory quota.
 
+Before enabling the ambiguity rules in a scheduled TiDB refresh, capture an
+`EXPLAIN ANALYZE` for a representative day. The unique fallback checks use
+correlated roster lookups and must not regress the bounded refresh plan.
+
 Current V1 attribution statuses:
 
 | status | source | Meaning |
 | --- | --- | --- |
-| `matched` | `author_github` | `author` matched active roster GitHub ID |
-| `matched` | `author_email` | `author` matched active roster email or email local-part |
-| `unmatched` | `author_label` | `author` exists but no active roster employee matched |
-| `unattributed` | `missing_author` | no author label exists |
+| `matched` | `author_override` | `author` matched a configured bot override |
+| `matched` | `author_github` | `author` matched roster GitHub ID |
+| `matched` | `author_email` | `author` matched roster email or unique email local-part |
+| `matched` | `author_normalized` | normalized `author` uniquely matched roster identity |
+| `unmatched` | `author_label` | nonblank `author` exists but no roster employee matched |
+| `matched` | `pvc_pod_override` | a mapped PVC Pod author matched a configured bot override |
+| `matched` | `pvc_pod_github` / `pvc_pod_email` / `pvc_pod_normalized` | a mapped PVC Pod author matched roster identity |
+| `unmatched` | `pvc_pod_author` | a mapped PVC Pod author did not match roster identity |
+| `matched` | `owner_github` | no usable `author`; `owner` matched roster GitHub ID |
+| `matched` | `owner_email` | no usable `author`; `owner` matched roster email or unique email local-part |
+| `matched` | `owner_normalized` | no usable `author`; normalized `owner` uniquely matched roster identity |
+| `unmatched` | `owner_label` | no usable `author`; nonblank `owner` exists but no roster employee matched |
+| `unattributed` | `missing_author` | no nonblank `author`, mapped PVC author, or `owner` label exists |
 
 Cost allocation with billing export:
 

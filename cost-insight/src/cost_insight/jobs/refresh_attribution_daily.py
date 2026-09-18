@@ -250,14 +250,85 @@ _DELETE_ATTRIBUTION_DAILY = text(
 )
 
 
-_NORMALIZED_SUMMARY_AUTHOR = normalized_identity_sql("summary.author")
-_NORMALIZED_GITHUB_ID = normalized_identity_sql("normalized_employee.github_id")
-_NORMALIZED_EMAIL_LOCAL = normalized_identity_sql(
-    "SUBSTRING_INDEX(normalized_employee.email, '@', 1)"
+_SUMMARY_SOURCE_OWNER = source_owner_email_sql("summary.owner")
+_SUMMARY_OWNER_IDENTITY = "NULLIF(TRIM(summary.owner), '')"
+_PVC_MAPPING_AUTHOR_IDENTITY = "NULLIF(TRIM(pvc_mapping.author), '')"
+_SUMMARY_AUTHOR_IDENTITY = (
+    "COALESCE(NULLIF(TRIM(summary.author), ''), "
+    f"{_PVC_MAPPING_AUTHOR_IDENTITY})"
 )
-_NORMALIZED_EN_NAME = normalized_identity_sql("normalized_employee.en_name")
-_SUMMARY_AUTHOR_OVERRIDE_EMAIL = """
-CASE LOWER(summary.author)
+_SUMMARY_AUTHOR_FROM_PVC = (
+    f"NULLIF(TRIM(summary.author), '') IS NULL AND {_PVC_MAPPING_AUTHOR_IDENTITY} IS NOT NULL"
+)
+_SUMMARY_MATCH_IDENTITY = (
+    "COALESCE(NULLIF(TRIM(summary.author), ''), "
+    f"{_PVC_MAPPING_AUTHOR_IDENTITY}, {_SUMMARY_OWNER_IDENTITY})"
+)
+_SUMMARY_IDENTITY_IS_OWNER = (
+    f"{_SUMMARY_AUTHOR_IDENTITY} IS NULL AND {_SUMMARY_OWNER_IDENTITY} IS NOT NULL"
+)
+_NORMALIZED_SUMMARY_IDENTITY = normalized_identity_sql(_SUMMARY_MATCH_IDENTITY)
+
+
+def _roster_email_match_sql(employee: str, identity: str) -> str:
+    return f"""
+(
+  LOWER({employee}.email) = LOWER({identity})
+  OR LOWER(SUBSTRING_INDEX({employee}.email, '@', 1)) = LOWER({identity})
+)
+""".strip()
+
+
+def _roster_normalized_match_sql(employee: str, identity: str) -> str:
+    return f"""
+(
+  {identity} = {normalized_identity_sql(f'{employee}.github_id')}
+  OR {identity} = {normalized_identity_sql(f"SUBSTRING_INDEX({employee}.email, '@', 1)")}
+  OR {identity} = {normalized_identity_sql(f'{employee}.en_name')}
+)
+""".strip()
+
+
+def _unique_roster_match_sql(employee: str, other_employee: str, match: str) -> str:
+    return f"""
+NOT EXISTS (
+  SELECT 1
+  FROM roster_employees {other_employee}
+  WHERE {other_employee}.id <> {employee}.id
+    AND {match}
+)
+""".strip()
+
+
+def _roster_fallback_match_sql(employee: str, identity: str, normalized_identity: str) -> str:
+    return f"({_roster_email_match_sql(employee, identity)} OR {_roster_normalized_match_sql(employee, normalized_identity)})"
+
+
+_SUMMARY_EMAIL_EMPLOYEE_MATCH = _roster_email_match_sql(
+    "email_employee", _SUMMARY_MATCH_IDENTITY
+)
+_SUMMARY_NORMALIZED_EMPLOYEE_MATCH = _roster_normalized_match_sql(
+    "normalized_employee", _NORMALIZED_SUMMARY_IDENTITY
+)
+_SUMMARY_OTHER_EMAIL_FALLBACK_EMPLOYEE_MATCH = _roster_fallback_match_sql(
+    "other_email_employee", _SUMMARY_MATCH_IDENTITY, _NORMALIZED_SUMMARY_IDENTITY
+)
+_SUMMARY_OTHER_NORMALIZED_FALLBACK_EMPLOYEE_MATCH = _roster_fallback_match_sql(
+    "other_normalized_employee", _SUMMARY_MATCH_IDENTITY, _NORMALIZED_SUMMARY_IDENTITY
+)
+_NORMALIZED_BASE_IDENTITY = normalized_identity_sql("base.match_identity")
+_BASE_EMAIL_EMPLOYEE_MATCH = _roster_email_match_sql("email_employee", "base.match_identity")
+_BASE_NORMALIZED_EMPLOYEE_MATCH = _roster_normalized_match_sql(
+    "normalized_employee", _NORMALIZED_BASE_IDENTITY
+)
+_BASE_OTHER_EMAIL_FALLBACK_EMPLOYEE_MATCH = _roster_fallback_match_sql(
+    "other_email_employee", "base.match_identity", _NORMALIZED_BASE_IDENTITY
+)
+_BASE_OTHER_NORMALIZED_FALLBACK_EMPLOYEE_MATCH = _roster_fallback_match_sql(
+    "other_normalized_employee", "base.match_identity", _NORMALIZED_BASE_IDENTITY
+)
+_SUMMARY_AUTHOR_OVERRIDE_EMAIL = f"""
+CASE LOWER({_SUMMARY_AUTHOR_IDENTITY})
   WHEN 'flaky-claw' THEN 'yinsu@pingcap.com'
   WHEN 'ti-chi-bot' THEN 'wei.zheng@pingcap.com'
   ELSE NULL
@@ -270,8 +341,6 @@ CASE LOWER(base.match_identity)
   ELSE NULL
 END
 """.strip()
-_NORMALIZED_BASE_IDENTITY = normalized_identity_sql("base.match_identity")
-_SUMMARY_SOURCE_OWNER = source_owner_email_sql("summary.owner")
 
 
 def _json_tag_value_sql(expression: str, key: str) -> str:
@@ -489,7 +558,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.namespace,
         summary.workload_name,
         summary.workload_type,
-        COALESCE(summary.author, pvc_mapping.author) AS author,
+        {_SUMMARY_AUTHOR_IDENTITY} AS author,
         {_MATCHED_OWNER} AS owner,
         summary.service,
         summary.project,
@@ -510,21 +579,27 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
               normalized_employee.id
             ) AS CHAR)
           )
-          WHEN COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
-            THEN CONCAT('author:', LOWER(COALESCE(summary.author, pvc_mapping.author)))
+          WHEN {_SUMMARY_MATCH_IDENTITY} IS NOT NULL THEN CONCAT(
+            CASE WHEN {_SUMMARY_IDENTITY_IS_OWNER} THEN 'owner:' ELSE 'author:' END,
+            LOWER({_SUMMARY_MATCH_IDENTITY})
+          )
           ELSE 'unattributed'
         END AS attribution_key,
         CASE
-          WHEN override_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_override'
-          WHEN github_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_github'
-          WHEN email_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_email'
-          WHEN normalized_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_normalized'
+          WHEN {_SUMMARY_IDENTITY_IS_OWNER} AND github_employee.id IS NOT NULL THEN 'owner_github'
+          WHEN {_SUMMARY_IDENTITY_IS_OWNER} AND email_employee.id IS NOT NULL THEN 'owner_email'
+          WHEN {_SUMMARY_IDENTITY_IS_OWNER} AND normalized_employee.id IS NOT NULL THEN 'owner_normalized'
+          WHEN {_SUMMARY_IDENTITY_IS_OWNER} THEN 'owner_label'
+          WHEN override_employee.id IS NOT NULL AND {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_override'
+          WHEN github_employee.id IS NOT NULL AND {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_github'
+          WHEN email_employee.id IS NOT NULL AND {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_email'
+          WHEN normalized_employee.id IS NOT NULL AND {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_normalized'
           WHEN override_employee.id IS NOT NULL THEN 'author_override'
           WHEN github_employee.id IS NOT NULL THEN 'author_github'
           WHEN email_employee.id IS NOT NULL THEN 'author_email'
           WHEN normalized_employee.id IS NOT NULL THEN 'author_normalized'
-          WHEN summary.author IS NOT NULL THEN 'author_label'
-          WHEN pvc_mapping.author IS NOT NULL THEN 'pvc_pod_author'
+          WHEN {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_author'
+          WHEN {_SUMMARY_AUTHOR_IDENTITY} IS NOT NULL THEN 'author_label'
           ELSE 'missing_author'
         END AS attribution_source,
         CASE
@@ -534,7 +609,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
             email_employee.id,
             normalized_employee.id
           ) IS NOT NULL THEN 'matched'
-          WHEN COALESCE(summary.author, pvc_mapping.author) IS NOT NULL THEN 'unmatched'
+          WHEN {_SUMMARY_MATCH_IDENTITY} IS NOT NULL THEN 'unmatched'
           ELSE 'unattributed'
         END AS attribution_status,
         COALESCE(
@@ -577,43 +652,39 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
            AND MAX(author) <> ''
       ) pvc_mapping
         ON summary.vendor = 'gcp'
-       AND summary.author IS NULL
+       AND NULLIF(TRIM(summary.author), '') IS NULL
        AND summary.resource_name IS NOT NULL
        AND LOWER(summary.resource_name) LIKE 'pvc-%'
        AND pvc_mapping.vendor = summary.vendor
        AND pvc_mapping.account_id = summary.account_id
        AND pvc_mapping.persistent_volume_name = summary.resource_name
       LEFT JOIN roster_employees override_employee
-        ON COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+        ON {_SUMMARY_AUTHOR_IDENTITY} IS NOT NULL
        AND override_employee.email IS NOT NULL
        AND LOWER(override_employee.email) = LOWER({_SUMMARY_AUTHOR_OVERRIDE_EMAIL})
       LEFT JOIN roster_employees github_employee
         ON override_employee.id IS NULL
-       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+       AND {_SUMMARY_MATCH_IDENTITY} IS NOT NULL
        AND github_employee.github_id IS NOT NULL
-       AND LOWER(github_employee.github_id) = LOWER(COALESCE(summary.author, pvc_mapping.author))
+       AND LOWER(github_employee.github_id) = LOWER({_SUMMARY_MATCH_IDENTITY})
       LEFT JOIN roster_employees email_employee
         ON github_employee.id IS NULL
-       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+       AND {_SUMMARY_MATCH_IDENTITY} IS NOT NULL
        AND email_employee.email IS NOT NULL
-       AND (
-         LOWER(email_employee.email) = LOWER(COALESCE(summary.author, pvc_mapping.author))
-         OR LOWER(SUBSTRING_INDEX(email_employee.email, '@', 1)) = LOWER(COALESCE(summary.author, pvc_mapping.author))
-       )
+       AND {_SUMMARY_EMAIL_EMPLOYEE_MATCH}
+       AND {_unique_roster_match_sql('email_employee', 'other_email_employee', _SUMMARY_OTHER_EMAIL_FALLBACK_EMPLOYEE_MATCH)}
       LEFT JOIN roster_employees normalized_employee
         ON github_employee.id IS NULL
        AND email_employee.id IS NULL
-       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+       AND {_SUMMARY_MATCH_IDENTITY} IS NOT NULL
+       AND {_NORMALIZED_SUMMARY_IDENTITY} <> ''
        AND (
          normalized_employee.github_id IS NOT NULL
          OR normalized_employee.email IS NOT NULL
          OR normalized_employee.en_name IS NOT NULL
        )
-       AND (
-         {_NORMALIZED_SUMMARY_AUTHOR} = {_NORMALIZED_GITHUB_ID}
-         OR {_NORMALIZED_SUMMARY_AUTHOR} = {_NORMALIZED_EMAIL_LOCAL}
-         OR {_NORMALIZED_SUMMARY_AUTHOR} = {_NORMALIZED_EN_NAME}
-       )
+       AND {_SUMMARY_NORMALIZED_EMPLOYEE_MATCH}
+       AND {_unique_roster_match_sql('normalized_employee', 'other_normalized_employee', _SUMMARY_OTHER_NORMALIZED_FALLBACK_EMPLOYEE_MATCH)}
       LEFT JOIN roster_groups matched_group
         ON matched_group.is_active = 1
        AND matched_group.id = COALESCE(
@@ -1091,25 +1162,21 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
            AND base.identity_kind = 'author'
            AND base.match_identity IS NOT NULL
            AND email_employee.email IS NOT NULL
-           AND (
-             LOWER(email_employee.email) = LOWER(base.match_identity)
-             OR LOWER(SUBSTRING_INDEX(email_employee.email, '@', 1)) = LOWER(base.match_identity)
-           )
+           AND {_BASE_EMAIL_EMPLOYEE_MATCH}
+           AND {_unique_roster_match_sql('email_employee', 'other_email_employee', _BASE_OTHER_EMAIL_FALLBACK_EMPLOYEE_MATCH)}
           LEFT JOIN roster_employees normalized_employee
             ON github_employee.id IS NULL
            AND email_employee.id IS NULL
            AND base.identity_kind = 'author'
            AND base.match_identity IS NOT NULL
+           AND {_NORMALIZED_BASE_IDENTITY} <> ''
            AND (
              normalized_employee.github_id IS NOT NULL
              OR normalized_employee.email IS NOT NULL
              OR normalized_employee.en_name IS NOT NULL
            )
-           AND (
-             {_NORMALIZED_BASE_IDENTITY} = {_NORMALIZED_GITHUB_ID}
-             OR {_NORMALIZED_BASE_IDENTITY} = {_NORMALIZED_EMAIL_LOCAL}
-             OR {_NORMALIZED_BASE_IDENTITY} = {_NORMALIZED_EN_NAME}
-           )
+           AND {_BASE_NORMALIZED_EMPLOYEE_MATCH}
+           AND {_unique_roster_match_sql('normalized_employee', 'other_normalized_employee', _BASE_OTHER_NORMALIZED_FALLBACK_EMPLOYEE_MATCH)}
           LEFT JOIN roster_groups matched_group
             ON matched_group.is_active = 1
            AND matched_group.id = COALESCE(

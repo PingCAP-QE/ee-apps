@@ -3476,6 +3476,7 @@ def _cost_sku_share_expr(connection: Connection, table_alias: str) -> str:
     prefix = f"{table_alias}." if table_alias else ""
     usage = f"NULLIF({prefix}usage_type, '')"
     sku = f"NULLIF({prefix}sku_name, '')"
+    service = f"NULLIF({prefix}service_name, '')"
     if connection.dialect.name == "sqlite":
         readable_usage = (
             "CASE "
@@ -3504,7 +3505,13 @@ def _cost_sku_share_expr(connection: Connection, table_alias: str) -> str:
             f"ELSE {usage} "
             "END"
         )
-    return f"COALESCE({readable_usage}, {sku}, '(no SKU)')"
+    # Tencent's console category is the product (`service_name`), not its billing cycle.
+    # Preserve the detailed SKU only when the source omits that product category.
+    return (
+        "COALESCE("
+        f"CASE WHEN {prefix}vendor = 'tencent' THEN {service} ELSE {readable_usage} END, "
+        f"{sku}, '(no SKU)')"
+    )
 
 
 def _cost_driver_share_expr(table_alias: str) -> str:
