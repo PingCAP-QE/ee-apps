@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from datetime import date
 
 import pytest
@@ -22,6 +23,11 @@ from cost_insight.jobs.refresh_attribution_daily import (
 )
 
 SOURCE = CostAttributionSource(vendor="gcp", account_id="pingcap-testing-account")
+_JOIN_ON_CLAUSE = re.compile(
+    r"\bON\b(.*?)(?=\b(?:LEFT\s+JOIN|JOIN|WHERE|GROUP\s+BY|HAVING)\b)",
+    re.DOTALL | re.IGNORECASE,
+)
+_SUBQUERY_IN_JOIN_ON = re.compile(r"\b(?:SELECT|EXISTS)\b", re.IGNORECASE)
 
 
 def _sqlite_engine():
@@ -742,6 +748,11 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                             'summary-direct-override'
                       ),
                       (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'email-author', 'alice@pingcap.com', NULL, 38, 38, 0, 38,
+                            'summary-email-author'
+                      ),
+                      (
                         '2026-08-16', 'tencent', '100050658403',
                             '容器服务 TKE', 'native node', 'owner-label', 'bob', 'alice', 40, 40, 0, 40,
                             'summary-owner-label'
@@ -802,7 +813,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             end_date=date(2026, 8, 16),
         )
 
-        assert summary.rows_inserted == 6
+        assert summary.rows_inserted == 7
         with engine.begin() as connection:
             rows = {
                 row["resource_name"]: dict(row)
@@ -889,6 +900,18 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             "employee_id": 9,
             "net_cost": 37.0,
             "source_summary_row_hash": "summary-direct-override",
+        }
+        assert rows["email-author"] == {
+            "resource_name": "email-author",
+            "author": "alice@pingcap.com",
+            "org": None,
+            "repo": None,
+            "owner": "alice@pingcap.com",
+            "attribution_source": "author_email",
+            "attribution_status": "matched",
+            "employee_id": 1,
+            "net_cost": 38.0,
+            "source_summary_row_hash": "summary-email-author",
         }
         tencent_source = CostAttributionSource(vendor="tencent", account_id="100050658403")
         summary = run_refresh_cost_attribution_from_summary(
@@ -1958,7 +1981,6 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert f"AND {normalized_identity_sql(summary_identity)} <> ''" in sql
     assert "FROM roster_employees\n    UNION ALL" in sql
     assert "HAVING COUNT(DISTINCT candidates.employee_id) = 1" in sql
-    assert "NOT EXISTS" not in sql
     assert "owner_github" in sql
     assert "FROM cost_kubernetes_pvc_pod_mapping" in sql
     assert "HAVING COUNT(DISTINCT pod_uid) = 1" in sql
@@ -2013,6 +2035,32 @@ def test_non_aws_summary_insert_uses_existing_statement() -> None:
     )
 
     assert statements == (_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,)
+
+
+@pytest.mark.parametrize(
+    ("source", "tcms_allocation_table", "expected_on_clause_count"),
+    (
+        (SOURCE, None, 7),
+        (CostAttributionSource(vendor="aws", account_id="946646677266"), "tcms_cost.resource_allocation", 11),
+    ),
+    ids=("standard", "tcms"),
+)
+def test_summary_insert_variants_do_not_use_tidb_unsupported_on_subqueries(
+    source: CostAttributionSource,
+    tcms_allocation_table: str | None,
+    expected_on_clause_count: int,
+) -> None:
+    statements = _summary_insert_statements(
+        source=source,
+        tcms_allocation_table=tcms_allocation_table,
+    )
+
+    assert len(statements) == 1
+    for statement in statements:
+        on_clauses = _JOIN_ON_CLAUSE.findall(str(statement))
+        assert len(on_clauses) == expected_on_clause_count
+        for on_clause in on_clauses:
+            assert _SUBQUERY_IN_JOIN_ON.search(on_clause) is None, on_clause.strip()
 
 
 def test_attribution_carries_currency_and_separates_dimension_hashes() -> None:

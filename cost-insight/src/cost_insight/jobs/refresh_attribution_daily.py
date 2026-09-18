@@ -289,13 +289,9 @@ def _roster_normalized_match_sql(employee: str, identity: str) -> str:
 """.strip()
 
 
-def _unique_roster_fallback_employee_sql() -> str:
-    """Return the unique employee for each normalized fallback identity.
-
-    TiDB does not allow a correlated subquery in an outer join condition. Build
-    this small roster-only lookup once, then join it by the summary identity.
-    """
-    return f"""
+# TiDB does not allow subqueries in ON conditions. Materialize this roster-only
+# lookup once, then join it by normalized match identity.
+_UNIQUE_FALLBACK_EMPLOYEE = f"""
 (
   SELECT candidates.match_identity, MIN(candidates.employee_id) AS employee_id
   FROM (
@@ -313,9 +309,6 @@ def _unique_roster_fallback_employee_sql() -> str:
   HAVING COUNT(DISTINCT candidates.employee_id) = 1
 )
 """.strip()
-
-
-_UNIQUE_FALLBACK_EMPLOYEE = _unique_roster_fallback_employee_sql()
 _SUMMARY_EMAIL_EMPLOYEE_MATCH = _roster_email_match_sql(
     "email_employee", _SUMMARY_MATCH_IDENTITY
 )
