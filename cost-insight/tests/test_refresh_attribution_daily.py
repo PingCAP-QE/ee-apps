@@ -1956,8 +1956,9 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     )
     assert f"LOWER(github_employee.github_id) = LOWER({summary_identity})" in sql
     assert f"AND {normalized_identity_sql(summary_identity)} <> ''" in sql
-    assert "FROM roster_employees other_email_employee" in sql
-    assert "FROM roster_employees other_normalized_employee" in sql
+    assert "FROM roster_employees\n    UNION ALL" in sql
+    assert "HAVING COUNT(DISTINCT candidates.employee_id) = 1" in sql
+    assert "NOT EXISTS" not in sql
     assert "owner_github" in sql
     assert "FROM cost_kubernetes_pvc_pod_mapping" in sql
     assert "HAVING COUNT(DISTINCT pod_uid) = 1" in sql
