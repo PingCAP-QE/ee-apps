@@ -16,9 +16,7 @@ func TestPortalDevBuildIdentityAndCapabilities(t *testing.T) {
 	defer teardownTestEnv(env)
 
 	aliceCtx := identity.WithUser(context.Background(), identity.User{Email: "alice@pingcap.com"})
-	forged := "mallory@pingcap.com"
 	created, err := env.service.Create(aliceCtx, &devbuild.CreatePayload{
-		CreatedBy: &forged,
 		Request: &devbuild.DevBuildSpec{
 			Product:  "pd",
 			Edition:  "community",
@@ -31,14 +29,20 @@ func TestPortalDevBuildIdentityAndCapabilities(t *testing.T) {
 	assert.Equal(t, "alice@pingcap.com", created.Meta.CreatedBy)
 	assert.Nil(t, created.Spec.Version)
 
-	bobCtx := identity.WithUser(context.Background(), identity.User{Email: "bob@pingcap.com"})
-	_, err = env.service.Create(bobCtx, &devbuild.CreatePayload{
+	// An explicitly provided createdBy takes precedence over the authenticated
+	// identity, allowing a caller to attribute a build to another user.
+	explicit := "bob@pingcap.com"
+	delegated, err := env.service.Create(aliceCtx, &devbuild.CreatePayload{
+		CreatedBy: &explicit,
 		Request: &devbuild.DevBuildSpec{
 			Product: "pd", Edition: "community", GitRef: "tag/v8.5.0", Platform: "linux",
 		},
 		Dryrun: true,
 	})
 	require.NoError(t, err)
+	assert.Equal(t, explicit, delegated.Meta.CreatedBy)
+
+	bobCtx := identity.WithUser(context.Background(), identity.User{Email: "bob@pingcap.com"})
 
 	mine, err := env.service.List(aliceCtx, &devbuild.ListPayload{
 		Page: 1, PageSize: 20, Scope: "mine", Sort: "createdAt", Direction: "desc",

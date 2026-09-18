@@ -186,9 +186,12 @@ func (s *devbuildsrvc) Capabilities(context.Context) (*devbuild.DevBuildCapabili
 // Create and trigger devbuild
 func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*devbuild.DevBuild, error) {
 	s.logger.Info().Msgf("devbuild.create")
-	if user, ok := identity.FromContext(ctx); ok {
-		p.CreatedBy = &user.Email
-	} else if p.CreatedBy == nil || strings.TrimSpace(*p.CreatedBy) == "" {
+	if p.CreatedBy == nil {
+		if user, ok := identity.FromContext(ctx); ok {
+			p.CreatedBy = &user.Email
+		}
+	}
+	if p.CreatedBy == nil || strings.TrimSpace(*p.CreatedBy) == "" {
 		return nil, &devbuild.DevBuildUnauthorizedError{Code: http.StatusUnauthorized, Message: "createdBy or authenticated identity is required"}
 	}
 
