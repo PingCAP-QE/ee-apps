@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from datetime import date
 
 import pytest
@@ -22,6 +23,11 @@ from cost_insight.jobs.refresh_attribution_daily import (
 )
 
 SOURCE = CostAttributionSource(vendor="gcp", account_id="pingcap-testing-account")
+_JOIN_ON_CLAUSE = re.compile(
+    r"\bON\b(.*?)(?=\b(?:LEFT\s+JOIN|JOIN|WHERE|GROUP\s+BY|HAVING)\b)",
+    re.DOTALL | re.IGNORECASE,
+)
+_SUBQUERY_IN_JOIN_ON = re.compile(r"\b(?:SELECT|EXISTS)\b", re.IGNORECASE)
 
 
 def _sqlite_engine():
@@ -2032,23 +2038,29 @@ def test_non_aws_summary_insert_uses_existing_statement() -> None:
 
 
 @pytest.mark.parametrize(
-    ("source", "tcms_allocation_table"),
+    ("source", "tcms_allocation_table", "expected_on_clause_count"),
     (
-        (SOURCE, None),
-        (CostAttributionSource(vendor="aws", account_id="946646677266"), "tcms_cost.resource_allocation"),
+        (SOURCE, None, 7),
+        (CostAttributionSource(vendor="aws", account_id="946646677266"), "tcms_cost.resource_allocation", 11),
     ),
     ids=("standard", "tcms"),
 )
 def test_summary_insert_variants_do_not_use_tidb_unsupported_on_subqueries(
     source: CostAttributionSource,
     tcms_allocation_table: str | None,
+    expected_on_clause_count: int,
 ) -> None:
     statements = _summary_insert_statements(
         source=source,
         tcms_allocation_table=tcms_allocation_table,
     )
 
-    assert all("NOT EXISTS" not in str(statement) for statement in statements)
+    assert len(statements) == 1
+    for statement in statements:
+        on_clauses = _JOIN_ON_CLAUSE.findall(str(statement))
+        assert len(on_clauses) == expected_on_clause_count
+        for on_clause in on_clauses:
+            assert _SUBQUERY_IN_JOIN_ON.search(on_clause) is None, on_clause.strip()
 
 
 def test_attribution_carries_currency_and_separates_dimension_hashes() -> None:
