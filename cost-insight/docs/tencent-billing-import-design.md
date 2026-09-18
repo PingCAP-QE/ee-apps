@@ -274,12 +274,22 @@ and investigation.
 | `ResourceId`, fallback `ResourceName` | `resource_name` |
 | allocation `Tags` | canonical `vendor_tags_json` |
 | tags `author`, `org`, `repo` | corresponding attribution columns |
-| tags `owner`, `service`, `project`, `service_exec_id` | corresponding resource dimensions |
+| tag `owner` | source-owner fallback for attribution when `author` is absent |
+| tags `service`, `project`, `service_exec_id` | corresponding resource dimensions |
 | `PayTime` | `source_export_time` |
 | `Cost` | `list_cost` |
 | `RealCost` | `effective_cost`, `net_cost` |
 | unavailable semantic credit | `credit_amount = NULL` |
 | literal `CNY` | `currency` |
+
+Direct summary attribution matches a nonblank `author` label first, then falls back to the
+nonblank `owner` label. A present but unmatched `author` does not fall through to `owner`,
+preserving the existing author-first ownership contract. Tencent tag values are used literally;
+`_at_` is not an email escape sequence for this source. The
+current roster resolves the selected identity's owner and team; if neither label is present or
+matches the roster, the cost remains visible as unmatched or unattributed. A local-part or
+normalized fallback that matches multiple roster employees remains unmatched; it is never
+duplicated across them.
 
 Tags remain outside identity, so the shared summary upsert must insert `currency` and extend its
 `ON DUPLICATE KEY UPDATE` set to refresh `author`, `repo`, `target_branch`, and `currency` in
@@ -565,9 +575,11 @@ uses D+5. It does not block writing or reviewing the importer design.
 
 ### Gate 2: supernode bill-tag canary
 
-Confirm that the existing `eks-6ikqrb5l` canary bill row contains the expected `author`, `org`, and
-`repo` tags. This gate blocks claiming end-to-end Pod-label attribution and blocks production Prow
-mutation rollout. It does not block importing general Tencent resource cost.
+Confirm that the existing `eks-6ikqrb5l` canary bill row contains the expected `author`, `org`,
+`repo`, and `owner` tags. Record the exact `owner` value and verify it is a literal Tencent tag
+value rather than an `_at_`-encoded email. This gate blocks claiming end-to-end Pod-label
+attribution and blocks production Prow mutation rollout. It does not block importing general
+Tencent resource cost.
 
 ### Deployment phases
 
