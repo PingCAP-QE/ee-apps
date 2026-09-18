@@ -391,9 +391,9 @@ Rules:
     the single-query memory quota.
 
 Before enabling the ambiguity rules in a scheduled TiDB refresh, capture an
-`EXPLAIN ANALYZE` for representative Tencent and GCP days. The unique fallback
-lookup is a roster-only derived table and must not regress either bounded
-refresh plan.
+`EXPLAIN ANALYZE` for one representative day per statement variant: standard
+(GCP and Tencent) and TCMS (AWS). The unique fallback lookup is a roster-only
+derived table and must not regress either bounded refresh plan.
 
 Current V1 attribution statuses:
 

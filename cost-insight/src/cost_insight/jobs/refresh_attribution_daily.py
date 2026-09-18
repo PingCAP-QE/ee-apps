@@ -290,7 +290,7 @@ def _roster_normalized_match_sql(employee: str, identity: str) -> str:
 
 
 # TiDB does not allow subqueries in ON conditions. Materialize this roster-only
-# lookup once, then join it by normalized summary identity.
+# lookup once, then join it by normalized match identity.
 _UNIQUE_FALLBACK_EMPLOYEE = f"""
 (
   SELECT candidates.match_identity, MIN(candidates.employee_id) AS employee_id

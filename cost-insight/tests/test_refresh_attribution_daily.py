@@ -1975,7 +1975,6 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert f"AND {normalized_identity_sql(summary_identity)} <> ''" in sql
     assert "FROM roster_employees\n    UNION ALL" in sql
     assert "HAVING COUNT(DISTINCT candidates.employee_id) = 1" in sql
-    assert "NOT EXISTS" not in sql
     assert "owner_github" in sql
     assert "FROM cost_kubernetes_pvc_pod_mapping" in sql
     assert "HAVING COUNT(DISTINCT pod_uid) = 1" in sql
@@ -2021,7 +2020,6 @@ def test_aws_summary_insert_statement_keeps_tcms_matching_without_pool_weighting
     assert "summary.owner IS NOT NULL THEN 'source_label'" in logical_sql
     assert "shared_weighted" not in logical_sql
     assert "label_shared" not in logical_sql
-    assert "NOT EXISTS" not in logical_sql
 
 
 def test_non_aws_summary_insert_uses_existing_statement() -> None:
@@ -2031,6 +2029,26 @@ def test_non_aws_summary_insert_uses_existing_statement() -> None:
     )
 
     assert statements == (_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,)
+
+
+@pytest.mark.parametrize(
+    ("source", "tcms_allocation_table"),
+    (
+        (SOURCE, None),
+        (CostAttributionSource(vendor="aws", account_id="946646677266"), "tcms_cost.resource_allocation"),
+    ),
+    ids=("standard", "tcms"),
+)
+def test_summary_insert_variants_do_not_use_tidb_unsupported_on_subqueries(
+    source: CostAttributionSource,
+    tcms_allocation_table: str | None,
+) -> None:
+    statements = _summary_insert_statements(
+        source=source,
+        tcms_allocation_table=tcms_allocation_table,
+    )
+
+    assert all("NOT EXISTS" not in str(statement) for statement in statements)
 
 
 def test_attribution_carries_currency_and_separates_dimension_hashes() -> None:
