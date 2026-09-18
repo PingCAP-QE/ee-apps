@@ -1,4 +1,4 @@
-apiVersion: build.tibuild.pingcap.net/v1alpha1
+apiVersion: tibuild.pingcap.net/v1alpha1
 kind: MacBuild
 metadata:
   labels:
