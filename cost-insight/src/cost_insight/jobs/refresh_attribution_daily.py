@@ -289,43 +289,43 @@ def _roster_normalized_match_sql(employee: str, identity: str) -> str:
 """.strip()
 
 
-def _unique_roster_match_sql(employee: str, other_employee: str, match: str) -> str:
+def _unique_roster_fallback_employee_sql() -> str:
+    """Return the unique employee for each normalized fallback identity.
+
+    TiDB does not allow a correlated subquery in an outer join condition. Build
+    this small roster-only lookup once, then join it by the summary identity.
+    """
     return f"""
-NOT EXISTS (
-  SELECT 1
-  FROM roster_employees {other_employee}
-  WHERE {other_employee}.id <> {employee}.id
-    AND {match}
+(
+  SELECT candidates.match_identity, MIN(candidates.employee_id) AS employee_id
+  FROM (
+    SELECT {normalized_identity_sql('github_id')} AS match_identity, id AS employee_id
+    FROM roster_employees
+    UNION ALL
+    SELECT {normalized_identity_sql("SUBSTRING_INDEX(email, '@', 1)")} AS match_identity, id AS employee_id
+    FROM roster_employees
+    UNION ALL
+    SELECT {normalized_identity_sql('en_name')} AS match_identity, id AS employee_id
+    FROM roster_employees
+  ) candidates
+  WHERE candidates.match_identity <> ''
+  GROUP BY candidates.match_identity
+  HAVING COUNT(DISTINCT candidates.employee_id) = 1
 )
 """.strip()
 
 
-def _roster_fallback_match_sql(employee: str, identity: str, normalized_identity: str) -> str:
-    return f"({_roster_email_match_sql(employee, identity)} OR {_roster_normalized_match_sql(employee, normalized_identity)})"
-
-
+_UNIQUE_FALLBACK_EMPLOYEE = _unique_roster_fallback_employee_sql()
 _SUMMARY_EMAIL_EMPLOYEE_MATCH = _roster_email_match_sql(
     "email_employee", _SUMMARY_MATCH_IDENTITY
 )
 _SUMMARY_NORMALIZED_EMPLOYEE_MATCH = _roster_normalized_match_sql(
     "normalized_employee", _NORMALIZED_SUMMARY_IDENTITY
 )
-_SUMMARY_OTHER_EMAIL_FALLBACK_EMPLOYEE_MATCH = _roster_fallback_match_sql(
-    "other_email_employee", _SUMMARY_MATCH_IDENTITY, _NORMALIZED_SUMMARY_IDENTITY
-)
-_SUMMARY_OTHER_NORMALIZED_FALLBACK_EMPLOYEE_MATCH = _roster_fallback_match_sql(
-    "other_normalized_employee", _SUMMARY_MATCH_IDENTITY, _NORMALIZED_SUMMARY_IDENTITY
-)
 _NORMALIZED_BASE_IDENTITY = normalized_identity_sql("base.match_identity")
 _BASE_EMAIL_EMPLOYEE_MATCH = _roster_email_match_sql("email_employee", "base.match_identity")
 _BASE_NORMALIZED_EMPLOYEE_MATCH = _roster_normalized_match_sql(
     "normalized_employee", _NORMALIZED_BASE_IDENTITY
-)
-_BASE_OTHER_EMAIL_FALLBACK_EMPLOYEE_MATCH = _roster_fallback_match_sql(
-    "other_email_employee", "base.match_identity", _NORMALIZED_BASE_IDENTITY
-)
-_BASE_OTHER_NORMALIZED_FALLBACK_EMPLOYEE_MATCH = _roster_fallback_match_sql(
-    "other_normalized_employee", "base.match_identity", _NORMALIZED_BASE_IDENTITY
 )
 _SUMMARY_AUTHOR_OVERRIDE_EMAIL = f"""
 CASE LOWER({_SUMMARY_AUTHOR_IDENTITY})
@@ -667,24 +667,24 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
        AND {_SUMMARY_MATCH_IDENTITY} IS NOT NULL
        AND github_employee.github_id IS NOT NULL
        AND LOWER(github_employee.github_id) = LOWER({_SUMMARY_MATCH_IDENTITY})
-      LEFT JOIN roster_employees email_employee
+      LEFT JOIN ({_UNIQUE_FALLBACK_EMPLOYEE}) unique_fallback_employee
         ON github_employee.id IS NULL
-       AND {_SUMMARY_MATCH_IDENTITY} IS NOT NULL
-       AND email_employee.email IS NOT NULL
-       AND {_SUMMARY_EMAIL_EMPLOYEE_MATCH}
-       AND {_unique_roster_match_sql('email_employee', 'other_email_employee', _SUMMARY_OTHER_EMAIL_FALLBACK_EMPLOYEE_MATCH)}
-      LEFT JOIN roster_employees normalized_employee
-        ON github_employee.id IS NULL
-       AND email_employee.id IS NULL
        AND {_SUMMARY_MATCH_IDENTITY} IS NOT NULL
        AND {_NORMALIZED_SUMMARY_IDENTITY} <> ''
+       AND unique_fallback_employee.match_identity = {_NORMALIZED_SUMMARY_IDENTITY}
+      LEFT JOIN roster_employees email_employee
+        ON unique_fallback_employee.employee_id = email_employee.id
+       AND email_employee.email IS NOT NULL
+       AND {_SUMMARY_EMAIL_EMPLOYEE_MATCH}
+      LEFT JOIN roster_employees normalized_employee
+        ON email_employee.id IS NULL
+       AND unique_fallback_employee.employee_id = normalized_employee.id
        AND (
          normalized_employee.github_id IS NOT NULL
          OR normalized_employee.email IS NOT NULL
          OR normalized_employee.en_name IS NOT NULL
        )
        AND {_SUMMARY_NORMALIZED_EMPLOYEE_MATCH}
-       AND {_unique_roster_match_sql('normalized_employee', 'other_normalized_employee', _SUMMARY_OTHER_NORMALIZED_FALLBACK_EMPLOYEE_MATCH)}
       LEFT JOIN roster_groups matched_group
         ON matched_group.is_active = 1
        AND matched_group.id = COALESCE(
@@ -1157,26 +1157,25 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
            AND base.match_identity IS NOT NULL
            AND github_employee.github_id IS NOT NULL
            AND LOWER(github_employee.github_id) = LOWER(base.match_identity)
-          LEFT JOIN roster_employees email_employee
+          LEFT JOIN ({_UNIQUE_FALLBACK_EMPLOYEE}) unique_fallback_employee
             ON github_employee.id IS NULL
-           AND base.identity_kind = 'author'
-           AND base.match_identity IS NOT NULL
-           AND email_employee.email IS NOT NULL
-           AND {_BASE_EMAIL_EMPLOYEE_MATCH}
-           AND {_unique_roster_match_sql('email_employee', 'other_email_employee', _BASE_OTHER_EMAIL_FALLBACK_EMPLOYEE_MATCH)}
-          LEFT JOIN roster_employees normalized_employee
-            ON github_employee.id IS NULL
-           AND email_employee.id IS NULL
            AND base.identity_kind = 'author'
            AND base.match_identity IS NOT NULL
            AND {_NORMALIZED_BASE_IDENTITY} <> ''
+           AND unique_fallback_employee.match_identity = {_NORMALIZED_BASE_IDENTITY}
+          LEFT JOIN roster_employees email_employee
+            ON unique_fallback_employee.employee_id = email_employee.id
+           AND email_employee.email IS NOT NULL
+           AND {_BASE_EMAIL_EMPLOYEE_MATCH}
+          LEFT JOIN roster_employees normalized_employee
+            ON email_employee.id IS NULL
+           AND unique_fallback_employee.employee_id = normalized_employee.id
            AND (
              normalized_employee.github_id IS NOT NULL
              OR normalized_employee.email IS NOT NULL
              OR normalized_employee.en_name IS NOT NULL
            )
            AND {_BASE_NORMALIZED_EMPLOYEE_MATCH}
-           AND {_unique_roster_match_sql('normalized_employee', 'other_normalized_employee', _BASE_OTHER_NORMALIZED_FALLBACK_EMPLOYEE_MATCH)}
           LEFT JOIN roster_groups matched_group
             ON matched_group.is_active = 1
            AND matched_group.id = COALESCE(
