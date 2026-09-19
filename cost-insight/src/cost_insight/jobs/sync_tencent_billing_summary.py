@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -15,8 +16,17 @@ from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import TencentBillingSettings
 from cost_insight.jobs import state_store
-from cost_insight.jobs.cost_sources import ensure_cost_source_enabled
+from cost_insight.jobs.cost_sources import (
+    ensure_cost_source_enabled,
+    ensure_tencent_terminal_source_policy,
+)
 from cost_insight.jobs.job_keys import source_job_name
+from cost_insight.jobs.tencent_ci_allocation import (
+    ACCOUNT_ID as TENCENT_CI_ACCOUNT_ID,
+    begin_tencent_billing_partition,
+    complete_tencent_billing_partition,
+    persist_tencent_billing_metadata,
+)
 from cost_insight.jobs.sync_gcp_billing_summary import (
     _normalize_summary_row,
     _write_summary_rows,
@@ -123,6 +133,8 @@ def run_sync_tencent_billing_summary(
             dry_run=False,
             display_name=settings.account_id,
         )
+        if settings.account_id == TENCENT_CI_ACCOUNT_ID:
+            ensure_tencent_terminal_source_policy(connection, account_id=settings.account_id)
         state = state_store.get_job_state(connection, state_job_name)
         watermark = dict(state.watermark) if state else {}
         if watermark.get("account_id") not in (None, settings.account_id):
@@ -173,6 +185,7 @@ def run_sync_tencent_billing_summary(
                 state_job_name=state_job_name,
                 watermark=watermark,
                 bill_day=next_day,
+                account_id=settings.account_id,
             )
             evidence, usage_dates = _import_bill_day(
                 engine,
@@ -274,10 +287,21 @@ def _start_inflight_day(
     state_job_name: str,
     watermark: dict[str, Any],
     bill_day: date,
+    account_id: str,
 ) -> None:
     if watermark.get("inflight_bill_day"):
         if watermark["inflight_bill_day"] != bill_day.isoformat():
             raise ValueError("Cannot start a bill day while another day is in flight")
+        if not watermark.get("tencent_import_generation"):
+            watermark["tencent_import_generation"] = str(uuid.uuid4())
+            with engine.begin() as connection:
+                begin_tencent_billing_partition(
+                    connection,
+                    account_id=account_id,
+                    bill_day=bill_day,
+                    import_generation=str(watermark["tencent_import_generation"]),
+                )
+                state_store.checkpoint_job_watermark(connection, state_job_name, watermark)
         return
     watermark.update(
         {
@@ -287,9 +311,16 @@ def _start_inflight_day(
             "outer_rows_written": 0,
             "component_rows_written": 0,
             "expected_total": None,
+            "tencent_import_generation": str(uuid.uuid4()),
         }
     )
     with engine.begin() as connection:
+        begin_tencent_billing_partition(
+            connection,
+            account_id=account_id,
+            bill_day=bill_day,
+            import_generation=str(watermark["tencent_import_generation"]),
+        )
         state_store.checkpoint_job_watermark(connection, state_job_name, watermark)
 
 
@@ -316,9 +347,8 @@ def _import_bill_day(
             need_record_num=offset == 0,
             sleep=sleep,
         )
-        summary_rows = tuple(
-            _normalize_summary_row(row, preserve_source_row_hash=True)
-            for row in expand_tencent_bill_details(
+        summary_rows = _normalize_tencent_summary_rows(
+            expand_tencent_bill_details(
                 page.details,
                 expected_bill_day=bill_day,
                 account_id=settings.account_id,
@@ -338,6 +368,13 @@ def _import_bill_day(
                 summary_rows,
                 cleanup_superseded=False,
             )
+            persist_tencent_billing_metadata(
+                connection,
+                account_id=settings.account_id,
+                bill_day=bill_day,
+                import_generation=str(watermark["tencent_import_generation"]),
+                rows=summary_rows,
+            )
             watermark["next_offset"] = offset + len(page.details)
             watermark["context"] = page.context
             watermark["outer_rows_written"] = int(
@@ -350,6 +387,12 @@ def _import_bill_day(
                 watermark["expected_total"] = page.total
 
             if final_page:
+                complete_tencent_billing_partition(
+                    connection,
+                    account_id=settings.account_id,
+                    bill_day=bill_day,
+                    import_generation=str(watermark["tencent_import_generation"]),
+                )
                 evidence = _partition_evidence(
                     connection,
                     account_id=settings.account_id,
@@ -379,7 +422,7 @@ def _import_bill_day(
                 watermark["last_completed_bill_day"] = max(
                     filter(None, (previous_completed, bill_day.isoformat()))
                 )
-                for key in _INFLIGHT_KEYS:
+                for key in (*_INFLIGHT_KEYS, "tencent_import_generation"):
                     watermark.pop(key, None)
             state_store.checkpoint_job_watermark(connection, state_job_name, watermark)
 
@@ -395,6 +438,25 @@ def _import_bill_day(
         )
         if final_page:
             return evidence, usage_dates
+
+
+def _normalize_tencent_summary_rows(
+    rows: tuple[dict[str, Any], ...],
+) -> tuple[dict[str, Any], ...]:
+    """Keep Tencent's stable classification inputs beside common summary fields."""
+    normalized = []
+    for row in rows:
+        value = _normalize_summary_row(row, preserve_source_row_hash=True)
+        value.update(
+            {
+                "tencent_business_code": row.get("tencent_business_code"),
+                "tencent_product_code": row.get("tencent_product_code"),
+                "tencent_component_code": row.get("tencent_component_code"),
+                "tencent_item_code": row.get("tencent_item_code"),
+            }
+        )
+        normalized.append(value)
+    return tuple(normalized)
 
 
 def _verify_pending_days(
@@ -442,6 +504,7 @@ def _verify_pending_days(
                 state_job_name=state_job_name,
                 watermark=watermark,
                 bill_day=bill_day,
+                account_id=settings.account_id,
             )
             replay_evidence, usage_dates = _import_bill_day(
                 engine,

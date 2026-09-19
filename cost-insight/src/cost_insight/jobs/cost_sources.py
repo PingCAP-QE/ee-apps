@@ -81,6 +81,116 @@ def list_active_cost_sources(
     return tuple(_coerce_cost_source(row) for row in rows)
 
 
+def list_active_direct_summary_cost_sources(
+    connection: Connection,
+    *,
+    vendor: str | None = None,
+) -> tuple[CostSource, ...]:
+    """Sources eligible for the generic summary -> attribution writer.
+
+    Tencent's native published projection deliberately is not a Stage-0 fact.
+    Keep this filter at discovery time in addition to the defensive library gate.
+    """
+    return tuple(
+        source
+        for source in list_active_cost_sources(connection, vendor=vendor)
+        if attribution_write_mode(connection, vendor=source.vendor, account_id=source.account_id)
+        == "direct_summary"
+    )
+
+
+def attribution_write_mode(
+    connection: Connection,
+    *,
+    vendor: str,
+    account_id: str,
+) -> str:
+    if not _has_column(connection, "cost_sources", "attribution_write_mode"):
+        # Compatibility for databases before migration 026. A migrated Tencent
+        # source is always terminal; callers must not silently assume that policy.
+        return "direct_summary"
+    value = connection.execute(
+        text(
+            """
+            SELECT attribution_write_mode FROM cost_sources
+            WHERE vendor=:vendor AND account_id=:account_id
+            """
+        ),
+        {"vendor": vendor, "account_id": account_id},
+    ).scalar_one_or_none()
+    return str(value or "direct_summary")
+
+
+def ensure_direct_summary_source(
+    engine,
+    *,
+    vendor: str,
+    account_id: str,
+) -> None:
+    """Reject terminal sources before job state, deletes, or publications change."""
+    if not hasattr(engine, "begin"):
+        return
+    with engine.begin() as connection:
+        mode = attribution_write_mode(connection, vendor=vendor, account_id=account_id)
+    if mode != "direct_summary":
+        raise ValueError(
+            f"Cost source {vendor}/{account_id} uses {mode}; "
+            "use materialize-tencent-ci-cost-allocation instead"
+        )
+
+
+def ensure_tencent_terminal_source_policy(
+    connection: Connection,
+    *,
+    account_id: str,
+) -> None:
+    """Persist the Tencent native projection writer gate when the source is first created."""
+    if not _has_column(connection, "cost_sources", "attribution_write_mode"):
+        return
+    connection.execute(
+        text(
+            """
+            UPDATE cost_sources SET attribution_write_mode='tencent_ci_published_terminal'
+            WHERE vendor='tencent' AND account_id=:account_id
+              AND attribution_write_mode='direct_summary'
+            """
+        ),
+        {"account_id": account_id},
+    )
+
+
+def terminal_cost_source_keys(connection: Connection) -> frozenset[tuple[str, str]]:
+    if not _has_column(connection, "cost_sources", "attribution_write_mode"):
+        return frozenset()
+    rows = connection.execute(
+        text(
+            """
+            SELECT vendor, account_id FROM cost_sources
+            WHERE attribution_write_mode <> 'direct_summary'
+            """
+        )
+    ).all()
+    return frozenset((str(row[0]), str(row[1])) for row in rows)
+
+
+def _has_column(connection: Connection, table: str, column: str) -> bool:
+    if connection.dialect.name == "sqlite":
+        return any(
+            str(row[1]) == column
+            for row in connection.execute(text(f"PRAGMA table_info({table})"))
+        )
+    return connection.execute(
+        text(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema=DATABASE() AND table_name=:table AND column_name=:column
+            LIMIT 1
+            """
+        ),
+        {"table": table, "column": column},
+    ).first() is not None
+
+
 def ensure_cost_source_enabled(
     connection: Connection,
     *,

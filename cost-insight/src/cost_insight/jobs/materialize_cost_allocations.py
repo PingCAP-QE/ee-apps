@@ -15,6 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.row_utils import bind_decimal_rows
+from cost_insight.jobs.cost_sources import terminal_cost_source_keys
 
 LOG = logging.getLogger(__name__)
 
@@ -103,11 +104,8 @@ def run_materialize_cost_allocations(
             ).mappings()
         }
         roster_by_identity = _load_roster_identities(connection)
-        latest_native_date = connection.execute(
-            text("SELECT MAX(usage_date) FROM cost_attribution_daily")
-        ).scalar_one_or_none()
-        if isinstance(latest_native_date, str):
-            latest_native_date = date.fromisoformat(latest_native_date)
+        terminal_sources = terminal_cost_source_keys(connection)
+        latest_native_date = _latest_generic_native_date(connection, terminal_sources)
         if latest_native_date is not None and end_date < latest_native_date:
             raise ValueError(
                 f"end_date must cover the latest native cost date {latest_native_date}"
@@ -121,7 +119,8 @@ def run_materialize_cost_allocations(
                 source_account_id=source_account_id,
             )
         sources = tuple(
-            connection.execute(
+            source
+            for source in connection.execute(
                 text(
                     """
                     SELECT DISTINCT vendor, account_id FROM cost_attribution_daily
@@ -131,6 +130,7 @@ def run_materialize_cost_allocations(
                 ),
                 source_params,
             ).mappings()
+            if (str(source["vendor"]), str(source["account_id"])) not in terminal_sources
         )
 
     windows_seen = 0
@@ -260,15 +260,13 @@ def publish_materialized_cost_allocations(
         raise ValueError("start_date must equal the configured allocation earliest date")
     expected_windows = 0
     with engine.begin() as connection:
-        latest_native_date = connection.execute(
-            text("SELECT MAX(usage_date) FROM cost_attribution_daily")
-        ).scalar_one_or_none()
-        if isinstance(latest_native_date, str):
-            latest_native_date = date.fromisoformat(latest_native_date)
+        terminal_sources = terminal_cost_source_keys(connection)
+        latest_native_date = _latest_generic_native_date(connection, terminal_sources)
         if latest_native_date is not None and end_date < latest_native_date:
             raise ValueError(f"end_date must cover the latest native cost date {latest_native_date}")
         sources = tuple(
-            connection.execute(
+            source
+            for source in connection.execute(
                 text(
                     """
                     SELECT DISTINCT vendor, account_id FROM cost_attribution_daily
@@ -278,6 +276,7 @@ def publish_materialized_cost_allocations(
                 ),
                 {"start_date": start_date, "end_date": end_date},
             ).mappings()
+            if (str(source["vendor"]), str(source["account_id"])) not in terminal_sources
         )
 
     current = start_date
@@ -344,6 +343,23 @@ def publish_materialized_cost_allocations(
         start_date,
         end_date,
     )
+
+
+def _latest_generic_native_date(
+    connection: Connection,
+    terminal_sources: frozenset[tuple[str, str]],
+) -> date | None:
+    exclusions = []
+    params: dict[str, Any] = {}
+    for index, (vendor, account_id) in enumerate(sorted(terminal_sources)):
+        exclusions.append(f"(vendor = :terminal_vendor_{index} AND account_id = :terminal_account_{index})")
+        params[f"terminal_vendor_{index}"] = vendor
+        params[f"terminal_account_{index}"] = account_id
+    predicate = " WHERE NOT (" + " OR ".join(exclusions) + ")" if exclusions else ""
+    latest = connection.execute(
+        text(f"SELECT MAX(usage_date) FROM cost_attribution_daily{predicate}"), params
+    ).scalar_one_or_none()
+    return date.fromisoformat(latest) if isinstance(latest, str) else latest
 
 
 def _delete_staged_materialization_window(

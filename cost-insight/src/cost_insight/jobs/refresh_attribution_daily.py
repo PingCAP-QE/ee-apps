@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from cost_insight.jobs import state_store
+from cost_insight.jobs.cost_sources import ensure_direct_summary_source
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 
@@ -47,6 +48,9 @@ def run_refresh_cost_attribution_from_summary(
 ) -> RefreshAttributionSummary:
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
+    ensure_direct_summary_source(
+        engine, vendor=source.vendor, account_id=source.account_id
+    )
     if source.vendor == "aws" and not dry_run:
         if not tcms_allocation_table:
             raise ValueError("tcms_allocation_table is required for AWS attribution refresh")
