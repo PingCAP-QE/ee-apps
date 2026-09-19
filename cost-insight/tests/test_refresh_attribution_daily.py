@@ -753,52 +753,52 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                             'summary-email-author'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'owner-label', 'bob', 'alice', 40, 40, 0, 40,
                             'summary-owner-label'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'owner-fallback', NULL, 'alice', 50, 50, 0, 50,
                             'summary-owner-fallback'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'owner-placeholder', NULL, '-', 60, 60, 0, 60,
                             'summary-owner-placeholder'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'owner-literal', NULL, 'data_at_rest', 70, 70, 0, 70,
                             'summary-owner-literal'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'ambiguous-author', 'shared', NULL, 80, 80, 0, 80,
                             'summary-ambiguous-author'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'empty-author', '', NULL, 90, 90, 0, 90,
                             'summary-empty-author'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'author-wins', 'unknown-author', 'alice', 100, 100, 0, 100,
                             'summary-author-wins'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'owner-email', NULL, 'local-only', 110, 110, 0, 110,
                             'summary-owner-email'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'owner-normalized', NULL, 'flare_zuo', 120, 120, 0, 120,
                             'summary-owner-normalized'
                       ),
                       (
-                        '2026-08-16', 'tencent', '100050658403',
+                        '2026-08-16', 'tencent', '100050658404',
                             '容器服务 TKE', 'native node', 'email-normalized-collision', 'no-github-1', NULL, 130, 130, 0, 130,
                             'summary-email-normalized-collision'
                       )
@@ -913,7 +913,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             "net_cost": 38.0,
             "source_summary_row_hash": "summary-email-author",
         }
-        tencent_source = CostAttributionSource(vendor="tencent", account_id="100050658403")
+        tencent_source = CostAttributionSource(vendor="tencent", account_id="100050658404")
         summary = run_refresh_cost_attribution_from_summary(
             engine,
             source=tencent_source,

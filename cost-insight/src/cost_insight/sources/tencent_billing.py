@@ -185,6 +185,9 @@ def _summary_row(
     account_id: str,
 ) -> dict[str, Any]:
     tags = _canonical_tags(detail.get("Tags") or [])
+    product_code = _first_text(detail, "ProductCode")
+    if product_code:
+        tags["__tencent_product_code"] = product_code
     usage_date = _parse_datetime(_required_text(detail, "FeeBeginTime")).date()
     service_name = _first_text(detail, "BusinessCodeName", "BusinessCode")
     sku_name = " / ".join(

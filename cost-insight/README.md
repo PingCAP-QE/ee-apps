@@ -22,6 +22,7 @@ Current design:
 - [AWS split-cost source adaptation design](docs/aws-split-cost-schema-migration.md)
 - [Alibaba billing import design](docs/alibaba-billing-import-design.md)
 - [Tencent billing import design](docs/tencent-billing-import-design.md)
+- [Tencent CI shared-cost allocation](docs/tencent-ci-native-shared-cost-allocation-design.md)
 - [Target branch cost dimension design](docs/target-branch-cost-dimension-design.md)
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
 - [Cost schema retirement design](docs/cost-schema-retirement-design.md)
@@ -193,6 +194,13 @@ cost-insight sync-tencent-billing-summary \
 The scheduled command imports the next D+3 `BillDay`; explicit ranges are for dry-run,
 backfill, or repair. See [Tencent billing import design](docs/tencent-billing-import-design.md)
 for the D+5 verification and month-close reconciliation behavior.
+
+Allocate the CI account separately after import. Historical rows need reimporting first so
+`vendor_tags_json` contains the stable ProductCode metadata.
+
+```bash
+cost-insight allocate-tencent-ci-cost --start-date 2026-09-13 --end-date 2026-09-13
+```
 
 AWS summary import uses the same `cost_bq_export_summary_daily` table:
 
