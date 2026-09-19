@@ -42,7 +42,6 @@ def _engine():
                   source_schema_version TEXT,
                   source_available_from TEXT,
                   is_active INTEGER NOT NULL DEFAULT 1,
-                  attribution_write_mode TEXT NOT NULL DEFAULT 'direct_summary',
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   UNIQUE(vendor, account_id)
@@ -297,37 +296,6 @@ def test_tencent_import_commits_pages_checkpoints_and_replays_idempotently() -> 
         assert {row["repo"] for row in replayed} == {"new-repo"}
         assert {row["target_branch"] for row in replayed} == {"release-1.0"}
         assert {str(row["net_cost"]) for row in replayed} == {"1.25"}
-    finally:
-        engine.dispose()
-
-
-def test_non_ci_tencent_account_keeps_direct_summary_policy() -> None:
-    engine = _engine()
-    day = date(2026, 9, 13)
-    account_id = "non-ci-account"
-    detail = _detail(1)
-    detail["OwnerUin"] = account_id
-    pages = {
-        (day.isoformat(), 0): TencentBillPage(details=(detail,), total=1, context=None),
-        (day.isoformat(), 1): TencentBillPage(details=(), total=None, context=None),
-    }
-    try:
-        run_sync_tencent_billing_summary(
-            engine,
-            settings=TencentBillingSettings(account_id=account_id),
-            bill_day_start=day,
-            bill_day_end=day,
-            fetch_page=_page_fetcher(pages, []),
-            sleep=lambda _seconds: None,
-        )
-        with engine.connect() as connection:
-            assert connection.execute(
-                text(
-                    "SELECT attribution_write_mode FROM cost_sources "
-                    "WHERE vendor='tencent' AND account_id=:account_id"
-                ),
-                {"account_id": account_id},
-            ).scalar_one() == "direct_summary"
     finally:
         engine.dispose()
 

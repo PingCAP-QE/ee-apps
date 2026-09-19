@@ -20,17 +20,14 @@ from cost_insight.jobs.aws_split_cost_shadow import (
 )
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import run_bootstrap_gcs_cache_last_seen
 from cost_insight.jobs.cleanup_gcs_cache import run_cleanup_gcs_cache
-from cost_insight.jobs.cost_sources import (
-    ensure_direct_summary_source,
-    list_active_cost_sources,
-    list_active_direct_summary_cost_sources,
-)
+from cost_insight.jobs.cost_sources import list_active_cost_sources
 from cost_insight.jobs.materialize_cost_allocations import (
     publish_materialized_cost_allocations,
     run_materialize_cost_allocations,
 )
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.refresh_attribution_daily import (
+    _TENCENT_CI_SOURCE,
     CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
 )
@@ -58,13 +55,8 @@ from cost_insight.jobs.sync_alibaba_billing_summary import (
     ALIBABA_ACCOUNT_DISPLAY_NAMES,
     run_sync_alibaba_billing_summary,
 )
+from cost_insight.jobs.allocate_tencent_ci_cost import run_allocate_tencent_ci_cost
 from cost_insight.jobs.sync_tencent_billing_summary import run_sync_tencent_billing_summary
-from cost_insight.jobs.tencent_ci_allocation import (
-    materialize_tencent_ci_cost_allocation,
-    publish_tencent_ci_cost_allocation,
-    publish_tencent_cost_classification,
-    refresh_tencent_ci_build_staleness,
-)
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     run_sync_gcp_kubernetes_workload_allocations,
 )
@@ -158,40 +150,13 @@ def build_parser() -> argparse.ArgumentParser:
     sync_tencent_summary.add_argument("--bill-day-end", type=_parse_date, default=None)
     sync_tencent_summary.add_argument("--dry-run", action="store_true")
 
-    publish_tencent_classification = subparsers.add_parser(
-        "publish-tencent-cost-classification",
-        help="Seal an exact stable-code Tencent classification rule set; it never imports or publishes cost.",
+    allocate_tencent_ci = subparsers.add_parser(
+        "allocate-tencent-ci-cost",
+        help="Replace Tencent CI daily attribution with coarse build-weighted cost.",
     )
-    publish_tencent_classification.add_argument("--classification-version", required=True)
-    publish_tencent_classification.add_argument("--rules-file", required=True)
-    publish_tencent_classification.add_argument("--reviewed-by", default=None)
-
-    subparsers.add_parser(
-        "refresh-tencent-ci-build-staleness",
-        help="Mark Tencent billing dates stale when completed Tencent build inputs changed.",
-    )
-
-    materialize_tencent_allocation = subparsers.add_parser(
-        "materialize-tencent-ci-cost-allocation",
-        help="Stage and validate a versioned Tencent CI V1 projection without publishing it.",
-    )
-    materialize_tencent_allocation.add_argument("--start-date", type=_parse_date, required=True)
-    materialize_tencent_allocation.add_argument("--end-date", type=_parse_date, required=True)
-    materialize_tencent_allocation.add_argument("--allocation-version", required=True)
-
-    publish_tencent_allocation = subparsers.add_parser(
-        "publish-tencent-ci-cost-allocation",
-        help="Atomically publish validated Tencent CI allocation dates.",
-    )
-    publish_tencent_allocation.add_argument("--allocation-version", required=True)
-    publish_tencent_allocation.add_argument("--usage-date", type=_parse_date, action="append", required=True)
-
-    rollback_tencent_allocation = subparsers.add_parser(
-        "rollback-tencent-ci-cost-allocation",
-        help="Atomically replay a retained validated Tencent allocation version for selected dates.",
-    )
-    rollback_tencent_allocation.add_argument("--allocation-version", required=True)
-    rollback_tencent_allocation.add_argument("--usage-date", type=_parse_date, action="append", required=True)
+    allocate_tencent_ci.add_argument("--start-date", type=_parse_date, required=True)
+    allocate_tencent_ci.add_argument("--end-date", type=_parse_date, required=True)
+    allocate_tencent_ci.add_argument("--dry-run", action="store_true")
 
     sync_aws_summary = subparsers.add_parser(
         "sync-aws-billing-summary",
@@ -607,56 +572,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             engine.dispose()
 
-    if args.command == "publish-tencent-cost-classification":
-        with open(args.rules_file, encoding="utf-8") as rules_file:
-            rules = json.load(rules_file)
+    if args.command == "allocate-tencent-ci-cost":
         engine = build_engine(settings)
         try:
-            changed = publish_tencent_cost_classification(
-                engine,
-                classification_version=args.classification_version,
-                rules=rules,
-                reviewed_by=args.reviewed_by,
-            )
-            print(json.dumps({"classification_version": args.classification_version, "stale_days": changed}))
-            return 0
-        finally:
-            engine.dispose()
-
-    if args.command == "refresh-tencent-ci-build-staleness":
-        engine = build_engine(settings)
-        try:
-            stale = refresh_tencent_ci_build_staleness(engine)
-            print(json.dumps({"stale_usage_dates": [value.isoformat() for value in stale]}))
-            return 0
-        finally:
-            engine.dispose()
-
-    if args.command == "materialize-tencent-ci-cost-allocation":
-        engine = build_engine(settings)
-        try:
-            summary = materialize_tencent_ci_cost_allocation(
+            summary = run_allocate_tencent_ci_cost(
                 engine,
                 start_date=args.start_date,
                 end_date=args.end_date,
-                allocation_version=args.allocation_version,
-            )
-            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
-            return 0
-        finally:
-            engine.dispose()
-
-    if args.command in {
-        "publish-tencent-ci-cost-allocation",
-        "rollback-tencent-ci-cost-allocation",
-    }:
-        engine = build_engine(settings)
-        try:
-            summary = publish_tencent_ci_cost_allocation(
-                engine,
-                allocation_version=args.allocation_version,
-                usage_dates=args.usage_date,
-                rollback=args.command == "rollback-tencent-ci-cost-allocation",
+                dry_run=args.dry_run,
             )
             print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
             return 0
@@ -968,10 +891,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError("--vendor and --account-id must be set together")
         engine = build_engine(settings)
         try:
-            if args.vendor is not None:
-                ensure_direct_summary_source(
-                    engine, vendor=args.vendor, account_id=args.account_id
-                )
             sources = _resolve_attribution_sources(
                 engine,
                 gcp_settings=settings.gcp_billing,
@@ -1326,11 +1245,12 @@ def _resolve_attribution_sources(
     gcp_settings: GcpBillingSettings,
     aws_settings: AwsBillingSettings,
 ) -> tuple[CostAttributionSource, ...]:
-    sources = _list_direct_summary_sources(engine, vendor=None)
+    sources = _list_sources(engine, vendor=None)
     if sources:
         return tuple(
             CostAttributionSource(vendor=source.vendor, account_id=source.account_id)
             for source in sources
+            if (source.vendor, source.account_id) != _TENCENT_CI_SOURCE
         )
     fallback_sources = [CostAttributionSource(vendor="gcp", account_id=gcp_settings.account_id)]
     if aws_settings.account_id:
@@ -1345,13 +1265,6 @@ def _list_sources(engine, *, vendor: str | None):
         return ()
     with engine.begin() as connection:
         return list_active_cost_sources(connection, vendor=vendor)
-
-
-def _list_direct_summary_sources(engine, *, vendor: str | None):
-    if not hasattr(engine, "begin"):
-        return ()
-    with engine.begin() as connection:
-        return list_active_direct_summary_cost_sources(connection, vendor=vendor)
 
 
 def _summaries_to_json(summaries: Sequence[object]) -> object:

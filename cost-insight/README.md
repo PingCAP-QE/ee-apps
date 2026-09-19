@@ -22,7 +22,7 @@ Current design:
 - [AWS split-cost source adaptation design](docs/aws-split-cost-schema-migration.md)
 - [Alibaba billing import design](docs/alibaba-billing-import-design.md)
 - [Tencent billing import design](docs/tencent-billing-import-design.md)
-- [Tencent CI non-supernode cost allocation design](docs/tencent-ci-native-shared-cost-allocation-design.md)
+- [Tencent CI shared-cost allocation](docs/tencent-ci-native-shared-cost-allocation-design.md)
 - [Target branch cost dimension design](docs/target-branch-cost-dimension-design.md)
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
 - [Cost schema retirement design](docs/cost-schema-retirement-design.md)
@@ -135,7 +135,6 @@ mysql < sql/019_add_cost_source_purpose.sql
 mysql < sql/002_seed_initial_cost_sources.sql
 mysql < sql/024_add_cost_currency.sql
 mysql < sql/025_add_tencent_billing_cost_source.sql
-mysql < sql/026_add_tencent_ci_native_shared_cost_allocation.sql
 ```
 
 All recurring summary, unmatched-resource, and attribution jobs discover active
@@ -196,27 +195,12 @@ The scheduled command imports the next D+3 `BillDay`; explicit ranges are for dr
 backfill, or repair. See [Tencent billing import design](docs/tencent-billing-import-design.md)
 for the D+5 verification and month-close reconciliation behavior.
 
-Tencent CI allocation is intentionally a separate fail-closed workflow. Publish an
-exact reviewed stable-code rule set first (an empty sealed default leaves every
-code unclassified), then shadow materialize and publish only validated dates:
+Allocate the CI account separately after import. Historical rows need reimporting first so
+`vendor_tags_json` contains the stable ProductCode metadata.
 
 ```bash
-cost-insight publish-tencent-cost-classification \
-  --classification-version 2026-09-reviewed \
-  --rules-file /secure/tencent-stable-code-rules.json \
-  --reviewed-by reviewer@example.com
-cost-insight refresh-tencent-ci-build-staleness
-cost-insight materialize-tencent-ci-cost-allocation \
-  --start-date 2026-09-13 --end-date 2026-09-13 \
-  --allocation-version tencent-ci-v1-shadow
-cost-insight publish-tencent-ci-cost-allocation \
-  --allocation-version tencent-ci-v1-shadow --usage-date 2026-09-13
+cost-insight allocate-tencent-ci-cost --start-date 2026-09-13 --end-date 2026-09-13
 ```
-
-The source policy `tencent_ci_published_terminal` prevents generic
-`refresh-cost-attribution-from-summary` and generic derived allocation from
-writing or re-allocating this Tencent projection. Use the Tencent commands above
-for its ledger, allocation, publication, and rollback lifecycle.
 
 AWS summary import uses the same `cost_bq_export_summary_daily` table:
 

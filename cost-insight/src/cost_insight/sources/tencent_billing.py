@@ -185,6 +185,9 @@ def _summary_row(
     account_id: str,
 ) -> dict[str, Any]:
     tags = _canonical_tags(detail.get("Tags") or [])
+    product_code = _first_text(detail, "ProductCode")
+    if product_code:
+        tags["__tencent_product_code"] = product_code
     usage_date = _parse_datetime(_required_text(detail, "FeeBeginTime")).date()
     service_name = _first_text(detail, "BusinessCodeName", "BusinessCode")
     sku_name = " / ".join(
@@ -233,12 +236,6 @@ def _summary_row(
         "currency": "CNY",
         "source_export_time": _parse_optional_datetime(detail.get("PayTime")),
         "source_row_hash": source_row_hash,
-        # Stable Tencent code fields are allocation inputs. Display names above
-        # remain reporting dimensions only and are never classification inputs.
-        "tencent_business_code": _first_text(detail, "BusinessCode"),
-        "tencent_product_code": _first_text(detail, "ProductCode"),
-        "tencent_component_code": _first_text(component, "ComponentCode"),
-        "tencent_item_code": _first_text(component, "ItemCode"),
     }
     row["cost_driver_key"] = classify_cost_driver(row)
     return row
