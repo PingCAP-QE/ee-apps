@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
+from cost_insight.common.config import TENCENT_CI_SOURCE
 from cost_insight.common.row_utils import bind_decimal_rows
 
 _AMOUNT_QUANTUM = Decimal("0.000000001")
@@ -55,7 +56,8 @@ def run_materialize_resource_serving(
 ) -> MaterializeResourceServingSummary:
     """Stage and publish each daily source window independently.
 
-    Resource serving is materialized from native attribution only.
+    Resource serving uses native attribution. Tencent CI additionally projects it
+    onto summary resource lineage.
     """
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
@@ -97,12 +99,25 @@ def run_materialize_resource_serving(
             )
         for window in windows:
             params = dict(window)
+            is_tencent_ci = (params["vendor"], params["account_id"]) == TENCENT_CI_SOURCE
             with engine.begin() as connection:
                 source_rows = _load_source_rows(connection, **params)
-                detail_rows = _load_detail_rows(connection, **params)
-            serving_rows = build_resource_serving_rows(
+                detail_rows = () if is_tencent_ci else _load_detail_rows(connection, **params)
+                tencent_summary_rows = (
+                    _load_tencent_summary_rows(connection, **params) if is_tencent_ci else ()
+                )
+            builder = (
+                build_tencent_resource_serving_rows
+                if is_tencent_ci
+                else build_resource_serving_rows
+            )
+            serving_rows = builder(
                 source_rows=source_rows,
-                detail_rows=detail_rows,
+                **(
+                    {"summary_rows": tencent_summary_rows}
+                    if is_tencent_ci
+                    else {"detail_rows": detail_rows}
+                ),
                 basis_key=basis_key,
                 materialization_version=version,
                 calculated_at=(now or datetime.now(UTC)).replace(tzinfo=None),
@@ -170,6 +185,218 @@ def build_resource_serving_rows(
             )
 
     return _aggregate_contributions(contributions)
+
+
+def build_tencent_resource_serving_rows(
+    *,
+    source_rows: Iterable[Mapping[str, Any]],
+    summary_rows: Iterable[Mapping[str, Any]],
+    basis_key: str,
+    materialization_version: str,
+    calculated_at: datetime,
+) -> tuple[dict[str, Any], ...]:
+    """Project Tencent build-weighted attribution back onto provider resources."""
+    sources = tuple(dict(row) for row in source_rows)
+    summaries = tuple(dict(row) for row in summary_rows)
+    summaries_by_hash = {str(row["source_row_hash"]): row for row in summaries}
+    direct_hashes = {
+        str(row["source_summary_row_hash"])
+        for row in sources
+        if row.get("source_summary_row_hash")
+    }
+    missing_hashes = direct_hashes - summaries_by_hash.keys()
+    if missing_hashes:
+        raise RuntimeError(f"Tencent source-summary hash is missing: {sorted(missing_hashes)[0]}")
+    contributions = [
+        _tencent_resource_contribution(
+            source,
+            summaries_by_hash[str(source["source_summary_row_hash"])],
+            {name: _decimal_or_none(source.get(name)) for name in _AMOUNTS},
+            basis_key=basis_key,
+            materialization_version=materialization_version,
+            calculated_at=calculated_at,
+        )
+        for source in sources
+        if source.get("source_summary_row_hash")
+    ]
+
+    shared_sources: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for source in sources:
+        if source.get("source_allocation_scope") == "tencent_ci_shared":
+            shared_sources[_tencent_pool_key(source)].append(source)
+
+    resources: dict[tuple[str, str, str, str], dict[tuple[str, str, str], dict[str, Any]]] = defaultdict(dict)
+    for summary in summaries:
+        if str(summary["source_row_hash"]) in direct_hashes:
+            continue
+        pool_resources = resources[_tencent_pool_key(summary)]
+        resource_name = str(summary.get("resource_name") or "")
+        resource_key = (
+            resource_name,
+            str(summary.get("vendor_tags_json") or ""),
+            "" if resource_name else str(summary["source_row_hash"]),
+        )
+        resource = pool_resources.setdefault(
+            resource_key,
+            {
+                **summary,
+                "source_rows": 0,
+                **{name: None for name in _AMOUNTS},
+            },
+        )
+        resource["source_rows"] += 1
+        for name in _AMOUNTS:
+            value = _decimal_or_none(summary.get(name))
+            if value is not None:
+                resource[name] = _decimal(resource.get(name)) + value
+
+    reference_pool, reference_field = _tencent_reference_amount(shared_sources)
+    reference_amounts = {
+        _tencent_participant_key(row): _decimal(row.get(reference_field))
+        for row in reference_pool
+    }
+    for pool_key, pool_sources in shared_sources.items():
+        pool_resources = tuple(resources.get(pool_key, {}).values())
+        if not pool_resources:
+            raise RuntimeError(f"Tencent shared attribution has no source resources: {pool_key!r}")
+        participants = sorted(pool_sources, key=_tencent_participant_sort_key)
+        missing_participant = next(
+            (
+                participant
+                for participant in participants
+                if _tencent_participant_key(participant) not in reference_amounts
+            ),
+            None,
+        )
+        if missing_participant is not None:
+            raise RuntimeError(
+                "Tencent shared attribution participant is absent from reference pool: "
+                f"pool={pool_key!r}, participant={_tencent_participant_key(missing_participant)!r}"
+            )
+        reference_total = sum(
+            (_decimal(row.get(reference_field)) for row in reference_pool), Decimal()
+        )
+        for resource in pool_resources:
+            remaining = {name: _decimal_or_none(resource.get(name)) for name in _AMOUNTS}
+            for index, source in enumerate(participants):
+                last = index == len(participants) - 1
+                amounts: dict[str, Decimal | None] = {}
+                for name, amount in remaining.items():
+                    if amount is None:
+                        amounts[name] = None
+                    elif last:
+                        amounts[name] = amount
+                    elif reference_total == 0:
+                        amounts[name] = Decimal()
+                    else:
+                        amounts[name] = (
+                            _decimal(resource.get(name))
+                            * reference_amounts[_tencent_participant_key(source)]
+                            / reference_total
+                        ).quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
+                        remaining[name] -= amounts[name]
+                contributions.append(
+                    _tencent_resource_contribution(
+                        source,
+                        resource,
+                        amounts,
+                        basis_key=basis_key,
+                        materialization_version=materialization_version,
+                        calculated_at=calculated_at,
+                    )
+                )
+
+    return _aggregate_contributions(contributions)
+
+
+def _tencent_pool_key(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    service = str(row.get("service") or "")
+    return (
+        _currency(row),
+        str(row.get("service_name") or ""),
+        service,
+        str(row.get("project") or service),
+    )
+
+
+def _tencent_reference_amount(
+    pools: Mapping[tuple[str, str, str, str], Sequence[Mapping[str, Any]]],
+) -> tuple[Sequence[Mapping[str, Any]], str]:
+    candidates = [
+        (abs(sum((_decimal(row.get(name)) for row in rows), Decimal())), rows, name)
+        for rows in pools.values()
+        for name in _AMOUNTS
+    ]
+    if not candidates:
+        return (), "net_cost"
+    _, rows, name = max(candidates, key=lambda candidate: candidate[0])
+    return rows, name
+
+
+def _tencent_participant_key(row: Mapping[str, Any]) -> tuple[int | None, str, str]:
+    employee_id = row.get("employee_id")
+    return (
+        int(employee_id) if employee_id is not None else None,
+        str(row.get("org") or ""),
+        str(row.get("repo") or ""),
+    )
+
+
+def _tencent_participant_sort_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    employee_id, org, repo = _tencent_participant_key(row)
+    return employee_id is None, employee_id or 0, org, repo
+
+
+def _tencent_resource_contribution(
+    source: Mapping[str, Any],
+    resource: Mapping[str, Any],
+    amounts: Mapping[str, Decimal | None],
+    *,
+    basis_key: str,
+    materialization_version: str,
+    calculated_at: datetime,
+) -> dict[str, Any]:
+    resource_id = str(resource.get("resource_name") or "") or None
+    scoped_source = {**source, "source_rows": int(resource.get("source_rows") or source.get("source_rows") or 1)}
+    if resource_id is None:
+        row = _base_serving_row(
+            {
+                **scoped_source,
+                "source_fact_hash": resource.get("source_row_hash") or source.get("source_fact_hash"),
+                "resource_name": resource.get("resource_name"),
+                "service_name": resource.get("service_name") or source.get("service_name"),
+                "vendor_tags_json": resource.get("vendor_tags_json") or source.get("vendor_tags_json"),
+            },
+            detail=None,
+            identity_kind="attribution_fallback",
+            basis_key=basis_key,
+            materialization_version=materialization_version,
+            calculated_at=calculated_at,
+        )
+        row.update(amounts)
+        row["detail_list_cost"] = Decimal()
+        row["fallback_list_cost"] = _decimal(amounts.get("list_cost"))
+        return row
+
+    row = _base_serving_row(
+        scoped_source,
+        detail={
+            "resource_id": resource_id,
+            "resource_name": resource_id,
+            "parent_resource_name": None,
+            "service_name": resource.get("service_name"),
+            "vendor_tags_json": resource.get("vendor_tags_json"),
+        },
+        identity_kind="resource_detail",
+        basis_key=basis_key,
+        materialization_version=materialization_version,
+        calculated_at=calculated_at,
+    )
+    row.update(amounts)
+    row["detail_list_cost"] = _decimal(amounts.get("list_cost"))
+    row["fallback_list_cost"] = Decimal()
+    row["usage_seconds"] = None
+    return row
 
 
 def _detail_or_fallback_contributions(
@@ -512,6 +739,14 @@ def _load_detail_rows(
     }).mappings())
 
 
+def _load_tencent_summary_rows(
+    connection: Connection, *, usage_date: date, vendor: str, account_id: str
+) -> tuple[dict[str, Any], ...]:
+    return tuple(dict(row) for row in connection.execute(_TENCENT_SUMMARY_ROWS, {
+        "usage_date": usage_date, "vendor": vendor, "account_id": account_id
+    }).mappings())
+
+
 def _replace_staged_window(
     engine: Engine,
     rows: Sequence[Mapping[str, Any]],
@@ -627,9 +862,10 @@ WHERE usage_date BETWEEN :start_date AND :end_date
 ORDER BY usage_date
 """)
 _SOURCE_COLUMNS = """
-usage_date, vendor, account_id, service_name, sku_name, region, org, repo, project, target_branch,
-resource_name, vendor_tags_json, owner, group_id, manager_id, usage_seconds,
-effective_cost, credit_amount, net_cost, currency, source_rows, source_summary_row_hash
+usage_date, vendor, account_id, service_name, service, sku_name, region, org, repo, project,
+target_branch, resource_name, vendor_tags_json, source_allocation_scope, owner, employee_id,
+group_id, manager_id, usage_seconds, effective_cost, credit_amount, net_cost, currency,
+source_rows, source_summary_row_hash
 """
 _NATIVE_SOURCES = text(f"""
 SELECT {_SOURCE_COLUMNS},
@@ -649,6 +885,14 @@ SELECT source_summary_row_hash, resource_name, resource_id, parent_resource_name
 FROM cost_unmatched_resource_daily
 WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
   AND source_summary_row_hash IS NOT NULL AND source_summary_row_hash <> ''
+ORDER BY source_row_hash
+""")
+_TENCENT_SUMMARY_ROWS = text("""
+SELECT usage_date, vendor, account_id, service_name, resource_name, vendor_tags_json,
+  service, project, list_cost, effective_cost, credit_amount, net_cost, currency,
+  source_row_hash
+FROM cost_bq_export_summary_daily
+WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
 ORDER BY source_row_hash
 """)
 _DELETE_STAGED = text("""

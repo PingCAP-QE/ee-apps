@@ -15,6 +15,7 @@ DEFAULT_AZURE_BILLING_TABLE = "gcp-digital-bi.azure_billing.azure_billing_cost_*
 DEFAULT_ALIBABA_BILLING_TABLE = "gcp-digital-bi.alibaba_cloud.daily_en_*"
 DEFAULT_ALIBABA_ACCOUNT_ID = "5028760335873601"
 DEFAULT_TENCENT_ACCOUNT_ID = "100050658403"
+TENCENT_CI_SOURCE = ("tencent", DEFAULT_TENCENT_ACCOUNT_ID)
 DEFAULT_EARLIEST_USAGE_DATE = date(2026, 1, 1)
 DEFAULT_GCS_CACHE_BUCKET = "pingcap-ci-bazel-remote-cache-us-central1"
 DEFAULT_GCS_CACHE_DATASET = "ci_bazel_cache_logs"

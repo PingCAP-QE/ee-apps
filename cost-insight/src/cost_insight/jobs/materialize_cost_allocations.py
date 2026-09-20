@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
+from cost_insight.common.config import TENCENT_CI_SOURCE
 from cost_insight.common.row_utils import bind_decimal_rows
 
 LOG = logging.getLogger(__name__)
@@ -26,7 +27,9 @@ _NATIVE_RESIDUAL_SOURCE_SCOPES = {
     "eks_unallocated",
     "gke_residual",
 }
-_TENCENT_CI_SOURCE = "vendor <> 'tencent' OR account_id <> '100050658403'"
+_TENCENT_CI_SOURCE = (
+    f"vendor <> {TENCENT_CI_SOURCE[0]!r} OR account_id <> {TENCENT_CI_SOURCE[1]!r}"
+)
 
 
 @dataclass(frozen=True)

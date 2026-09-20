@@ -13,6 +13,7 @@ from cost_insight.jobs.allocate_tencent_ci_cost import (
     run_allocate_tencent_ci_cost,
 )
 from cost_insight.jobs.materialize_cost_allocations import run_materialize_cost_allocations
+from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.refresh_attribution_daily import (
     CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
@@ -123,7 +124,7 @@ def test_allocation_keeps_supernode_direct_and_conserves_weighted_shared_cost(mo
     assert direct["service_name"] == "TKE"
     assert direct["owner"] == "alice@example.com"
     assert direct["net_cost"] == 8
-    shared = [row for row in rows if row["service_name"] == "Tencent CI shared"]
+    shared = [row for row in rows if row["source_summary_row_hash"] is None]
     assert [(row["employee_id"], row["org"], row["repo"], row["list_cost"], row["net_cost"]) for row in shared] == [
         (1, "pingcap", "repo-a", 50, 40),
         (2, "pingcap", "repo-b", 33.333333333, 26.666666667),
@@ -136,6 +137,271 @@ def test_allocation_keeps_supernode_direct_and_conserves_weighted_shared_cost(mo
     assert all(row["allocate_method"] == "tencent_ci_build_weight_v1" for row in shared)
     assert sum(row["list_cost"] for row in shared) == 100
     assert sum(row["net_cost"] for row in shared) == 80
+
+
+def test_shared_allocation_keeps_cloud_service_and_project_dimensions(monkeypatch) -> None:
+    engine = _engine()
+    monkeypatch.setattr(
+        allocate_tencent_ci_cost,
+        "run_materialize_resource_serving",
+        lambda *_args, **_kwargs: None,
+    )
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_bq_export_summary_daily
+                    SET service_name='CVM', resource_name='ins-1', service='cicd', project='cicd',
+                        vendor_tags_json=:tags
+                    WHERE source_row_hash='compute'
+                    """
+                ),
+                {"tags": json.dumps({"__tencent_product_code": "cvm", "service": "cicd"})},
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_bq_export_summary_daily
+                    SET service_name='COS', resource_name='bucket-1', service='bazel', project='bazel',
+                        vendor_tags_json=:tags
+                    WHERE source_row_hash='storage'
+                    """
+                ),
+                {"tags": json.dumps({"__tencent_product_code": "cos", "service": "bazel"})},
+            )
+        summary = run_allocate_tencent_ci_cost(engine, start_date=DAY, end_date=DAY)
+        with engine.connect() as connection:
+            rows = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT service_name, project, employee_id, list_cost, net_cost
+                        FROM cost_attribution_daily
+                        WHERE source_allocation_scope='tencent_ci_shared'
+                        ORDER BY project, employee_id IS NULL, employee_id
+                        """
+                    )
+                ).mappings()
+            ]
+    finally:
+        engine.dispose()
+
+    assert summary.rows_written == 6
+    assert [(row["service_name"], row["project"]) for row in rows] == [
+        ("COS", "bazel"),
+        ("COS", "bazel"),
+        ("COS", "bazel"),
+        ("CVM", "cicd"),
+        ("CVM", "cicd"),
+        ("CVM", "cicd"),
+    ]
+    assert sum(Decimal(str(row["list_cost"])) for row in rows) == Decimal("100")
+    assert sum(Decimal(str(row["net_cost"])) for row in rows) == Decimal("80")
+    assert all(row["service_name"] != "Tencent CI shared" for row in rows)
+
+
+def test_allocation_publishes_tencent_resource_details() -> None:
+    engine = _engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_bq_export_summary_daily
+                    SET service_name='CVM', resource_name='ins-1', service='cicd', project='cicd',
+                        vendor_tags_json=:tags
+                    WHERE source_row_hash='compute'
+                    """
+                ),
+                {"tags": json.dumps({"__tencent_product_code": "cvm", "service": "cicd"})},
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_bq_export_summary_daily
+                    SET service_name='COS', resource_name='bucket-1', service='bazel', project='bazel',
+                        vendor_tags_json=:tags, list_cost=0
+                    WHERE source_row_hash='storage'
+                    """
+                ),
+                {"tags": json.dumps({"__tencent_product_code": "cos", "service": "bazel"})},
+            )
+        run_allocate_tencent_ci_cost(engine, start_date=DAY, end_date=DAY)
+        with engine.connect() as connection:
+            rows = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT s.resource_id, s.resource_name, s.service_name, s.project, s.owner,
+                               s.group_id, s.representative_labels_json, s.list_cost, s.net_cost,
+                               s.resource_identity_kind
+                        FROM cost_resource_serving_daily s
+                        JOIN cost_resource_serving_publication p
+                          ON p.basis_key=s.basis_key AND p.vendor=s.vendor
+                         AND p.account_id=s.account_id AND p.usage_date=s.usage_date
+                         AND p.active_materialization_version=s.materialization_version
+                        ORDER BY s.resource_id, s.owner
+                        """
+                    )
+                ).mappings()
+            ]
+    finally:
+        engine.dispose()
+
+    assert {row["resource_id"] for row in rows} == {"super", "ins-1", "bucket-1"}
+    assert {(row["resource_id"], row["service_name"], row["project"]) for row in rows} == {
+        ("super", "TKE", "raw-project"),
+        ("ins-1", "CVM", "cicd"),
+        ("bucket-1", "COS", "bazel"),
+    }
+    assert all(row["resource_name"] == row["resource_id"] for row in rows)
+    assert all(row["resource_identity_kind"] == "resource_detail" for row in rows)
+    assert all(row["representative_labels_json"] for row in rows)
+    assert sum(Decimal(str(row["list_cost"])) for row in rows) == Decimal("100")
+    assert sum(Decimal(str(row["net_cost"])) for row in rows) == Decimal("88")
+    assert sum(
+        Decimal(str(row["net_cost"])) for row in rows if row["resource_id"] == "bucket-1"
+    ) == Decimal("8")
+    assert {row["owner"] for row in rows if row["resource_id"] == "ins-1"} == {
+        "",
+        "alice@example.com",
+        "bob@example.com",
+    }
+
+
+def test_resource_serving_fails_clearly_when_direct_tencent_summary_is_reimported(
+    monkeypatch,
+) -> None:
+    engine = _engine()
+    monkeypatch.setattr(
+        allocate_tencent_ci_cost,
+        "run_materialize_resource_serving",
+        lambda *_args, **_kwargs: None,
+    )
+    try:
+        run_allocate_tencent_ci_cost(engine, start_date=DAY, end_date=DAY)
+        with engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM cost_bq_export_summary_daily WHERE source_row_hash='super'")
+            )
+
+        with pytest.raises(RuntimeError, match="Tencent source-summary hash is missing: super"):
+            run_materialize_resource_serving(engine, start_date=DAY, end_date=DAY)
+    finally:
+        engine.dispose()
+
+
+def test_resource_serving_keeps_explicit_project_service_pools_separate() -> None:
+    engine = _engine()
+    try:
+        with engine.begin() as connection:
+            for source_hash, resource_name, service, tags in (
+                (
+                    "compute",
+                    "cache-a",
+                    "bazel",
+                    {"__tencent_product_code": "cvm", "service": "bazel", "project": "cache"},
+                ),
+                (
+                    "storage",
+                    "cache-b",
+                    "tikv",
+                    {"__tencent_product_code": "cos", "service": "tikv", "project": "cache"},
+                ),
+            ):
+                connection.execute(
+                    text(
+                        """
+                        UPDATE cost_bq_export_summary_daily
+                        SET service_name='COS', resource_name=:resource_name, service=:service,
+                            project='cache', vendor_tags_json=:tags
+                        WHERE source_row_hash=:source_hash
+                        """
+                    ),
+                    {
+                        "source_hash": source_hash,
+                        "resource_name": resource_name,
+                        "service": service,
+                        "tags": json.dumps(tags),
+                    },
+                )
+        run_allocate_tencent_ci_cost(engine, start_date=DAY, end_date=DAY)
+        with engine.connect() as connection:
+            rows = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT resource_id, owner, list_cost, net_cost, representative_labels_json
+                        FROM cost_resource_serving_daily
+                        WHERE resource_id IN ('cache-a', 'cache-b')
+                        """
+                    )
+                ).mappings()
+            ]
+    finally:
+        engine.dispose()
+
+    amounts = {
+        (row["resource_id"], row["owner"]): (
+            Decimal(str(row["list_cost"])),
+            Decimal(str(row["net_cost"])),
+        )
+        for row in rows
+    }
+    assert amounts == {
+        ("cache-a", "alice@example.com"): (Decimal("45"), Decimal("36")),
+        ("cache-a", "bob@example.com"): (Decimal("30"), Decimal("24")),
+        ("cache-a", ""): (Decimal("15"), Decimal("12")),
+        ("cache-b", "alice@example.com"): (Decimal("5"), Decimal("4")),
+        ("cache-b", "bob@example.com"): (Decimal("3.333333333"), Decimal("2.666666667")),
+        ("cache-b", ""): (Decimal("1.666666667"), Decimal("1.333333333")),
+    }
+    assert {json.loads(row["representative_labels_json"])["service"] for row in rows} == {
+        "bazel",
+        "tikv",
+    }
+
+
+def test_resource_serving_uses_fallback_identity_when_tencent_resource_id_is_missing() -> None:
+    engine = _engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE cost_bq_export_summary_daily
+                    SET resource_name=NULL
+                    WHERE source_row_hash IN ('compute', 'storage')
+                    """
+                )
+            )
+        run_allocate_tencent_ci_cost(engine, start_date=DAY, end_date=DAY)
+        with engine.connect() as connection:
+            rows = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT resource_id, resource_name, resource_identity_kind, list_cost, net_cost
+                        FROM cost_resource_serving_daily
+                        WHERE resource_identity_kind='attribution_fallback'
+                        """
+                    )
+                ).mappings()
+            ]
+    finally:
+        engine.dispose()
+
+    assert len(rows) == 6
+    assert {(row["resource_id"], row["resource_name"]) for row in rows} == {
+        (None, "(resource detail unavailable)")
+    }
+    assert sum(Decimal(str(row["list_cost"])) for row in rows) == Decimal("100")
+    assert sum(Decimal(str(row["net_cost"])) for row in rows) == Decimal("80")
 
 
 @pytest.mark.parametrize(
@@ -207,7 +473,7 @@ def test_build_groups_preserve_repo_attribution_and_conserve_deterministically(m
                         """
                         SELECT dimension_hash, employee_id, org, repo, owner, group_id, manager_id, list_cost, net_cost
                         FROM cost_attribution_daily
-                        WHERE service_name='Tencent CI shared'
+                        WHERE source_allocation_scope='tencent_ci_shared'
                         ORDER BY employee_id IS NULL, employee_id, org, repo
                         """
                     )
@@ -250,7 +516,7 @@ def test_all_matched_builds_conserve_the_rounding_remainder(monkeypatch) -> None
                 connection.execute(
                     text(
                         "SELECT employee_id, list_cost, net_cost FROM cost_attribution_daily "
-                        "WHERE service_name='Tencent CI shared' ORDER BY employee_id"
+                        "WHERE source_allocation_scope='tencent_ci_shared' ORDER BY employee_id"
                     )
                 ).mappings()
             )
@@ -274,7 +540,7 @@ def test_no_builds_use_one_residual_and_preserve_null_amounts(monkeypatch) -> No
                 text(
                     """
                     SELECT org, repo, owner, employee_id, usage_seconds, list_cost, effective_cost, credit_amount, net_cost
-                    FROM cost_attribution_daily WHERE service_name='Tencent CI shared'
+                    FROM cost_attribution_daily WHERE source_allocation_scope='tencent_ci_shared'
                     """
                 )
             ).mappings().one()
@@ -304,7 +570,7 @@ def test_rerun_replaces_the_day_and_failure_rolls_back_the_day(monkeypatch) -> N
         run_allocate_tencent_ci_cost(engine, start_date=DAY, end_date=DAY)
         with engine.connect() as connection:
             assert connection.execute(
-                text("SELECT SUM(net_cost) FROM cost_attribution_daily WHERE service_name='Tencent CI shared'")
+                text("SELECT SUM(net_cost) FROM cost_attribution_daily WHERE source_allocation_scope='tencent_ci_shared'")
             ).scalar_one() == 98
             before_rerun = connection.execute(
                 text(
@@ -477,6 +743,39 @@ _SCHEMA = (
       employee_id INTEGER, group_id INTEGER, manager_id INTEGER, usage_seconds NUMERIC, list_cost NUMERIC,
       effective_cost NUMERIC, credit_amount NUMERIC, net_cost NUMERIC, currency TEXT, source_rows INTEGER,
       dimension_hash TEXT, source_summary_row_hash TEXT
+    )
+    """,
+    """
+    CREATE TABLE cost_unmatched_resource_daily (
+      usage_date TEXT, vendor TEXT, account_id TEXT, source_summary_row_hash TEXT,
+      resource_name TEXT, resource_id TEXT, parent_resource_name TEXT, service_name TEXT,
+      vendor_tags_json TEXT, usage_seconds NUMERIC, list_cost NUMERIC,
+      currency TEXT NOT NULL DEFAULT 'USD', source_row_hash TEXT
+    )
+    """,
+    """
+    CREATE TABLE cost_resource_serving_daily (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, materialization_version TEXT, basis_key TEXT,
+      usage_date TEXT, vendor TEXT, account_id TEXT, owner_key TEXT, owner TEXT,
+      group_id INTEGER, manager_id INTEGER, project TEXT, target_branch TEXT,
+      resource_group_key TEXT, resource_key TEXT, resource_name TEXT, resource_id TEXT,
+      service_name TEXT, resource_identity_kind TEXT, representative_labels_json TEXT,
+      metadata_variant_count INTEGER, detail_list_cost NUMERIC, fallback_list_cost NUMERIC,
+      usage_seconds NUMERIC, list_cost NUMERIC, effective_cost NUMERIC, credit_amount NUMERIC,
+      net_cost NUMERIC, currency TEXT NOT NULL DEFAULT 'USD', source_row_count INTEGER,
+      calculated_at TEXT,
+      UNIQUE (materialization_version, basis_key, vendor, account_id, usage_date,
+              owner_key, resource_key, target_branch)
+    )
+    """,
+    """
+    CREATE TABLE cost_resource_serving_publication (
+      basis_key TEXT, vendor TEXT, account_id TEXT, usage_date TEXT,
+      active_materialization_version TEXT, source_allocation_version TEXT,
+      detail_list_cost NUMERIC, total_list_cost NUMERIC,
+      currency TEXT NOT NULL DEFAULT 'USD', source_row_count INTEGER,
+      published_at TEXT DEFAULT CURRENT_TIMESTAMP, tiflash_ready_at TEXT,
+      PRIMARY KEY (basis_key, vendor, account_id, usage_date)
     )
     """,
 )

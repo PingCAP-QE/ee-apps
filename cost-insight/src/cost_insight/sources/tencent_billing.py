@@ -227,7 +227,7 @@ def _summary_row(
         "workload_type": None,
         "owner": tags.get("owner"),
         "service": tags.get("service"),
-        "project": tags.get("project"),
+        "project": tags.get("project") or tags.get("service"),
         "service_exec_id": tags.get("service_exec_id"),
         "list_cost": _decimal(component.get("Cost")),
         "effective_cost": _decimal(component.get("RealCost")),

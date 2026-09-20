@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from cost_insight.common.config import TENCENT_CI_SOURCE
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
@@ -15,7 +16,7 @@ from cost_insight.jobs.materialize_resource_serving import run_materialize_resou
 LOG = logging.getLogger(__name__)
 
 SUMMARY_JOB_NAME = "refresh_cost_attribution_from_summary"
-_TENCENT_CI_SOURCE = ("tencent", "100050658403")
+_TENCENT_CI_SOURCE = TENCENT_CI_SOURCE
 
 
 @dataclass(frozen=True)
