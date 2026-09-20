@@ -519,11 +519,6 @@ _SCHEMA = (
     )
     """,
     """
-    CREATE TABLE cost_allocation_publication (
-      publication_name TEXT PRIMARY KEY, active_allocation_version TEXT
-    )
-    """,
-    """
     CREATE TABLE cost_resource_serving_daily (
       id INTEGER PRIMARY KEY AUTOINCREMENT, materialization_version TEXT, basis_key TEXT,
       usage_date TEXT, vendor TEXT, account_id TEXT, owner_key TEXT, owner TEXT,

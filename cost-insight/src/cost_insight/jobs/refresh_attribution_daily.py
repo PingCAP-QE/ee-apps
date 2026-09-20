@@ -45,7 +45,6 @@ def run_refresh_cost_attribution_from_summary(
     end_date: date,
     dry_run: bool = False,
     tcms_allocation_table: str | None = None,
-    invalidate_cost_allocation_publication: bool = True,
 ) -> RefreshAttributionSummary:
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
@@ -92,11 +91,7 @@ def run_refresh_cost_attribution_from_summary(
             ):
                 insert_result = connection.execute(insert_statement, params)
                 rows_inserted += _positive_rowcount(insert_result.rowcount)
-            _invalidate_cost_publications(
-                connection,
-                params,
-                invalidate_cost_allocation_publication=invalidate_cost_allocation_publication,
-            )
+            _invalidate_resource_serving_publications(connection, params)
             state_store.mark_job_succeeded(connection, job_name, watermark)
 
         run_materialize_resource_serving(
@@ -131,18 +126,9 @@ def _watermark(*, vendor: str, account_id: str, start_date: date, end_date: date
     }
 
 
-def _invalidate_cost_publications(
-    connection,
-    params: dict[str, Any],
-    *,
-    invalidate_cost_allocation_publication: bool,
-) -> None:
+def _invalidate_resource_serving_publications(connection, params: dict[str, Any]) -> None:
     if _table_exists(connection, "cost_resource_serving_publication"):
         connection.execute(_INVALIDATE_NATIVE_RESOURCE_SERVING_PUBLICATIONS, params)
-    if invalidate_cost_allocation_publication and _table_exists(
-        connection, "cost_allocation_publication"
-    ):
-        connection.execute(_INVALIDATE_COST_ALLOCATION_PUBLICATION)
 
 
 def _table_exists(connection, table_name: str) -> bool:
@@ -236,14 +222,6 @@ _INVALIDATE_NATIVE_RESOURCE_SERVING_PUBLICATIONS = text(
       AND usage_date BETWEEN :start_date AND :end_date
     """
 )
-_INVALIDATE_COST_ALLOCATION_PUBLICATION = text(
-    """
-    DELETE FROM cost_allocation_publication
-    WHERE publication_name = 'dashboard'
-    """
-)
-
-
 _DELETE_ATTRIBUTION_DAILY = text(
     """
     DELETE FROM cost_attribution_daily

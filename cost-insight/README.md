@@ -53,13 +53,6 @@ Useful GCP settings:
 | `COST_INSIGHT_UNMATCHED_RESOURCE_LAG_DAYS` | `5` |
 | `COST_INSIGHT_SYNC_PAGE_SIZE` | `5000` |
 
-Allocation publication settings:
-
-| Env | Default |
-| --- | --- |
-| `COST_ALLOCATION_EARLIEST_DATE` | required |
-| `COST_INSIGHT_EQ_ROOT_LARK_GROUP_ID` | required unless passed by CLI |
-
 Useful Azure settings:
 
 | Env | Default |
@@ -286,44 +279,12 @@ cost-insight sync-gcp-billing-summary \
   --replace-usage-end-date 2026-08-24
 ```
 
-Build the three derived Dashboard perspectives after Kubernetes facts and
-attribution are current. The command keeps the existing active version visible
-until the full requested range has conserved successfully.
-
-```bash
-cost-insight materialize-cost-allocations \
-  --start-date 2026-01-01 \
-  --end-date 2026-05-23 \
-  --eq-root-lark-group-id <lark-department-id>
-```
-
-`COST_INSIGHT_EQ_ROOT_LARK_GROUP_ID` may supply the final argument. The command
-requires `--start-date` to equal `COST_ALLOCATION_EARLIEST_DATE` and requires
-`--end-date` to cover the latest native cost date. This prevents a partial
-version from replacing the global publication pointer. A native-empty date is
-intentionally represented by no facts (zero cost); rows are never inherited
-from an older version. Rebuild the complete configured history after roster
-changes because historical chargeback uses the current organization.
-
-Large rebuilds can stage resumable 4–5 day chunks under one fixed version. A
-failed chunk is safe to rerun; only the final command validates every native
-window and updates the publication pointer.
-
-```bash
-version=allocation_20260823T120000
-cost-insight materialize-cost-allocations \
-  --start-date 2026-01-01 --end-date 2026-05-23 \
-  --processing-start-date 2026-01-01 --processing-end-date 2026-01-05 \
-  --allocation-version "$version" --no-publish
-# Repeat non-overlapping processing windows, then publish the complete version.
-cost-insight materialize-cost-allocations \
-  --start-date 2026-01-01 --end-date 2026-05-23 \
-  --allocation-version "$version" --publish-only
-```
-
-Each materialization window and GKE date replacement logs its percentage and
-progress. A GKE replacement commits one usage date atomically: a failure rolls
-back that date's delete and writes, while completed dates are safely rerunnable.
+The derived Kubernetes/EQ allocation perspectives are retired. Dashboard cost
+queries use native attribution, and resource drilldown uses only the native
+resource-serving projection. After removing the old writer schedule and
+deploying a binary without its CLI, apply
+`sql/026_retire_materialized_cost_allocations.sql` to drop the unused
+`cost_allocation_daily` and `cost_allocation_publication` tables.
 
 AWS unmatched resources use the same investigation table. Successful resource imports and
 attribution refreshes automatically republish their affected source/date resource-serving

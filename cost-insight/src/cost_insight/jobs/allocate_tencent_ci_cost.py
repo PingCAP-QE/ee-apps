@@ -16,7 +16,6 @@ from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import TENCENT_CI_SOURCE
 from cost_insight.common.row_utils import bind_decimal_rows
-from cost_insight.jobs.materialize_cost_allocations import _load_roster_identities
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.refresh_attribution_daily import (
     _DELETE_ATTRIBUTION_DAILY,
@@ -163,6 +162,27 @@ def _product_codes(rows: tuple[dict[str, Any], ...], usage_date: date) -> tuple[
             )
         product_codes.append(product_code.strip())
     return tuple(product_codes)
+
+
+def _load_roster_identities(connection: Connection) -> dict[str, dict[str, Any]]:
+    rows = tuple(
+        connection.execute(
+            text(
+                """
+                SELECT id AS employee_id, email, github_id, group_id, manager_id
+                FROM roster_employees WHERE is_active = 1
+                """
+            )
+        ).mappings()
+    )
+    identities: dict[str, dict[str, Any]] = {}
+    # Match Dashboard roster resolution: email wins over github_id on collisions.
+    for field in ("github_id", "email"):
+        for row in rows:
+            identity = str(row[field] or "").strip().lower()
+            if identity:
+                identities[identity] = dict(row)
+    return identities
 
 
 def _build_weights(

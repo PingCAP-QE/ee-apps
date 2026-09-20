@@ -1,8 +1,12 @@
 # Cost Dashboard Native Attribution and Resource Lifecycle Redesign
 
-Status: Proposed
+Status: Native-only cutover implemented; provider lifecycle phases remain proposed
 Date: 2026-09-02
 Owners: Cost Insight (write path), CI Dashboard (read path)
+
+Retirement update (2026-09-20): the derived allocation schedule, CLI, writer,
+and publication invalidation were removed. Migration
+`026_retire_materialized_cost_allocations.sql` drops their two unused tables.
 
 ## Summary
 

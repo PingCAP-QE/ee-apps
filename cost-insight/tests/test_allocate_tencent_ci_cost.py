@@ -12,7 +12,6 @@ from cost_insight.jobs.allocate_tencent_ci_cost import (
     ACCOUNT_ID,
     run_allocate_tencent_ci_cost,
 )
-from cost_insight.jobs.materialize_cost_allocations import run_materialize_cost_allocations
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.refresh_attribution_daily import (
     CostAttributionSource,
@@ -602,7 +601,7 @@ def test_rerun_replaces_the_day_and_failure_rolls_back_the_day(monkeypatch) -> N
         engine.dispose()
 
 
-def test_dry_run_and_generic_guards_do_not_write_tencent_projection(monkeypatch) -> None:
+def test_dry_run_and_generic_refresh_do_not_write_tencent_projection(monkeypatch) -> None:
     engine = _engine()
     monkeypatch.setattr(allocate_tencent_ci_cost, "run_materialize_resource_serving", lambda *_args, **_kwargs: None)
     try:
@@ -617,33 +616,6 @@ def test_dry_run_and_generic_guards_do_not_write_tencent_projection(monkeypatch)
                 start_date=DAY,
                 end_date=DAY,
             )
-        with engine.begin() as connection:
-            for usage_date in (DAY, date(2026, 9, 14)):
-                connection.execute(
-                    text(
-                        """
-                        INSERT INTO cost_attribution_daily (
-                          usage_date, vendor, account_id, attribution_source, attribution_status,
-                          source_rows, dimension_hash
-                        ) VALUES (:usage_date, 'tencent', :account_id, 'test', 'matched', 1, :dimension_hash)
-                        """
-                    ),
-                    {
-                        "usage_date": usage_date,
-                        "account_id": ACCOUNT_ID,
-                        "dimension_hash": f"guard-{usage_date}",
-                    },
-                )
-        result = run_materialize_cost_allocations(
-            engine,
-            start_date=DAY,
-            end_date=DAY,
-            earliest_date=DAY,
-            eq_root_lark_group_id="eq",
-            allocation_version="test",
-            publish=False,
-        )
-        assert result.windows_seen == 0
     finally:
         engine.dispose()
 
