@@ -196,7 +196,10 @@ backfill, or repair. See [Tencent billing import design](docs/tencent-billing-im
 for the D+5 verification and month-close reconciliation behavior.
 
 Allocate the CI account separately after import. Historical rows need reimporting first so
-`vendor_tags_json` contains the stable ProductCode metadata.
+`vendor_tags_json` contains the stable ProductCode metadata and `project` is populated from
+the billing-time `project` label or, when absent, `service`. Allocation preserves each cloud
+service and Project, and resource serving projects the daily build weights back onto the
+original Tencent resource IDs and labels.
 
 ```bash
 cost-insight allocate-tencent-ci-cost --start-date 2026-09-13 --end-date 2026-09-13

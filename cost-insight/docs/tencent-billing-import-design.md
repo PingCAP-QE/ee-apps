@@ -275,7 +275,7 @@ and investigation.
 | allocation `Tags` | canonical `vendor_tags_json` |
 | tags `author`, `org`, `repo` | corresponding attribution columns |
 | tag `owner` | source-owner fallback for attribution when `author` is absent |
-| tags `service`, `project`, `service_exec_id` | corresponding resource dimensions |
+| tags `service`, `project`, `service_exec_id` | corresponding resource dimensions; `project = project or service` |
 | `PayTime` | `source_export_time` |
 | `Cost` | `list_cost` |
 | `RealCost` | `effective_cost`, `net_cost` |

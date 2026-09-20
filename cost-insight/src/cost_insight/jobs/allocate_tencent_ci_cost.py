@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Connection, Engine
 
+from cost_insight.common.config import TENCENT_CI_SOURCE
 from cost_insight.common.row_utils import bind_decimal_rows
 from cost_insight.jobs.materialize_cost_allocations import _load_roster_identities
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
@@ -22,8 +23,7 @@ from cost_insight.jobs.refresh_attribution_daily import (
     _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,
 )
 
-VENDOR = "tencent"
-ACCOUNT_ID = "100050658403"
+VENDOR, ACCOUNT_ID = TENCENT_CI_SOURCE
 _PRODUCT_CODE_KEY = "__tencent_product_code"
 _SUPERNODE_PREFIX = "sp_eks_supernode"
 _AMOUNT_FIELDS = ("list_cost", "effective_cost", "credit_amount", "net_cost")
@@ -116,16 +116,34 @@ def _shared_rows(
     summary_rows: tuple[dict[str, Any], ...],
     product_codes: tuple[str, ...],
 ) -> tuple[dict[str, Any], ...]:
-    pools: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    pools: dict[tuple[str, str | None, str | None, str | None], list[dict[str, Any]]] = defaultdict(list)
     for row, product_code in zip(summary_rows, product_codes, strict=True):
         if not product_code.startswith(_SUPERNODE_PREFIX):
-            pools[str(row.get("currency") or "USD").upper()].append(row)
+            service = row.get("service") or None
+            pools[
+                (
+                    str(row.get("currency") or "USD").upper(),
+                    row.get("service_name") or None,
+                    service,
+                    row.get("project") or service,
+                )
+            ].append(row)
 
     weights = _build_weights(connection, usage_date)
     return tuple(
-        row
-        for currency, pool in sorted(pools.items())
-        for row in _allocate_pool(usage_date, currency, pool, weights)
+        allocated
+        for (currency, service_name, service, project), pool in sorted(
+            pools.items(), key=lambda item: tuple(value or "" for value in item[0])
+        )
+        for allocated in _allocate_pool(
+            usage_date,
+            currency,
+            pool,
+            weights,
+            service_name=service_name,
+            service=service,
+            project=project,
+        )
     )
 
 
@@ -185,6 +203,10 @@ def _allocate_pool(
     currency: str,
     pool: list[dict[str, Any]],
     weights: dict[tuple[int | None, str | None, str | None], dict[str, Any]],
+    *,
+    service_name: str | None,
+    service: str | None,
+    project: str | None,
 ) -> tuple[dict[str, Any], ...]:
     amounts = {field: _sum_amount(pool, field) for field in _AMOUNT_FIELDS}
     participants = sorted(
@@ -216,6 +238,9 @@ def _allocate_pool(
                 employee_id,
                 item,
                 allocated,
+                service_name=service_name,
+                service=service,
+                project=project,
                 residual=employee_id is None,
             )
         )
@@ -252,6 +277,9 @@ def _shared_row(
     weight: Mapping[str, Any],
     amounts: Mapping[str, Decimal | None],
     *,
+    service_name: str | None,
+    service: str | None,
+    project: str | None,
     residual: bool,
 ) -> dict[str, Any]:
     attribution_key = "unattributed" if residual else f"employee:{employee_id}"
@@ -259,7 +287,7 @@ def _shared_row(
         "usage_date": usage_date,
         "vendor": VENDOR,
         "account_id": ACCOUNT_ID,
-        "service_name": "Tencent CI shared",
+        "service_name": service_name,
         "sku_name": None,
         "usage_type": None,
         "cost_driver_key": None,
@@ -275,8 +303,8 @@ def _shared_row(
         "workload_type": None,
         "author": None,
         "owner": None if residual else weight["owner"],
-        "service": None,
-        "project": None,
+        "service": service,
+        "project": project,
         "service_exec_id": None,
         "attribution_key": attribution_key,
         "attribution_source": "tencent_ci_build_weighted_residual" if residual else "tencent_ci_build_weighted",
@@ -300,7 +328,7 @@ def _shared_row(
                 key: str(row[key])
                 for key in ("usage_date", "vendor", "account_id", "currency", "attribution_key")
             }
-            | {key: row[key] for key in ("org", "repo")},
+            | {key: row[key] for key in ("service_name", "org", "repo", "service", "project")},
             sort_keys=True,
             separators=(",", ":"),
         ).encode()

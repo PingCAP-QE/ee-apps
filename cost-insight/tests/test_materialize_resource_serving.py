@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, text
 from cost_insight.jobs import materialize_resource_serving as job
 from cost_insight.jobs.materialize_resource_serving import (
     build_resource_serving_rows,
+    build_tencent_resource_serving_rows,
     run_materialize_resource_serving,
 )
 
@@ -376,9 +377,10 @@ _SCHEMA = (
     """,
     """
     CREATE TABLE cost_attribution_daily (
-      usage_date TEXT, vendor TEXT, account_id TEXT, service_name TEXT, sku_name TEXT,
+      usage_date TEXT, vendor TEXT, account_id TEXT, service_name TEXT, service TEXT, sku_name TEXT,
       region TEXT, org TEXT, repo TEXT, project TEXT, target_branch TEXT, resource_name TEXT,
-      vendor_tags_json TEXT, owner TEXT, group_id INTEGER, manager_id INTEGER,
+      vendor_tags_json TEXT, source_allocation_scope TEXT, owner TEXT, employee_id INTEGER,
+      group_id INTEGER, manager_id INTEGER,
       usage_seconds REAL, list_cost REAL, effective_cost REAL, credit_amount REAL,
       net_cost REAL, currency TEXT NOT NULL DEFAULT 'USD',
       source_rows INTEGER, source_summary_row_hash TEXT, dimension_hash TEXT
@@ -457,6 +459,78 @@ def test_serving_identity_and_conservation_separate_currencies() -> None:
     assert by_currency["USD"]["resource_key"] != by_currency["CNY"]["resource_key"]
     assert by_currency["USD"]["resource_group_key"] != by_currency["CNY"]["resource_group_key"]
     assert sum((row["list_cost"] for row in rows), Decimal()) == Decimal("200")
+
+
+def test_tencent_serving_rejects_participant_missing_from_reference_pool() -> None:
+    sources = (
+        {
+            "source_allocation_scope": "tencent_ci_shared",
+            "currency": "CNY",
+            "service_name": "CVM",
+            "service": "cicd",
+            "project": "cicd",
+            "employee_id": 1,
+            "org": "pingcap",
+            "repo": "repo-a",
+            "list_cost": 1,
+            "net_cost": 1,
+        },
+        {
+            "source_allocation_scope": "tencent_ci_shared",
+            "currency": "CNY",
+            "service_name": "CVM",
+            "service": "cicd",
+            "project": "cicd",
+            "employee_id": 2,
+            "org": "pingcap",
+            "repo": "repo-b",
+            "list_cost": 1,
+            "net_cost": 1,
+        },
+        {
+            "source_allocation_scope": "tencent_ci_shared",
+            "currency": "CNY",
+            "service_name": "COS",
+            "service": "cache",
+            "project": "cache",
+            "employee_id": 2,
+            "org": "pingcap",
+            "repo": "repo-b",
+            "list_cost": 10,
+            "net_cost": 10,
+        },
+    )
+    summaries = (
+        {
+            "source_row_hash": "summary-a",
+            "currency": "CNY",
+            "service_name": "CVM",
+            "service": "cicd",
+            "project": "cicd",
+            "resource_name": "resource-a",
+            "list_cost": 2,
+            "net_cost": 2,
+        },
+        {
+            "source_row_hash": "summary-b",
+            "currency": "CNY",
+            "service_name": "COS",
+            "service": "cache",
+            "project": "cache",
+            "resource_name": "resource-b",
+            "list_cost": 10,
+            "net_cost": 10,
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="participant is absent from reference pool"):
+        build_tencent_resource_serving_rows(
+            source_rows=sources,
+            summary_rows=summaries,
+            basis_key="native",
+            materialization_version="v1",
+            calculated_at=datetime(2026, 8, 11, tzinfo=UTC),
+        )
 
 
 def test_serving_rejects_detail_currency_mismatch() -> None:

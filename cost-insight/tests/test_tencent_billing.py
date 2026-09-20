@@ -218,6 +218,32 @@ def test_expand_tencent_components_maps_cny_tags_and_resource_identity() -> None
     assert cpu["currency"] == "CNY"
 
 
+def test_service_label_falls_back_to_project_without_rewriting_source_tags() -> None:
+    service_only = _detail(Tags=[{"TagKey": "service", "TagValue": "bazel"}])
+    explicit_project = _detail(
+        Tags=[
+            {"TagKey": "service", "TagValue": "bazel"},
+            {"TagKey": "project", "TagValue": "cache-platform"},
+        ]
+    )
+
+    service_rows = expand_tencent_bill_details(
+        [service_only], expected_bill_day=date(2026, 9, 13), account_id="100050658403"
+    )
+    project_rows = expand_tencent_bill_details(
+        [explicit_project], expected_bill_day=date(2026, 9, 13), account_id="100050658403"
+    )
+
+    assert {(row["service"], row["project"]) for row in service_rows} == {("bazel", "bazel")}
+    assert {(row["service"], row["project"]) for row in project_rows} == {
+        ("bazel", "cache-platform")
+    }
+    assert json.loads(service_rows[0]["vendor_tags_json"]) == {
+        "__tencent_product_code": "sp_eks_supernode_intel_pod",
+        "service": "bazel",
+    }
+
+
 def test_tencent_identity_ignores_component_order_amounts_tags_and_settlement_times() -> None:
     original = _detail()
     changed = _detail(
