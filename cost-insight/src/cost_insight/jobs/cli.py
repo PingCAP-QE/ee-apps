@@ -27,6 +27,7 @@ from cost_insight.jobs.materialize_cost_allocations import (
 )
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.refresh_attribution_daily import (
+    _TENCENT_CI_SOURCE,
     CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
 )
@@ -54,6 +55,7 @@ from cost_insight.jobs.sync_alibaba_billing_summary import (
     ALIBABA_ACCOUNT_DISPLAY_NAMES,
     run_sync_alibaba_billing_summary,
 )
+from cost_insight.jobs.allocate_tencent_ci_cost import run_allocate_tencent_ci_cost
 from cost_insight.jobs.sync_tencent_billing_summary import run_sync_tencent_billing_summary
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     run_sync_gcp_kubernetes_workload_allocations,
@@ -147,6 +149,14 @@ def build_parser() -> argparse.ArgumentParser:
     sync_tencent_summary.add_argument("--bill-day-start", type=_parse_date, default=None)
     sync_tencent_summary.add_argument("--bill-day-end", type=_parse_date, default=None)
     sync_tencent_summary.add_argument("--dry-run", action="store_true")
+
+    allocate_tencent_ci = subparsers.add_parser(
+        "allocate-tencent-ci-cost",
+        help="Replace Tencent CI daily attribution with coarse build-weighted cost.",
+    )
+    allocate_tencent_ci.add_argument("--start-date", type=_parse_date, required=True)
+    allocate_tencent_ci.add_argument("--end-date", type=_parse_date, required=True)
+    allocate_tencent_ci.add_argument("--dry-run", action="store_true")
 
     sync_aws_summary = subparsers.add_parser(
         "sync-aws-billing-summary",
@@ -555,6 +565,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 settings=settings.tencent_billing,
                 bill_day_start=args.bill_day_start,
                 bill_day_end=args.bill_day_end,
+                dry_run=args.dry_run,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "allocate-tencent-ci-cost":
+        engine = build_engine(settings)
+        try:
+            summary = run_allocate_tencent_ci_cost(
+                engine,
+                start_date=args.start_date,
+                end_date=args.end_date,
                 dry_run=args.dry_run,
             )
             print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
@@ -1226,6 +1250,7 @@ def _resolve_attribution_sources(
         return tuple(
             CostAttributionSource(vendor=source.vendor, account_id=source.account_id)
             for source in sources
+            if (source.vendor, source.account_id) != _TENCENT_CI_SOURCE
         )
     fallback_sources = [CostAttributionSource(vendor="gcp", account_id=gcp_settings.account_id)]
     if aws_settings.account_id:

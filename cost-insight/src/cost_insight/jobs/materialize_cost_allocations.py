@@ -26,6 +26,7 @@ _NATIVE_RESIDUAL_SOURCE_SCOPES = {
     "eks_unallocated",
     "gke_residual",
 }
+_TENCENT_CI_SOURCE = "vendor <> 'tencent' OR account_id <> '100050658403'"
 
 
 @dataclass(frozen=True)
@@ -104,7 +105,7 @@ def run_materialize_cost_allocations(
         }
         roster_by_identity = _load_roster_identities(connection)
         latest_native_date = connection.execute(
-            text("SELECT MAX(usage_date) FROM cost_attribution_daily")
+            text(f"SELECT MAX(usage_date) FROM cost_attribution_daily WHERE {_TENCENT_CI_SOURCE}")
         ).scalar_one_or_none()
         if isinstance(latest_native_date, str):
             latest_native_date = date.fromisoformat(latest_native_date)
@@ -125,7 +126,8 @@ def run_materialize_cost_allocations(
                 text(
                     """
                     SELECT DISTINCT vendor, account_id FROM cost_attribution_daily
-                    WHERE usage_date BETWEEN :start_date AND :end_date"""
+                    WHERE usage_date BETWEEN :start_date AND :end_date
+                      AND (""" + _TENCENT_CI_SOURCE + ")"
                     + source_filter
                     + " ORDER BY vendor, account_id"
                 ),
@@ -261,7 +263,7 @@ def publish_materialized_cost_allocations(
     expected_windows = 0
     with engine.begin() as connection:
         latest_native_date = connection.execute(
-            text("SELECT MAX(usage_date) FROM cost_attribution_daily")
+            text(f"SELECT MAX(usage_date) FROM cost_attribution_daily WHERE {_TENCENT_CI_SOURCE}")
         ).scalar_one_or_none()
         if isinstance(latest_native_date, str):
             latest_native_date = date.fromisoformat(latest_native_date)
@@ -273,6 +275,7 @@ def publish_materialized_cost_allocations(
                     """
                     SELECT DISTINCT vendor, account_id FROM cost_attribution_daily
                     WHERE usage_date BETWEEN :start_date AND :end_date
+                      AND (""" + _TENCENT_CI_SOURCE + """)
                     ORDER BY vendor, account_id
                     """
                 ),

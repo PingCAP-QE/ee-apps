@@ -210,6 +210,7 @@ def test_expand_tencent_components_maps_cny_tags_and_resource_identity() -> None
     assert cpu["repo"] == "cost-insight"
     assert cpu["owner"] == "ee"
     assert json.loads(cpu["vendor_tags_json"])["repo"] == "cost-insight"
+    assert json.loads(cpu["vendor_tags_json"])["__tencent_product_code"] == "sp_eks_supernode_intel_pod"
     assert cpu["list_cost"] == Decimal("2.00000000")
     assert cpu["effective_cost"] == Decimal("1.50000000")
     assert cpu["net_cost"] == Decimal("1.50000000")

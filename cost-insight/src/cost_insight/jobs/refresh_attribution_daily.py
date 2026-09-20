@@ -15,6 +15,7 @@ from cost_insight.jobs.materialize_resource_serving import run_materialize_resou
 LOG = logging.getLogger(__name__)
 
 SUMMARY_JOB_NAME = "refresh_cost_attribution_from_summary"
+_TENCENT_CI_SOURCE = ("tencent", "100050658403")
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,8 @@ def run_refresh_cost_attribution_from_summary(
 ) -> RefreshAttributionSummary:
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
+    if (source.vendor, source.account_id) == _TENCENT_CI_SOURCE:
+        raise ValueError("Tencent CI requires allocate-tencent-ci-cost")
     if source.vendor == "aws" and not dry_run:
         if not tcms_allocation_table:
             raise ValueError("tcms_allocation_table is required for AWS attribution refresh")
