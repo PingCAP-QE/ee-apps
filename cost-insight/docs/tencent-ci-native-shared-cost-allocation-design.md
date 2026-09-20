@@ -24,18 +24,20 @@ owner/author-tagged, storage, network, and COS rows, is shared.
 ## V1 formula
 
 For each Beijing day, completed `ci_l1_builds` with `cloud_phase='TENCENT'`
-are grouped by active roster employee. A build has weight:
+are grouped by `(active roster employee, org, repo)`. A build has weight:
 
 ```
 1 + max(run_seconds, total_seconds, 0) / 3600
 ```
 
-Matched employee weights receive the daily non-supernode pool per currency.
-Missing or unmatched authors are combined into one `owner=NULL` residual. If
-there are no builds, the entire shared pool is residual. Shared rows have only
-`service_name='Tencent CI shared'`; no repo, job, or source service dimension
-is retained. Monetary splits round deterministically to nine decimals and leave
-all-null amount fields null while conserving each day/currency total.
+Every matched employee/repo group and unmatched `(org, repo)` group receives
+its proportional daily non-supernode pool share per currency. Unmatched rows
+have `owner`, employee, group, and manager fields set to null. If there are no
+builds, the entire shared pool is one null-dimension residual. Shared rows use
+`service_name='Tencent CI shared'` and retain build `org` and `repo`, but no job
+or source service dimension. Monetary splits round deterministically to nine
+decimals, with the final participant absorbing the remainder; all-null amount
+fields remain null and every day/currency total is conserved.
 
 ## Job and replay semantics
 

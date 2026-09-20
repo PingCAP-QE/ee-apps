@@ -52,14 +52,15 @@ def _engine():
         connection.execute(
             text(
                 """
-                INSERT INTO ci_l1_builds (start_time, completion_time, cloud_phase, author, run_seconds, total_seconds)
-                VALUES
-                  ('2026-09-12 16:10:00', '2026-09-12 18:10:00', 'TENCENT', 'alice', 3600, 7200),
-                  ('2026-09-12 17:10:00', '2026-09-12 18:10:00', 'TENCENT', 'bob', 0, 3600),
-                  ('2026-09-12 18:10:00', '2026-09-12 18:11:00', 'TENCENT', 'unknown', -1, 0),
-                  ('2026-09-12 15:59:00', '2026-09-12 16:01:00', 'TENCENT', 'alice', 3600, 3600),
-                  ('2026-09-12 17:10:00', NULL, 'TENCENT', 'alice', 3600, 3600),
-                  ('2026-09-12 17:10:00', '2026-09-12 18:10:00', 'AWS', 'alice', 3600, 3600)
+                INSERT INTO ci_l1_builds (
+                  start_time, completion_time, cloud_phase, author, org, repo, run_seconds, total_seconds
+                ) VALUES
+                  ('2026-09-12 16:10:00', '2026-09-12 18:10:00', 'TENCENT', 'alice', 'pingcap', 'repo-a', 3600, 7200),
+                  ('2026-09-12 17:10:00', '2026-09-12 18:10:00', 'TENCENT', 'bob', 'pingcap', 'repo-b', 0, 3600),
+                  ('2026-09-12 18:10:00', '2026-09-12 18:11:00', 'TENCENT', 'unknown', 'pingcap', 'repo-c', -1, 0),
+                  ('2026-09-12 15:59:00', '2026-09-12 16:01:00', 'TENCENT', 'alice', 'pingcap', 'ignored', 3600, 3600),
+                  ('2026-09-12 17:10:00', NULL, 'TENCENT', 'alice', 'pingcap', 'ignored', 3600, 3600),
+                  ('2026-09-12 17:10:00', '2026-09-12 18:10:00', 'AWS', 'alice', 'pingcap', 'ignored', 3600, 3600)
                 """
             )
         )
@@ -107,7 +108,7 @@ def test_allocation_keeps_supernode_direct_and_conserves_weighted_shared_cost(mo
                 for row in connection.execute(
                     text(
                         """
-                        SELECT service_name, owner, author, employee_id, group_id, usage_seconds,
+                        SELECT service_name, org, repo, owner, author, employee_id, group_id, usage_seconds,
                                list_cost, effective_cost, credit_amount, net_cost, source_rows,
                                source_summary_row_hash, attribution_status, allocate_method
                         FROM cost_attribution_daily ORDER BY employee_id IS NULL, employee_id
@@ -123,10 +124,10 @@ def test_allocation_keeps_supernode_direct_and_conserves_weighted_shared_cost(mo
     assert direct["owner"] == "alice@example.com"
     assert direct["net_cost"] == 8
     shared = [row for row in rows if row["service_name"] == "Tencent CI shared"]
-    assert [(row["employee_id"], row["list_cost"], row["net_cost"]) for row in shared] == [
-        (1, 50, 40),
-        (2, 33.333333333, 26.666666667),
-        (None, 16.666666667, 13.333333333),
+    assert [(row["employee_id"], row["org"], row["repo"], row["list_cost"], row["net_cost"]) for row in shared] == [
+        (1, "pingcap", "repo-a", 50, 40),
+        (2, "pingcap", "repo-b", 33.333333333, 26.666666667),
+        (None, "pingcap", "repo-c", 16.666666667, 13.333333333),
     ]
     assert [row["usage_seconds"] for row in shared] == [7200, 3600, 0]
     assert all(row["credit_amount"] is None for row in shared)
@@ -176,6 +177,64 @@ def test_invalid_product_metadata_fails_before_the_day_is_replaced(
         engine.dispose()
 
 
+def test_build_groups_preserve_repo_attribution_and_conserve_deterministically(monkeypatch) -> None:
+    engine = _engine()
+    monkeypatch.setattr(allocate_tencent_ci_cost, "run_materialize_resource_serving", lambda *_args, **_kwargs: None)
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM ci_l1_builds"))
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO ci_l1_builds (
+                      start_time, completion_time, cloud_phase, author, org, repo, run_seconds, total_seconds
+                    ) VALUES
+                      ('2026-09-12 16:10:00', '2026-09-12 18:10:00', 'TENCENT', 'alice', 'pingcap', 'repo-a', 0, 0),
+                      ('2026-09-12 16:10:00', '2026-09-12 18:10:00', 'TENCENT', 'alice', 'pingcap', 'repo-b', 0, 0),
+                      ('2026-09-12 16:10:00', '2026-09-12 18:10:00', 'TENCENT', 'bob', 'pingcap', 'repo-a', 0, 0),
+                      ('2026-09-12 16:10:00', '2026-09-12 18:10:00', 'TENCENT', 'unknown', 'pingcap', 'unmatched-a', 0, 0),
+                      ('2026-09-12 16:10:00', '2026-09-12 18:10:00', 'TENCENT', 'unknown', 'pingcap', 'unmatched-b', 0, 0),
+                      ('2026-09-12 16:10:00', '2026-09-12 18:10:00', 'TENCENT', 'unknown', 'pingcap', NULL, 0, 0)
+                    """
+                )
+            )
+        run_allocate_tencent_ci_cost(engine, start_date=DAY, end_date=DAY)
+        with engine.connect() as connection:
+            shared = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT dimension_hash, employee_id, org, repo, owner, group_id, manager_id, list_cost, net_cost
+                        FROM cost_attribution_daily
+                        WHERE service_name='Tencent CI shared'
+                        ORDER BY employee_id IS NULL, employee_id, org, repo
+                        """
+                    )
+                ).mappings()
+            ]
+    finally:
+        engine.dispose()
+
+    assert [(row["employee_id"], row["org"], row["repo"]) for row in shared] == [
+        (1, "pingcap", "repo-a"),
+        (1, "pingcap", "repo-b"),
+        (2, "pingcap", "repo-a"),
+        (None, "pingcap", None),
+        (None, "pingcap", "unmatched-a"),
+        (None, "pingcap", "unmatched-b"),
+    ]
+    assert len({row["dimension_hash"] for row in shared}) == len(shared)
+    assert all(
+        row["owner"] is row["group_id"] is row["manager_id"] is None
+        for row in shared
+        if row["employee_id"] is None
+    )
+    assert shared[-1]["list_cost"] == 16.666666665
+    assert sum(Decimal(str(row["list_cost"])) for row in shared) == Decimal("100")
+    assert sum(Decimal(str(row["net_cost"])) for row in shared) == Decimal("80")
+
+
 def test_all_matched_builds_conserve_the_rounding_remainder(monkeypatch) -> None:
     engine = _engine()
     monkeypatch.setattr(allocate_tencent_ci_cost, "run_materialize_resource_serving", lambda *_args, **_kwargs: None)
@@ -203,7 +262,7 @@ def test_all_matched_builds_conserve_the_rounding_remainder(monkeypatch) -> None
     assert sum(Decimal(str(row["net_cost"])) for row in shared) == Decimal("80")
 
 
-def test_unmatched_and_no_builds_use_one_residual_and_preserve_null_amounts(monkeypatch) -> None:
+def test_no_builds_use_one_residual_and_preserve_null_amounts(monkeypatch) -> None:
     engine = _engine()
     monkeypatch.setattr(allocate_tencent_ci_cost, "run_materialize_resource_serving", lambda *_args, **_kwargs: None)
     try:
@@ -214,7 +273,7 @@ def test_unmatched_and_no_builds_use_one_residual_and_preserve_null_amounts(monk
             shared = connection.execute(
                 text(
                     """
-                    SELECT owner, employee_id, usage_seconds, list_cost, effective_cost, credit_amount, net_cost
+                    SELECT org, repo, owner, employee_id, usage_seconds, list_cost, effective_cost, credit_amount, net_cost
                     FROM cost_attribution_daily WHERE service_name='Tencent CI shared'
                     """
                 )
@@ -223,6 +282,8 @@ def test_unmatched_and_no_builds_use_one_residual_and_preserve_null_amounts(monk
         engine.dispose()
 
     assert dict(shared) == {
+        "org": None,
+        "repo": None,
         "owner": None,
         "employee_id": None,
         "usage_seconds": 0,
@@ -245,6 +306,24 @@ def test_rerun_replaces_the_day_and_failure_rolls_back_the_day(monkeypatch) -> N
             assert connection.execute(
                 text("SELECT SUM(net_cost) FROM cost_attribution_daily WHERE service_name='Tencent CI shared'")
             ).scalar_one() == 98
+            before_rerun = connection.execute(
+                text(
+                    """
+                    SELECT dimension_hash, org, repo, employee_id, list_cost, effective_cost, credit_amount, net_cost
+                    FROM cost_attribution_daily ORDER BY dimension_hash
+                    """
+                )
+            ).all()
+        run_allocate_tencent_ci_cost(engine, start_date=DAY, end_date=DAY)
+        with engine.connect() as connection:
+            assert connection.execute(
+                text(
+                    """
+                    SELECT dimension_hash, org, repo, employee_id, list_cost, effective_cost, credit_amount, net_cost
+                    FROM cost_attribution_daily ORDER BY dimension_hash
+                    """
+                )
+            ).all() == before_rerun
             before_failure = connection.execute(
                 text("SELECT COUNT(*) FROM cost_attribution_daily")
             ).scalar_one()
@@ -369,7 +448,7 @@ _SCHEMA = (
     """,
     """
     CREATE TABLE ci_l1_builds (
-      start_time TEXT, completion_time TEXT, cloud_phase TEXT, author TEXT,
+      start_time TEXT, completion_time TEXT, cloud_phase TEXT, author TEXT, org TEXT, repo TEXT,
       run_seconds NUMERIC, total_seconds NUMERIC
     )
     """,

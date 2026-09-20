@@ -147,22 +147,28 @@ def _product_codes(rows: tuple[dict[str, Any], ...], usage_date: date) -> tuple[
     return tuple(product_codes)
 
 
-def _build_weights(connection: Connection, usage_date: date) -> dict[int | None, dict[str, Any]]:
+def _build_weights(
+    connection: Connection, usage_date: date
+) -> dict[tuple[int | None, str | None, str | None], dict[str, Any]]:
     start = datetime.combine(usage_date, time.min, tzinfo=_BEIJING).astimezone(UTC).replace(tzinfo=None)
     end = datetime.combine(usage_date + timedelta(days=1), time.min, tzinfo=_BEIJING).astimezone(UTC).replace(
         tzinfo=None
     )
     # Source rows use the direct-summary INSERT; builds reuse the existing active roster lookup.
     roster = _load_roster_identities(connection)
-    weights: dict[int | None, dict[str, Any]] = {}
+    weights: dict[tuple[int | None, str | None, str | None], dict[str, Any]] = {}
     for build in connection.execute(_SELECT_BUILDS, {"start": start, "end": end}).mappings():
         employee = roster.get(str(build.get("author") or "").strip().lower())
         employee_id = int(employee["employee_id"]) if employee else None
+        org = build.get("org")
+        repo = build.get("repo")
         item = weights.setdefault(
-            employee_id,
+            (employee_id, org, repo),
             {
                 "weight": Decimal(),
                 "usage_seconds": Decimal(),
+                "org": org,
+                "repo": repo,
                 "owner": employee.get("email") if employee else None,
                 "group_id": employee.get("group_id") if employee else None,
                 "manager_id": employee.get("manager_id") if employee else None,
@@ -178,26 +184,40 @@ def _allocate_pool(
     usage_date: date,
     currency: str,
     pool: list[dict[str, Any]],
-    weights: dict[int | None, dict[str, Any]],
+    weights: dict[tuple[int | None, str | None, str | None], dict[str, Any]],
 ) -> tuple[dict[str, Any], ...]:
     amounts = {field: _sum_amount(pool, field) for field in _AMOUNT_FIELDS}
-    total_weight = sum((item["weight"] for item in weights.values()), Decimal())
-    matched = [(employee_id, item) for employee_id, item in weights.items() if employee_id is not None]
-    matched.sort(key=lambda value: value[0])
+    participants = sorted(
+        weights.items(),
+        key=lambda value: (
+            value[0][0] is None,
+            value[0][0] or 0,
+            value[0][1] is not None,
+            value[0][1] or "",
+            value[0][2] is not None,
+            value[0][2] or "",
+        ),
+    ) or [
+        ((None, None, None), {"weight": Decimal(), "usage_seconds": Decimal(), "org": None, "repo": None})
+    ]
+    total_weight = sum((item["weight"] for _, item in participants), Decimal())
     rows: list[dict[str, Any]] = []
     remaining = dict(amounts)
-    for index, (employee_id, item) in enumerate(matched):
-        last_matched = index == len(matched) - 1 and None not in weights
-        allocated = _allocated_amounts(amounts, remaining, item["weight"], total_weight, last_matched)
+    for index, (key, item) in enumerate(participants):
+        employee_id = key[0]
+        allocated = _allocated_amounts(
+            amounts, remaining, item["weight"], total_weight, index == len(participants) - 1
+        )
         rows.append(
             _shared_row(
-                usage_date, currency, len(pool), employee_id, item, allocated, residual=False
+                usage_date,
+                currency,
+                len(pool),
+                employee_id,
+                item,
+                allocated,
+                residual=employee_id is None,
             )
-        )
-    if None in weights or not matched:
-        item = weights.get(None, {"weight": Decimal(), "usage_seconds": Decimal()})
-        rows.append(
-            _shared_row(usage_date, currency, len(pool), None, item, remaining if matched else amounts, residual=True)
         )
     return tuple(rows)
 
@@ -207,13 +227,13 @@ def _allocated_amounts(
     remaining: dict[str, Decimal | None],
     weight: Decimal,
     total_weight: Decimal,
-    last_matched: bool,
+    last_participant: bool,
 ) -> dict[str, Decimal | None]:
     allocated: dict[str, Decimal | None] = {}
     for field, amount in amounts.items():
         if amount is None:
             allocated[field] = None
-        elif last_matched:
+        elif last_participant:
             allocated[field] = remaining[field]
         else:
             allocated[field] = (amount * weight / total_weight).quantize(
@@ -244,8 +264,8 @@ def _shared_row(
         "usage_type": None,
         "cost_driver_key": None,
         "region": None,
-        "org": None,
-        "repo": None,
+        "org": weight["org"],
+        "repo": weight["repo"],
         "target_branch": None,
         "resource_name": None,
         "vendor_tags_json": None,
@@ -276,7 +296,11 @@ def _shared_row(
     }
     row["dimension_hash"] = hashlib.sha256(
         json.dumps(
-            {key: str(row[key]) for key in ("usage_date", "vendor", "account_id", "currency", "attribution_key")},
+            {
+                key: str(row[key])
+                for key in ("usage_date", "vendor", "account_id", "currency", "attribution_key")
+            }
+            | {key: row[key] for key in ("org", "repo")},
             sort_keys=True,
             separators=(",", ":"),
         ).encode()
@@ -306,7 +330,7 @@ _SELECT_SUMMARY_ROWS = text(
 )
 _SELECT_BUILDS = text(
     """
-    SELECT author, run_seconds, total_seconds FROM ci_l1_builds
+    SELECT author, org, repo, run_seconds, total_seconds FROM ci_l1_builds
     WHERE cloud_phase='TENCENT' AND completion_time IS NOT NULL
       AND start_time >= :start AND start_time < :end
     """
