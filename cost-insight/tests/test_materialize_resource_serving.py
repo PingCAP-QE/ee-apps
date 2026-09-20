@@ -461,76 +461,128 @@ def test_serving_identity_and_conservation_separate_currencies() -> None:
     assert sum((row["list_cost"] for row in rows), Decimal()) == Decimal("200")
 
 
-def test_tencent_serving_rejects_participant_missing_from_reference_pool() -> None:
+def test_tencent_serving_keeps_same_project_services_separate() -> None:
+    common = {
+        "usage_date": date(2026, 8, 10),
+        "vendor": "tencent",
+        "account_id": "100050658403",
+        "source_rows": 1,
+        "target_branch": None,
+        "group_id": 1,
+        "manager_id": 10,
+    }
     sources = (
         {
-            "source_allocation_scope": "tencent_ci_shared",
-            "currency": "CNY",
-            "service_name": "CVM",
-            "service": "cicd",
-            "project": "cicd",
-            "employee_id": 1,
-            "org": "pingcap",
-            "repo": "repo-a",
-            "list_cost": 1,
-            "net_cost": 1,
-        },
-        {
-            "source_allocation_scope": "tencent_ci_shared",
-            "currency": "CNY",
-            "service_name": "CVM",
-            "service": "cicd",
-            "project": "cicd",
-            "employee_id": 2,
-            "org": "pingcap",
-            "repo": "repo-b",
-            "list_cost": 1,
-            "net_cost": 1,
-        },
-        {
+            **common,
             "source_allocation_scope": "tencent_ci_shared",
             "currency": "CNY",
             "service_name": "COS",
-            "service": "cache",
-            "project": "cache",
+            "service": "bazel",
+            "project": "cache-platform",
+            "employee_id": 1,
+            "owner": "alice@example.com",
+            "org": "pingcap",
+            "repo": "repo-a",
+            "list_cost": 10,
+            "effective_cost": 10,
+            "credit_amount": None,
+            "net_cost": 10,
+            "dimension_hash": "a1",
+        },
+        {
+            **common,
+            "source_allocation_scope": "tencent_ci_shared",
+            "currency": "CNY",
+            "service_name": "COS",
+            "service": "bazel",
+            "project": "cache-platform",
+            "employee_id": None,
+            "owner": None,
+            "org": None,
+            "repo": None,
+            "list_cost": 10,
+            "effective_cost": 10,
+            "credit_amount": None,
+            "net_cost": 10,
+            "dimension_hash": "a2",
+        },
+        {
+            **common,
+            "source_allocation_scope": "tencent_ci_shared",
+            "currency": "CNY",
+            "service_name": "COS",
+            "service": "tikv",
+            "project": "cache-platform",
             "employee_id": 2,
+            "owner": "bob@example.com",
             "org": "pingcap",
             "repo": "repo-b",
-            "list_cost": 10,
-            "net_cost": 10,
+            "list_cost": 30,
+            "effective_cost": 30,
+            "credit_amount": None,
+            "net_cost": 30,
+            "dimension_hash": "b1",
+        },
+        {
+            **common,
+            "source_allocation_scope": "tencent_ci_shared",
+            "currency": "CNY",
+            "service_name": "COS",
+            "service": "tikv",
+            "project": "cache-platform",
+            "employee_id": None,
+            "owner": None,
+            "org": None,
+            "repo": None,
+            "list_cost": 30,
+            "effective_cost": 30,
+            "credit_amount": None,
+            "net_cost": 30,
+            "dimension_hash": "b2",
         },
     )
     summaries = (
         {
             "source_row_hash": "summary-a",
             "currency": "CNY",
-            "service_name": "CVM",
-            "service": "cicd",
-            "project": "cicd",
-            "resource_name": "resource-a",
-            "list_cost": 2,
-            "net_cost": 2,
+            "service_name": "COS",
+            "service": "bazel",
+            "project": "cache-platform",
+            "resource_name": "bucket-a",
+            "vendor_tags_json": '{"service":"bazel"}',
+            "list_cost": 10,
+            "effective_cost": 10,
+            "credit_amount": None,
+            "net_cost": 10,
         },
         {
             "source_row_hash": "summary-b",
             "currency": "CNY",
             "service_name": "COS",
-            "service": "cache",
-            "project": "cache",
-            "resource_name": "resource-b",
-            "list_cost": 10,
-            "net_cost": 10,
+            "service": "tikv",
+            "project": "cache-platform",
+            "resource_name": "bucket-b",
+            "vendor_tags_json": '{"service":"tikv"}',
+            "list_cost": 30,
+            "effective_cost": 30,
+            "credit_amount": None,
+            "net_cost": 30,
         },
     )
 
-    with pytest.raises(RuntimeError, match="participant is absent from reference pool"):
-        build_tencent_resource_serving_rows(
-            source_rows=sources,
-            summary_rows=summaries,
-            basis_key="native",
-            materialization_version="v1",
-            calculated_at=datetime(2026, 8, 11, tzinfo=UTC),
-        )
+    rows = build_tencent_resource_serving_rows(
+        source_rows=sources,
+        summary_rows=summaries,
+        basis_key="native",
+        materialization_version="v1",
+        calculated_at=datetime(2026, 8, 11, tzinfo=UTC),
+    )
+
+    by_resource_owner = {(row["resource_id"], row["owner"]): row for row in rows}
+    assert by_resource_owner["bucket-a", "alice@example.com"]["net_cost"] == Decimal("5")
+    assert by_resource_owner["bucket-a", ""]["net_cost"] == Decimal("5")
+    assert by_resource_owner["bucket-b", "bob@example.com"]["net_cost"] == Decimal("15")
+    assert by_resource_owner["bucket-b", ""]["net_cost"] == Decimal("15")
 
 
 def test_serving_rejects_detail_currency_mismatch() -> None:

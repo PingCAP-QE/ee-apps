@@ -250,31 +250,18 @@ def build_tencent_resource_serving_rows(
             if value is not None:
                 resource[name] = _decimal(resource.get(name)) + value
 
-    reference_pool, reference_field = _tencent_reference_amount(shared_sources)
-    reference_amounts = {
-        _tencent_participant_key(row): _decimal(row.get(reference_field))
-        for row in reference_pool
-    }
     for pool_key, pool_sources in shared_sources.items():
         pool_resources = tuple(resources.get(pool_key, {}).values())
         if not pool_resources:
             raise RuntimeError(f"Tencent shared attribution has no source resources: {pool_key!r}")
+        reference_field = _tencent_reference_field(pool_sources)
+        reference_amounts = {
+            _tencent_participant_key(row): _decimal(row.get(reference_field))
+            for row in pool_sources
+        }
         participants = sorted(pool_sources, key=_tencent_participant_sort_key)
-        missing_participant = next(
-            (
-                participant
-                for participant in participants
-                if _tencent_participant_key(participant) not in reference_amounts
-            ),
-            None,
-        )
-        if missing_participant is not None:
-            raise RuntimeError(
-                "Tencent shared attribution participant is absent from reference pool: "
-                f"pool={pool_key!r}, participant={_tencent_participant_key(missing_participant)!r}"
-            )
         reference_total = sum(
-            (_decimal(row.get(reference_field)) for row in reference_pool), Decimal()
+            (_decimal(row.get(reference_field)) for row in pool_sources), Decimal()
         )
         for resource in pool_resources:
             remaining = {name: _decimal_or_none(resource.get(name)) for name in _AMOUNTS}
@@ -319,18 +306,11 @@ def _tencent_pool_key(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
     )
 
 
-def _tencent_reference_amount(
-    pools: Mapping[tuple[str, str, str, str], Sequence[Mapping[str, Any]]],
-) -> tuple[Sequence[Mapping[str, Any]], str]:
-    candidates = [
-        (abs(sum((_decimal(row.get(name)) for row in rows), Decimal())), rows, name)
-        for rows in pools.values()
-        for name in _AMOUNTS
-    ]
-    if not candidates:
-        return (), "net_cost"
-    _, rows, name = max(candidates, key=lambda candidate: candidate[0])
-    return rows, name
+def _tencent_reference_field(rows: Sequence[Mapping[str, Any]]) -> str:
+    return max(
+        _AMOUNTS,
+        key=lambda name: abs(sum((_decimal(row.get(name)) for row in rows), Decimal())),
+    )
 
 
 def _tencent_participant_key(row: Mapping[str, Any]) -> tuple[int | None, str, str]:

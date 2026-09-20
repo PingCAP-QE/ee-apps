@@ -357,8 +357,8 @@ def test_resource_serving_keeps_explicit_project_service_pools_separate() -> Non
         ("cache-a", "bob@example.com"): (Decimal("30"), Decimal("24")),
         ("cache-a", ""): (Decimal("15"), Decimal("12")),
         ("cache-b", "alice@example.com"): (Decimal("5"), Decimal("4")),
-        ("cache-b", "bob@example.com"): (Decimal("3.333333333"), Decimal("2.666666667")),
-        ("cache-b", ""): (Decimal("1.666666667"), Decimal("1.333333333")),
+        ("cache-b", "bob@example.com"): (Decimal("3.333333333"), Decimal("2.666666666")),
+        ("cache-b", ""): (Decimal("1.666666667"), Decimal("1.333333334")),
     }
     assert {json.loads(row["representative_labels_json"])["service"] for row in rows} == {
         "bazel",
