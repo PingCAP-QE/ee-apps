@@ -350,15 +350,7 @@ def test_run_refresh_aws_attribution_requires_readable_tcms_before_writing() -> 
         engine.dispose()
 
 
-@pytest.mark.parametrize(
-    ("invalidate_cost_allocation_publication", "expected_allocation_publications"),
-    ((True, 0), (False, 1)),
-)
-def test_run_refresh_attribution_from_summary_marks_success(
-    monkeypatch,
-    invalidate_cost_allocation_publication,
-    expected_allocation_publications,
-) -> None:
+def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None:
     engine = _sqlite_engine()
     executed = []
     materializer_calls: list[dict[str, object]] = []
@@ -369,19 +361,6 @@ def test_run_refresh_attribution_from_summary_marks_success(
     )
 
     with engine.begin() as connection:
-        connection.execute(
-            text(
-                """
-                CREATE TABLE cost_allocation_publication (
-                  publication_name TEXT PRIMARY KEY,
-                  active_allocation_version TEXT
-                )
-                """
-            )
-        )
-        connection.execute(
-            text("INSERT INTO cost_allocation_publication VALUES ('dashboard', 'stale-version')")
-        )
         connection.execute(
             text(
                 """
@@ -433,7 +412,6 @@ def test_run_refresh_attribution_from_summary_marks_success(
             source=SOURCE,
             start_date=date(2026, 5, 9),
             end_date=date(2026, 5, 10),
-            invalidate_cost_allocation_publication=invalidate_cost_allocation_publication,
         )
 
         assert summary.rows_deleted == 2
@@ -456,12 +434,6 @@ def test_run_refresh_attribution_from_summary_marks_success(
                     account_id=SOURCE.account_id,
                 ),
             )
-        assert state is not None
-        assert state.last_status == "succeeded"
-        with engine.begin() as connection:
-            assert connection.execute(
-                text("SELECT COUNT(*) FROM cost_allocation_publication")
-            ).scalar_one() == expected_allocation_publications
             remaining_publications = connection.execute(
                 text(
                     """
@@ -471,6 +443,8 @@ def test_run_refresh_attribution_from_summary_marks_success(
                     """
                 )
             ).all()
+        assert state is not None
+        assert state.last_status == "succeeded"
         assert remaining_publications == [
             ("eq_allocated", "gcp", "pingcap-testing-account", "2026-05-09"),
             ("native", "aws", "946646677266", "2026-05-09"),
@@ -480,21 +454,28 @@ def test_run_refresh_attribution_from_summary_marks_success(
         engine.dispose()
 
 
-def test_refresh_failure_rolls_back_publication_invalidation(monkeypatch) -> None:
+def test_refresh_failure_rolls_back_resource_serving_invalidation(monkeypatch) -> None:
     engine = _sqlite_engine()
     with engine.begin() as connection:
         connection.execute(
             text(
                 """
-                CREATE TABLE cost_allocation_publication (
-                  publication_name TEXT PRIMARY KEY,
-                  active_allocation_version TEXT
+                CREATE TABLE cost_resource_serving_publication (
+                  basis_key TEXT,
+                  vendor TEXT,
+                  account_id TEXT,
+                  usage_date TEXT
                 )
                 """
             )
         )
         connection.execute(
-            text("INSERT INTO cost_allocation_publication VALUES ('dashboard', 'active-version')")
+            text(
+                """
+                INSERT INTO cost_resource_serving_publication VALUES
+                  ('native', 'gcp', 'pingcap-testing-account', '2026-05-09')
+                """
+            )
         )
 
     original_execute = Connection.execute
@@ -527,8 +508,8 @@ def test_refresh_failure_rolls_back_publication_invalidation(monkeypatch) -> Non
 
         with engine.begin() as connection:
             assert connection.execute(
-                text("SELECT active_allocation_version FROM cost_allocation_publication")
-            ).scalar_one() == "active-version"
+                text("SELECT COUNT(*) FROM cost_resource_serving_publication")
+            ).scalar_one() == 1
             state = state_store.get_job_state(
                 connection,
                 source_job_name(

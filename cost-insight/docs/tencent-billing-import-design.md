@@ -312,7 +312,6 @@ Add `currency CHAR(3) NOT NULL DEFAULT 'USD'` to the cost-bearing path used by T
 
 - `cost_bq_export_summary_daily`;
 - `cost_attribution_daily`;
-- `cost_allocation_daily`;
 - `cost_unmatched_resource_daily`;
 - `cost_resource_serving_daily`;
 - `cost_resource_serving_publication`;
@@ -325,17 +324,14 @@ summed before conversion. In particular:
 
 - in `refresh_attribution_daily.py`, add currency to the select, `GROUP BY`, and every
   `dimension_hash` payload in both the direct summary refresh and TCMS-enriched summary refresh;
-- in `materialize_cost_allocations.py`, carry currency in `_ATTRIBUTION_COLUMNS`, `_boundary`,
-  output rows, and `_dimension_hash`, and run the native/materialized total comparisons per
-  currency rather than using the current ungrouped amount sums across currencies;
 - in `materialize_resource_serving.py`, carry currency through attribution/detail reads, resource
   grouping and identity keys, serving rows, and publication totals.
 
 An implementation audit must search every `dimension_hash` constructor. The constructors in
 `sync_gcp_kubernetes_workload_allocations.py` and
 `sync_aws_kubernetes_workload_allocations.py` feed provider-specific USD-only staging tables and
-cannot receive Tencent rows; all hash constructors on the Tencent downstream path are the refresh
-and materialization sites listed above.
+cannot receive Tencent rows; all hash constructors on the Tencent downstream path are the
+attribution, Tencent allocation, and native resource-serving sites listed above.
 
 The dashboard uses the fixed product decision:
 
@@ -469,7 +465,7 @@ src/cost_insight/jobs/cli.py
 src/cost_insight/jobs/state_store.py
 src/cost_insight/jobs/sync_gcp_billing_summary.py
 src/cost_insight/jobs/refresh_attribution_daily.py
-src/cost_insight/jobs/materialize_cost_allocations.py
+src/cost_insight/jobs/allocate_tencent_ci_cost.py
 src/cost_insight/jobs/materialize_resource_serving.py
 sql/<next>_add_cost_currency.sql
 pyproject.toml

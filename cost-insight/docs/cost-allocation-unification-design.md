@@ -1,9 +1,13 @@
 # Unified Cost Allocation and EQ Chargeback Design
 
-Status: Implemented in code; migration and production rollout pending
+Status: Retired on 2026-09-20; retained as historical design context
 Date: 2026-08-21
 
-Implementation note: migration `016_add_materialized_cost_allocations.sql`,
+Retirement note: Dashboard now serves native attribution only. The writer and
+CLI were removed, and migration `026_retire_materialized_cost_allocations.sql`
+drops the unused materialized allocation tables. Do not re-enable this design.
+
+Historical implementation note: migration `016_add_materialized_cost_allocations.sql`,
 `materialize-cost-allocations`, and the four Dashboard basis choices implement
 the GCP-native and EQ stages. AWS keeps its existing split-cost adapter and
 parent-residual ledger; fully reconciled source lineage is materialized when

@@ -1,8 +1,13 @@
 # Resource Serving Materialization Design
 
-Status: Proposed
+Status: Implemented as native-only serving; derived allocation sections are historical
 Date: 2026-08-26
 Owners: Cost Insight (write path), CI Dashboard (read path)
+
+Retirement note: `cost_allocation_daily`, `cost_allocation_publication`, and all
+derived serving bases were retired by the native-attribution cutover. Current
+resource serving reads `cost_attribution_daily` and publishes only `basis_key =
+'native'`.
 
 ## Decision
 

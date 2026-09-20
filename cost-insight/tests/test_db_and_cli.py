@@ -18,7 +18,6 @@ from cost_insight.common.logging import configure_logging
 from cost_insight.jobs import cli
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import BootstrapGcsCacheLastSeenResult
 from cost_insight.jobs.cleanup_gcs_cache import CleanupGcsCacheSummary
-from cost_insight.jobs.materialize_cost_allocations import MaterializeCostAllocationsSummary
 from cost_insight.jobs.refresh_attribution_daily import (    CostAttributionSource,
     RefreshAttributionSummary,
 )
@@ -793,121 +792,6 @@ def test_cli_runs_sync_unmatched_resources_command(monkeypatch, capsys) -> None:
     assert captured["usage_start_date"] == date(2026, 5, 17)
     assert captured["usage_end_date"] == date(2026, 5, 18)
     assert '"rows_seen": 3' in output
-
-
-def test_cli_runs_materialize_cost_allocations(monkeypatch, capsys) -> None:
-    captured = {}
-
-    class Engine:
-        def dispose(self):
-            pass
-
-    settings = SimpleNamespace(
-        gcp_billing=GcpBillingSettings(page_size=123),
-        log_level="INFO",
-    )
-
-    def fake_run(_engine, **kwargs):
-        captured.update(kwargs)
-        return MaterializeCostAllocationsSummary(
-            start_date=kwargs["start_date"],
-            end_date=kwargs["end_date"],
-            allocation_version="v1",
-            windows_seen=1,
-            rows_written=3,
-            dry_run=kwargs["dry_run"],
-        )
-
-    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
-    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
-    monkeypatch.setattr(cli, "run_materialize_cost_allocations", fake_run)
-    monkeypatch.setenv("COST_ALLOCATION_EARLIEST_DATE", "2026-08-10")
-
-    assert cli.main(
-        [
-            "materialize-cost-allocations",
-            "--start-date", "2026-08-10",
-            "--end-date", "2026-08-10",
-            "--eq-root-lark-group-id", "eq",
-            "--allocation-version", "v1",
-            "--processing-start-date", "2026-08-10",
-            "--processing-end-date", "2026-08-10",
-            "--no-publish",
-        ]
-    ) == 0
-    assert captured["eq_root_lark_group_id"] == "eq"
-    assert captured["earliest_date"] == date(2026, 8, 10)
-    assert captured["batch_size"] == 123
-    assert captured["allocation_version"] == "v1"
-    assert captured["processing_start_date"] == date(2026, 8, 10)
-    assert captured["processing_end_date"] == date(2026, 8, 10)
-    assert captured["publish"] is False
-    assert '"allocation_version": "v1"' in capsys.readouterr().out
-
-
-def test_cli_publishes_a_staged_materialization_version(monkeypatch, capsys) -> None:
-    captured = {}
-
-    class Engine:
-        def dispose(self):
-            pass
-
-    settings = SimpleNamespace(
-        gcp_billing=GcpBillingSettings(page_size=123),
-        log_level="INFO",
-    )
-    monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
-    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
-    monkeypatch.setattr(
-        cli,
-        "publish_materialized_cost_allocations",
-        lambda _engine, **kwargs: captured.update(kwargs),
-    )
-    monkeypatch.setenv("COST_ALLOCATION_EARLIEST_DATE", "2026-08-10")
-
-    assert cli.main(
-        [
-            "materialize-cost-allocations",
-            "--start-date", "2026-08-10",
-            "--end-date", "2026-08-11",
-            "--eq-root-lark-group-id", "eq",
-            "--allocation-version", "v1",
-            "--publish-only",
-        ]
-    ) == 0
-    assert captured == {
-        "start_date": date(2026, 8, 10),
-        "end_date": date(2026, 8, 11),
-        "earliest_date": date(2026, 8, 10),
-        "allocation_version": "v1",
-    }
-    assert '"published": true' in capsys.readouterr().out
-
-
-def test_cli_rejects_publish_only_processing_dates(monkeypatch) -> None:
-    monkeypatch.setattr(
-        cli,
-        "get_settings",
-        lambda require_database=True: SimpleNamespace(log_level="INFO"),
-    )
-    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
-    monkeypatch.setenv("COST_ALLOCATION_EARLIEST_DATE", "2026-08-10")
-
-    with pytest.raises(ValueError, match="publish-only cannot be combined with processing dates"):
-        cli.main(
-            [
-                "materialize-cost-allocations",
-                "--start-date", "2026-08-10",
-                "--end-date", "2026-08-11",
-                "--eq-root-lark-group-id", "eq",
-                "--allocation-version", "v1",
-                "--publish-only",
-                "--processing-start-date", "2026-08-10",
-                "--processing-end-date", "2026-08-10",
-            ]
-        )
 
 
 def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, capsys) -> None:
