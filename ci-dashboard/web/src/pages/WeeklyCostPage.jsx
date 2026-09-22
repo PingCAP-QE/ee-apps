@@ -47,6 +47,7 @@ export default function WeeklyCostPage() {
   const previousWeek = report.data?.previous_week || {};
   const previousMonth = report.data?.previous_month || {};
   const historySeries = trendReport.data?.list_cost_history?.series || [];
+  const budgetPeriodCost = trendReport.data?.budget_period_cost;
   const [selectedCostSource, setSelectedCostSource] = useState("");
   const [accountSort, setAccountSort] = useState({ field: null, direction: "desc" });
   const [allocationPeriod, setAllocationPeriod] = useState("week");
@@ -63,7 +64,6 @@ export default function WeeklyCostPage() {
   );
   const allocation = allocationPeriod === "month" ? monthlyAllocation.data : report.data;
   const budgetPace = allocation?.budget_pace || report.data?.budget_pace;
-  const teamCost = budgetPace?.team_cost;
   const budgetScenarios = configuredBudgetScenarios(budgetPace?.projects || []);
   const selectedBudgetScenario =
     budgetScenarios.find((item) => item.key === selectedBudgetScenarioKey) || budgetScenarios[0];
@@ -139,32 +139,32 @@ export default function WeeklyCostPage() {
           actions={<AllocationPeriodToggle value={allocationPeriod} onChange={setAllocationPeriod} />}
         >
           <div className="weekly-cost__budget-grid">
-            <div className="weekly-cost__budget-lane">
-              <BudgetPaceCard
-                title="Overall budget pace"
-                item={budgetPace.overall}
-                showMonthlyCumulativeCost={allocationPeriod === "month"}
-              />
-              {currentMonthBudget ? (
+            <div className="weekly-cost__budget-overview">
+              <div className="weekly-cost__budget-lane weekly-cost__budget-lane--summary">
                 <BudgetPaceCard
-                  title="Current month budget utilization"
-                  item={currentMonthBudget}
+                  title="Last week budget utilization"
+                  item={budgetPace.overall}
+                  showMonthlyCumulativeCost={allocationPeriod === "month"}
                 />
-              ) : null}
-              <TeamCostList
-                title="Team test cost"
-                items={teamCost?.items}
-                emptyMessage="No Engineering Group team cost was attributed in this week."
-              />
+                {currentMonthBudget ? (
+                  <BudgetPaceCard
+                    title="Current month budget utilization"
+                    item={currentMonthBudget}
+                  />
+                ) : null}
+              </div>
+              <div className="weekly-cost__budget-lane">
+                <BudgetPaceList
+                  className="weekly-cost__budget-projects"
+                  title="Budget Scenario utilization"
+                  items={budgetScenarios}
+                  selectedKey={selectedBudgetScenario?.key}
+                  onSelect={setSelectedBudgetScenarioKey}
+                  emptyMessage="No budget scenario matched this period."
+                />
+              </div>
+              <BudgetPeriodCumulativeCostChart item={budgetPeriodCost} />
             </div>
-            <BudgetPaceList
-              className="weekly-cost__budget-projects"
-              title="Budget Scenario utilization"
-              items={budgetScenarios}
-              selectedKey={selectedBudgetScenario?.key}
-              onSelect={setSelectedBudgetScenarioKey}
-              emptyMessage="No budget scenario matched this period."
-            />
             <BudgetScenarioUsageChart item={selectedBudgetScenario} />
           </div>
         </Panel>
@@ -455,7 +455,7 @@ function BudgetPaceCard({ title, item = {}, showMonthlyCumulativeCost = false })
         <div
           className="weekly-cost__budget-gauge"
           role="progressbar"
-          aria-label={`${title} utilization gauge`}
+          aria-label={`${title} gauge`}
           aria-valuemin="0"
           aria-valuemax="100"
           aria-valuenow={Math.round(progress)}
@@ -483,6 +483,58 @@ function BudgetPaceCard({ title, item = {}, showMonthlyCumulativeCost = false })
         {formatCurrency(item.actual_list_cost)} actual
         {isConfigured ? ` / ${formatCurrency(budget)} budget` : ""}
       </span>
+    </article>
+  );
+}
+
+function BudgetPeriodCumulativeCostChart({ item }) {
+  const points = item?.points || [];
+  if (!points.length) {
+    return null;
+  }
+  const totalBudget = Number(item.total_budget || 0);
+  const peak = points.reduce(
+    (highest, point) =>
+      !highest || Number(point.cumulative_list_cost) > Number(highest.cumulative_list_cost)
+        ? point
+        : highest,
+    null,
+  );
+  const peakUtilization =
+    totalBudget > 0 ? (Number(peak.cumulative_list_cost) / totalBudget) * 100 : null;
+
+  return (
+    <article className="weekly-cost__cumulative-cost-trend">
+      <header>
+        <div className="weekly-cost__cumulative-cost-title">
+          <strong>2026 H2 overall cumulative cost</strong>
+          <span>{formatIsoDateRange(item.period || {})}</span>
+        </div>
+        <div className="weekly-cost__cumulative-cost-summary">
+          <strong>Budget Cumulative Spend {formatCurrency(peak.cumulative_list_cost)}</strong>
+          <span>{formatCurrency(totalBudget)} budget · {formatNullablePercent(peakUtilization)}</span>
+        </div>
+      </header>
+      <TrendChart
+        series={[
+          {
+            key: "cumulative-cost",
+            label: "Cumulative cost",
+            color: "#0f7c82",
+            type: "line",
+            points: points.map((point) => [point.week_start, point.cumulative_list_cost]),
+          },
+        ]}
+        ariaLabel="Budget period cumulative cost chart"
+        yFormatter={formatCompactCurrency}
+        height={180}
+        compactY
+        leftPadding={52}
+        bottomLabelSize={11}
+        xLabelFormatter={formatMonthlyCostDay}
+        tooltipLabelFormatter={formatWeeklyTooltipLabel}
+        showLegend={false}
+      />
     </article>
   );
 }
@@ -569,8 +621,8 @@ function BudgetScenarioUsageChart({ item }) {
       aria-label={`Selected budget scenario: ${item?.name || "none"}`}
     >
       <LabeledDonutShareChart
-        title="Budget Scenario utilization breakdown"
-        subtitle={item ? `${item.name}. 100% = positive allocated spend` : "Select a budget scenario."}
+        title="Utilization breakdown"
+        subtitle={item ? `Focus on ${item.name}` : "Select a budget scenario."}
         items={usageItems}
         totalValue={usageTotal}
         totalLabel="allocated spend"
@@ -582,7 +634,7 @@ function BudgetScenarioUsageChart({ item }) {
       />
       <article className="weekly-cost__budget-scenario-trend">
         <header>
-          <strong>Daily cumulative cost</strong>
+          <strong>Daily cumulative cost in last week</strong>
           <span>Stacked by account / project</span>
         </header>
         <TrendChart
@@ -628,46 +680,6 @@ function formatBudgetProjectAccountLabel(item) {
   return `${String(item.vendor || "").toUpperCase()} / ${item.account_id} / ${item.project}`;
 }
 
-function TeamCostList({ title, items = [], emptyMessage }) {
-  return (
-    <article className="weekly-cost__budget-card">
-      <h4>{title}</h4>
-      {items.length ? (
-        <div className="weekly-cost__budget-list">
-          {items.map((item) => {
-            const share = Math.min(Math.max(Number(item.share_pct || 0), 0), 100);
-
-            return (
-              <div className="weekly-cost__budget-row" key={item.key || item.name}>
-                <div className="weekly-cost__budget-row-head">
-                  <strong>{item.name}</strong>
-                  <span>
-                    {formatCurrency(item.actual_list_cost)} · {formatPercent(item.share_pct)} of QA cost
-                  </span>
-                </div>
-                <div
-                  className="weekly-cost__budget-meter"
-                  role="progressbar"
-                  aria-label={`${item.name} QA team cost share`}
-                  aria-valuemin="0"
-                  aria-valuemax="100"
-                  aria-valuenow={Math.round(share)}
-                >
-                  <span
-                    className="weekly-cost__team-cost-fill"
-                    style={{ width: `${share}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="weekly-cost__budget-empty">{emptyMessage}</p>
-      )}
-    </article>
-  );
-}
 
 function describeBudgetGaugeArc(startAngle, endAngle) {
   const center = 110;

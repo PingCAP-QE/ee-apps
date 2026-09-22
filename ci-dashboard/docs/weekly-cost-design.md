@@ -194,8 +194,9 @@ When an unnamed source-wide plan has no projects, its name falls back to its
 source memberships plus `(plan <id>)` so the scenario remains distinguishable.
 Each `project_account_usage` item contains `daily_list_cost`, with one `{date,
 list_cost, cumulative_list_cost}` entry for every date in the plan/report
-intersection. `team_cost` has its own list-cost total and cross-account team
-items with `actual_list_cost` and `share_pct`, but no budget fields.
+intersection. `team_cost` remains an all-QA team breakdown, independent of
+budget scopes, with its own list-cost total and cross-account team items with
+`actual_list_cost` and `share_pct`, but no budget fields.
 The additive `team_share` object contains the same metric, the positive
 `total_list_cost` denominator, and `level1`, `level2`, `projects`, and `owners` item lists.
 Each share item has `{key, name, value, share_pct, interactive:false}`. These
@@ -241,13 +242,14 @@ Every budget value and actual uses the same billing-report **list-cost**
 expression as the existing report. The budget period for this page is exactly
 `last_week`; an annual or fiscal-period budget is prorated by inclusive date
 overlap. This is completed-period utilization, not a forecast. In the month view,
-**Overall Budget pace** renders the QA list cost accumulated across each natural
-calendar day instead of the weekly gauge, annotating the peak with its budget
-utilization percentage.
+**Last week budget utilization** renders the budget-scoped QA list cost accumulated across
+each natural calendar day instead of the weekly gauge, annotating the peak with
+its budget utilization percentage.
 
-- **Overall Budget pace** is all qualifying QA sources' `last_week_cost` divided
-  by the sum of both source-wide **and project-scoped** QA budget-plan targets
-  for that week. In the week view, a second gauge shows actual cost as a
+- **Last week budget utilization** is the deduplicated list cost in the union of
+  qualifying QA budget-plan scopes divided by the sum of both source-wide **and
+  project-scoped** QA budget-plan targets for that week. In the week view, a
+  second gauge shows actual cost as a
   percentage of the current natural month's full budget. A current plan is selected only when `platform = 'QA'` and its
   `vendor` plus JSON `accounts` membership intersects the fixed QA sources; a
   plan amount is counted once, even when it names several accounts or projects.
@@ -263,11 +265,13 @@ utilization percentage.
   same account/project allocations. The segments sum to positive allocated
   spend; credits remain reflected in the plan-utilization value. Attributed
   projects not covered by a plan are omitted from this card.
-- **Team test cost** is not a budget view. It aggregates list cost across all
-  qualifying QA sources by the same cross-account Level-2 roster-team mapping
-  used by Cost Insight's `Team` dimension. Costs without such a Level-2 mapping
-  are retained as `(no team)`. Each row shows its QA-cost share; no budget,
-  target, utilization, or plan `team` label is involved.
+- **2026 H2 overall cumulative cost** covers only current QA plans with explicit
+  project membership (`projects` or legacy `label_filters.project`). It starts
+  at the earliest plan start date, has one cumulative-cost bar per UTC natural
+  week through today, and displays cumulative actual, the summed full
+  product-plan budget, and its utilization percentage in the chart header.
+  Source-wide and other non-project budgets are
+  excluded.
 
 An unmatched project target remains `null` in the API response and is omitted
 from **Budget Scenario utilization**; it is never converted to a zero budget. Legacy source-scoped `cost_budgets` rows remain supported for the
@@ -279,12 +283,13 @@ legacy schema does not provide group-aware aggregate budget matching. A
 single logical plan still must not be duplicated across
 separate budget rows merely to model cross-account reporting. Every configured
 Budget pace utilization uses the same capped threshold: green below 80%, yellow
-from 80% through 95%, and red above 95%. `Overall budget pace` uses a
+from 80% through 95%, and red above 95%. `Last week budget utilization` uses a
 semi-circular gauge and `Budget Scenario utilization` uses linear progress
-bars. `Team test cost` uses a neutral QA-cost-share bar rather than a budget
-utilization color. In the desktop three-lane layout, `Overall budget pace` and
-`Team test cost` stack in the first lane, the budget-scenario list is in the
-second lane, and its selected-scenario breakdown is in the third lane.
+bars. In the desktop three-lane layout, `Last week budget utilization` and
+`Current month budget utilization` stack in the first lane, the budget-scenario
+list is in the second lane, its selected-scenario breakdown is in the third
+lane. The first two lanes share an unchanged panel height: their upper areas
+are equal-height, and `2026 H2 overall cumulative cost` spans their lower area.
 
 ### Team share
 

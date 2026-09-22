@@ -4471,6 +4471,40 @@ def test_weekly_cost_legacy_budget_pace_excludes_unsupported_filters(
     assert response.json()["budget_pace"]["overall"]["period_budget"] == 1.92
 
 
+def test_weekly_cost_legacy_budget_scope_uses_budget_overlap_dates() -> None:
+    pace, scopes = cost_queries._weekly_cost_budget_pace(
+        {
+            "source_project_values": {
+                ("aws", "qa-aws", date(2026, 7, 15), "Alpha"): Decimal("100"),
+                ("aws", "qa-aws", date(2026, 7, 16), "Alpha"): Decimal("100"),
+            },
+            "projects": {},
+        },
+        [
+            {
+                "vendor": "aws",
+                "account_id": "qa-aws",
+                "period_start_date": "2026-07-01",
+                "period_end_date": "2026-07-15",
+                "label_filters": None,
+                "group_id": None,
+                "manager_id": None,
+                "repo": None,
+                "budget_amount": 1500,
+            }
+        ],
+        date(2026, 7, 13),
+        date(2026, 7, 19),
+        200.0,
+        {("aws", "qa-aws")},
+    )
+
+    assert scopes == [
+        ({("aws", "qa-aws")}, None, date(2026, 7, 13), date(2026, 7, 15))
+    ]
+    assert pace["overall"]["actual_list_cost"] == 100.0
+
+
 def test_weekly_cost_team_dimensions_use_path_boundaries() -> None:
     dimensions = cost_queries._weekly_cost_team_dimensions(
         [
@@ -4507,7 +4541,9 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
         display_name="qa-aws",
         purpose="QA",
     )
-    for index, (project, list_cost) in enumerate([("Alpha", 100), ("Beta", 50)]):
+    for index, (project, list_cost) in enumerate(
+        [("Alpha", 100), ("Beta", 50), ("Unplanned", 30)]
+    ):
         _insert_cost_attribution(
             sqlite_engine,
             usage_date="2026-07-13",
@@ -4526,7 +4562,6 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
         connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN team TEXT"))
         connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN platform TEXT"))
     for budget_name, amount, projects, group_id in [
-        (None, 36500, None, None),
         ("QA Alpha and Beta plan", 7300, '["Alpha", "Beta"]', None),
         ("Unsupported filtered plan", 3650, None, 1),
     ]:
@@ -4561,18 +4596,63 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
                     "budget_name": budget_name,
                 },
             )
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor="aws",
+        account_id="qa-aws",
+        period_start_date="2026-07-20",
+        period_end_date="2026-12-31",
+        budget_amount=3650,
+        budget_name="Other source-wide QA budget",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE cost_budgets
+                SET accounts = :accounts,
+                    team = :team,
+                    platform = :platform
+                WHERE budget_name = :budget_name
+                """
+            ),
+            {
+                "accounts": '["qa-aws"]',
+                "team": "Efficiency & Quality",
+                "platform": "QA",
+                "budget_name": "Other source-wide QA budget",
+            },
+        )
 
     response = api_client.get("/api/v1/pages/weekly-cost")
+    trend_response = api_client.get("/api/v1/pages/weekly-cost/trend")
+    current_month_response = api_client.get(
+        "/api/v1/pages/weekly-cost/allocation",
+        params={"period": "current_month"},
+    )
 
     assert response.status_code == 200
+    assert trend_response.status_code == 200
+    assert current_month_response.status_code == 200
+    assert response.json()["summary"]["last_week_cost"] == 180.0
+    assert trend_response.json()["budget_period_cost"]["total_budget"] == 7300.0
+    assert trend_response.json()["budget_period_cost"]["period"] == {
+        "start_date": "2026-01-01",
+        "end_date": "2026-07-20",
+    }
+    assert trend_response.json()["budget_period_cost"]["points"][-2:] == [
+        {"week_start": "2026-07-13", "list_cost": 150.0, "cumulative_list_cost": 150.0},
+        {"week_start": "2026-07-20", "list_cost": 0.0, "cumulative_list_cost": 150.0},
+    ]
+    assert current_month_response.json()["budget_pace"]["overall"]["actual_list_cost"] == 150.0
     budget_pace = response.json()["budget_pace"]
     assert budget_pace["overall"] == {
         "actual_list_cost": 150.0,
-        "period_budget": 840.0,
-        "utilization_pct": 17.86,
+        "period_budget": 140.0,
+        "utilization_pct": 107.14,
     }
     for plan in budget_pace["projects"]:
-        for allocation in plan["project_account_usage"]:
+        for allocation in plan.get("project_account_usage", []):
             daily_list_cost = allocation.pop("daily_list_cost")
             assert [point["date"] for point in daily_list_cost] == [
                 "2026-07-13",
@@ -4597,7 +4677,7 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
             ] * 7
     assert budget_pace["projects"] == [
         {
-            "key": "budget-plan:2",
+            "key": "budget-plan:1",
             "name": "QA Alpha and Beta plan",
             "actual_list_cost": 150.0,
             "period_budget": 140.0,
@@ -4622,39 +4702,21 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
             ],
         },
         {
-            "key": "budget-plan:1",
-            "name": "AWS / qa-aws (plan 1)",
-            "actual_list_cost": 150.0,
-            "period_budget": 700.0,
-            "utilization_pct": 21.43,
-            "project_account_usage": [
-                {
-                    "key": "project-account:Alpha:aws:qa-aws",
-                    "project": "Alpha",
-                    "vendor": "aws",
-                    "account_id": "qa-aws",
-                    "actual_list_cost": 100.0,
-                    "utilization_pct": 14.29,
-                },
-                {
-                    "key": "project-account:Beta:aws:qa-aws",
-                    "project": "Beta",
-                    "vendor": "aws",
-                    "account_id": "qa-aws",
-                    "actual_list_cost": 50.0,
-                    "utilization_pct": 7.14,
-                },
-            ],
+            "key": "project:Unplanned",
+            "name": "Unplanned",
+            "actual_list_cost": 30.0,
+            "period_budget": None,
+            "utilization_pct": None,
         },
     ]
     assert budget_pace["team_cost"] == {
         "metric": "list_cost",
-        "total_list_cost": 150.0,
+        "total_list_cost": 180.0,
         "items": [
             {
                 "key": "team:none",
                 "name": "(no team)",
-                "actual_list_cost": 150.0,
+                "actual_list_cost": 180.0,
                 "share_pct": 100.0,
                 "interactive": False,
             }
@@ -4679,6 +4741,63 @@ def test_weekly_cost_budget_plan_actual_uses_only_its_date_overlap() -> None:
     )
 
     assert actual == 50
+
+
+def test_weekly_cost_product_budget_plans_only_include_project_budgets() -> None:
+    plans = cost_queries._weekly_cost_product_budget_plans(
+        [
+            {
+                "vendor": "aws",
+                "account_id": "qa-aws",
+                "period_start_date": "2026-01-01",
+                "period_end_date": "2026-12-31",
+                "label_filters": {"project": "Alpha"},
+                "group_id": None,
+                "manager_id": None,
+                "repo": None,
+                "budget_amount": 100,
+            },
+            {
+                "vendor": "aws",
+                "account_id": "qa-aws",
+                "period_start_date": "2026-01-01",
+                "period_end_date": "2026-12-31",
+                "label_filters": None,
+                "group_id": None,
+                "manager_id": None,
+                "repo": None,
+                "budget_amount": 999,
+            },
+        ],
+        {("aws", "qa-aws")},
+        date(2026, 7, 20),
+    )
+
+    assert plans == [
+        (
+            ({("aws", "qa-aws")}, {"Alpha"}, date(2026, 1, 1), date(2026, 7, 20)),
+            Decimal("100"),
+        )
+    ]
+
+
+def test_weekly_cost_budget_scoped_actual_deduplicates_overlapping_plans() -> None:
+    dimensions = {
+        "source_project_values": {
+            ("aws", "qa-aws", date(2026, 7, 13), "Alpha"): Decimal("100"),
+            ("aws", "qa-aws", date(2026, 7, 13), "Beta"): Decimal("50"),
+        }
+    }
+
+    actual = cost_queries._weekly_cost_budget_scoped_actual(
+        dimensions,
+        [
+            ({("aws", "qa-aws")}, {"Alpha"}, date(2026, 7, 13), date(2026, 7, 19)),
+            ({("aws", "qa-aws")}, {"Alpha", "Beta"}, date(2026, 7, 13), date(2026, 7, 19)),
+        ],
+    )
+
+    assert actual == 150
 
 
 def test_weekly_cost_history_uses_list_cost_and_sorts_unrounded_totals(

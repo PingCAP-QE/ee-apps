@@ -35,7 +35,7 @@ after(async () => {
   await server?.close();
 });
 
-function weeklyCostReport({ items = [], listCostHistory, budgetPace, teamShare } = {}) {
+function weeklyCostReport({ items = [], listCostHistory, budgetPace, teamShare, budgetPeriodCost } = {}) {
   return {
     meta: {
       calendar_timezone: "UTC",
@@ -55,6 +55,7 @@ function weeklyCostReport({ items = [], listCostHistory, budgetPace, teamShare }
     ...(listCostHistory ? { list_cost_history: listCostHistory } : {}),
     ...(budgetPace ? { budget_pace: budgetPace } : {}),
     ...(teamShare ? { team_share: teamShare } : {}),
+    ...(budgetPeriodCost ? { budget_period_cost: budgetPeriodCost } : {}),
   };
 }
 
@@ -289,6 +290,15 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
         ],
       },
     },
+    budgetPeriodCost: {
+      metric: "list_cost",
+      period: { start_date: "2026-01-01", end_date: "2026-07-20" },
+      total_budget: 1000,
+      points: [
+        { week_start: "2026-01-05", list_cost: 100, cumulative_list_cost: 100 },
+        { week_start: "2026-01-12", list_cost: 100, cumulative_list_cost: 200 },
+      ],
+    },
     teamShare: {
       metric: "list_cost",
       total_list_cost: 220,
@@ -313,12 +323,12 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
     const rendered = JSON.stringify(renderer.toJSON());
     assert.equal(requests.length, 3);
     assert.match(rendered, /Budget pace/);
-    assert.match(rendered, /Overall budget pace/);
+    assert.match(rendered, /Last week budget utilization/);
     assert.match(rendered, /Current month budget utilization/);
     assert.match(rendered, /Budget Scenario utilization/);
     assert.doesNotMatch(rendered, /Zero/);
     assert.doesNotMatch(rendered, /Not configured/);
-    assert.match(rendered, /Team test cost/);
+    assert.doesNotMatch(rendered, /Last week team share/);
     assert.match(rendered, /Team share/);
     assert.equal(renderer.root.findAllByType("details").length, 0);
     assert.ok(renderer.root.findByProps({ "aria-label": "Selected budget scenario: Alpha" }));
@@ -332,10 +342,14 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
       0,
     );
     assert.ok(
-      renderer.root.findByProps({ role: "img", "aria-label": "Budget Scenario utilization breakdown share chart" }),
+      renderer.root.findByProps({ role: "img", "aria-label": "Utilization breakdown share chart" }),
     );
     assert.ok(
       renderer.root.findByProps({ role: "img", "aria-label": "Budget scenario daily cumulative cost chart" }),
+    );
+    assert.match(rendered, /2026 H2 overall cumulative cost/);
+    assert.ok(
+      renderer.root.findByProps({ role: "img", "aria-label": "Budget period cumulative cost chart" }),
     );
     await act(async () => {
       renderer.root.findByProps({ "aria-label": gammaScenarioLabel }).props.onClick();
@@ -371,7 +385,7 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
     assert.equal(renderer.root.findAllByProps({ role: "img", "aria-label": "Project allocation share chart" }).length, 0);
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Owner share share chart" }));
     const overallGauge = renderer.root.findByProps({
-      "aria-label": "Overall budget pace utilization gauge",
+      "aria-label": "Last week budget utilization gauge",
     });
     assert.equal(overallGauge.props["aria-valuenow"], 21);
     assert.match(
@@ -394,12 +408,11 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
         .find((span) => span.props.className?.includes("weekly-cost__budget-fill")).props.className,
       /weekly-cost__budget-fill--warning/,
     );
-    assert.match(
-      renderer.root
-        .findByProps({ "aria-label": "Database QA team cost share" })
-        .findByType("span").props.className,
-      /weekly-cost__team-cost-fill/,
-    );
+    const cumulativeSummary = renderer.root.findByProps({
+      className: "weekly-cost__cumulative-cost-summary",
+    });
+    assert.equal(cumulativeSummary.findByType("strong").children.join(""), "Budget Cumulative Spend $200.00");
+    assert.equal(cumulativeSummary.findByType("span").children.join(""), "$1,000 budget · 20.0%");
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;
@@ -530,11 +543,11 @@ test("weekly cost switches budget pace and team share to the last natural month"
     assert.ok(
       renderer.root.findByProps({
         role: "img",
-        "aria-label": "Overall budget pace cumulative cost chart",
+        "aria-label": "Last week budget utilization cumulative cost chart",
       }),
     );
     assert.equal(
-      renderer.root.findAllByProps({ "aria-label": "Overall budget pace utilization gauge" }).length,
+      renderer.root.findAllByProps({ "aria-label": "Last week budget utilization gauge" }).length,
       0,
     );
     assert.ok(
