@@ -940,6 +940,7 @@ def get_weekly_cost_trend(engine: Engine) -> dict[str, Any]:
             connection,
             today,
             {(item["vendor"], item["account_id"]) for item in items},
+            qa_source_clause=qa_source_clause,
         )
         if budget_period_cost["points"]:
             report["budget_period_cost"] = budget_period_cost
@@ -1092,6 +1093,8 @@ def _weekly_cost_budget_period_cost(
     connection: Connection,
     today: date,
     qa_sources: set[tuple[str, str]],
+    *,
+    qa_source_clause: str,
 ) -> dict[str, Any]:
     plans = _weekly_cost_product_budget_plans(
         _weekly_cost_budget_rows(connection, today, today),
@@ -1103,7 +1106,12 @@ def _weekly_cost_budget_period_cost(
 
     start_date = min(scope[2] for scope, _budget in plans)
     budget_scopes = [scope for scope, _budget in plans]
-    dimension_rows = _weekly_cost_allocation_dimension_rows(connection, start_date, today)
+    dimension_rows = _weekly_cost_allocation_dimension_rows(
+        connection,
+        start_date,
+        today,
+        qa_source_clause=qa_source_clause,
+    )
     dimensions = _weekly_cost_team_dimensions(dimension_rows, [])
     weekly_costs: dict[date, Decimal] = {}
     for (vendor, account_id, usage_date, project), amount in dimensions[
@@ -1221,7 +1229,12 @@ def _weekly_cost_allocation_inputs(
     *,
     qa_source_clause: str,
 ) -> tuple[tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...]]:
-    dimension_rows = _weekly_cost_allocation_dimension_rows(connection, start_date, end_date)
+    dimension_rows = _weekly_cost_allocation_dimension_rows(
+        connection,
+        start_date,
+        end_date,
+        qa_source_clause=qa_source_clause,
+    )
     roster_group_rows, budget_rows = _weekly_cost_allocation_metadata(
         connection,
         start_date,
@@ -1234,6 +1247,8 @@ def _weekly_cost_allocation_dimension_rows(
     connection: Connection,
     start_date: date,
     end_date: date,
+    *,
+    qa_source_clause: str,
 ) -> tuple[Mapping[str, Any], ...]:
     list_cost_expr = _billing_report_list_cost_expr("c")
     return tuple(
