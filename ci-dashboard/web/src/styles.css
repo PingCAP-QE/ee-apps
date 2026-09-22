@@ -924,17 +924,41 @@ select {
   align-items: start;
 }
 
-.weekly-cost__budget-lane {
+.weekly-cost__budget-overview {
   display: grid;
+  grid-column: span 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  min-height: 0;
   gap: 0.9rem;
 }
 
+.weekly-cost__budget-lane {
+  display: grid;
+  gap: 0.9rem;
+  min-height: 0;
+}
+
+.weekly-cost__budget-lane--summary {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.weekly-cost__budget-lane--summary .weekly-cost__budget-card {
+  min-height: 0;
+  padding: 0.75rem 1rem;
+}
+
+.weekly-cost__budget-lane--summary .weekly-cost__budget-gauge svg {
+  width: min(100%, 10rem);
+}
+
 .weekly-cost__budget-projects {
-  min-height: 100%;
+  min-height: 0;
 }
 
 .weekly-cost__budget-scenario {
   display: grid;
+  align-content: start;
   gap: 0.9rem;
   min-width: 0;
 }
@@ -943,7 +967,8 @@ select {
   align-self: start;
 }
 
-.weekly-cost__budget-scenario-trend {
+.weekly-cost__budget-scenario-trend,
+.weekly-cost__cumulative-cost-trend {
   display: grid;
   gap: 0.65rem;
   min-width: 0;
@@ -953,19 +978,57 @@ select {
   background: rgba(255, 253, 248, 0.72);
 }
 
+.weekly-cost__cumulative-cost-trend {
+  grid-column: span 2;
+  align-self: start;
+}
+
 .weekly-cost__budget-scenario-trend header {
   display: grid;
   gap: 0.16rem;
 }
 
-.weekly-cost__budget-scenario-trend header strong {
+.weekly-cost__cumulative-cost-trend header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.16rem;
+}
+
+.weekly-cost__cumulative-cost-title {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.weekly-cost__cumulative-cost-summary {
+  display: grid;
+  justify-self: center;
+  gap: 0.16rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.weekly-cost__budget-scenario-trend header strong,
+.weekly-cost__cumulative-cost-trend header strong {
   color: var(--navy);
   font-size: 0.84rem;
+}
+
+.weekly-cost__cumulative-cost-summary strong {
+  font-size: 0.95rem;
 }
 
 .weekly-cost__budget-scenario-trend header span,
 .weekly-cost__budget-scenario-trend .chart-legend {
   font-size: 0.68rem;
+}
+
+.weekly-cost__cumulative-cost-trend header span {
+  font-size: 0.8rem;
+}
+
+.weekly-cost__cumulative-cost-summary span {
+  font-size: 0.86rem;
 }
 
 .weekly-cost__budget-scenario-trend .chart-legend__item {
@@ -1082,13 +1145,6 @@ select {
 
 .weekly-cost__budget-fill--danger {
   background: var(--rose);
-}
-
-.weekly-cost__team-cost-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--navy);
 }
 
 .weekly-cost__budget-list {
@@ -2850,6 +2906,30 @@ select {
   .weekly-cost__budget-grid,
   .weekly-cost__share-grid {
     grid-template-columns: 1fr;
+  }
+
+  .weekly-cost__budget-overview {
+    grid-column: span 1;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+  }
+
+  .weekly-cost__budget-lane--summary {
+    grid-template-rows: none;
+  }
+
+  .weekly-cost__cumulative-cost-trend {
+    grid-column: span 1;
+  }
+
+  .weekly-cost__cumulative-cost-trend header {
+    grid-template-columns: 1fr;
+  }
+
+  .weekly-cost__cumulative-cost-summary {
+    justify-self: start;
+    text-align: left;
+    white-space: normal;
   }
 
   .weekly-summary__flaky-grid {

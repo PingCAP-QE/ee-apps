@@ -65,6 +65,7 @@ TIFLASH_COST_SOURCES = frozenset(
     }
 )
 COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
+WeeklyCostBudgetScope = tuple[set[tuple[str, str]], set[str] | None, date, date]
 COST_DRIVER_LABELS = {
     "compute": "Compute",
     "block_storage": "Block storage",
@@ -854,6 +855,13 @@ def get_weekly_cost_trend(engine: Engine) -> dict[str, Any]:
             last_week_start,
             last_week_end,
         )
+        budget_period_cost = _weekly_cost_budget_period_cost(
+            connection,
+            today,
+            {(item["vendor"], item["account_id"]) for item in items},
+        )
+        if budget_period_cost["points"]:
+            report["budget_period_cost"] = budget_period_cost
     return report
 
 
@@ -983,6 +991,70 @@ def _weekly_cost_list_cost_history(
     }
 
 
+def _weekly_cost_empty_budget_period_cost() -> dict[str, Any]:
+    return {
+        "metric": "list_cost",
+        "period": None,
+        "total_budget": 0.0,
+        "points": [],
+    }
+
+
+def _weekly_cost_budget_period_cost(
+    connection: Connection,
+    today: date,
+    qa_sources: set[tuple[str, str]],
+) -> dict[str, Any]:
+    plans = _weekly_cost_product_budget_plans(
+        _weekly_cost_budget_rows(connection, today, today),
+        qa_sources,
+        today,
+    )
+    if not plans:
+        return _weekly_cost_empty_budget_period_cost()
+
+    start_date = min(scope[2] for scope, _budget in plans)
+    budget_scopes = [scope for scope, _budget in plans]
+    dimension_rows = _weekly_cost_allocation_dimension_rows(connection, start_date, today)
+    dimensions = _weekly_cost_team_dimensions(dimension_rows, [])
+    weekly_costs: dict[date, Decimal] = {}
+    for (vendor, account_id, usage_date, project), amount in dimensions[
+        "source_project_values"
+    ].items():
+        if _weekly_cost_matches_budget_scopes(
+            vendor,
+            account_id,
+            usage_date,
+            project,
+            budget_scopes,
+        ):
+            week_start = usage_date - timedelta(days=usage_date.weekday())
+            weekly_costs[week_start] = weekly_costs.get(week_start, Decimal(0)) + amount
+
+    week_start = start_date - timedelta(days=start_date.weekday())
+    current_week_start = today - timedelta(days=today.weekday())
+    cumulative_cost = Decimal(0)
+    points = []
+    while week_start <= current_week_start:
+        list_cost = weekly_costs.get(week_start, Decimal(0))
+        cumulative_cost += list_cost
+        points.append(
+            {
+                "week_start": week_start.isoformat(),
+                "list_cost": _money(list_cost),
+                "cumulative_list_cost": _money(cumulative_cost),
+            }
+        )
+        week_start += timedelta(days=7)
+
+    return {
+        "metric": "list_cost",
+        "period": {"start_date": start_date.isoformat(), "end_date": today.isoformat()},
+        "total_budget": _money(sum((budget for _scope, budget in plans), Decimal(0))),
+        "points": points,
+    }
+
+
 def get_weekly_cost_allocation(engine: Engine, period: str = "week") -> dict[str, Any]:
     today = _today()
     if period == "week":
@@ -1053,8 +1125,22 @@ def _weekly_cost_allocation_inputs(
     start_date: date,
     end_date: date,
 ) -> tuple[tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...]]:
+    dimension_rows = _weekly_cost_allocation_dimension_rows(connection, start_date, end_date)
+    roster_group_rows, budget_rows = _weekly_cost_allocation_metadata(
+        connection,
+        start_date,
+        end_date,
+    )
+    return dimension_rows, roster_group_rows, budget_rows
+
+
+def _weekly_cost_allocation_dimension_rows(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> tuple[Mapping[str, Any], ...]:
     list_cost_expr = _billing_report_list_cost_expr("c")
-    dimension_rows = tuple(
+    return tuple(
         connection.execute(
             text(
                 f"""
@@ -1079,12 +1165,6 @@ def _weekly_cost_allocation_inputs(
             {"is_active": 1, "start_date": start_date, "end_date": end_date},
         ).mappings()
     )
-    roster_group_rows, budget_rows = _weekly_cost_allocation_metadata(
-        connection,
-        start_date,
-        end_date,
-    )
-    return dimension_rows, roster_group_rows, budget_rows
 
 
 def _weekly_cost_allocation_metadata(
@@ -1119,7 +1199,7 @@ def _weekly_cost_allocation_response(
     include_daily_cost: bool = False,
 ) -> dict[str, Any]:
     team_dimensions = _weekly_cost_team_dimensions(dimension_rows, roster_group_rows)
-    budget_pace = _weekly_cost_budget_pace(
+    budget_pace, budget_scopes = _weekly_cost_budget_pace(
         team_dimensions,
         budget_rows,
         start_date,
@@ -1133,6 +1213,7 @@ def _weekly_cost_allocation_response(
             team_dimensions,
             start_date,
             end_date,
+            budget_scopes,
         )
     return {
         "team_share": _weekly_cost_team_share(team_dimensions),
@@ -1275,8 +1356,18 @@ def _weekly_cost_cumulative_daily_cost(
     dimensions: Mapping[str, Any],
     start_date: date,
     end_date: date,
+    budget_scopes: Sequence[WeeklyCostBudgetScope] | None,
 ) -> list[dict[str, Any]]:
     daily_values = dimensions["daily_list_cost"]
+    if budget_scopes is not None:
+        daily_values = {}
+        for (vendor, account_id, usage_date, project), amount in dimensions[
+            "source_project_values"
+        ].items():
+            if _weekly_cost_matches_budget_scopes(
+                vendor, account_id, usage_date, project, budget_scopes
+            ):
+                daily_values[usage_date] = daily_values.get(usage_date, Decimal(0)) + amount
     cumulative = Decimal(0)
     days = (end_date - start_date).days + 1
     items = []
@@ -1346,31 +1437,37 @@ def _weekly_cost_budget_pace(
     end_date: date,
     overall_actual: float,
     qa_sources: set[tuple[str, str]],
-) -> dict[str, Any]:
+) -> tuple[
+    dict[str, Any],
+    Sequence[WeeklyCostBudgetScope] | None,
+]:
     if budget_rows and "accounts" in budget_rows[0]:
         return _weekly_cost_current_budget_pace(
             dimensions,
             budget_rows,
             start_date,
             end_date,
-            overall_actual,
             qa_sources,
         )
     overall_budget = Decimal(0)
     has_overall_budget = False
+    budget_scopes: list[WeeklyCostBudgetScope] = []
     project_budgets: dict[str, Decimal] = {}
     project_names: dict[str, str] = {}
     for row in budget_rows:
-        period_budget = _weekly_cost_budget_amount_for_window(row, start_date, end_date)
-        if period_budget is None:
+        budget_window = _weekly_cost_budget_window(row, start_date, end_date)
+        if budget_window is None:
             continue
+        period_budget, scope_start, scope_end = budget_window
         label_filters = _weekly_cost_label_filters(row["label_filters"])
         has_group = row["group_id"] is not None
         has_manager = row["manager_id"] is not None
         has_repo = bool(str(row["repo"] or "").strip())
+        sources = {(str(row["vendor"]), str(row["account_id"]))}
         if not has_group and not has_manager and not has_repo and not label_filters:
             overall_budget += period_budget
             has_overall_budget = True
+            budget_scopes.append((sources, None, scope_start, scope_end))
             continue
         project = label_filters.get("project") if len(label_filters) == 1 else None
         if (
@@ -1383,28 +1480,37 @@ def _weekly_cost_budget_pace(
             overall_budget += period_budget
             has_overall_budget = True
             project_name = _weekly_cost_project_name(project)
+            budget_scopes.append((sources, {project_name}, scope_start, scope_end))
             project_key = f"project:{project_name}"
             project_names[project_key] = project_name
             project_budgets[project_key] = project_budgets.get(project_key, Decimal(0)) + period_budget
             continue
-    return {
-        "metric": "list_cost",
-        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
-        "overall": {
-            "actual_list_cost": _money(overall_actual),
-            "period_budget": _money(overall_budget) if has_overall_budget else None,
-            "utilization_pct": (
-                _nullable_rate_pct(overall_actual, _money(overall_budget))
-                if has_overall_budget
-                else None
+    scoped_actual = (
+        _weekly_cost_budget_scoped_actual(dimensions, budget_scopes)
+        if budget_scopes
+        else Decimal(str(overall_actual))
+    )
+    return (
+        {
+            "metric": "list_cost",
+            "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+            "overall": {
+                "actual_list_cost": _money(scoped_actual),
+                "period_budget": _money(overall_budget) if has_overall_budget else None,
+                "utilization_pct": (
+                    _nullable_rate_pct(_money(scoped_actual), _money(overall_budget))
+                    if has_overall_budget
+                    else None
+                ),
+            },
+            "projects": _weekly_cost_budget_items(
+                dimensions["projects"],
+                project_budgets,
+                project_names,
             ),
         },
-        "projects": _weekly_cost_budget_items(
-            dimensions["projects"],
-            project_budgets,
-            project_names,
-        ),
-    }
+        budget_scopes or None,
+    )
 
 
 def _weekly_cost_current_budget_pace(
@@ -1412,12 +1518,15 @@ def _weekly_cost_current_budget_pace(
     budget_rows: Sequence[Mapping[str, Any]],
     start_date: date,
     end_date: date,
-    overall_actual: float,
     qa_sources: set[tuple[str, str]],
-) -> dict[str, Any]:
+) -> tuple[
+    dict[str, Any],
+    Sequence[WeeklyCostBudgetScope],
+]:
     overall_budget = Decimal(0)
     has_overall_budget = False
     project_values: dict[str, dict[str, Any]] = {}
+    budget_scopes: list[WeeklyCostBudgetScope] = []
     planned_projects: set[str] = set()
     project_budgets: dict[str, Decimal] = {}
     project_names: dict[str, str] = {}
@@ -1444,6 +1553,7 @@ def _weekly_cost_current_budget_pace(
             projects = _weekly_cost_string_list(label_filters.get("project"))
         overall_budget += period_budget
         has_overall_budget = True
+        budget_scopes.append((sources, set(projects) or None, scope_start, scope_end))
         if projects:
             planned_projects.update(projects)
         if projects or period_budget > 0:
@@ -1484,20 +1594,24 @@ def _weekly_cost_current_budget_pace(
         if item["name"] not in planned_projects:
             project_values[key] = {"name": item["name"], "value": item["value"]}
 
-    return {
-        "metric": "list_cost",
-        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
-        "overall": {
-            "actual_list_cost": _money(overall_actual),
-            "period_budget": _money(overall_budget) if has_overall_budget else None,
-            "utilization_pct": (
-                _nullable_rate_pct(overall_actual, _money(overall_budget))
-                if has_overall_budget
-                else None
-            ),
+    overall_actual = _weekly_cost_budget_scoped_actual(dimensions, budget_scopes)
+    return (
+        {
+            "metric": "list_cost",
+            "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+            "overall": {
+                "actual_list_cost": _money(overall_actual),
+                "period_budget": _money(overall_budget) if has_overall_budget else None,
+                "utilization_pct": (
+                    _nullable_rate_pct(overall_actual, _money(overall_budget))
+                    if has_overall_budget
+                    else None
+                ),
+            },
+            "projects": _weekly_cost_budget_items(project_values, project_budgets, project_names),
         },
-        "projects": _weekly_cost_budget_items(project_values, project_budgets, project_names),
-    }
+        budget_scopes,
+    )
 
 
 def _weekly_cost_budget_rows(
@@ -1568,6 +1682,91 @@ def _weekly_cost_budget_sources(
     vendor = str(row["vendor"] or "")
     accounts = _weekly_cost_string_list(row["accounts"])
     return {(vendor, account_id) for account_id in accounts if (vendor, account_id) in qa_sources}
+
+
+def _weekly_cost_product_budget_plans(
+    budget_rows: Sequence[Mapping[str, Any]],
+    qa_sources: set[tuple[str, str]],
+    today: date,
+) -> list[tuple[WeeklyCostBudgetScope, Decimal]]:
+    if not budget_rows:
+        return []
+
+    has_membership_schema = "accounts" in budget_rows[0]
+    plans = []
+    for row in budget_rows:
+        period_start = _parse_date(row["period_start_date"])
+        period_end = _parse_date(row["period_end_date"])
+        if (
+            period_start is None
+            or period_end is None
+            or period_start > period_end
+            or not period_start <= today <= period_end
+        ):
+            continue
+        sources = (
+            _weekly_cost_budget_sources(row, qa_sources)
+            if has_membership_schema
+            else {(str(row["vendor"]), str(row["account_id"]))} & qa_sources
+        )
+        if not sources:
+            continue
+        label_filters = _weekly_cost_label_filters(row["label_filters"])
+        if (
+            row["group_id"] is not None
+            or row["manager_id"] is not None
+            or bool(str(row["repo"] or "").strip())
+            or set(label_filters) - {"project"}
+        ):
+            continue
+        projects = _weekly_cost_string_list(row["projects"]) if has_membership_schema else []
+        if not projects:
+            projects = _weekly_cost_string_list(label_filters.get("project"))
+        if not projects:
+            continue
+        budget_amount = Decimal(str(row["budget_amount"] or 0))
+        if budget_amount <= 0:
+            continue
+        plans.append(
+            (
+                (sources, set(projects), period_start, min(period_end, today)),
+                budget_amount,
+            )
+        )
+    return plans
+
+
+def _weekly_cost_matches_budget_scopes(
+    vendor: str,
+    account_id: str,
+    usage_date: date,
+    project: str,
+    budget_scopes: Sequence[WeeklyCostBudgetScope],
+) -> bool:
+    return any(
+        (vendor, account_id) in sources
+        and (projects is None or project in projects)
+        and scope_start <= usage_date <= scope_end
+        for sources, projects, scope_start, scope_end in budget_scopes
+    )
+
+
+def _weekly_cost_budget_scoped_actual(
+    dimensions: Mapping[str, Any],
+    budget_scopes: Sequence[WeeklyCostBudgetScope],
+) -> Decimal:
+    return sum(
+        (
+            amount
+            for (vendor, account_id, usage_date, project), amount in dimensions[
+                "source_project_values"
+            ].items()
+            if _weekly_cost_matches_budget_scopes(
+                vendor, account_id, usage_date, project, budget_scopes
+            )
+        ),
+        Decimal(0),
+    )
 
 
 def _weekly_cost_scoped_actual(
