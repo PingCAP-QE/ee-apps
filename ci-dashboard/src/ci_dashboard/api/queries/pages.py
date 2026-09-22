@@ -31,6 +31,7 @@ from ci_dashboard.api.queries.cost import (
     get_cost_share,
     get_cost_trend,
     get_engineering_group_share,
+    get_cost_filter_values,
     get_repo_group_cost_stack,
     get_unmatched_resources,
     get_weekly_account_summaries,
@@ -242,6 +243,10 @@ def get_cost_insight_page(engine: Engine, filters: CommonFilters) -> dict[str, A
 
 def get_cost_sources_page(engine: Engine) -> dict[str, Any]:
     return list_cost_sources(engine)
+
+
+def get_cost_filter_values_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    return get_cost_filter_values(engine, _normalize_cost_filters(filters))
 
 
 def get_cost_unmatched_resources_page(

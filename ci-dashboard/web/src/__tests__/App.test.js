@@ -12,6 +12,7 @@ const incomingCostUrl = "/cost?start_date=2026-08-10&end_date=2026-08-10&cost_so
 
 let App;
 let CostPage;
+let CostFilterControls;
 let getDashboardVersion;
 let LabeledDonutShareChart;
 let WeeklyCostPage;
@@ -26,6 +27,7 @@ before(async () => {
   });
   ({ default: App } = await server.ssrLoadModule("/src/App.jsx"));
   ({ default: CostPage } = await server.ssrLoadModule("/src/pages/CostPage.jsx"));
+  ({ default: CostFilterControls } = await server.ssrLoadModule("/src/components/CostFilterControls.jsx"));
   ({ getDashboardVersion } = await server.ssrLoadModule("/src/components/layout.jsx"));
   ({ LabeledDonutShareChart } = await server.ssrLoadModule("/src/components/charts.jsx"));
   ({ default: WeeklyCostPage } = await server.ssrLoadModule("/src/pages/WeeklyCostPage.jsx"));
@@ -112,6 +114,82 @@ test("labeled donut chart expands for crowded account/project labels", () => {
   const chart = renderer.root.findByProps({ role: "img", "aria-label": "Crowded allocations share chart" });
   assert.ok(Number(chart.props.viewBox.split(" ").at(-1)) > 390);
   renderer.unmount();
+});
+
+test("Cost controls are production-wired for categorized accounts and include/exclude filters", async () => {
+  const changes = [];
+  let renderer;
+  const filters = {
+    start_date: "2026-08-01",
+    end_date: "2026-08-31",
+    cost_source: "all",
+    owner_include: "",
+    owner_exclude: "",
+    team_include: "",
+    team_exclude: "",
+    project_include: "",
+    project_exclude: "",
+    granularity: "week",
+  };
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(CostFilterControls, {
+        filters,
+        onFilterChange: (...args) => changes.push(args),
+        costSources: [
+          { value: "aws:qa", label: "aws / qa", account_category: "QA" },
+          { value: "gcp:ci", label: "gcp / ci", account_category: "CI" },
+          { value: "gcp:platform", label: "gcp / platform", account_category: "Platform" },
+        ],
+        filterValues: {
+          owner: [{ value: "alice", label: "alice" }],
+          team: [{ value: "TiDB", label: "TiDB" }],
+          project: [{ value: "alpha", label: "alpha" }],
+        },
+        costBreakdownGroupBy: "account",
+      }));
+    });
+
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /Start/);
+    assert.match(rendered, /End/);
+    assert.match(rendered, /Bucket/);
+    assert.match(rendered, /Group by/);
+    assert.match(rendered, /Account/);
+    assert.match(rendered, /Owner/);
+    assert.match(rendered, /Team/);
+    assert.match(rendered, /Project/);
+    assert.doesNotMatch(rendered, /Exec ID|prototype|sample|visual/i);
+
+    await act(async () => {
+      renderer.root.findAllByProps({ "aria-expanded": false }).find((button) => (
+        button.children[0]?.children?.join("") === "All accounts"
+      )).props.onClick();
+    });
+    assert.match(JSON.stringify(renderer.toJSON()), /QA accounts/);
+    assert.match(JSON.stringify(renderer.toJSON()), /CI accounts/);
+    assert.match(JSON.stringify(renderer.toJSON()), /Platform accounts/);
+    await act(async () => {
+      renderer.root.findAllByType("input").find((input) => input.props.type === "checkbox").props.onChange();
+    });
+    assert.deepEqual(changes.at(-1), ["cost_source", "gcp:ci"]);
+
+    await act(async () => {
+      renderer.root.findAllByProps({ "aria-expanded": false }).find((button) => (
+        button.children[0]?.children?.join("") === "All owners"
+      )).props.onClick();
+    });
+    await act(async () => {
+      renderer.root.findAllByType("button").find((button) => button.children.join("") === "Excludes").props.onClick();
+    });
+    await act(async () => {
+      renderer.root.findAllByType("input").find((input) => input.props.type === "checkbox").props.onChange();
+    });
+    assert.deepEqual(changes.at(-1), [{ owner_include: "", owner_exclude: "alice" }]);
+  } finally {
+    await act(async () => renderer?.unmount());
+  }
 });
 
 test("QA Cost Weekly direct route uses its fixed API URL and explains an old source schema", async () => {

@@ -10,6 +10,7 @@ from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
     get_cost_budget_pace_page,
     get_cost_engineering_group_share_page,
+    get_cost_filter_values_page,
     get_cost_insight_page,
     get_cost_repo_group_stack_page,
     get_cost_share_page,
@@ -77,6 +78,14 @@ def cost_sources_page(
     return get_cost_sources_page(engine)
 
 
+@router.get("/cost-filter-values")
+def cost_filter_values_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_filter_values_page(engine, filters)
+
+
 @router.get("/cost-trend")
 def cost_trend_page(
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
@@ -98,7 +107,7 @@ def cost_share_page(
     allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
     dimension: str = Query(
         "owner",
-        pattern="^(owner|team|service|sku|cost_driver|project|service_exec_id|region)$",
+        pattern="^(account|owner|team|service|sku|cost_driver|project|service_exec_id|region)$",
     ),
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
@@ -159,7 +168,7 @@ def cost_repo_group_stack_page(
     allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
     group_by: str = Query(
         "repo",
-        pattern="^(repo|author|owner|team|target_branch|service|sku|cost_driver|project|region|service_exec_id)$",
+        pattern="^(repo|author|account|owner|team|target_branch|service|sku|cost_driver|project|region|service_exec_id)$",
     ),
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,

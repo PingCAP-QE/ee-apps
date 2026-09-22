@@ -23,6 +23,7 @@ VALID_COST_STACK_GROUPS = frozenset(
     {
         "repo",
         "author",
+        "account",
         "owner",
         "team",
         "target_branch",
@@ -39,7 +40,7 @@ WEEKLY_COST_TEAM_SHARE_LIMIT = 8
 WEEKLY_COST_UNATTRIBUTED_TEAM_NAME = "Unattributed"
 WEEKLY_COST_NO_PROJECT_NAME = "(no project)"
 VALID_COST_SHARE_DIMENSIONS = frozenset(
-    {"owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
+    {"account", "owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
 )
 COST_DRILLDOWN_CHILD_GROUPS = {
     "team": "owner",
@@ -51,6 +52,7 @@ RESOURCE_BREAKDOWN_MAX_PAGE_SIZE = 100
 UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
 RESOURCE_BREAKDOWN_SCOPE_DIMENSIONS = frozenset({"team", "project"})
 NO_OWNER_LABEL = "(no owner)"
+NO_TEAM_LABEL = "(no team)"
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
 CNY_PER_USD = Decimal("6.5")
@@ -140,6 +142,8 @@ def get_cost_trend(
             from_clause = drilldown["from_clause"]
             where_clause = f"{where_clause} AND {drilldown['condition']}"
             params = {**params, **drilldown["params"]}
+        from_clause, team_filter_params = _cost_filter_from_clause(connection, filters, from_clause)
+        params.update(team_filter_params)
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         list_cost_expr = _billing_report_list_cost_expr("c")
         net_cost_expr = _usd_cost_expr("c", "c.net_cost")
@@ -271,6 +275,11 @@ def get_repo_group_cost_stack(
                 "params": {**dimension["params"], **drilldown["params"]},
             }
             where_clause = f"{where_clause} AND {drilldown['condition']}"
+        from_clause, team_filter_params = _cost_filter_from_clause(
+            connection, filters, dimension["from_clause"]
+        )
+        dimension = {**dimension, "from_clause": from_clause}
+        params.update(team_filter_params)
 
         list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
@@ -437,6 +446,11 @@ def get_cost_share(
                 "params": {**dimension_config["params"], **drilldown["params"]},
             }
             where_clause = f"{where_clause} AND {drilldown['condition']}"
+        from_clause, team_filter_params = _cost_filter_from_clause(
+            connection, filters, dimension_config["from_clause"]
+        )
+        dimension_config = {**dimension_config, "from_clause": from_clause}
+        params.update(team_filter_params)
         list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
@@ -536,6 +550,21 @@ def get_engineering_group_share(
         list_cost_expr = _billing_report_list_cost_expr("c")
         level1_match = _like_prefix_expr(connection, "c_group.path", "level1_group.path")
         level2_match = _like_prefix_expr(connection, "c_group.path", "level2_group.path")
+        from_clause, team_filter_params = _cost_filter_from_clause(
+            connection,
+            filters,
+            f"""cost_attribution_daily c
+                JOIN roster_groups c_group ON c_group.id = c.group_id
+                JOIN roster_groups level1_group
+                  ON level1_group.is_active = 1
+                 AND level1_group.parent_id = :root_id
+                 AND {level1_match}
+                LEFT JOIN roster_groups level2_group
+                  ON level2_group.is_active = 1
+                 AND level2_group.parent_id = level1_group.id
+                 AND {level2_match}""",
+        )
+        params.update(team_filter_params)
         rows = connection.execute(
             text(
                 f"""
@@ -545,16 +574,7 @@ def get_engineering_group_share(
                   level2_group.id AS level2_id,
                   level2_group.name AS level2_name,
                   SUM({list_cost_expr}) AS list_cost
-                FROM cost_attribution_daily c
-                JOIN roster_groups c_group ON c_group.id = c.group_id
-                JOIN roster_groups level1_group
-                  ON level1_group.is_active = 1
-                 AND level1_group.parent_id = :root_id
-                 AND {level1_match}
-                LEFT JOIN roster_groups level2_group
-                  ON level2_group.is_active = 1
-                 AND level2_group.parent_id = level1_group.id
-                 AND {level2_match}
+                FROM {from_clause}
                 WHERE {where_clause}
                   AND c_group.path IS NOT NULL
                   AND c_group.path LIKE :root_path_like
@@ -630,10 +650,15 @@ def get_engineering_group_share(
 
 def list_cost_sources(engine: Engine) -> dict[str, Any]:
     with engine.begin() as connection:
+        account_category = (
+            "account_category"
+            if _table_has_column(connection, "cost_sources", "account_category")
+            else "NULL"
+        )
         rows = connection.execute(
             text(
-                """
-                SELECT vendor, account_id, display_name
+                f"""
+                SELECT vendor, account_id, display_name, {account_category} AS account_category
                 FROM cost_sources
                 WHERE is_active = :is_active
                 ORDER BY vendor, account_id
@@ -648,10 +673,62 @@ def list_cost_sources(engine: Engine) -> dict[str, Any]:
                 "vendor": str(row["vendor"]),
                 "account_id": str(row["account_id"]),
                 "display_name": str(row["display_name"] or ""),
+                "account_category": str(row["account_category"] or "") or None,
             }
             for row in rows
         ]
     return {"items": items}
+
+
+def get_cost_filter_values(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    scope_filters = CommonFilters(
+        start_date=filters.start_date,
+        end_date=filters.end_date,
+        branch=filters.branch,
+        granularity=filters.granularity,
+        cost_vendor=filters.cost_vendor,
+        cost_account_id=filters.cost_account_id,
+        cost_sources=filters.cost_sources,
+    )
+    with engine.begin() as connection:
+        where_clause, params = _build_cost_where(scope_filters, table_alias="c")
+        dimensions = {
+            "owner": _cost_share_dimension(connection, "owner"),
+            "team": _cost_share_dimension(connection, "team"),
+            "project": _cost_share_dimension(connection, "project"),
+        }
+        values: dict[str, list[dict[str, str]]] = {}
+        for key, dimension in dimensions.items():
+            rows = connection.execute(
+                text(
+                    f"""
+                    SELECT DISTINCT {dimension["expr"]} AS value
+                    FROM {dimension["from_clause"]}
+                    WHERE {where_clause}
+                    ORDER BY value
+                    """
+                ),
+                {**params, **dimension["params"]},
+            ).mappings()
+            values[key] = [
+                {"value": str(row["value"] or dimension["empty_label"]), "label": str(row["value"] or dimension["empty_label"])}
+                for row in rows
+            ]
+    return {"items": values}
+
+
+def _weekly_cost_qa_source_clause(connection: Connection, *, table_alias: str = "s") -> str | None:
+    prefix = f"{table_alias}." if table_alias else ""
+    if _table_has_column(connection, "cost_sources", "account_category"):
+        return f"{prefix}account_category = 'QA'"
+    if _table_has_column(connection, "cost_sources", "purpose"):
+        return f"NULLIF(TRIM({prefix}purpose), '') IS NOT NULL"
+    return None
+
+
+def _weekly_cost_purpose_expr(connection: Connection, *, table_alias: str = "s") -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    return f"TRIM({prefix}purpose)" if _table_has_column(connection, "cost_sources", "purpose") else "''"
 
 
 def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dict[str, Any]:
@@ -707,9 +784,11 @@ def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dic
         )
 
     with engine.begin() as connection:
-        if not _table_has_column(connection, "cost_sources", "purpose"):
+        qa_source_clause = _weekly_cost_qa_source_clause(connection)
+        if qa_source_clause is None:
             return report
         report["meta"]["purpose_schema_available"] = True
+        purpose_expr = _weekly_cost_purpose_expr(connection)
         list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
@@ -718,7 +797,7 @@ def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dic
                   s.vendor,
                   s.account_id,
                   s.display_name,
-                  TRIM(s.purpose) AS purpose,
+                  {purpose_expr} AS purpose,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :last_week_start AND :last_week_end
                       THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
@@ -737,8 +816,8 @@ def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dic
                  AND c.account_id = s.account_id
                  AND c.usage_date BETWEEN :data_start AND :data_end
                 WHERE s.is_active = :is_active
-                  AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
-                GROUP BY s.vendor, s.account_id, s.display_name, s.purpose
+                  AND {qa_source_clause}
+                GROUP BY s.vendor, s.account_id, s.display_name, {purpose_expr}
                 ORDER BY
                   CASE s.vendor
                     WHEN 'aws' THEN 0
@@ -779,11 +858,13 @@ def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dic
                 items,
                 last_week_start,
                 last_week_end,
+                qa_source_clause=qa_source_clause,
             )
         weekly_dimension_rows, roster_group_rows, budget_rows = _weekly_cost_allocation_inputs(
             connection,
             last_week_start,
             last_week_end,
+            qa_source_clause=qa_source_clause,
         )
 
     total_last_week_cost = _money(sum(item["last_week_cost"] for item in items))
@@ -845,15 +926,17 @@ def get_weekly_cost_trend(engine: Engine) -> dict[str, Any]:
         ),
     }
     with engine.begin() as connection:
-        if not _table_has_column(connection, "cost_sources", "purpose"):
+        qa_source_clause = _weekly_cost_qa_source_clause(connection)
+        if qa_source_clause is None:
             return report
         report["meta"]["purpose_schema_available"] = True
-        items = _weekly_cost_active_source_items(connection)
+        items = _weekly_cost_active_source_items(connection, qa_source_clause=qa_source_clause)
         report["list_cost_history"] = _weekly_cost_list_cost_history(
             connection,
             items,
             last_week_start,
             last_week_end,
+            qa_source_clause=qa_source_clause,
         )
         budget_period_cost = _weekly_cost_budget_period_cost(
             connection,
@@ -865,14 +948,19 @@ def get_weekly_cost_trend(engine: Engine) -> dict[str, Any]:
     return report
 
 
-def _weekly_cost_active_source_items(connection: Connection) -> list[dict[str, Any]]:
+def _weekly_cost_active_source_items(
+    connection: Connection,
+    *,
+    qa_source_clause: str,
+) -> list[dict[str, Any]]:
+    purpose_expr = _weekly_cost_purpose_expr(connection)
     rows = connection.execute(
         text(
-            """
-            SELECT vendor, account_id, display_name, TRIM(purpose) AS purpose
-            FROM cost_sources
+            f"""
+            SELECT vendor, account_id, display_name, {purpose_expr} AS purpose
+            FROM cost_sources s
             WHERE is_active = :is_active
-              AND NULLIF(TRIM(purpose), '') IS NOT NULL
+              AND {qa_source_clause}
             ORDER BY
               CASE vendor
                 WHEN 'aws' THEN 0
@@ -915,6 +1003,8 @@ def _weekly_cost_list_cost_history(
     items: Sequence[Mapping[str, Any]],
     last_week_start: date,
     last_week_end: date,
+    *,
+    qa_source_clause: str,
 ) -> dict[str, Any]:
     history_start = last_week_start - timedelta(days=49)
     history_weeks = [
@@ -938,7 +1028,7 @@ def _weekly_cost_list_cost_history(
              AND c.account_id = s.account_id
              AND c.usage_date BETWEEN :history_start AND :last_week_end
             WHERE s.is_active = :is_active
-              AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
+              AND {qa_source_clause}
             GROUP BY s.vendor, s.account_id, c.usage_date
             """
         ),
@@ -1079,14 +1169,16 @@ def get_weekly_cost_allocation(engine: Engine, period: str = "week") -> dict[str
         "meta": {"purpose_schema_available": False},
     }
     with engine.begin() as connection:
-        if not _table_has_column(connection, "cost_sources", "purpose"):
+        qa_source_clause = _weekly_cost_qa_source_clause(connection)
+        if qa_source_clause is None:
             return report
         report["meta"]["purpose_schema_available"] = True
-        qa_sources = _weekly_cost_qa_sources(connection)
+        qa_sources = _weekly_cost_qa_sources(connection, qa_source_clause=qa_source_clause)
         dimension_rows, roster_group_rows, budget_rows = _weekly_cost_allocation_inputs(
             connection,
             start_date,
             end_date,
+            qa_source_clause=qa_source_clause,
         )
 
     total_actual = _money(sum((Decimal(str(row["list_cost"] or 0)) for row in dimension_rows), Decimal(0)))
@@ -1105,14 +1197,18 @@ def get_weekly_cost_allocation(engine: Engine, period: str = "week") -> dict[str
     return report
 
 
-def _weekly_cost_qa_sources(connection: Connection) -> set[tuple[str, str]]:
+def _weekly_cost_qa_sources(
+    connection: Connection,
+    *,
+    qa_source_clause: str,
+) -> set[tuple[str, str]]:
     rows = connection.execute(
         text(
-            """
+            f"""
             SELECT vendor, account_id
-            FROM cost_sources
+            FROM cost_sources s
             WHERE is_active = :is_active
-              AND NULLIF(TRIM(purpose), '') IS NOT NULL
+              AND {qa_source_clause}
             """
         ),
         {"is_active": 1},
@@ -1124,6 +1220,8 @@ def _weekly_cost_allocation_inputs(
     connection: Connection,
     start_date: date,
     end_date: date,
+    *,
+    qa_source_clause: str,
 ) -> tuple[tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...]]:
     dimension_rows = _weekly_cost_allocation_dimension_rows(connection, start_date, end_date)
     roster_group_rows, budget_rows = _weekly_cost_allocation_metadata(
@@ -1157,7 +1255,7 @@ def _weekly_cost_allocation_dimension_rows(
                   ON c.vendor = s.vendor
                  AND c.account_id = s.account_id
                 WHERE s.is_active = :is_active
-                  AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
+                  AND {qa_source_clause}
                   AND c.usage_date BETWEEN :start_date AND :end_date
                 GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project
                 """
@@ -1647,9 +1745,12 @@ def _weekly_cost_budget_rows(
             {"start_date": start_date, "end_date": end_date},
         ).mappings()
         return tuple(rows)
+    qa_source_clause = _weekly_cost_qa_source_clause(connection)
+    if qa_source_clause is None:
+        return ()
     rows = connection.execute(
         text(
-            """
+            f"""
             SELECT
               b.vendor,
               b.account_id,
@@ -1665,7 +1766,7 @@ def _weekly_cost_budget_rows(
               ON s.vendor = b.vendor
              AND s.account_id = b.account_id
             WHERE s.is_active = :is_active
-              AND NULLIF(TRIM(s.purpose), '') IS NOT NULL
+              AND {qa_source_clause}
               AND b.period_start_date <= :end_date
               AND b.period_end_date >= :start_date
             """
@@ -2208,6 +2309,13 @@ def _get_published_unmatched_resources(
             if _table_has_column(connection, "cost_sources", "source_available_from")
             else "NULL"
         )
+        source_filter_clause, source_filter_params = _cost_source_pair_clause(
+            filters.cost_source_pairs,
+            vendor_expr="vendor",
+            account_expr="account_id",
+            bind_prefix="resource_source",
+        )
+        source_filter_clause = source_filter_clause or "1=1"
         sources = tuple(
             connection.execute(
                 text(
@@ -2215,15 +2323,11 @@ def _get_published_unmatched_resources(
                     SELECT vendor, account_id, {source_available_column} AS source_available_from
                     FROM cost_sources
                     WHERE is_active = 1
-                      AND (:cost_vendor IS NULL OR vendor = :cost_vendor)
-                      AND (:cost_account_id IS NULL OR account_id = :cost_account_id)
+                      AND {source_filter_clause}
                     ORDER BY vendor, account_id
                     """
                 ),
-                {
-                    "cost_vendor": filters.cost_vendor,
-                    "cost_account_id": filters.cost_account_id,
-                },
+                source_filter_params,
             ).mappings()
         )
         expected_windows = {
@@ -2244,13 +2348,12 @@ def _get_published_unmatched_resources(
         if has_serving_tables and expected_dates:
             rows = connection.execute(
                 text(
-                    """
+                    f"""
                     WITH scoped_sources AS (
                       SELECT vendor, account_id
                       FROM cost_sources
                       WHERE is_active = 1
-                        AND (:cost_vendor IS NULL OR vendor = :cost_vendor)
-                        AND (:cost_account_id IS NULL OR account_id = :cost_account_id)
+                        AND {source_filter_clause}
                     )
                     SELECT p.vendor, p.account_id, p.usage_date, p.source_row_count,
                       CASE WHEN p.source_row_count = 0 THEN 0
@@ -2274,8 +2377,7 @@ def _get_published_unmatched_resources(
                     "basis_key": basis_key,
                     "start_date": filters.start_date,
                     "end_date": filters.end_date,
-                    "cost_vendor": filters.cost_vendor,
-                    "cost_account_id": filters.cost_account_id,
+                    **source_filter_params,
                 },
             ).mappings()
             publication_rows = {
@@ -2324,9 +2426,11 @@ def _get_published_unmatched_resources(
                 scope_value=scope_value,
                 page_size=page_size,
             )
-        if scope_dimension == "project" and not _table_has_column(
-            connection, "cost_resource_serving_daily", "project"
-        ):
+        if (
+            scope_dimension == "project"
+            or filters.project_include
+            or filters.project_exclude
+        ) and not _table_has_column(connection, "cost_resource_serving_daily", "project"):
             return _resource_serving_response(
                 items=[], filters=filters, requested_filters=requested_filters,
                 selected_owner=selected_owner, service_name=service_filter_name, sort_by=sort_by,
@@ -2343,9 +2447,13 @@ def _get_published_unmatched_resources(
         source_clause, source_params = _resource_serving_source_clause(sources)
         scope_clause, scope_params = _resource_serving_scope_clause(
             connection,
+            filters=filters,
             owner=owner,
             scope_dimension=scope_dimension,
             scope_value=scope_value,
+        )
+        team_filter_join, team_filter_params = _cost_filter_from_clause(
+            connection, filters, "", table_alias="s"
         )
         params = {
             "basis_key": basis_key,
@@ -2354,6 +2462,7 @@ def _get_published_unmatched_resources(
             "service_name": service_filter_name,
             **source_params,
             **scope_params,
+            **team_filter_params,
         }
         if filters.branch:
             params["branch"] = filters.branch
@@ -2370,6 +2479,7 @@ def _get_published_unmatched_resources(
                   ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
                  AND p.usage_date = s.usage_date
                  AND p.active_materialization_version = s.materialization_version
+                {team_filter_join}
                 WHERE s.basis_key = :basis_key AND ({scope_clause})
                   AND s.usage_date BETWEEN :start_date AND :end_date
                   AND ({source_clause})
@@ -2408,6 +2518,7 @@ def _get_published_unmatched_resources(
                         ON p.basis_key = s.basis_key AND p.vendor = s.vendor
                        AND p.account_id = s.account_id AND p.usage_date = s.usage_date
                        AND p.active_materialization_version = s.materialization_version
+                      {team_filter_join}
                       WHERE s.basis_key = :basis_key AND ({scope_clause})
                         AND s.usage_date BETWEEN :start_date AND :end_date
                         AND ({source_clause})
@@ -2480,6 +2591,7 @@ def _get_published_unmatched_resources(
                         ON p.basis_key = s.basis_key AND p.vendor = s.vendor
                        AND p.account_id = s.account_id AND p.usage_date = s.usage_date
                        AND p.active_materialization_version = s.materialization_version
+                      {team_filter_join}
                       WHERE s.basis_key = :basis_key AND ({scope_clause})
                         AND s.usage_date BETWEEN :start_date AND :end_date
                         AND ({source_clause})
@@ -2577,6 +2689,7 @@ def _resource_serving_source_clause(
 def _resource_serving_scope_clause(
     connection: Connection,
     *,
+    filters: CommonFilters,
     owner: str | None,
     scope_dimension: str | None,
     scope_value: str | None,
@@ -2598,6 +2711,33 @@ def _resource_serving_scope_clause(
         team_clause, team_params = _resource_serving_team_clause(connection, scope_value or "")
         clauses.append(team_clause)
         params.update(team_params)
+
+    owner_clause, owner_params = _cost_dimension_filter_clause(
+        f"COALESCE(NULLIF(s.owner, ''), '{NO_OWNER_LABEL}')",
+        filters.owner_include,
+        filters.owner_exclude,
+        bind_prefix="resource_filter_owner",
+    )
+    project_clause, project_params = _cost_dimension_filter_clause(
+        f"COALESCE(NULLIF(s.project, ''), '{WEEKLY_COST_NO_PROJECT_NAME}')",
+        filters.project_include,
+        filters.project_exclude,
+        bind_prefix="resource_filter_project",
+    )
+    team_clause, team_params = _cost_dimension_filter_clause(
+        _cost_team_filter_expr(),
+        filters.team_include,
+        filters.team_exclude,
+        bind_prefix="resource_filter_team",
+    )
+    for clause, clause_params in (
+        (owner_clause, owner_params),
+        (project_clause, project_params),
+        (team_clause, team_params),
+    ):
+        if clause:
+            clauses.append(clause)
+            params.update(clause_params)
 
     return " AND ".join(clauses) or "1 = 1", params
 
@@ -2811,6 +2951,10 @@ def _resource_serving_response(
 
 def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, float]:
     where_clause, params = _build_cost_where(filters, table_alias="c")
+    from_clause, team_filter_params = _cost_filter_from_clause(
+        connection, filters, "cost_attribution_daily c"
+    )
+    params.update(team_filter_params)
     index_hint = _cost_aggregate_read_hint(connection, filters)
     list_cost_expr = _billing_report_list_cost_expr("c")
     net_cost_expr = _usd_cost_expr("c", "c.net_cost")
@@ -2820,7 +2964,7 @@ def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, f
             SELECT {index_hint}
               SUM({list_cost_expr}) AS list_cost,
               SUM({net_cost_expr}) AS net_cost
-            FROM cost_attribution_daily c
+            FROM {from_clause}
             WHERE {where_clause}
             """
         ),
@@ -3221,6 +3365,13 @@ def _cost_filters(filters: CommonFilters) -> CommonFilters:
         granularity=granularity,
         cost_vendor=filters.cost_vendor,
         cost_account_id=filters.cost_account_id,
+        cost_sources=filters.cost_sources,
+        owner_include=filters.owner_include,
+        owner_exclude=filters.owner_exclude,
+        team_include=filters.team_include,
+        team_exclude=filters.team_exclude,
+        project_include=filters.project_include,
+        project_exclude=filters.project_exclude,
     )
 
 
@@ -3298,16 +3449,123 @@ def _build_cost_where(
     if filters.end_date:
         conditions.append(f"{prefix}usage_date <= :usage_date_to")
         params["usage_date_to"] = filters.end_date
-    if filters.cost_vendor:
-        conditions.append(f"{prefix}vendor = :cost_vendor")
-        params["cost_vendor"] = filters.cost_vendor
-    if filters.cost_account_id:
-        conditions.append(f"{prefix}account_id = :cost_account_id")
-        params["cost_account_id"] = filters.cost_account_id
+    source_clause, source_params = _cost_source_pair_clause(
+        filters.cost_source_pairs,
+        vendor_expr=f"{prefix}vendor",
+        account_expr=f"{prefix}account_id",
+        bind_prefix="cost_source",
+    )
+    if source_clause:
+        conditions.append(source_clause)
+        params.update(source_params)
     if filters.branch:
         conditions.append(f"{prefix}target_branch = :branch")
         params["branch"] = filters.branch
+
+    owner_clause, owner_params = _cost_dimension_filter_clause(
+        f"COALESCE(NULLIF({prefix}owner, ''), '{NO_OWNER_LABEL}')",
+        filters.owner_include,
+        filters.owner_exclude,
+        bind_prefix="cost_owner",
+    )
+    project_clause, project_params = _cost_dimension_filter_clause(
+        f"COALESCE(NULLIF({prefix}project, ''), '{WEEKLY_COST_NO_PROJECT_NAME}')",
+        filters.project_include,
+        filters.project_exclude,
+        bind_prefix="cost_project",
+    )
+    team_clause, team_params = _cost_dimension_filter_clause(
+        _cost_team_filter_expr(),
+        filters.team_include,
+        filters.team_exclude,
+        bind_prefix="cost_team",
+    )
+    for clause, clause_params in (
+        (owner_clause, owner_params),
+        (project_clause, project_params),
+        (team_clause, team_params),
+    ):
+        if clause:
+            conditions.append(clause)
+            params.update(clause_params)
     return " AND ".join(conditions), params
+
+
+def _cost_source_pair_clause(
+    pairs: Sequence[tuple[str, str]],
+    *,
+    vendor_expr: str,
+    account_expr: str,
+    bind_prefix: str,
+) -> tuple[str | None, dict[str, str]]:
+    if not pairs:
+        return None, {}
+    clauses = []
+    params: dict[str, str] = {}
+    for index, (vendor, account_id) in enumerate(pairs):
+        vendor_bind = f"{bind_prefix}_vendor_{index}"
+        account_bind = f"{bind_prefix}_account_{index}"
+        clauses.append(f"({vendor_expr} = :{vendor_bind} AND {account_expr} = :{account_bind})")
+        params[vendor_bind] = vendor
+        params[account_bind] = account_id
+    return "(" + " OR ".join(clauses) + ")", params
+
+
+def _cost_dimension_filter_clause(
+    expression: str,
+    include: Sequence[str],
+    exclude: Sequence[str],
+    *,
+    bind_prefix: str,
+) -> tuple[str | None, dict[str, str]]:
+    conditions = []
+    params: dict[str, str] = {}
+    for operator, values, suffix in (("IN", include, "include"), ("NOT IN", exclude, "exclude")):
+        if not values:
+            continue
+        bind_names = []
+        for index, value in enumerate(values):
+            bind_name = f"{bind_prefix}_{suffix}_{index}"
+            bind_names.append(f":{bind_name}")
+            params[bind_name] = value
+        conditions.append(f"{expression} {operator} ({', '.join(bind_names)})")
+    return " AND ".join(conditions) or None, params
+
+
+def _cost_filter_from_clause(
+    connection: Connection,
+    filters: CommonFilters,
+    from_clause: str,
+    *,
+    table_alias: str = "c",
+) -> tuple[str, dict[str, str]]:
+    if not (filters.team_include or filters.team_exclude):
+        return from_clause, {}
+    team_match = _like_prefix_expr(connection, "cost_filter_group.path", "cost_filter_team.path")
+    return (
+        f"""{from_clause}
+                LEFT JOIN roster_groups cost_filter_group
+                  ON cost_filter_group.id = {table_alias}.group_id
+                LEFT JOIN (
+                  SELECT target_group.name, target_group.path
+                  FROM roster_groups root_group
+                  JOIN roster_groups target_parent
+                    ON target_parent.is_active = 1
+                   AND target_parent.parent_id = root_group.id
+                  JOIN roster_groups target_group
+                    ON target_group.is_active = 1
+                   AND target_group.parent_id = target_parent.id
+                  WHERE root_group.name = :cost_filter_team_root_group_name
+                    AND root_group.is_active = 1
+                ) cost_filter_team
+                  ON cost_filter_group.path IS NOT NULL
+                 AND {team_match}""",
+        {"cost_filter_team_root_group_name": ENGINEERING_GROUP_NAME},
+    )
+
+
+def _cost_team_filter_expr() -> str:
+    return f"COALESCE(NULLIF(cost_filter_team.name, ''), '{NO_TEAM_LABEL}')"
 
 
 def _cost_attribution_index_hint(
@@ -3329,9 +3587,11 @@ def _cost_aggregate_read_hint(
     *,
     table_alias: str = "c",
 ) -> str:
+    source_pairs = set(filters.cost_source_pairs)
     if (
         connection.dialect.name != "sqlite"
-        and (filters.cost_vendor, filters.cost_account_id) in TIFLASH_COST_SOURCES
+        and source_pairs
+        and source_pairs <= TIFLASH_COST_SOURCES
         and filters.start_date
         and filters.end_date
     ):
@@ -3367,7 +3627,7 @@ def _source_date_index_hint(
 ) -> str:
     if connection.dialect.name == "sqlite":
         return ""
-    if not (filters.cost_vendor and filters.cost_account_id):
+    if not filters.cost_source_pairs:
         return ""
     if not (filters.start_date or filters.end_date):
         return ""
@@ -3488,6 +3748,13 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
     if group_by not in VALID_COST_STACK_GROUPS:
         group_by = "repo"
 
+    if group_by == "account":
+        return {
+            "expr": _cost_account_expr(connection, "c"),
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no account)",
+        }
     if group_by == "author":
         return {
             "expr": "COALESCE(NULLIF(c.author, ''), '(unknown author)')",
@@ -3599,6 +3866,8 @@ def _cost_share_dimension(connection: Connection, dimension: str) -> dict[str, A
     if dimension not in VALID_COST_SHARE_DIMENSIONS:
         dimension = "owner"
 
+    if dimension == "account":
+        return _cost_stack_dimension(connection, "account")
     if dimension == "owner":
         return {
             "expr": "COALESCE(NULLIF(c.owner, ''), '(no owner)')",
@@ -3649,6 +3918,13 @@ def _cost_share_dimension(connection: Connection, dimension: str) -> dict[str, A
         "params": {},
         "empty_label": "(no service exec id)",
     }
+
+
+def _cost_account_expr(connection: Connection, table_alias: str) -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    if connection.dialect.name == "sqlite":
+        return f"{prefix}vendor || ' / ' || {prefix}account_id"
+    return f"CONCAT({prefix}vendor, ' / ', {prefix}account_id)"
 
 
 def _cost_service_share_expr(table_alias: str) -> str:
@@ -3729,6 +4005,8 @@ def _cost_driver_share_expr(table_alias: str) -> str:
 
 
 def _cost_stack_key(group_by: str, dimension_name: str, index: int) -> str:
+    if group_by == "account" and dimension_name == "(no account)":
+        return "account__no_account"
     if group_by == "repo" and dimension_name == "(no repo)":
         return "repo__no_repo"
     if group_by == "author" and dimension_name == "(unknown author)":

@@ -41,6 +41,7 @@ const REPO_OPTIONS = [
 
 export default function App() {
   const [defaultRange] = useState(() => getDefaultDateRange());
+  const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
   const location = useLocation();
   const navigate = useNavigate();
   // Remember route-specific selections only when building links to other dashboard tabs.
@@ -115,6 +116,16 @@ export default function App() {
     {},
     isCostPage,
   );
+  const costFilterValues = useApiData(
+    "/api/v1/pages/cost-filter-values",
+    {
+      start_date: filters.start_date,
+      end_date: filters.end_date,
+      granularity: filters.granularity,
+      cost_source: filters.cost_source,
+    },
+    isCostPage,
+  );
   const costSourceOptions = buildCostSourceOptions(
     costSources.data?.items,
     filters.cost_source || DEFAULT_COST_SOURCE,
@@ -126,7 +137,7 @@ export default function App() {
   function handleFilterChange(key, value) {
     const nextFilters = {
       ...filters,
-      [key]: value,
+      ...(typeof key === "object" ? key : { [key]: value }),
     };
     if (key === "repo") {
       nextFilters.branch = "";
@@ -153,6 +164,7 @@ export default function App() {
     jobs: jobs.data?.items || [],
     cloudPhases: cloudPhases.data?.items || [],
     costSources: costSourceOptions,
+    costFilterValues: costFilterValues.data?.items || {},
     scopeLabel: buildScopeLabel(filters, location.pathname, selectedCostSource?.label),
   };
 
@@ -163,6 +175,8 @@ export default function App() {
       filterOptions={filterOptions}
       navSearchByPath={navSearchByPath}
       showFilters={!isWeeklySummaryPage && !isWeeklyCostPage}
+      costBreakdownGroupBy={costBreakdownGroupBy}
+      onCostBreakdownGroupByChange={setCostBreakdownGroupBy}
     >
       <Routes>
         <Route path="/" element={<WeeklySummaryPage />} />
@@ -173,7 +187,16 @@ export default function App() {
           path={RUNTIME_INSIGHTS_PATH}
           element={<RuntimeInsightsPage filters={filters} />}
         />
-        <Route path={COST_PATH} element={<CostPage filters={filters} />} />
+        <Route
+          path={COST_PATH}
+          element={(
+            <CostPage
+              filters={filters}
+              costBreakdownGroupBy={costBreakdownGroupBy}
+              onCostBreakdownGroupByChange={setCostBreakdownGroupBy}
+            />
+          )}
+        />
         <Route path={WEEKLY_COST_PATH} element={<WeeklyCostPage />} />
       </Routes>
     </DashboardLayout>

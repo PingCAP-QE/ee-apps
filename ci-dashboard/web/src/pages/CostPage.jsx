@@ -17,11 +17,15 @@ import {
   ResourceBreakdownTable,
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
+import { COST_BREAKDOWN_GROUPS } from "../components/CostFilterControls";
 
 const NO_OWNER_LABEL = "(no owner)";
 
-export default function CostPage({ filters }) {
-  const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
+export default function CostPage({
+  filters,
+  costBreakdownGroupBy: controlledCostBreakdownGroupBy,
+}) {
+  const costBreakdownGroupBy = controlledCostBreakdownGroupBy ?? "owner";
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
   const [resourceScope, setResourceScope] = useState({
@@ -48,6 +52,12 @@ export default function CostPage({ filters }) {
     granularity: filters.granularity === "month" ? "month" : "week",
     cost_source: selectedCostSourceValue,
     branch: filters.branch,
+    owner_include: filters.owner_include,
+    owner_exclude: filters.owner_exclude,
+    team_include: filters.team_include,
+    team_exclude: filters.team_exclude,
+    project_include: filters.project_include,
+    project_exclude: filters.project_exclude,
   };
   const costBreakdownDrilldownTargetGroup =
     COST_BREAKDOWN_DRILLDOWN_GROUPS[costBreakdownGroupBy] || null;
@@ -184,6 +194,16 @@ export default function CostPage({ filters }) {
   };
 
   useEffect(() => {
+    setCostBreakdownDrilldown(null);
+    setSelectedCostStackName("");
+    setResourceScope({ dimension: "owner", value: NO_OWNER_LABEL });
+    setResourceBreakdownRequested(false);
+    setUnmatchedServiceName("");
+    setResourceCursor(null);
+    setResourceItems([]);
+  }, [costBreakdownGroupBy]);
+
+  useEffect(() => {
     if (!selectedCostStackName) {
       return;
     }
@@ -280,56 +300,43 @@ export default function CostPage({ filters }) {
                 Back
               </button>
             ) : null}
-            <CostBreakdownGroupSelector
-              value={costBreakdownGroupBy}
-              onChange={(nextGroup) => {
-                setCostBreakdownGroupBy(nextGroup);
-                setCostBreakdownDrilldown(null);
-                setSelectedCostStackName("");
-                setResourceScope({ dimension: "owner", value: NO_OWNER_LABEL });
-                setResourceBreakdownRequested(false);
-                setUnmatchedServiceName("");
-                setResourceCursor(null);
-                setResourceItems([]);
-              }}
-            />
           </>
         }
       >
         <div className="cost-breakdown-grid">
-          <DonutShareChart
-            className="cost-share-donut"
-            title={`${activeCostBreakdownGroup.label} share${costBreakdownDrilldownTitleSuffix}`}
-            items={costShareItems}
-            totalValue={costShare.data?.meta?.total_list_cost}
-            totalLabel="list cost"
-            emptyMessage="No cost share data for the current filters."
-            onItemSelect={
-              canDrillDownCostBreakdown
-                ? startCostBreakdownDrilldown
-                : isResourceScopeGroup
-                  ? (item) => selectResourceScope(effectiveCostBreakdownGroupBy, item)
-                  : undefined
-            }
-          />
-          <article className="cost-stack-card">
-            <header className="donut-card__header">
-              <div>
-                <strong>Cost trend{costBreakdownDrilldownTitleSuffix}</strong>
-              </div>
-            </header>
-            <CostStackTrend
-              data={repoGroupStack.data}
-              trendData={trend.data}
-              granularity={costFilters.granularity}
-              selectedName={selectedCostStackName}
-              onSelect={setSelectedCostStackName}
-              drilldownEnabled={canDrillDownCostBreakdown}
-              onDrilldown={startCostBreakdownDrilldown}
-              showComparisonLines={!costBreakdownDrilldown}
+            <DonutShareChart
+              className="cost-share-donut"
+              title={`${activeCostBreakdownGroup.label} share${costBreakdownDrilldownTitleSuffix}`}
+              items={costShareItems}
+              totalValue={costShare.data?.meta?.total_list_cost}
+              totalLabel="list cost"
+              emptyMessage="No cost share data for the current filters."
+              onItemSelect={
+                canDrillDownCostBreakdown
+                  ? startCostBreakdownDrilldown
+                  : isResourceScopeGroup
+                    ? (item) => selectResourceScope(effectiveCostBreakdownGroupBy, item)
+                    : undefined
+              }
             />
-          </article>
-        </div>
+            <article className="cost-stack-card">
+              <header className="donut-card__header">
+                <div>
+                  <strong>Cost trend{costBreakdownDrilldownTitleSuffix}</strong>
+                </div>
+              </header>
+              <CostStackTrend
+                data={repoGroupStack.data}
+                trendData={trend.data}
+                granularity={costFilters.granularity}
+                selectedName={selectedCostStackName}
+                onSelect={setSelectedCostStackName}
+                drilldownEnabled={canDrillDownCostBreakdown}
+                onDrilldown={startCostBreakdownDrilldown}
+                showComparisonLines={!costBreakdownDrilldown}
+              />
+            </article>
+          </div>
       </Panel>
 
       <Panel
@@ -439,16 +446,6 @@ export default function CostPage({ filters }) {
   );
 }
 
-const COST_BREAKDOWN_GROUPS = [
-  { key: "owner", label: "Owner", description: "owners" },
-  { key: "team", label: "Team", description: "teams" },
-  { key: "sku", label: "SKU", description: "SKUs" },
-  { key: "cost_driver", label: "SKU class", description: "SKU classes" },
-  { key: "project", label: "Project", description: "projects" },
-  { key: "region", label: "Region", description: "regions" },
-  { key: "service_exec_id", label: "Exec ID", description: "service exec IDs" },
-];
-
 const COST_BREAKDOWN_DRILLDOWN_GROUPS = {
   team: "owner",
   cost_driver: "sku",
@@ -458,17 +455,6 @@ const UNMATCHED_RESOURCE_SORT_OPTIONS = [
   { key: "list_cost", label: "List cost" },
   { key: "duration", label: "Duration" },
 ];
-
-function CostBreakdownGroupSelector({ value, onChange }) {
-  return (
-    <SegmentedControl
-      ariaLabel="Cost breakdown grouping"
-      options={COST_BREAKDOWN_GROUPS}
-      value={value}
-      onChange={onChange}
-    />
-  );
-}
 
 function UnmatchedResourcesControls({
   serviceName,

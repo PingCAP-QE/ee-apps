@@ -108,6 +108,12 @@ test("defaults the cost tab to data available four days ago", () => {
     cloud_phase: "",
     issue_status: "",
     cost_source: "gcp:pingcap-testing-account",
+    owner_include: "",
+    owner_exclude: "",
+    team_include: "",
+    team_exclude: "",
+    project_include: "",
+    project_exclude: "",
     granularity: "week",
     start_date: "2026-05-01",
     end_date: "2026-05-28",
@@ -173,6 +179,23 @@ test("serializes cost source for cost links", () => {
 
   assert.equal(params.get("cost_source"), "aws:946646677266");
   assert.equal(params.get("granularity"), "month");
+});
+
+test("keeps shareable cost dimension include and exclude filters", () => {
+  const filters = readFiltersFromSearch(
+    defaultRange,
+    "/cost",
+    "?cost_source=aws%3Aqa%2Cgcp%3Aci&owner_include=alice%2Cbob&team_exclude=TiKV&project_include=alpha",
+  );
+
+  assert.equal(filters.cost_source, "aws:qa,gcp:ci");
+  assert.equal(filters.owner_include, "alice,bob");
+  assert.equal(filters.team_exclude, "TiKV");
+  assert.equal(filters.project_include, "alpha");
+  const params = new URLSearchParams(buildFilterSearch(filters, "/cost"));
+  assert.equal(params.get("owner_include"), "alice,bob");
+  assert.equal(params.get("team_exclude"), "TiKV");
+  assert.equal(params.get("project_include"), "alpha");
 });
 
 test("compares filter values without being sensitive to object identity", () => {

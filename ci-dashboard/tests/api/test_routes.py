@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import event, text
 
@@ -15,6 +16,7 @@ from ci_dashboard.api.main import app, create_app
 from ci_dashboard.api.queries import cost as cost_queries
 from ci_dashboard.api.queries import pages as page_queries
 from ci_dashboard.api.queries.base import CommonFilters
+from ci_dashboard.api.routes import common as common_routes
 from ci_dashboard.jobs.build_url_matcher import normalize_build_url
 
 
@@ -97,6 +99,14 @@ def test_cost_unmatched_source_date_index_hints_only_apply_to_scoped_windows() -
         cost_vendor="aws",
         cost_account_id="946646677266",
     )
+    multi_sources = CommonFilters(
+        start_date=date(2026, 6, 1),
+        end_date=date(2026, 7, 19),
+        cost_sources=(
+            ("gcp", "pingcap-testing-account"),
+            ("aws", "946646677266"),
+        ),
+    )
     all_sources = CommonFilters(start_date=date(2026, 6, 1), end_date=date(2026, 7, 19))
     unbounded_source = CommonFilters(
         cost_vendor="aws",
@@ -108,6 +118,9 @@ def test_cost_unmatched_source_date_index_hints_only_apply_to_scoped_windows() -
     )
     assert cost_queries._cost_unmatched_resource_index_hint(mysql_connection, scoped) == (
         "/*+ USE_INDEX(r, idx_cost_unmatched_source_date_namespace) */"
+    )
+    assert cost_queries._cost_attribution_index_hint(mysql_connection, multi_sources) == (
+        "/*+ USE_INDEX(c, idx_cost_attribution_source_date_employee) */"
     )
     assert cost_queries._cost_attribution_index_hint(mysql_connection, all_sources) == ""
     assert cost_queries._cost_attribution_index_hint(mysql_connection, unbounded_source) == ""
@@ -141,12 +154,51 @@ def test_cost_aggregate_sources_read_from_tiflash() -> None:
         CommonFilters(
             start_date=date(2026, 7, 1),
             end_date=date(2026, 8, 15),
+            cost_sources=(
+                ("gcp", "pingcap-testing-account"),
+                ("aws", "946646677266"),
+            ),
+        ),
+    ) == "/*+ READ_FROM_STORAGE(TIFLASH[c]) */"
+    assert cost_queries._cost_aggregate_read_hint(
+        mysql_connection,
+        CommonFilters(
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 8, 15),
             cost_vendor="gcp",
             cost_account_id="some-other-account",
         ),
     ) == "/*+ USE_INDEX(c, idx_cost_attribution_source_date_employee) */"
     assert cost_queries._cost_aggregate_read_hint(sqlite_connection, filters) == ""
 
+
+
+def test_parse_cost_sources_accepts_lists_and_rejects_malformed_values() -> None:
+    assert common_routes.parse_cost_sources("gcp:qa, aws:ci, gcp:qa") == (
+        ("gcp", "qa"),
+        ("aws", "ci"),
+    )
+    assert common_routes.parse_cost_sources(" all ") == ()
+    for value in ("gcp", "gcp:qa,all", "gcp:qa,,aws:ci"):
+        with pytest.raises(HTTPException) as error:
+            common_routes.parse_cost_sources(value)
+        assert error.value.status_code == 400
+
+
+def test_cost_team_filter_uses_a_preaggregated_join() -> None:
+    connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    filters = CommonFilters(team_include=("TiDB",), team_exclude=("TiKV",))
+
+    where_clause, params = cost_queries._build_cost_where(filters, table_alias="c")
+    from_clause, join_params = cost_queries._cost_filter_from_clause(
+        connection, filters, "cost_attribution_daily c"
+    )
+
+    assert "SELECT filter_team.name" not in where_clause
+    assert "cost_filter_team.name" in where_clause
+    assert "LEFT JOIN (" in from_clause
+    assert "cost_filter_group.id = c.group_id" in from_clause
+    assert {**params, **join_params}["cost_filter_team_root_group_name"] == "Engineering Group"
 
 
 def _insert_build(
@@ -3808,6 +3860,7 @@ def test_cost_source_filter_and_sources_route(
             "vendor": "aws",
             "account_id": "946646677266",
             "display_name": "qa-infra-dev",
+            "account_category": None,
         },
         {
             "value": "gcp:pingcap-testing-account",
@@ -3815,6 +3868,7 @@ def test_cost_source_filter_and_sources_route(
             "vendor": "gcp",
             "account_id": "pingcap-testing-account",
             "display_name": "pingcap-testing-account",
+            "account_category": None,
         },
         {
             "value": "gcp:qa-infra-dev",
@@ -3822,6 +3876,7 @@ def test_cost_source_filter_and_sources_route(
             "vendor": "gcp",
             "account_id": "qa-infra-dev",
             "display_name": "qa-infra-dev",
+            "account_category": None,
         },
     ]
 
@@ -3849,6 +3904,212 @@ def test_cost_source_filter_and_sources_route(
         ["2026-05-11", 0.0],
         ["2026-05-18", 0.0],
         ["2026-05-25", 0.0],
+    ]
+
+
+def test_cost_controls_filter_multi_accounts_and_all_cost_panels(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=100,
+        lark_group_id="eng",
+        name="Engineering Group",
+        path="/100/",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=110,
+        lark_group_id="database",
+        name="Database",
+        parent_id=100,
+        path="/100/110/",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=111,
+        lark_group_id="tidb",
+        name="TiDB",
+        parent_id=110,
+        path="/100/110/111/",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=120,
+        lark_group_id="infra",
+        name="Infra",
+        parent_id=100,
+        path="/100/120/",
+    )
+    _insert_roster_group(
+        sqlite_engine,
+        group_id=121,
+        lark_group_id="tikv",
+        name="TiKV",
+        parent_id=120,
+        path="/100/120/121/",
+    )
+    for vendor, account_id in (("aws", "qa"), ("gcp", "ci"), ("gcp", "other")):
+        _insert_cost_source(sqlite_engine, vendor=vendor, account_id=account_id)
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-02",
+        vendor="aws",
+        account_id="qa",
+        repo="tidb",
+        group_id=111,
+        owner="alice",
+        project="alpha",
+        list_cost=10,
+        net_cost=10,
+        dimension_hash="controls-qa-alice",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-02",
+        vendor="gcp",
+        account_id="ci",
+        repo="tikv",
+        group_id=121,
+        owner="bob",
+        project="beta",
+        list_cost=20,
+        net_cost=20,
+        dimension_hash="controls-ci-bob",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-02",
+        vendor="gcp",
+        account_id="other",
+        repo="other",
+        group_id=121,
+        owner="carol",
+        project="gamma",
+        list_cost=30,
+        net_cost=30,
+        dimension_hash="controls-other-carol",
+    )
+
+    params = {
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-31",
+        "cost_source": "aws:qa,gcp:ci",
+        "owner_include": "alice,bob",
+        "owner_exclude": "bob",
+        "team_include": "TiDB",
+        "project_include": "alpha,beta",
+        "project_exclude": "beta",
+    }
+    trend = api_client.get("/api/v1/pages/cost-trend", params=params)
+    share = api_client.get("/api/v1/pages/cost-share", params={**params, "dimension": "account"})
+    stack = api_client.get("/api/v1/pages/cost-repo-group-stack", params={**params, "group_by": "account"})
+    engineering = api_client.get("/api/v1/pages/cost-engineering-group-share", params=params)
+    filter_values = api_client.get(
+        "/api/v1/pages/cost-filter-values",
+        params={key: value for key, value in params.items() if key not in {
+            "owner_include", "owner_exclude", "team_include", "project_include", "project_exclude",
+        }},
+    )
+
+    assert trend.status_code == share.status_code == stack.status_code == engineering.status_code == 200
+    assert trend.json()["meta"]["cost_source"] == "aws:qa,gcp:ci"
+    assert trend.json()["meta"]["summary"]["list_cost"] == 10.0
+    assert share.json()["items"] == [
+        {"name": "aws / qa", "value": 10.0, "share_pct": 100.0, "interactive": False}
+    ]
+    assert stack.json()["items"] == [{"name": "aws / qa", "value": 10.0}]
+    assert engineering.json()["level1"]["items"] == [
+        {"name": "Database", "value": 10.0, "share_pct": 100.0, "interactive": False}
+    ]
+    assert filter_values.status_code == 200
+    assert filter_values.json()["items"] == {
+        "owner": [
+            {"value": "alice", "label": "alice"},
+            {"value": "bob", "label": "bob"},
+        ],
+        "team": [
+            {"value": "TiDB", "label": "TiDB"},
+            {"value": "TiKV", "label": "TiKV"},
+        ],
+        "project": [
+            {"value": "alpha", "label": "alpha"},
+            {"value": "beta", "label": "beta"},
+        ],
+    }
+
+
+def test_cost_sources_and_qa_weekly_prefer_account_category(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE cost_sources ADD COLUMN account_category TEXT"))
+    for account_id, purpose, category, is_active in [
+        ("qa-category", "", "QA", 1),
+        ("ci-purpose", "legacy QA description", "CI", 1),
+        ("inactive-qa", "legacy QA description", "QA", 0),
+    ]:
+        _insert_cost_source(
+            sqlite_engine,
+            vendor="gcp",
+            account_id=account_id,
+            display_name=account_id,
+            purpose=purpose,
+            is_active=is_active,
+        )
+        with sqlite_engine.begin() as connection:
+            connection.execute(
+                text("UPDATE cost_sources SET account_category = :category WHERE account_id = :account_id"),
+                {"category": category, "account_id": account_id},
+            )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-07-13",
+        vendor="gcp",
+        account_id="qa-category",
+        repo="tidb",
+        group_id=None,
+        list_cost=10,
+        net_cost=10,
+        dimension_hash="weekly-category-qa",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-07-13",
+        vendor="gcp",
+        account_id="ci-purpose",
+        repo="tidb",
+        group_id=None,
+        list_cost=20,
+        net_cost=20,
+        dimension_hash="weekly-category-ci",
+    )
+
+    sources = api_client.get("/api/v1/pages/cost-sources")
+    report = api_client.get("/api/v1/pages/weekly-cost")
+
+    assert sources.status_code == report.status_code == 200
+    assert {item["value"]: item["account_category"] for item in sources.json()["items"]} == {
+        "gcp:ci-purpose": "CI",
+        "gcp:qa-category": "QA",
+    }
+    assert report.json()["items"] == [
+        {
+            "cost_source": "gcp:qa-category",
+            "vendor": "gcp",
+            "account_id": "qa-category",
+            "display_name": "qa-category",
+            "purpose": "",
+            "last_week_cost": 10.0,
+            "previous_week_cost": 0.0,
+            "previous_month_cost": 0.0,
+            "week_wow_pct": None,
+            "last_week_share_pct": 100.0,
+        }
     ]
 
 
