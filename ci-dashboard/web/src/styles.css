@@ -3054,6 +3054,11 @@ select {
   font-size: 1.1rem;
 }
 
+.cost-filter-controls__picker-trigger--filtered {
+  border-color: rgba(15, 124, 130, 0.32);
+  background: rgba(15, 124, 130, 0.08);
+}
+
 .cost-filter-controls__picker-trigger:hover,
 .cost-filter-controls__picker-trigger--open {
   border-color: rgba(15, 124, 130, 0.5);

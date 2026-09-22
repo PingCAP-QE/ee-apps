@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ALL_COST_SOURCES } from "../lib/filterUrl";
 
@@ -73,6 +73,7 @@ export default function CostFilterControls({
           )}
           open={openPicker === "account"}
           onToggle={() => setOpenPicker((current) => (current === "account" ? "" : "account"))}
+          onDismiss={() => setOpenPicker("")}
         />
         {[
           ["owner", "Owner"],
@@ -90,6 +91,7 @@ export default function CostFilterControls({
             })}
             open={openPicker === key}
             onToggle={() => setOpenPicker((current) => (current === key ? "" : key))}
+            onDismiss={() => setOpenPicker("")}
           />
         ))}
       </div>
@@ -106,26 +108,51 @@ function DateField({ label, value, onChange }) {
   );
 }
 
-function AccountPicker({ accounts, values, onChange, open, onToggle }) {
+function AccountPicker({ accounts, values, onChange, open, onToggle, onDismiss }) {
   const [query, setQuery] = useState("");
+  const [draftValues, setDraftValues] = useState(values);
   const visibleAccounts = accounts.filter((item) => (
     item.label.toLowerCase().includes(query.trim().toLowerCase())
   ));
   const groups = groupAccounts(visibleAccounts);
 
+  function handleToggle() {
+    if (!open) {
+      setQuery("");
+      setDraftValues(values);
+    }
+    onToggle();
+  }
+
   return (
-    <PickerShell label="Account" summary={accountSelectionLabel(accounts, values)} open={open} onToggle={onToggle}>
+    <PickerShell
+      label="Account"
+      summary={accountSelectionLabel(accounts, values)}
+      open={open}
+      onToggle={handleToggle}
+      onDismiss={onDismiss}
+      filtered={values.length > 0}
+    >
       <PickerSearch placeholder="Filter accounts" value={query} onChange={setQuery} />
       {groups.map(([category, items]) => (
         <AccountGroup
           key={category}
           label={`${category} accounts`}
           items={items}
-          values={values}
-          onChange={onChange}
+          values={draftValues}
+          onChange={setDraftValues}
         />
       ))}
-      <PickerFooter onClear={() => onChange([])} onApply={onToggle} />
+      <PickerFooter
+        onClear={() => {
+          setDraftValues([]);
+          onChange([]);
+        }}
+        onApply={() => {
+          onChange(draftValues);
+          onToggle();
+        }}
+      />
     </PickerShell>
   );
 }
@@ -163,20 +190,29 @@ function AccountGroup({ label, items, values, onChange }) {
   );
 }
 
-function DimensionPicker({ label, options, selection, onChange, open, onToggle }) {
+function DimensionPicker({ label, options, selection, onChange, open, onToggle, onDismiss }) {
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState(selection.mode);
-  useEffect(() => setMode(selection.mode), [selection.mode]);
+  const [draftSelection, setDraftSelection] = useState(selection);
   const visibleOptions = options.filter((option) => (
     option.label.toLowerCase().includes(query.trim().toLowerCase())
   ));
+
+  function handleToggle() {
+    if (!open) {
+      setQuery("");
+      setDraftSelection(selection);
+    }
+    onToggle();
+  }
 
   return (
     <PickerShell
       label={label}
       summary={dimensionSelectionLabel(label, selection)}
       open={open}
-      onToggle={onToggle}
+      onToggle={handleToggle}
+      onDismiss={onDismiss}
+      filtered={selection.values.length > 0}
     >
       <PickerSearch
         placeholder={`Filter ${label.toLowerCase()} values`}
@@ -188,13 +224,8 @@ function DimensionPicker({ label, options, selection, onChange, open, onToggle }
           <button
             key={nextMode}
             type="button"
-            className={mode === nextMode ? "cost-filter-controls__mode-button cost-filter-controls__mode-button--active" : "cost-filter-controls__mode-button"}
-            onClick={() => {
-              setMode(nextMode);
-              if (selection.values.length) {
-                onChange({ ...selection, mode: nextMode });
-              }
-            }}
+            className={draftSelection.mode === nextMode ? "cost-filter-controls__mode-button cost-filter-controls__mode-button--active" : "cost-filter-controls__mode-button"}
+            onClick={() => setDraftSelection((current) => ({ ...current, mode: nextMode }))}
           >
             {nextMode === "include" ? "Includes" : "Excludes"}
           </button>
@@ -205,32 +236,53 @@ function DimensionPicker({ label, options, selection, onChange, open, onToggle }
           <label key={option.value} className="cost-filter-controls__option">
             <input
               type="checkbox"
-              checked={selection.values.includes(option.value)}
-              onChange={() => onChange({
-                ...selection,
-                mode,
-                values: toggleValue(selection.values, option.value),
-              })}
+              checked={draftSelection.values.includes(option.value)}
+              onChange={() => setDraftSelection((current) => ({
+                ...current,
+                values: toggleValue(current.values, option.value),
+              }))}
             />
             <span>{option.label}</span>
           </label>
         ))}
       </div>
       <PickerFooter
-        onClear={() => onChange({ mode: "include", values: [] })}
-        onApply={onToggle}
+        onClear={() => {
+          const cleared = { mode: "include", values: [] };
+          setDraftSelection(cleared);
+          onChange(cleared);
+        }}
+        onApply={() => {
+          onChange(draftSelection);
+          onToggle();
+        }}
       />
     </PickerShell>
   );
 }
 
-function PickerShell({ label, summary, open, onToggle, children }) {
+function PickerShell({ label, summary, open, filtered, onToggle, onDismiss, children }) {
+  const pickerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return undefined;
+    const handlePointerDown = (event) => {
+      if (!pickerRef.current?.contains(event.target)) onDismiss();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open, onDismiss]);
+
   return (
-    <div className="cost-filter-controls__picker">
+    <div ref={pickerRef} className="cost-filter-controls__picker">
       <span className="cost-filter-controls__picker-label">{label}</span>
       <button
         type="button"
-        className={open ? "cost-filter-controls__picker-trigger cost-filter-controls__picker-trigger--open" : "cost-filter-controls__picker-trigger"}
+        className={[
+          "cost-filter-controls__picker-trigger",
+          open ? "cost-filter-controls__picker-trigger--open" : "",
+          filtered ? "cost-filter-controls__picker-trigger--filtered" : "",
+        ].filter(Boolean).join(" ")}
         aria-expanded={open}
         onClick={onToggle}
       >

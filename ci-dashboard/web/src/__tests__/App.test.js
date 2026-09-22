@@ -118,6 +118,8 @@ test("labeled donut chart expands for crowded account/project labels", () => {
 
 test("Cost controls are production-wired for categorized accounts and include/exclude filters", async () => {
   const changes = [];
+  const originalDocument = globalThis.document;
+  let pointerDownListener;
   let renderer;
   const filters = {
     start_date: "2026-08-01",
@@ -133,6 +135,14 @@ test("Cost controls are production-wired for categorized accounts and include/ex
   };
 
   try {
+    globalThis.document = {
+      addEventListener: (type, listener) => {
+        if (type === "pointerdown") pointerDownListener = listener;
+      },
+      removeEventListener: (type, listener) => {
+        if (type === "pointerdown" && pointerDownListener === listener) pointerDownListener = undefined;
+      },
+    };
     await act(async () => {
       renderer = TestRenderer.create(React.createElement(CostFilterControls, {
         filters,
@@ -148,7 +158,9 @@ test("Cost controls are production-wired for categorized accounts and include/ex
           project: [{ value: "alpha", label: "alpha" }],
         },
         costBreakdownGroupBy: "account",
-      }));
+      }), {
+        createNodeMock: () => ({ contains: () => false }),
+      });
     });
 
     const rendered = JSON.stringify(renderer.toJSON());
@@ -173,6 +185,13 @@ test("Cost controls are production-wired for categorized accounts and include/ex
     await act(async () => {
       renderer.root.findAllByType("input").find((input) => input.props.type === "checkbox").props.onChange();
     });
+    assert.equal(changes.length, 0);
+    assert.equal(renderer.root.findAll((node) => (
+      node.props.className?.includes("cost-filter-controls__picker-trigger--filtered")
+    )).length, 0);
+    await act(async () => {
+      renderer.root.findAllByType("button").find((button) => button.children.join("") === "Apply").props.onClick();
+    });
     assert.deepEqual(changes.at(-1), ["cost_source", "gcp:ci"]);
 
     await act(async () => {
@@ -182,14 +201,65 @@ test("Cost controls are production-wired for categorized accounts and include/ex
     });
     await act(async () => {
       renderer.root.findAllByType("button").find((button) => button.children.join("") === "Excludes").props.onClick();
+      renderer.root.findAllByType("input").find((input) => input.props.type === "checkbox").props.onChange();
+    });
+    assert.equal(changes.length, 1);
+    assert.equal(typeof pointerDownListener, "function");
+    await act(async () => pointerDownListener({ target: {} }));
+    assert.equal(changes.length, 1);
+    assert.ok(renderer.root.findAllByProps({ "aria-expanded": false }).some((button) => (
+      button.children[0]?.children?.join("") === "All owners"
+    )));
+
+    await act(async () => {
+      renderer.root.findAllByProps({ "aria-expanded": false }).find((button) => (
+        button.children[0]?.children?.join("") === "All owners"
+      )).props.onClick();
+    });
+    assert.match(
+      renderer.root.findAllByType("button").find((button) => button.children.join("") === "Includes").props.className,
+      /--active/,
+    );
+    await act(async () => {
+      renderer.root.findAllByType("button").find((button) => button.children.join("") === "Excludes").props.onClick();
+      renderer.root.findAllByType("input").find((input) => input.props.type === "checkbox").props.onChange();
     });
     await act(async () => {
-      renderer.root.findAllByType("input").find((input) => input.props.type === "checkbox").props.onChange();
+      renderer.root.findAllByType("button").find((button) => button.children.join("") === "Apply").props.onClick();
     });
     assert.deepEqual(changes.at(-1), [{ owner_include: "", owner_exclude: "alice" }]);
   } finally {
     await act(async () => renderer?.unmount());
+    globalThis.document = originalDocument;
   }
+});
+
+test("Cost controls highlight committed non-default filters", () => {
+  const renderer = TestRenderer.create(React.createElement(CostFilterControls, {
+    filters: {
+      start_date: "2026-08-01",
+      end_date: "2026-08-31",
+      cost_source: "aws:qa",
+      owner_include: "alice",
+      owner_exclude: "",
+      team_include: "",
+      team_exclude: "",
+      project_include: "",
+      project_exclude: "",
+      granularity: "week",
+    },
+    onFilterChange: () => {},
+    costSources: [{ value: "aws:qa", label: "aws / qa", category: "QA" }],
+  }));
+
+  const filteredTriggers = renderer.root.findAllByProps({ "aria-expanded": false }).filter((button) => (
+    button.props.className.includes("cost-filter-controls__picker-trigger--filtered")
+  ));
+  assert.deepEqual(
+    filteredTriggers.map((button) => button.children[0].children.join("")),
+    ["aws / qa", "Include alice"],
+  );
+  renderer.unmount();
 });
 
 test("QA Cost Weekly direct route uses its fixed API URL and explains an old source schema", async () => {
