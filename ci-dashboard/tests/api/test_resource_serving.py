@@ -402,8 +402,24 @@ def test_resource_drilldown_filters_project_and_team_scopes() -> None:
         engine, _filters(), scope_dimension="team", scope_value="Compute"
     )
 
+    filtered = get_unmatched_resources(
+        engine,
+        CommonFilters(
+            start_date=date(2026, 8, 10),
+            end_date=date(2026, 8, 10),
+            granularity="week",
+            cost_vendor="gcp",
+            cost_account_id="project-1",
+            team_include=("Compute", "Storage"),
+            team_exclude=("Storage",),
+            project_include=("prow", "storage"),
+            project_exclude=("storage",),
+        ),
+    )
+
     assert [item["resource_name"] for item in project["items"]] == ["compute-resource"]
     assert [item["resource_name"] for item in team["items"]] == ["compute-resource"]
+    assert [item["resource_name"] for item in filtered["items"]] == ["compute-resource"]
     assert project["meta"]["scope_dimension"] == "project"
     assert team["meta"]["scope_value"] == "Compute"
 

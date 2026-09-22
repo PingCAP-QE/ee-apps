@@ -15,6 +15,12 @@ export const FILTER_QUERY_KEYS = [
   "cloud_phase",
   "issue_status",
   "cost_source",
+  "owner_include",
+  "owner_exclude",
+  "team_include",
+  "team_exclude",
+  "project_include",
+  "project_exclude",
   "granularity",
 ];
 export const WEEK_GRANULARITY_PATHS = new Set([
@@ -40,6 +46,12 @@ export function buildDefaultFilters(defaultRange, pathname) {
     cloud_phase: "",
     issue_status: "",
     cost_source: pathname === COST_PATH ? DEFAULT_COST_SOURCE : "",
+    owner_include: "",
+    owner_exclude: "",
+    team_include: "",
+    team_exclude: "",
+    project_include: "",
+    project_exclude: "",
     granularity: WEEK_GRANULARITY_PATHS.has(pathname) ? "week" : "day",
     start_date: costRange.start_date,
     end_date: costRange.end_date,
@@ -77,6 +89,12 @@ export function normalizeFiltersForPath(pathname, filters) {
     next.cost_source = next.cost_source || DEFAULT_COST_SOURCE;
   } else {
     next.cost_source = "";
+    next.owner_include = "";
+    next.owner_exclude = "";
+    next.team_include = "";
+    next.team_exclude = "";
+    next.project_include = "";
+    next.project_exclude = "";
   }
   return next;
 }

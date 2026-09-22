@@ -126,6 +126,7 @@ and source-purpose migrations before the seed:
 mysql < sql/010_add_aws_split_cost_dimensions.sql
 mysql < sql/019_add_cost_source_purpose.sql
 mysql < sql/002_seed_initial_cost_sources.sql
+mysql < sql/027_add_cost_source_category.sql
 mysql < sql/024_add_cost_currency.sql
 mysql < sql/025_add_tencent_billing_cost_source.sql
 ```

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
+import CostFilterControls from "./CostFilterControls";
 import { COST_PATH, WEEKLY_COST_PATH } from "../lib/filterUrl";
 
 export function DashboardLayout({
@@ -9,6 +10,8 @@ export function DashboardLayout({
   filterOptions,
   navSearchByPath = {},
   showFilters = true,
+  costBreakdownGroupBy = "owner",
+  onCostBreakdownGroupByChange,
   children,
 }) {
   const currentVersion = getDashboardVersion();
@@ -81,6 +84,8 @@ export function DashboardLayout({
             filters={filters}
             onFilterChange={onFilterChange}
             filterOptions={filterOptions}
+            costBreakdownGroupBy={costBreakdownGroupBy}
+            onCostBreakdownGroupByChange={onCostBreakdownGroupByChange}
           />
         ) : null}
         <main className="page-content">{children}</main>
@@ -112,7 +117,13 @@ function NavItem({ to, search = "", label, caption }) {
   );
 }
 
-function FilterBar({ filters, onFilterChange, filterOptions }) {
+function FilterBar({
+  filters,
+  onFilterChange,
+  filterOptions,
+  costBreakdownGroupBy,
+  onCostBreakdownGroupByChange,
+}) {
   const [isCompact, setIsCompact] = useState(false);
   const location = useLocation();
   const isCostPage = location.pathname === COST_PATH;
@@ -157,6 +168,19 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
       window.removeEventListener("scroll", handleScroll);
     };
   }, []);
+
+  if (isCostPage) {
+    return (
+      <CostFilterControls
+        filters={filters}
+        onFilterChange={onFilterChange}
+        costSources={filterOptions.costSources}
+        filterValues={filterOptions.costFilterValues}
+        costBreakdownGroupBy={costBreakdownGroupBy}
+        onCostBreakdownGroupByChange={onCostBreakdownGroupByChange}
+      />
+    );
+  }
 
   return (
     <section className={isCompact ? "filter-bar filter-bar--compact" : "filter-bar"}>
