@@ -288,7 +288,7 @@ function buildAccounts(costSources, selectedCostSource) {
       byValue.set(item.value, {
         value: item.value,
         label: item.label || item.value.replace(":", " / "),
-        category: item.account_category || "Uncategorized",
+        category: item.category || "Uncategorized",
       });
     }
   });

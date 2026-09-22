@@ -650,15 +650,13 @@ def get_engineering_group_share(
 
 def list_cost_sources(engine: Engine) -> dict[str, Any]:
     with engine.begin() as connection:
-        account_category = (
-            "account_category"
-            if _table_has_column(connection, "cost_sources", "account_category")
-            else "NULL"
+        category = (
+            "category" if _table_has_column(connection, "cost_sources", "category") else "NULL"
         )
         rows = connection.execute(
             text(
                 f"""
-                SELECT vendor, account_id, display_name, {account_category} AS account_category
+                SELECT vendor, account_id, display_name, {category} AS category
                 FROM cost_sources
                 WHERE is_active = :is_active
                 ORDER BY vendor, account_id
@@ -673,7 +671,7 @@ def list_cost_sources(engine: Engine) -> dict[str, Any]:
                 "vendor": str(row["vendor"]),
                 "account_id": str(row["account_id"]),
                 "display_name": str(row["display_name"] or ""),
-                "account_category": str(row["account_category"] or "") or None,
+                "category": str(row["category"] or "") or None,
             }
             for row in rows
         ]
@@ -719,8 +717,8 @@ def get_cost_filter_values(engine: Engine, filters: CommonFilters) -> dict[str, 
 
 def _weekly_cost_qa_source_clause(connection: Connection, *, table_alias: str = "s") -> str | None:
     prefix = f"{table_alias}." if table_alias else ""
-    if _table_has_column(connection, "cost_sources", "account_category"):
-        return f"{prefix}account_category = 'QA'"
+    if _table_has_column(connection, "cost_sources", "category"):
+        return f"{prefix}category = 'QA'"
     if _table_has_column(connection, "cost_sources", "purpose"):
         return f"NULLIF(TRIM({prefix}purpose), '') IS NOT NULL"
     return None

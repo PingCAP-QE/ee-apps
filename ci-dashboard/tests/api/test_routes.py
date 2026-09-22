@@ -3860,7 +3860,7 @@ def test_cost_source_filter_and_sources_route(
             "vendor": "aws",
             "account_id": "946646677266",
             "display_name": "qa-infra-dev",
-            "account_category": None,
+            "category": None,
         },
         {
             "value": "gcp:pingcap-testing-account",
@@ -3868,7 +3868,7 @@ def test_cost_source_filter_and_sources_route(
             "vendor": "gcp",
             "account_id": "pingcap-testing-account",
             "display_name": "pingcap-testing-account",
-            "account_category": None,
+            "category": None,
         },
         {
             "value": "gcp:qa-infra-dev",
@@ -3876,7 +3876,7 @@ def test_cost_source_filter_and_sources_route(
             "vendor": "gcp",
             "account_id": "qa-infra-dev",
             "display_name": "qa-infra-dev",
-            "account_category": None,
+            "category": None,
         },
     ]
 
@@ -4040,14 +4040,14 @@ def test_cost_controls_filter_multi_accounts_and_all_cost_panels(
     }
 
 
-def test_cost_sources_and_qa_weekly_prefer_account_category(
+def test_cost_sources_and_qa_weekly_prefer_category(
     sqlite_engine,
     api_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 7, 20))
     with sqlite_engine.begin() as connection:
-        connection.execute(text("ALTER TABLE cost_sources ADD COLUMN account_category TEXT"))
+        connection.execute(text("ALTER TABLE cost_sources ADD COLUMN category TEXT"))
     for account_id, purpose, category, is_active in [
         ("qa-category", "", "QA", 1),
         ("ci-purpose", "legacy QA description", "CI", 1),
@@ -4063,7 +4063,7 @@ def test_cost_sources_and_qa_weekly_prefer_account_category(
         )
         with sqlite_engine.begin() as connection:
             connection.execute(
-                text("UPDATE cost_sources SET account_category = :category WHERE account_id = :account_id"),
+                text("UPDATE cost_sources SET category = :category WHERE account_id = :account_id"),
                 {"category": category, "account_id": account_id},
             )
     _insert_cost_attribution(
@@ -4093,7 +4093,7 @@ def test_cost_sources_and_qa_weekly_prefer_account_category(
     report = api_client.get("/api/v1/pages/weekly-cost")
 
     assert sources.status_code == report.status_code == 200
-    assert {item["value"]: item["account_category"] for item in sources.json()["items"]} == {
+    assert {item["value"]: item["category"] for item in sources.json()["items"]} == {
         "gcp:ci-purpose": "CI",
         "gcp:qa-category": "QA",
     }

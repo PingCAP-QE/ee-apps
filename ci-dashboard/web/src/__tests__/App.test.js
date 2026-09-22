@@ -138,9 +138,9 @@ test("Cost controls are production-wired for categorized accounts and include/ex
         filters,
         onFilterChange: (...args) => changes.push(args),
         costSources: [
-          { value: "aws:qa", label: "aws / qa", account_category: "QA" },
-          { value: "gcp:ci", label: "gcp / ci", account_category: "CI" },
-          { value: "gcp:platform", label: "gcp / platform", account_category: "Platform" },
+          { value: "aws:qa", label: "aws / qa", category: "QA" },
+          { value: "gcp:ci", label: "gcp / ci", category: "CI" },
+          { value: "gcp:platform", label: "gcp / platform", category: "Platform" },
         ],
         filterValues: {
           owner: [{ value: "alice", label: "alice" }],
