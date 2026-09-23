@@ -17,6 +17,7 @@ from cost_insight.jobs.sync_gcp_unmatched_resources import (
     build_unmatched_resource_row_hash,
     replace_unmatched_resource_usage_dates,
     run_sync_gcp_unmatched_resources,
+    write_unmatched_resource_rows,
 )
 
 
@@ -569,6 +570,47 @@ def test_run_sync_gcp_unmatched_resources_removes_superseded_unlabeled_row() -> 
         assert rows == [
             ('{"cluster":"10149878793099322221","shared_pool":"2076551309477019648"}', 7.0)
         ]
+    finally:
+        engine.dispose()
+
+
+def test_unmatched_resource_sync_replaces_prior_summary_hash_when_usedby_is_added() -> None:
+    engine = _sqlite_engine()
+    full_tags = {"application": "test", "usedby": "test-infra"}
+    old_row = _normalize_resource_row(
+        {
+            **_resource_row(),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": full_tags,
+            "summary_vendor_tags_json": {"cluster": "cluster-1"},
+        }
+    )
+    new_row = _normalize_resource_row(
+        {
+            **_resource_row(),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": full_tags,
+            "summary_vendor_tags_json": {"cluster": "cluster-1", "usedby": "test-infra"},
+        }
+    )
+
+    try:
+        write_unmatched_resource_rows(engine, [old_row], dry_run=False)
+        write_unmatched_resource_rows(engine, [new_row], dry_run=False)
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT source_row_hash, source_summary_row_hash, ROUND(SUM(net_cost), 2) AS net_cost
+                    FROM cost_unmatched_resource_daily
+                    GROUP BY source_row_hash, source_summary_row_hash
+                    """
+                )
+            ).all()
+        assert rows == [(new_row["source_row_hash"], new_row["source_summary_row_hash"], 7.0)]
     finally:
         engine.dispose()
 

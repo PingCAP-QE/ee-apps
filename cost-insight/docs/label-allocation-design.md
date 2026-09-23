@@ -11,7 +11,7 @@ cost-insight 现在主要把 AWS `tag_used_by` 映射到内部 `author` 字段�
 TiDB Cloud 相关 vendor tag，例如 AWS console 的 `shared-pool` 在 CUR/staging 中表现为
 `resource_tags.key_value.key='user_shared_pool'`，逻辑集群为 `tag_cluster`。
 
-目标：tcms 写一张带 `icost_*` 字段的事实表，cost 只读 join，把这类资源分账到 Cost Insight
+目标：tcms 写一张带 `icost_*` 字段的事实表，cost 只读 join，把 AWS 和 Azure 资源分账到 Cost Insight
 内部现有的 `owner/service/project/service_exec_id` 结果维度；
 物理集群固定成本按同一 shared pool 下 logical cluster 的 project net_cost 占比分摊。
 
@@ -25,7 +25,7 @@ TiDB Cloud 相关 vendor tag，例如 AWS console 的 `shared-pool` 在 CUR/stag
 4. Cost 结果不新建表，直接扩展 `cost_attribution_daily`。
 5. TCMS `vendor_tags_json` 命中优先于 legacy `tag_used_by`/`author`；账户存在有效 owner allocation 时，
    未命中的成本保持 unattributed，不回退到 author，避免绕过 TCMS 分账边界。
-6. 匹配优先级依次为：`cluster/shared_pool` 条件数量、是否包含 tenant 条件、account 精确匹配、有效期和 id。
+6. 匹配优先级依次为：JSON tag 条件数量、是否包含 tenant 条件、account 精确匹配、有效期和 id。
    因而资源标签规则优先于 tenant-only 规则，tenant + 资源标签规则优先于相同资源标签的泛化规则。
    若最具体规则的 `icost_project` 为空，则用匹配的 tenant-only 规则补齐 project；其他 `icost_*` 字段仍来自最具体规则。
 7. shared pool 固定成本：billing 行无 author、`cluster` 为空、`shared_pool` 非空；按同一 shared pool 下各
@@ -66,7 +66,7 @@ CREATE TABLE tcms_cost.resource_allocation (
 
 约束由 tcms 写入侧负责：
 
-- `vendor_tags_json` 至少包含一个用于匹配的条件（`tenant`、`cluster` 或 `shared_pool`），只写有值的 tag。
+- `vendor_tags_json` 至少包含一个用于匹配的条件（`tenant`、`cluster`、`shared_pool` 或 `usedby`），只写有值的 tag。
   缺失 key 表示 wildcard，不要写 JSON null/空字符串来表达 wildcard；
   pool 级记录写 `{"shared_pool":"..."}`，不要写 `{"cluster":null,"shared_pool":"..."}`。
 - 同 `(vendor, account_id, vendor_tags_json)` 的 `valid_from/valid_to` 区间不重叠。
@@ -93,13 +93,20 @@ AWS BigQuery query 从 staging 中抽取：
 
 ```sql
 CASE
-  WHEN shared_pool IS NULL AND `cluster` IS NULL THEN NULL
-  ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))
+  WHEN author IS NULL AND shared_pool IS NULL AND `cluster` IS NULL THEN NULL
+  ELSE TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+    'usedby', author,
+    'cluster', `cluster`,
+    'shared_pool', shared_pool
+  )))
 END AS vendor_tags_json
 ```
 
-其中 `shared_pool` 来自 nested `resource_tags.key_value` 的 `user_shared_pool`；`cluster` 来自扁平字段
-`tag_cluster`；AWS `tenant` 来自 tenant tag 并写入 summary `org`，不重复写入 `vendor_tags_json`；Azure `tenant` 同样写入 summary `org`，但保留在规范化 `vendor_tags_json` 中以保留 Azure 原始标签血缘。
+其中 `author` 是 AWS `usedby` 的规范列，`shared_pool` 来自 nested `resource_tags.key_value` 的
+`user_shared_pool`，`cluster` 来自扁平字段 `tag_cluster`。AWS `tenant` 来自 tenant tag 并写入 summary
+`org`，不重复写入 `vendor_tags_json`；Azure `tenant` 同样写入 summary `org`，但保留在规范化
+`vendor_tags_json` 中以保留 Azure 原始标签血缘。历史 AWS summary 若尚未保存 `usedby`，匹配时会从
+规范化 `author` 临时补齐；split-cost 行存在原生 owner 时不会把 owner 误当作 `usedby`。
 已确认 account `946646677266` 近 30 天 staging key 是 `user_shared_pool`，不是
 AWS console 上看到的 `shared-pool`。
 AWS split-cost 资源 tag key 由 `project` 重命名为 `icost_project`；legacy CUR
@@ -137,12 +144,12 @@ INSERT B（shared pool 固定成本）：
 ## 6. 兼容性与重算
 
 - `resource_allocation` 可以为空：TCMS 未写入数据时，author 行仍归属，其他 JSON tag 行 fallback 到 unattributed，成本守恒。
-- AWS `refresh-cost-attribution-from-summary` 默认会引用 `tcms_cost.resource_allocation`，所以表需要先创建，并确认
-  Cost Insight 现有 SQL user 能 `SELECT * FROM tcms_cost.resource_allocation`。非 dry-run 的 AWS refresh 若未提供
+- AWS 和 Azure 的 `refresh-cost-attribution-from-summary` 默认会引用 `tcms_cost.resource_allocation`，所以表需要先创建，并确认
+  Cost Insight 现有 SQL user 能 `SELECT * FROM tcms_cost.resource_allocation`。非 dry-run refresh 若未提供
   TCMS 表，会在删除任何 attribution 数据前直接失败，禁止静默降级到无 TCMS 的重建。
 - GCP/pingcap-testing-account 不受影响：GCP query 不产出 `vendor_tags_json`，hash 在 JSON 为 NULL 时沿用旧字段集合。
 - summary/unmatched 的 hash：`vendor_tags_json IS NULL` 时按 legacy 字段计算；有 JSON 时纳入 hash。
-- 若 BigQuery 后补 tag，普通 upsert 写入前会删除同 legacy 维度下旧的 NULL JSON 行，避免双算。
+- 若 BigQuery 后补 tag，普通 upsert 写入前会删除同 legacy 维度下旧的 NULL JSON 行；AWS 补入 `usedby` 时还会删除同维度下仅缺少 `usedby` 的旧 JSON 行，避免双算。
 - 若 tag 被移除（labeled -> unlabeled），不做对称删除，避免误删真实共存的 tagged/untagged 成本；这种历史修正使用
   `sync-aws-billing-summary --replace-existing-partitions` 重抓整个月份 partition。
 - `refresh-cost-attribution-from-summary` 会在 join/where 中用 `JSON_EXTRACT/JSON_CONTAINS` 匹配
@@ -173,4 +180,4 @@ refresh-cost-attribution-from-summary \
 | `src/cost_insight/sources/aws_billing_export.py` | AWS query 生成 `vendor_tags_json` |
 | `src/cost_insight/jobs/sync_gcp_billing_summary.py` | summary 写入支持 `vendor_tags_json` 和 hash 兼容 |
 | `src/cost_insight/jobs/sync_gcp_unmatched_resources.py` | unmatched 写入支持 `vendor_tags_json` 和 hash 兼容 |
-| `src/cost_insight/jobs/refresh_attribution_daily.py` | AWS summary attribution join tcms facts，并做 shared pool 分摊 |
+| `src/cost_insight/jobs/refresh_attribution_daily.py` | AWS/Azure summary attribution join tcms facts |

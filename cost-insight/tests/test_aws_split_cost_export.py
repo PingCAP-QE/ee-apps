@@ -36,6 +36,8 @@ def test_split_summary_query_conserves_parent_cost_at_parent_day_grain() -> None
     assert "source_allocation_scope" in query
     assert "ROUND(SUM(list_cost), 9) AS list_cost" in query
     assert "ROUND(SUM(effective_cost), 9) AS effective_cost" in query
+    assert "'usedby', usedby" in query
+    assert "usedby," in query.rsplit("GROUP BY", maxsplit=1)[1]
 
 
 def test_split_parent_identity_selection_is_deterministic() -> None:
@@ -72,6 +74,7 @@ def test_split_child_inherits_each_missing_parent_routing_tag() -> None:
         billing_table="pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
     )
 
+    assert "COALESCE(child.author_fallback, parent.author_fallback) AS usedby" in query
     assert "COALESCE(child.cluster, parent.cluster) AS cluster" in query
     assert "COALESCE(child.shared_pool, parent.shared_pool) AS shared_pool" in query
 
@@ -97,7 +100,7 @@ def test_split_resource_query_keeps_parent_and_pod_identity() -> None:
 def test_split_cost_tags_include_downstream_routing_labels() -> None:
     labels = {label for label, _ in aws_split_cost_export._AWS_SPLIT_COST_TAG_COLUMNS}
 
-    assert {"cluster", "shared_pool", "tenant"} <= labels
+    assert {"cluster", "shared_pool", "tenant", "usedby"} <= labels
 
 
 def test_split_guardrail_uses_ce_list_cost_before_import() -> None:
