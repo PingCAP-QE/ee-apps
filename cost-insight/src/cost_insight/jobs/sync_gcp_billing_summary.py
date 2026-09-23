@@ -681,22 +681,29 @@ def _delete_superseded_owner_override_rows(
             connection.execute(_DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS, params)
 
 
+def _superseded_summary_row_hash(row: dict[str, Any]) -> str | None:
+    if row.get("vendor") != "aws" or row.get("vendor_tags_json") is None:
+        return None
+    tags = json.loads(row["vendor_tags_json"])
+    if "usedby" not in tags:
+        return None
+    tags.pop("usedby")
+    return build_summary_row_hash(
+        {**row, "vendor_tags_json": normalize_vendor_tags_json(tags)}
+    )
+
+
 def _delete_superseded_summary_rows(
     connection: Connection,
     rows: Sequence[dict[str, Any]],
 ) -> None:
-    # Label backfills change the hash shape. For usedby, the prior row may already
-    # contain cluster/shared_pool tags, so match the same JSON with usedby removed.
+    # Label backfills change the hash shape. For usedby, match the deterministic
+    # predecessor hash instead of comparing a TiDB JSON column as text.
     params = []
     for row in rows:
-        vendor_tags_json = row.get("vendor_tags_json")
-        if vendor_tags_json is None:
+        superseded_source_row_hash = _superseded_summary_row_hash(row)
+        if row.get("vendor_tags_json") is None and superseded_source_row_hash is None:
             continue
-        tags = json.loads(vendor_tags_json)
-        superseded_tags_json = ""
-        if row.get("vendor") == "aws" and "usedby" in tags:
-            tags.pop("usedby")
-            superseded_tags_json = normalize_vendor_tags_json(tags) or ""
         params.append(
             {
                 "vendor": row.get("vendor") or "",
@@ -712,7 +719,7 @@ def _delete_superseded_summary_rows(
                 "repo": row.get("repo") or "",
                 "target_branch": row.get("target_branch") or "",
                 "resource_name": row.get("resource_name") or "",
-                "superseded_vendor_tags_json": superseded_tags_json,
+                "superseded_source_row_hash": superseded_source_row_hash,
             }
         )
     if params:
@@ -1123,10 +1130,7 @@ _DELETE_SUPERSEDED_SUMMARY_ROWS = text(
       AND COALESCE(resource_name, '') = :resource_name
       AND (
         vendor_tags_json IS NULL
-        OR (
-          COALESCE(vendor_tags_json, '') = :superseded_vendor_tags_json
-          AND JSON_EXTRACT(vendor_tags_json, '$.usedby') IS NULL
-        )
+        OR source_row_hash = :superseded_source_row_hash
       )
     """
 )

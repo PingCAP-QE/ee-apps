@@ -595,17 +595,38 @@ def test_run_sync_gcp_billing_summary_replaces_prior_tags_when_usedby_is_added()
     }
     new_tags = {**old_tags, "usedby": "test-infra"}
 
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": old_tags,
+        }
+    )
+    new_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": new_tags,
+        }
+    )
+
     try:
-        for tags in (old_tags, new_tags):
-            row = _normalize_summary_row(
+        # TiDB JSON text representation does not preserve this input key order.
+        # Cleanup must select the predecessor by source_row_hash, not JSON text.
+        with engine.begin() as connection:
+            _insert_summary_row(
+                connection,
                 {
-                    **_summary_row("2026-05-18"),
-                    "vendor": "aws",
-                    "account_id": "946646677266",
-                    "vendor_tags_json": tags,
-                }
+                    **old_row,
+                    "vendor_tags_json": (
+                        '{"shared_pool":"2076551309477019648",'
+                        '"cluster":"10149878793099322221"}'
+                    ),
+                },
             )
-            write_summary_rows(engine, [row], dry_run=False)
+        write_summary_rows(engine, [new_row], dry_run=False)
 
         with engine.begin() as connection:
             rows = connection.execute(
