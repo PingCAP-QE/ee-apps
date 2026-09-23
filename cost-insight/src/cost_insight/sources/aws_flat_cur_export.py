@@ -123,10 +123,10 @@ SELECT
   author,
   org,
   repo,
-  CASE
-    WHEN `cluster` IS NULL THEN NULL
-    ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster))
-  END AS vendor_tags_json,
+  TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+    'usedby', author,
+    'cluster', `cluster`
+  ))) AS vendor_tags_json,
   SUM(list_cost) AS list_cost,
   ROUND(SUM(effective_cost), 2) AS effective_cost,
   CAST(0 AS BIGNUMERIC) AS credit_amount,
