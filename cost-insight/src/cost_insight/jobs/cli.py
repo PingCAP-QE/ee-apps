@@ -73,6 +73,10 @@ class _ConnectionBoundEngine:
     def begin(self):
         yield self._connection
 
+    @contextmanager
+    def connect(self):
+        yield self._connection
+
 
 @contextmanager
 def _atomic_cutover_engine(engine, *, dry_run: bool):

@@ -73,9 +73,16 @@ def test_cli_rejects_cross_month_split_cost_cutover(monkeypatch) -> None:
 
 
 def test_cli_cutover_reuses_summary_guardrail_for_unmatched_and_residual(monkeypatch, capsys) -> None:
-    captured: dict[str, dict] = {}
+    captured: dict[str, object] = {}
 
     class Engine:
+        def __init__(self) -> None:
+            self.connection = object()
+
+        @contextmanager
+        def begin(self):
+            yield self.connection
+
         def dispose(self):
             pass
 
@@ -103,7 +110,11 @@ def test_cli_cutover_reuses_summary_guardrail_for_unmatched_and_residual(monkeyp
             touched_usage_dates=(date(2026, 8, 2),),
         )
 
-    def fake_unmatched(_engine, **kwargs):
+    def fake_unmatched(engine, **kwargs):
+        # The real unmatched sync passes this engine to materialization, which
+        # calls .connect() for its schema check.
+        with engine.connect() as connection:
+            captured["unmatched_connection"] = connection
         captured["unmatched"] = kwargs
         return SyncGcpUnmatchedResourcesSummary(
             account_id=source.account_id,
@@ -170,11 +181,11 @@ def test_cli_cutover_reuses_summary_guardrail_for_unmatched_and_residual(monkeyp
                 "2026-08-02",
                 "--usage-end-date",
                 "2026-08-15",
-                "--dry-run",
             ]
         )
         == 0
     )
+    assert captured["unmatched_connection"] is not None
     assert captured["summary"]["validate_guardrail"] is True
     assert captured["unmatched"]["validate_guardrail"] is False
     assert captured["residual"]["validate_guardrail"] is False
