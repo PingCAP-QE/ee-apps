@@ -2,10 +2,32 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  fetchJson,
   getLatestBranchValue,
   getPreviousCompleteMondayWeek,
   getStableCostSummaryWeek,
 } from "./api.js";
+
+test("keeps non-OK JSON status and payload on the thrown error", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 409,
+    statusText: "Conflict",
+    json: async () => ({ error: { code: "unsupported_cost_basis" } }),
+  });
+
+  try {
+    await assert.rejects(fetchJson("/ci-weekly-cost"), (error) => {
+      assert.equal(error.message, "409 Conflict");
+      assert.equal(error.status, 409);
+      assert.deepEqual(error.payload, { error: { code: "unsupported_cost_basis" } });
+      return true;
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("returns the previous complete Monday through Sunday week", () => {
   assert.deepEqual(

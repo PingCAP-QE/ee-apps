@@ -4824,6 +4824,341 @@ def test_weekly_cost_team_dimensions_use_path_boundaries() -> None:
     assert dimensions["level1"]["team:20"]["value"] == 10
 
 
+def _add_ci_weekly_cost_budget_schema(sqlite_engine) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN accounts TEXT"))
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN projects TEXT"))
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN platform TEXT"))
+        connection.execute(
+            text("ALTER TABLE cost_budgets ADD COLUMN cost_basis TEXT NOT NULL DEFAULT 'list_cost'")
+        )
+
+
+def _insert_ci_weekly_cost_budget(
+    sqlite_engine,
+    *,
+    vendor: str,
+    account_id: str,
+    budget_name: str,
+    cost_basis: str = "list_cost",
+    period_start_date: str = "2026-09-01",
+    period_end_date: str = "2027-03-31",
+    budget_amount: float = 21200,
+    label_filters: dict | list | str | None = None,
+) -> None:
+    _insert_cost_budget(
+        sqlite_engine,
+        vendor=vendor,
+        account_id=account_id,
+        period_start_date=period_start_date,
+        period_end_date=period_end_date,
+        budget_amount=budget_amount,
+        budget_name=budget_name,
+        label_filters=label_filters,
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE cost_budgets
+                SET accounts = :accounts, platform = 'CICD', cost_basis = :cost_basis
+                WHERE budget_name = :budget_name
+                """
+            ),
+            {
+                "accounts": json.dumps([account_id]),
+                "cost_basis": cost_basis,
+                "budget_name": budget_name,
+            },
+        )
+
+
+def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 9, 23))
+    for vendor, account_id in [
+        ("gcp", "pingcap-testing-account"),
+        ("tencent", "100050658403"),
+    ]:
+        _insert_cost_source(
+            sqlite_engine,
+            vendor=vendor,
+            account_id=account_id,
+            display_name=f"{vendor}-{account_id}",
+            purpose="CI",
+        )
+    _add_ci_weekly_cost_budget_schema(sqlite_engine)
+    _insert_ci_weekly_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        budget_name="PingCAP CICD H1 GCP 2026",
+        period_start_date="2026-08-01",
+        period_end_date="2026-08-31",
+        budget_amount=3100,
+    )
+    _insert_ci_weekly_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        budget_name="PingCAP CICD H2 GCP 2026",
+        label_filters={},
+    )
+    _insert_ci_weekly_cost_budget(
+        sqlite_engine,
+        vendor="tencent",
+        account_id="100050658403",
+        budget_name="PingCAP CICD H2 Tencent 2026",
+        cost_basis="net_cost",
+        budget_amount=84000,
+    )
+    for index, (usage_date, vendor, account_id, list_cost, net_cost, sku_name) in enumerate(
+        [
+            ("2026-08-10", "gcp", "pingcap-testing-account", 310, 300, "runner"),
+            ("2026-08-10", "tencent", "100050658403", 650, 3250, "runner"),
+            ("2026-09-02", "gcp", "pingcap-testing-account", 100, 80, "runner"),
+            ("2026-09-02", "tencent", "100050658403", 650, 3250, "runner"),
+            ("2026-09-16", "gcp", "pingcap-testing-account", 100, 80, "runner"),
+            (
+                "2026-09-16",
+                "gcp",
+                "pingcap-testing-account",
+                500,
+                50,
+                "Compute Flexible Committed Use Discounts v1",
+            ),
+            ("2026-09-16", "tencent", "100050658403", 650, 3250, "runner"),
+        ]
+    ):
+        _insert_cost_attribution(
+            sqlite_engine,
+            usage_date=usage_date,
+            vendor=vendor,
+            account_id=account_id,
+            repo="tidb",
+            group_id=None,
+            project="ci",
+            list_cost=list_cost,
+            net_cost=net_cost,
+            sku_name=sku_name,
+            dimension_hash=f"ci-weekly-{index}",
+        )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text("UPDATE cost_attribution_daily SET currency = 'CNY' WHERE vendor = 'tencent'")
+        )
+
+    response = api_client.get("/api/v1/pages/ci-weekly-cost")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["meta"] == {
+        "calendar_timezone": "UTC",
+        "cost_metric": "budget_basis_spend",
+        "budget_basis_schema_available": True,
+    }
+    assert [item["cost_source"] for item in payload["accounts"]] == [
+        "gcp:pingcap-testing-account",
+        "tencent:100050658403",
+    ]
+    assert [item["cost_basis"] for item in payload["accounts"]] == ["list_cost", "net_cost"]
+    assert payload["accounts"][0]["last_complete_week"] == {
+        "actual_cost": 100.0,
+        "period_budget": 700.0,
+        "utilization_pct": 14.29,
+    }
+    assert payload["accounts"][1]["last_complete_week"] == {
+        "actual_cost": 500.0,
+        "period_budget": 2773.58,
+        "utilization_pct": 18.03,
+    }
+    assert payload["accounts"][0]["last_complete_month"] == {
+        "actual_cost": 310.0,
+        "period_budget": 3100.0,
+        "utilization_pct": 10.0,
+    }
+    assert payload["accounts"][1]["last_complete_month"] == {
+        "actual_cost": 500.0,
+        "period_budget": None,
+        "utilization_pct": None,
+    }
+    assert "actual_list_cost" not in payload["accounts"][0]["last_complete_week"]
+    assert payload["budget_period_cost"] == {
+        "metric": "budget_basis_spend",
+        "components": [
+            {"cost_source": "gcp:pingcap-testing-account", "cost_basis": "list_cost"},
+            {"cost_source": "tencent:100050658403", "cost_basis": "net_cost"},
+        ],
+        "period": {"start_date": "2026-09-01", "end_date": "2026-09-23"},
+        "total_budget": 105200.0,
+        "points": [
+            {
+                "week_start": "2026-08-31",
+                "budget_basis_cost": 600.0,
+                "cumulative_budget_basis_cost": 600.0,
+            },
+            {
+                "week_start": "2026-09-07",
+                "budget_basis_cost": 0.0,
+                "cumulative_budget_basis_cost": 600.0,
+            },
+            {
+                "week_start": "2026-09-14",
+                "budget_basis_cost": 600.0,
+                "cumulative_budget_basis_cost": 1200.0,
+            },
+            {
+                "week_start": "2026-09-21",
+                "budget_basis_cost": 0.0,
+                "cumulative_budget_basis_cost": 1200.0,
+            },
+        ],
+    }
+    assert "list_cost" not in payload["budget_period_cost"]["points"][0]
+
+
+def test_ci_weekly_cost_report_returns_configuration_error_for_unsupported_basis(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 9, 23))
+    _add_ci_weekly_cost_budget_schema(sqlite_engine)
+    _insert_ci_weekly_cost_budget(
+        sqlite_engine,
+        vendor="tencent",
+        account_id="100050658403",
+        budget_name="PingCAP CICD H2 Tencent 2026",
+        cost_basis="gross_cost",
+    )
+
+    response = api_client.get("/api/v1/pages/ci-weekly-cost")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "unsupported_cost_basis",
+            "message": "CI budget configuration contains an unsupported cost basis.",
+            "plans": [
+                {
+                    "cost_source": "tencent:100050658403",
+                    "budget_name": "PingCAP CICD H2 Tencent 2026",
+                    "cost_basis": "gross_cost",
+                }
+            ],
+        }
+    }
+
+
+def test_ci_weekly_cost_report_returns_configuration_error_for_conflicting_bases(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 9, 23))
+    _add_ci_weekly_cost_budget_schema(sqlite_engine)
+    _insert_ci_weekly_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        budget_name="GCP CI list plan",
+    )
+    _insert_ci_weekly_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        budget_name="GCP CI net plan",
+        cost_basis="net_cost",
+    )
+
+    response = api_client.get("/api/v1/pages/ci-weekly-cost")
+
+    assert response.status_code == 409
+    assert response.json()["error"] == {
+        "code": "conflicting_cost_basis",
+        "message": "CI budget configuration contains conflicting cost bases.",
+        "plans": [
+            {
+                "cost_source": "gcp:pingcap-testing-account",
+                "budget_name": "GCP CI list plan",
+                "cost_basis": "list_cost",
+            },
+            {
+                "cost_source": "gcp:pingcap-testing-account",
+                "budget_name": "GCP CI net plan",
+                "cost_basis": "net_cost",
+            },
+        ],
+    }
+
+
+def test_ci_weekly_cost_report_returns_configuration_error_for_overlapping_plans(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 9, 23))
+    _add_ci_weekly_cost_budget_schema(sqlite_engine)
+    _insert_ci_weekly_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        budget_name="GCP CI first plan",
+    )
+    _insert_ci_weekly_cost_budget(
+        sqlite_engine,
+        vendor="gcp",
+        account_id="pingcap-testing-account",
+        budget_name="GCP CI second plan",
+    )
+
+    response = api_client.get("/api/v1/pages/ci-weekly-cost")
+
+    assert response.status_code == 409
+    assert response.json()["error"] == {
+        "code": "overlapping_cost_plans",
+        "message": "CI budget configuration contains overlapping plans.",
+        "plans": [
+            {
+                "cost_source": "gcp:pingcap-testing-account",
+                "budget_name": "GCP CI first plan",
+                "cost_basis": "list_cost",
+            },
+            {
+                "cost_source": "gcp:pingcap-testing-account",
+                "budget_name": "GCP CI second plan",
+                "cost_basis": "list_cost",
+            },
+        ],
+    }
+
+
+def test_ci_weekly_cost_report_marks_absent_basis_schema_not_deployed(
+    sqlite_engine,
+    api_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cost_queries, "_today", lambda: date(2026, 9, 23))
+
+    response = api_client.get("/api/v1/pages/ci-weekly-cost")
+
+    assert response.status_code == 200
+    assert response.json()["meta"] == {
+        "calendar_timezone": "UTC",
+        "cost_metric": "budget_basis_spend",
+        "budget_basis_schema_available": False,
+    }
+    assert response.json()["accounts"] == []
+    assert response.json()["budget_period_cost"] == {
+        "metric": "budget_basis_spend",
+        "components": [],
+        "points": [],
+    }
+
+
 def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
     sqlite_engine,
     api_client: TestClient,

@@ -9,6 +9,7 @@ import FlakyPage from "./pages/FlakyPage";
 import RuntimeInsightsPage from "./pages/RuntimeInsightsPage";
 import CostPage from "./pages/CostPage";
 import WeeklyCostPage from "./pages/WeeklyCostPage";
+import CICostWeeklyPage from "./pages/CICostWeeklyPage";
 import {
   buildCostSourceOptions,
   buildScopeLabel,
@@ -19,6 +20,7 @@ import {
   buildFilterSearch,
   buildNavSearchByPath,
   CI_STATUS_PATH,
+  CI_WEEKLY_COST_PATH,
   COST_PATH,
   DEFAULT_COST_SOURCE,
   MIGRATE_STATUS_PATH,
@@ -56,6 +58,7 @@ export default function App() {
   const isCostPage = location.pathname === COST_PATH;
   const isWeeklySummaryPage = location.pathname === "/";
   const isWeeklyCostPage = location.pathname === WEEKLY_COST_PATH;
+  const isCIWeeklyCostPage = location.pathname === CI_WEEKLY_COST_PATH;
 
   useEffect(() => {
     const urlFilters = readFiltersFromSearch(defaultRange, location.pathname, location.search);
@@ -95,14 +98,14 @@ export default function App() {
       start_date: filters.start_date,
       end_date: filters.end_date,
     },
-    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage,
+    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage,
   );
   const branches = useApiData(
     "/api/v1/filters/branches",
     {
       repo: filters.repo,
     },
-    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage,
+    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage,
   );
   const cloudPhases = useApiData("/api/v1/filters/cloud-phases", {
     repo: filters.repo,
@@ -110,7 +113,7 @@ export default function App() {
     job_name: filters.job_name,
     start_date: filters.start_date,
     end_date: filters.end_date,
-  }, !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage);
+  }, !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage);
   const costSources = useApiData(
     "/api/v1/pages/cost-sources",
     {},
@@ -174,7 +177,7 @@ export default function App() {
       onFilterChange={handleFilterChange}
       filterOptions={filterOptions}
       navSearchByPath={navSearchByPath}
-      showFilters={!isWeeklySummaryPage && !isWeeklyCostPage}
+      showFilters={!isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage}
       costBreakdownGroupBy={costBreakdownGroupBy}
       onCostBreakdownGroupByChange={setCostBreakdownGroupBy}
     >
@@ -198,6 +201,7 @@ export default function App() {
           )}
         />
         <Route path={WEEKLY_COST_PATH} element={<WeeklyCostPage />} />
+        <Route path={CI_WEEKLY_COST_PATH} element={<CICostWeeklyPage />} />
       </Routes>
     </DashboardLayout>
   );

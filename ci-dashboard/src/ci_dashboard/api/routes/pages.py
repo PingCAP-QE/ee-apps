@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.engine import Engine
 
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT, CommonFilters
-from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS
+from ci_dashboard.api.queries.cost import (
+    COST_DRILLDOWN_CHILD_GROUPS,
+    CIWeeklyCostConfigurationError,
+)
 from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
     get_cost_budget_pace_page,
@@ -18,6 +22,7 @@ from ci_dashboard.api.queries.pages import (
     get_cost_trend_page,
     get_cost_unmatched_resources_page,
     get_cost_weekly_account_summaries_page,
+    get_ci_weekly_cost_report_page,
     get_weekly_cost_allocation_page,
     get_weekly_cost_report_page,
     get_weekly_cost_trend_page,
@@ -138,6 +143,25 @@ def cost_weekly_account_summaries_page(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_weekly_account_summaries_page(engine, filters)
+
+
+@router.get("/ci-weekly-cost", response_model=None)
+def ci_weekly_cost_report_page(
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object] | JSONResponse:
+    try:
+        return get_ci_weekly_cost_report_page(engine)
+    except CIWeeklyCostConfigurationError as exc:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": exc.code,
+                    "message": exc.message,
+                    "plans": exc.plans,
+                }
+            },
+        )
 
 
 @router.get("/weekly-cost")

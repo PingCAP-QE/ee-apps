@@ -143,7 +143,14 @@ export async function fetchJson(path, params = {}, signal) {
     signal,
   });
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`);
+    const error = new Error(`${response.status} ${response.statusText}`);
+    error.status = response.status;
+    try {
+      error.payload = await response.json();
+    } catch {
+      error.payload = null;
+    }
+    throw error;
   }
   return response.json();
 }
@@ -154,6 +161,8 @@ export function useApiData(path, params = {}, enabled = true) {
     data: null,
     loading: enabled,
     error: null,
+    errorStatus: null,
+    errorPayload: null,
     responseKey: null,
   });
 
@@ -163,6 +172,8 @@ export function useApiData(path, params = {}, enabled = true) {
         data: null,
         loading: false,
         error: null,
+        errorStatus: null,
+        errorPayload: null,
         responseKey: null,
       });
       return undefined;
@@ -173,6 +184,8 @@ export function useApiData(path, params = {}, enabled = true) {
       data: current.data,
       loading: true,
       error: null,
+      errorStatus: null,
+      errorPayload: null,
       responseKey: current.responseKey,
     }));
 
@@ -182,6 +195,8 @@ export function useApiData(path, params = {}, enabled = true) {
           data,
           loading: false,
           error: null,
+          errorStatus: null,
+          errorPayload: null,
           responseKey: requestKey,
         });
       })
@@ -193,6 +208,8 @@ export function useApiData(path, params = {}, enabled = true) {
           data: null,
           loading: false,
           error: error instanceof Error ? error.message : "Unknown error",
+          errorStatus: error instanceof Error ? error.status ?? null : null,
+          errorPayload: error instanceof Error ? error.payload ?? null : null,
           responseKey: requestKey,
         });
       });

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import CostFilterControls from "./CostFilterControls";
-import { COST_PATH, WEEKLY_COST_PATH } from "../lib/filterUrl";
+import { CI_WEEKLY_COST_PATH, COST_PATH, WEEKLY_COST_PATH } from "../lib/filterUrl";
 
 export function DashboardLayout({
   filters,
@@ -54,6 +54,12 @@ export function DashboardLayout({
             search={navSearchByPath[WEEKLY_COST_PATH]}
             label="QA Cost Weekly"
             caption="QA accounts, complete calendar periods"
+          />
+          <NavItem
+            to={CI_WEEKLY_COST_PATH}
+            search={navSearchByPath[CI_WEEKLY_COST_PATH]}
+            label="CI Cost Weekly"
+            caption="GCP and Tencent CI budget pace"
           />
           <NavItem
             to="/cost"

@@ -433,6 +433,172 @@ test("QA Cost Weekly direct route uses its fixed API URL and explains an old sou
   }
 });
 
+test("CI Cost Weekly uses its fixed endpoint and renders account-period budget gauges", async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  let renderer;
+
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return {
+      ok: true,
+      json: async () => ({
+        meta: {
+          calendar_timezone: "UTC",
+          cost_metric: "budget_basis_spend",
+          budget_basis_schema_available: true,
+        },
+        last_complete_week: { start_date: "2026-09-14", end_date: "2026-09-20" },
+        last_complete_month: { start_date: "2026-08-01", end_date: "2026-08-31" },
+        accounts: [
+          {
+            cost_source: "gcp:pingcap-testing-account",
+            vendor: "gcp",
+            account_id: "pingcap-testing-account",
+            display_name: "pingcap-testing-account",
+            cost_basis: "list_cost",
+            last_complete_week: { actual_cost: 100, period_budget: 700, utilization_pct: 14.29 },
+            last_complete_month: { actual_cost: 310, period_budget: 3100, utilization_pct: 10 },
+          },
+          {
+            cost_source: "tencent:100050658403",
+            vendor: "tencent",
+            account_id: "100050658403",
+            display_name: "tencent-organization-billing",
+            cost_basis: "net_cost",
+            last_complete_week: { actual_cost: 200, period_budget: 1400, utilization_pct: 14.29 },
+            last_complete_month: { actual_cost: 0, period_budget: null, utilization_pct: null },
+          },
+        ],
+        budget_period_cost: {
+          metric: "budget_basis_spend",
+          components: [
+            { cost_source: "gcp:pingcap-testing-account", cost_basis: "list_cost" },
+            { cost_source: "tencent:100050658403", cost_basis: "net_cost" },
+          ],
+          period: { start_date: "2026-09-01", end_date: "2026-09-23" },
+          total_budget: 63600,
+          points: [{
+            week_start: "2026-08-31",
+            budget_basis_cost: 300,
+            cumulative_budget_basis_cost: 300,
+          }],
+        },
+      }),
+    };
+  };
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ["/ci-cost-weekly?start_date=2020-01-01&repo=pingcap%2Ftidb"] },
+          React.createElement(App),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    assert.deepEqual(requests, ["/api/v1/pages/ci-weekly-cost"]);
+    assert.equal(renderer.root.findAllByProps({ role: "progressbar" }).length, 3);
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /CI Cost Weekly/);
+    assert.match(rendered, /2026 H2 CI cumulative budget-basis spend/);
+    assert.match(rendered, /GCP list cost \+ Tencent net cost/);
+    assert.match(rendered, /Last complete week — List cost/);
+    assert.match(rendered, /Last complete week — Net cost/);
+    assert.match(rendered, /\$100\.00/);
+    assert.match(rendered, /Not configured/);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("CI Cost Weekly explains when budget-basis metadata is not deployed", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      meta: {
+        calendar_timezone: "UTC",
+        cost_metric: "budget_basis_spend",
+        budget_basis_schema_available: false,
+      },
+      last_complete_week: { start_date: "2026-09-14", end_date: "2026-09-20" },
+      last_complete_month: { start_date: "2026-08-01", end_date: "2026-08-31" },
+      accounts: [],
+      budget_period_cost: { metric: "budget_basis_spend", components: [], points: [] },
+    }),
+  });
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ["/ci-cost-weekly"] },
+          React.createElement(App),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    assert.match(JSON.stringify(renderer.toJSON()), /CI budget-basis metadata is not deployed yet/);
+    assert.equal(renderer.root.findAllByProps({ role: "progressbar" }).length, 0);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("CI Cost Weekly renders the configuration response instead of a fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 409,
+    statusText: "Conflict",
+    json: async () => ({
+      error: {
+        code: "unsupported_cost_basis",
+        message: "CI budget configuration contains an unsupported cost basis.",
+        plans: [{
+          cost_source: "tencent:100050658403",
+          budget_name: "PingCAP CICD H2 Tencent 2026",
+          cost_basis: "gross_cost",
+        }],
+      },
+    }),
+  });
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ["/ci-cost-weekly"] },
+          React.createElement(App),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /CI budget configuration contains an unsupported cost basis/);
+    assert.match(rendered, /tencent:100050658403/);
+    assert.match(rendered, /PingCAP CICD H2 Tencent 2026/);
+    assert.equal(renderer.root.findAllByProps({ role: "progressbar" }).length, 0);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("weekly cost distinguishes no QA sources from configured zero-cost sources", async () => {
   const originalFetch = globalThis.fetch;
   let report = weeklyCostReport();
