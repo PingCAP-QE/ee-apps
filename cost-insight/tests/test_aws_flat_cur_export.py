@@ -33,6 +33,19 @@ def test_build_aws_flat_cur_summary_query_scopes_external_partitions_and_costs()
     assert "LIMIT 20" in query
 
 
+def test_build_aws_flat_cur_summary_query_preserves_usedby_vendor_tag() -> None:
+    query = build_aws_flat_cur_summary_query(
+        billing_table="project.dataset.billing",
+        export_partition_start=date(2026, 9, 1),
+        export_partition_end=date(2026, 9, 1),
+    )
+
+    assert """TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+    'usedby', author,
+    'cluster', `cluster`
+  ))) AS vendor_tags_json""" in query
+
+
 def test_fetch_aws_flat_cur_summary_rows_binds_usedby_parameter(monkeypatch) -> None:
     captured = {}
 
