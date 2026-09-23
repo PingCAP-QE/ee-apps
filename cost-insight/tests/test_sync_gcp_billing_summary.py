@@ -18,6 +18,7 @@ from cost_insight.jobs.sync_gcp_billing_summary import (
     replace_summary_partition_usage_dates,
     replace_summary_usage_dates,
     run_sync_gcp_billing_summary,
+    write_summary_rows,
 )
 
 
@@ -582,6 +583,106 @@ def test_run_sync_gcp_billing_summary_removes_superseded_unlabeled_row() -> None
         assert rows == [
             ('{"cluster":"10149878793099322221","shared_pool":"2076551309477019648"}', 7.0)
         ]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_replaces_prior_tags_when_usedby_is_added() -> None:
+    engine = _sqlite_engine()
+    old_tags = {
+        "shared_pool": "2076551309477019648",
+        "cluster": "10149878793099322221",
+    }
+    new_tags = {**old_tags, "usedby": "test-infra"}
+
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": old_tags,
+        }
+    )
+    new_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": new_tags,
+        }
+    )
+
+    try:
+        # TiDB JSON text representation does not preserve this input key order.
+        # Cleanup must select the predecessor by source_row_hash, not JSON text.
+        with engine.begin() as connection:
+            _insert_summary_row(
+                connection,
+                {
+                    **old_row,
+                    "vendor_tags_json": (
+                        '{"shared_pool":"2076551309477019648",'
+                        '"cluster":"10149878793099322221"}'
+                    ),
+                },
+            )
+        write_summary_rows(engine, [new_row], dry_run=False)
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT vendor_tags_json, ROUND(SUM(net_cost), 2) AS net_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY vendor_tags_json
+                    """
+                )
+            ).all()
+        assert rows == [
+            (
+                '{"cluster":"10149878793099322221",'
+                '"shared_pool":"2076551309477019648","usedby":"test-infra"}',
+                7.0,
+            )
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_removes_null_tag_predecessor_when_usedby_is_added() -> None:
+    engine = _sqlite_engine()
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": None,
+        }
+    )
+    new_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": {"cluster": "cluster-1", "usedby": "test-infra"},
+        }
+    )
+
+    try:
+        write_summary_rows(engine, [old_row], dry_run=False)
+        write_summary_rows(engine, [new_row], dry_run=False)
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT vendor_tags_json, ROUND(SUM(net_cost), 2) AS net_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY vendor_tags_json
+                    """
+                )
+            ).all()
+        assert rows == [('{"cluster":"cluster-1","usedby":"test-infra"}', 7.0)]
     finally:
         engine.dispose()
 

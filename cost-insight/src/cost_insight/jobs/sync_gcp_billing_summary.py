@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import pickle
 import re
@@ -467,7 +468,7 @@ def _write_summary_rows(
         return
     if cleanup_superseded and target_table == SUMMARY_TABLE:
         _delete_legacy_summary_rows(connection, rows)
-        _delete_superseded_unlabeled_summary_rows(connection, rows)
+        _delete_superseded_summary_rows(connection, rows)
         _delete_superseded_owner_override_rows(connection, rows)
     connection.execute(
         _build_upsert_statement(connection, target_table=target_table),
@@ -680,34 +681,49 @@ def _delete_superseded_owner_override_rows(
             connection.execute(_DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS, params)
 
 
-def _delete_superseded_unlabeled_summary_rows(
+def _superseded_summary_row_hash(row: dict[str, Any]) -> str | None:
+    if row.get("vendor") != "aws" or row.get("vendor_tags_json") is None:
+        return None
+    tags = json.loads(row["vendor_tags_json"])
+    if "usedby" not in tags:
+        return None
+    tags.pop("usedby")
+    return build_summary_row_hash(
+        {**row, "vendor_tags_json": normalize_vendor_tags_json(tags)}
+    )
+
+
+def _delete_superseded_summary_rows(
     connection: Connection,
     rows: Sequence[dict[str, Any]],
 ) -> None:
-    # Label backfills change the hash shape; remove the old legacy unlabeled row first.
-    # The reverse direction is handled by partition replacement to avoid deleting
-    # legitimate labeled rows when labeled and unlabeled groups coexist.
-    params = [
-        {
-            "vendor": row.get("vendor") or "",
-            "account_id": row.get("account_id") or "",
-            "billing_account_id": row.get("billing_account_id") or "",
-            "export_partition_date": row["export_partition_date"],
-            "usage_date": row["usage_date"],
-            "service_name": row.get("service_name") or "",
-            "sku_name": row.get("sku_name") or "",
-            "region": row.get("region") or "",
-            "author": row.get("author") or "",
-            "org": row.get("org") or "",
-            "repo": row.get("repo") or "",
-            "target_branch": row.get("target_branch") or "",
-            "resource_name": row.get("resource_name") or "",
-        }
-        for row in rows
-        if row.get("vendor_tags_json") is not None
-    ]
+    # Label backfills change the hash shape. For usedby, match the deterministic
+    # predecessor hash instead of comparing a TiDB JSON column as text.
+    params = []
+    for row in rows:
+        superseded_source_row_hash = _superseded_summary_row_hash(row)
+        if row.get("vendor_tags_json") is None and superseded_source_row_hash is None:
+            continue
+        params.append(
+            {
+                "vendor": row.get("vendor") or "",
+                "account_id": row.get("account_id") or "",
+                "billing_account_id": row.get("billing_account_id") or "",
+                "export_partition_date": row["export_partition_date"],
+                "usage_date": row["usage_date"],
+                "service_name": row.get("service_name") or "",
+                "sku_name": row.get("sku_name") or "",
+                "region": row.get("region") or "",
+                "author": row.get("author") or "",
+                "org": row.get("org") or "",
+                "repo": row.get("repo") or "",
+                "target_branch": row.get("target_branch") or "",
+                "resource_name": row.get("resource_name") or "",
+                "superseded_source_row_hash": superseded_source_row_hash,
+            }
+        )
     if params:
-        connection.execute(_DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS, params)
+        connection.execute(_DELETE_SUPERSEDED_SUMMARY_ROWS, params)
 
 
 def _is_owner_override_row(row: dict[str, Any]) -> bool:
@@ -1096,7 +1112,7 @@ _DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS = text(
 )
 
 
-_DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS = text(
+_DELETE_SUPERSEDED_SUMMARY_ROWS = text(
     """
     DELETE FROM cost_bq_export_summary_daily
     WHERE vendor = :vendor
@@ -1112,7 +1128,10 @@ _DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS = text(
       AND COALESCE(repo, '') = :repo
       AND COALESCE(target_branch, '') = :target_branch
       AND COALESCE(resource_name, '') = :resource_name
-      AND vendor_tags_json IS NULL
+      AND (
+        vendor_tags_json IS NULL
+        OR source_row_hash = :superseded_source_row_hash
+      )
     """
 )
 

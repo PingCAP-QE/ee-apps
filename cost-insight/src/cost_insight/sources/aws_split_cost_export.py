@@ -668,6 +668,7 @@ branch_rows AS (
     raw.service,
     raw.project,
     raw.service_exec_id,
+    raw.author_fallback AS usedby,
     COALESCE(raw.owner, raw.author_fallback) AS author,
     raw.org,
     raw.pricing_unit,
@@ -726,6 +727,7 @@ branch_rows AS (
     parent.service,
     parent.project,
     parent.service_exec_id,
+    parent.author_fallback AS usedby,
     COALESCE(parent.owner, parent.author_fallback) AS author,
     parent.org,
     parent.pricing_unit,
@@ -803,6 +805,7 @@ branch_rows AS (
     child.service,
     child.project,
     child.service_exec_id,
+    COALESCE(child.author_fallback, parent.author_fallback) AS usedby,
     COALESCE(child.owner, child.author_fallback) AS author,
     child.org,
     parent.pricing_unit,
@@ -853,8 +856,12 @@ SELECT
   org,
   project AS repo,
   CASE
-    WHEN shared_pool IS NULL AND cluster IS NULL THEN NULL
-    ELSE TO_JSON_STRING(STRUCT(cluster AS cluster, shared_pool AS shared_pool))
+    WHEN usedby IS NULL AND shared_pool IS NULL AND cluster IS NULL THEN NULL
+    ELSE TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+      'usedby', usedby,
+      'cluster', cluster,
+      'shared_pool', shared_pool
+    )))
   END AS {"summary_vendor_tags_json" if resource_level else "vendor_tags_json"},
   {"vendor_tags_json," if resource_level else ""}
   {resource_columns}
@@ -882,6 +889,7 @@ GROUP BY
   service,
   project,
   service_exec_id,
+  usedby,
   author,
   org,
   cluster,

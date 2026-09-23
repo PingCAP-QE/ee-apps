@@ -269,24 +269,44 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
     if normalized["resource_name"] is None:
         raise ValueError(f"Missing resource_name in unmatched resource row: {row!r}")
     normalized["is_split_source"] = is_split_source
+    normalized["source_summary_row_hash"] = build_gcp_summary_row_hash(
+        _summary_identity_for_resource_row(normalized)
+    )
+    normalized["source_row_hash"] = build_unmatched_resource_row_hash(normalized)
+    return normalized
+
+
+def _summary_identity_for_resource_row(row: dict[str, Any]) -> dict[str, Any]:
     summary_identity = {
-        **normalized,
-        "resource_name": normalized["summary_resource_name"],
+        **row,
+        "resource_name": row["summary_resource_name"],
         # AWS summaries retain only compact routing tags. A full provider-label
         # fallback here would produce a detail hash with no matching summary.
         "vendor_tags_json": (
-            normalized["summary_vendor_tags_json"]
-            if normalized["vendor"] == "aws"
-            else normalized["summary_vendor_tags_json"] or normalized["vendor_tags_json"]
+            row["summary_vendor_tags_json"]
+            if row["vendor"] == "aws"
+            else row["summary_vendor_tags_json"] or row["vendor_tags_json"]
         ),
     }
     # GCP's summary query intentionally rolls all resource labels into one
     # attribution fact; labels remain resource metadata, not summary identity.
-    if normalized["vendor"] == "gcp":
+    if row["vendor"] == "gcp":
         summary_identity["vendor_tags_json"] = None
-    normalized["source_summary_row_hash"] = build_gcp_summary_row_hash(summary_identity)
-    normalized["source_row_hash"] = build_unmatched_resource_row_hash(normalized)
-    return normalized
+    return summary_identity
+
+
+def _superseded_source_summary_row_hash(row: dict[str, Any]) -> str | None:
+    if row.get("vendor") != "aws" or row.get("summary_vendor_tags_json") is None:
+        return None
+    tags = json.loads(row["summary_vendor_tags_json"])
+    if "usedby" not in tags:
+        return None
+    tags.pop("usedby")
+    old_row = {
+        **row,
+        "summary_vendor_tags_json": normalize_vendor_tags_json(tags),
+    }
+    return build_gcp_summary_row_hash(_summary_identity_for_resource_row(old_row))
 
 
 def build_unmatched_resource_row_hash(row: dict[str, Any]) -> str:
@@ -320,7 +340,7 @@ def write_unmatched_resource_rows(
         return 0
     with engine.begin() as connection:
         if target_table == UNMATCHED_RESOURCE_TABLE:
-            _delete_superseded_unlabeled_resource_rows(connection, rows)
+            _delete_superseded_resource_rows(connection, rows)
         for start in range(0, len(rows), RESOURCE_WRITE_BATCH_SIZE):
             _write_unmatched_resource_rows(
                 connection,
@@ -515,34 +535,38 @@ def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[d
     return bind_decimal_rows(bound_rows)
 
 
-def _delete_superseded_unlabeled_resource_rows(
+def _delete_superseded_resource_rows(
     connection: Connection,
     rows: Sequence[dict[str, Any]],
 ) -> None:
-    # Label backfills change the hash shape; remove the old legacy unlabeled row first.
-    # The reverse direction is handled by partition replacement to avoid deleting
-    # legitimate labeled rows when labeled and unlabeled groups coexist.
-    params = [
-        {
-            "vendor": row.get("vendor") or "",
-            "account_id": row.get("account_id") or "",
-            "billing_account_id": row.get("billing_account_id") or "",
-            "export_partition_date": row["export_partition_date"],
-            "usage_date": row["usage_date"],
-            "service_name": row.get("service_name") or "",
-            "sku_name": row.get("sku_name") or "",
-            "namespace": row.get("namespace") or "",
-            "author": row.get("author") or "",
-            "org": row.get("org") or "",
-            "repo": row.get("repo") or "",
-            "target_branch": row.get("target_branch") or "",
-            "resource_name": row.get("resource_name") or "",
-        }
-        for row in rows
-        if row.get("vendor_tags_json") is not None
-    ]
+    # Label backfills change the hash shape. AWS usedby is added to the compact
+    # summary tag set, while resource rows retain full provider tags, so match
+    # the prior source-summary hash rather than the resource JSON.
+    params = []
+    for row in rows:
+        superseded_source_summary_row_hash = _superseded_source_summary_row_hash(row)
+        if row.get("vendor_tags_json") is None and superseded_source_summary_row_hash is None:
+            continue
+        params.append(
+            {
+                "vendor": row.get("vendor") or "",
+                "account_id": row.get("account_id") or "",
+                "billing_account_id": row.get("billing_account_id") or "",
+                "export_partition_date": row["export_partition_date"],
+                "usage_date": row["usage_date"],
+                "service_name": row.get("service_name") or "",
+                "sku_name": row.get("sku_name") or "",
+                "namespace": row.get("namespace") or "",
+                "author": row.get("author") or "",
+                "org": row.get("org") or "",
+                "repo": row.get("repo") or "",
+                "target_branch": row.get("target_branch") or "",
+                "resource_name": row.get("resource_name") or "",
+                "superseded_source_summary_row_hash": superseded_source_summary_row_hash,
+            }
+        )
     if params:
-        connection.execute(_DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS, params)
+        connection.execute(_DELETE_SUPERSEDED_RESOURCE_ROWS, params)
 
 
 def _build_upsert_statement(
@@ -774,7 +798,7 @@ _INVALIDATE_RESOURCE_SERVING_PUBLICATION_RANGE = text(
 )
 
 
-_DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS = text(
+_DELETE_SUPERSEDED_RESOURCE_ROWS = text(
     """
     DELETE FROM cost_unmatched_resource_daily
     WHERE vendor = :vendor
@@ -790,6 +814,9 @@ _DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS = text(
       AND COALESCE(repo, '') = :repo
       AND COALESCE(target_branch, '') = :target_branch
       AND resource_name = :resource_name
-      AND vendor_tags_json IS NULL
+      AND (
+        vendor_tags_json IS NULL
+        OR source_summary_row_hash = :superseded_source_summary_row_hash
+      )
     """
 )

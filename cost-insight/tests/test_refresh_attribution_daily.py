@@ -206,6 +206,51 @@ def test_allocation_tag_match_prefers_underscore_shared_pool() -> None:
     assert json.loads(matched_tags) == {"shared_pool": "canonical-pool"}
 
 
+def test_summary_match_tags_restore_legacy_usedby_without_overwriting_explicit_tags() -> None:
+    engine = _sqlite_engine()
+    expression = refresh_attribution_daily._summary_tags_for_match_sql(
+        ":vendor_tags_json",
+        ":author",
+        ":source_schema_version",
+        ":owner",
+    )
+    try:
+        with engine.connect() as connection:
+            restored = connection.execute(
+                text(f"SELECT {expression}"),
+                {
+                    "vendor_tags_json": '{"cluster":"cluster-1"}',
+                    "author": "test-infra",
+                    "source_schema_version": None,
+                    "owner": None,
+                },
+            ).scalar_one()
+            explicit = connection.execute(
+                text(f"SELECT {expression}"),
+                {
+                    "vendor_tags_json": '{"usedby":"explicit"}',
+                    "author": "test-infra",
+                    "source_schema_version": None,
+                    "owner": None,
+                },
+            ).scalar_one()
+            split_owner = connection.execute(
+                text(f"SELECT {expression}"),
+                {
+                    "vendor_tags_json": None,
+                    "author": "owner@pingcap.com",
+                    "source_schema_version": "aws_split_cost_v1",
+                    "owner": "owner@pingcap.com",
+                },
+            ).scalar_one()
+    finally:
+        engine.dispose()
+
+    assert json.loads(restored) == {"cluster": "cluster-1", "usedby": "test-infra"}
+    assert json.loads(explicit) == {"usedby": "explicit"}
+    assert split_owner is None
+
+
 def test_watermark_formats_dates() -> None:
     assert _watermark(
         vendor="gcp",
@@ -293,9 +338,10 @@ def test_run_refresh_attribution_from_summary_dry_run_counts_summary_rows() -> N
         engine.dispose()
 
 
-def test_run_refresh_aws_attribution_requires_tcms_before_writing() -> None:
+@pytest.mark.parametrize("vendor", ["aws", "azure"])
+def test_run_refresh_tag_allocated_vendor_requires_tcms_before_writing(vendor: str) -> None:
     engine = _sqlite_engine()
-    source = CostAttributionSource(vendor="aws", account_id="946646677266")
+    source = CostAttributionSource(vendor=vendor, account_id="account-1")
     try:
         with pytest.raises(ValueError, match="tcms_allocation_table is required"):
             run_refresh_cost_attribution_from_summary(
@@ -1836,6 +1882,16 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                         2, 'aws', '946646677266',
                         '{"cluster":"cluster-internal"}', 'bob@pingcap.com',
                         'TestInfra', 'project-internal', 'exec-internal', NULL, NULL
+                      ),
+                      (
+                        3, 'aws', '946646677266',
+                        '{"usedby":"test-infra"}', 'bob@pingcap.com',
+                        'TestInfra', 'project-usedby', 'exec-usedby', NULL, NULL
+                      ),
+                      (
+                        4, 'azure', 'subscription-1',
+                        '{"usedby":"test-infra"}', 'bob@pingcap.com',
+                        'TestInfra', 'project-azure', 'exec-azure', NULL, NULL
                       )
                     """
                 )
@@ -1845,27 +1901,42 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                     """
                     INSERT INTO cost_bq_export_summary_daily (
                       usage_date, vendor, account_id, service_name, sku_name, region, org, repo,
-                      target_branch, vendor_tags_json, author, source_schema_version, owner, list_cost,
+                      target_branch, resource_name, vendor_tags_json, author, source_schema_version, owner, list_cost,
                       effective_cost, credit_amount, net_cost
                     ) VALUES
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'ExternalOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        'ExternalOwnerUsage', 'us-east-1', NULL, NULL, NULL, NULL,
                         '{"cluster":"cluster-external"}',
                         NULL, NULL, NULL, 10, 10, 0, 10
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'InternalOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        'InternalOwnerUsage', 'us-east-1', NULL, NULL, NULL, NULL,
                         '{"cluster":"cluster-internal"}',
                         NULL, NULL, NULL, 20, 20, 0, 20
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'EncodedOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        'EncodedOwnerUsage', 'us-east-1', NULL, NULL, NULL, NULL,
                         NULL,
                         NULL, 'aws_split_cost_v1', 'tiworkload_at_pingcap.com',
                         30, 30, 0, 30
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'LegacyUsedbyUsage', 'us-east-1', NULL, NULL, NULL, NULL,
+                        NULL,
+                        'test-infra', NULL, NULL,
+                        40, 40, 0, 40
+                      ),
+                      (
+                        '2026-07-14', 'azure', 'subscription-1', 'Microsoft.Compute',
+                        'Virtual Machine', 'westus2', NULL, NULL, NULL,
+                        '/subscriptions/subscription-1/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm-1',
+                        '{"usedby":"test-infra"}',
+                        NULL, NULL, NULL,
+                        50, 50, 0, 50
                       )
                     """
                 )
@@ -1879,7 +1950,7 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 3
+        assert summary.rows_inserted == 4
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
@@ -1887,6 +1958,9 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                     SELECT
                       sku_name,
                       owner,
+                      service,
+                      project,
+                      allocate_method,
                       attribution_key,
                       attribution_source,
                       attribution_status,
@@ -1908,7 +1982,16 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
         encoded_row = next(
             row for row in rows if row["sku_name"] == "EncodedOwnerUsage"
         )
+        usedby_row = next(
+            row for row in rows if row["sku_name"] == "LegacyUsedbyUsage"
+        )
 
+        assert usedby_row["owner"] == "bob@pingcap.com"
+        assert usedby_row["service"] == "TestInfra"
+        assert usedby_row["project"] == "project-usedby"
+        assert usedby_row["allocate_method"] == "vendor_tag"
+        assert usedby_row["attribution_source"] == "owner_email"
+        assert usedby_row["attribution_status"] == "matched"
         assert external_row["owner"] == "external@vendor.com"
         assert external_row["attribution_key"] == "owner_email:external@vendor.com"
         assert external_row["attribution_source"] == "owner_email"
@@ -1928,6 +2011,38 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
         assert encoded_row["attribution_source"] == "source_label"
         assert encoded_row["attribution_status"] == "matched"
         assert encoded_row["employee_id"] == 3
+
+        azure_summary = run_refresh_cost_attribution_from_summary(
+            engine,
+            source=CostAttributionSource(vendor="azure", account_id="subscription-1"),
+            start_date=date(2026, 7, 14),
+            end_date=date(2026, 7, 14),
+            tcms_allocation_table="resource_allocation",
+        )
+        assert azure_summary.rows_inserted == 1
+        with engine.begin() as connection:
+            azure_row = connection.execute(
+                text(
+                    """
+                    SELECT resource_name, owner, service, project, allocate_method,
+                           attribution_source, attribution_status
+                    FROM cost_attribution_daily
+                    WHERE vendor = 'azure'
+                    """
+                )
+            ).mappings().one()
+        assert dict(azure_row) == {
+            "resource_name": (
+                "/subscriptions/subscription-1/resourceGroups/rg/"
+                "providers/Microsoft.Compute/virtualMachines/vm-1"
+            ),
+            "owner": "bob@pingcap.com",
+            "service": "TestInfra",
+            "project": "project-azure",
+            "allocate_method": "vendor_tag",
+            "attribution_source": "owner_email",
+            "attribution_status": "matched",
+        }
     finally:
         engine.dispose()
 
@@ -1992,6 +2107,7 @@ def test_aws_summary_insert_statement_keeps_tcms_matching_without_pool_weighting
 
     assert "`tcms_cost`.`resource_allocation` allocation_raw" in logical_sql
     assert "summary.vendor_tags_json" in logical_sql
+    assert "JSON_SET(COALESCE(summary.vendor_tags_json, JSON_OBJECT()), '$.usedby'" in logical_sql
     assert "match_tags_json" in logical_sql
     assert "JSON_REMOVE" in logical_sql
     assert "missing_label_allocation" in logical_sql
@@ -2009,7 +2125,20 @@ def test_aws_summary_insert_statement_keeps_tcms_matching_without_pool_weighting
     assert "label_shared" not in logical_sql
 
 
-def test_non_aws_summary_insert_uses_existing_statement() -> None:
+def test_azure_summary_insert_uses_tcms_matching() -> None:
+    statements = _summary_insert_statements(
+        source=CostAttributionSource(vendor="azure", account_id="subscription-1"),
+        tcms_allocation_table="tcms_cost.resource_allocation",
+    )
+
+    assert len(statements) == 1
+    logical_sql = str(statements[0])
+    assert "`tcms_cost`.`resource_allocation` allocation_raw" in logical_sql
+    assert "attributed.resource_name" in logical_sql
+    assert "COALESCE(attributed.resource_name, '')" in logical_sql
+
+
+def test_gcp_summary_insert_uses_existing_statement() -> None:
     statements = _summary_insert_statements(
         source=CostAttributionSource(vendor="gcp", account_id="pingcap-testing-account"),
         tcms_allocation_table="tcms_cost.resource_allocation",
@@ -2023,8 +2152,9 @@ def test_non_aws_summary_insert_uses_existing_statement() -> None:
     (
         (SOURCE, None, 7),
         (CostAttributionSource(vendor="aws", account_id="946646677266"), "tcms_cost.resource_allocation", 11),
+        (CostAttributionSource(vendor="azure", account_id="subscription-1"), "tcms_cost.resource_allocation", 11),
     ),
-    ids=("standard", "tcms"),
+    ids=("standard", "aws-tcms", "azure-tcms"),
 )
 def test_summary_insert_variants_do_not_use_tidb_unsupported_on_subqueries(
     source: CostAttributionSource,

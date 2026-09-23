@@ -174,8 +174,12 @@ SELECT
   org,
   repo,
   CASE
-    WHEN shared_pool IS NULL AND `cluster` IS NULL THEN NULL
-    ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))
+    WHEN author IS NULL AND shared_pool IS NULL AND `cluster` IS NULL THEN NULL
+    ELSE TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+      'usedby', author,
+      'cluster', `cluster`,
+      'shared_pool', shared_pool
+    )))
   END AS vendor_tags_json,
   SUM(list_cost) AS list_cost,
   ROUND(SUM(effective_cost), 2) AS effective_cost,
@@ -270,8 +274,12 @@ SELECT
   service_name, sku_name, region, namespace, author, org, repo,
   CAST(NULL AS STRING) AS target_branch,
   CAST(NULL AS STRING) AS summary_resource_name,
-  CASE WHEN shared_pool IS NULL AND `cluster` IS NULL THEN NULL
-    ELSE TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))
+  CASE WHEN author IS NULL AND shared_pool IS NULL AND `cluster` IS NULL THEN NULL
+    ELSE TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+      'usedby', author,
+      'cluster', `cluster`,
+      'shared_pool', shared_pool
+    )))
   END AS summary_vendor_tags_json,
   vendor_tags_json,
   resource_id,

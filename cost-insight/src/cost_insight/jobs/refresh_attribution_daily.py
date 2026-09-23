@@ -17,6 +17,7 @@ LOG = logging.getLogger(__name__)
 
 SUMMARY_JOB_NAME = "refresh_cost_attribution_from_summary"
 _TENCENT_CI_SOURCE = TENCENT_CI_SOURCE
+_TCMS_ALLOCATION_VENDORS = frozenset({"aws", "azure"})
 
 
 @dataclass(frozen=True)
@@ -50,9 +51,11 @@ def run_refresh_cost_attribution_from_summary(
         raise ValueError("start_date must be before or equal to end_date")
     if (source.vendor, source.account_id) == _TENCENT_CI_SOURCE:
         raise ValueError("Tencent CI requires allocate-tencent-ci-cost")
-    if source.vendor == "aws" and not dry_run:
+    if source.vendor in _TCMS_ALLOCATION_VENDORS and not dry_run:
         if not tcms_allocation_table:
-            raise ValueError("tcms_allocation_table is required for AWS attribution refresh")
+            raise ValueError(
+                f"tcms_allocation_table is required for {source.vendor} attribution refresh"
+            )
         _validate_tcms_allocation_table(engine, tcms_allocation_table)
 
     params = {
@@ -169,7 +172,7 @@ def _summary_insert_statements(
     source: CostAttributionSource,
     tcms_allocation_table: str | None,
 ):
-    if source.vendor != "aws" or not tcms_allocation_table:
+    if source.vendor not in _TCMS_ALLOCATION_VENDORS or not tcms_allocation_table:
         return (_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,)
     quoted_tcms_table = _quote_table_identifier(tcms_allocation_table)
     return (_build_insert_attribution_daily_from_summary_with_tcms(quoted_tcms_table),)
@@ -355,6 +358,27 @@ END
 _SUMMARY_SHARED_POOL = _json_tag_value_sql("summary.vendor_tags_json", "shared_pool")
 _SUMMARY_CLUSTER = _json_tag_value_sql("summary.vendor_tags_json", "cluster")
 _SUMMARY_IS_SPLIT_SOURCE = "summary.source_schema_version = 'aws_split_cost_v1'"
+
+
+def _summary_tags_for_match_sql(
+    tags_expression: str = "summary.vendor_tags_json",
+    author_expression: str = "summary.author",
+    schema_expression: str = "summary.source_schema_version",
+    owner_expression: str = "summary.owner",
+) -> str:
+    author = f"NULLIF(TRIM({author_expression}), '')"
+    return f"""
+CASE
+  WHEN {author} IS NULL
+    OR ({schema_expression} = 'aws_split_cost_v1' AND {owner_expression} IS NOT NULL)
+    OR JSON_EXTRACT({tags_expression}, '$.usedby') IS NOT NULL
+    THEN {tags_expression}
+  ELSE JSON_SET(COALESCE({tags_expression}, JSON_OBJECT()), '$.usedby', {author})
+END
+""".strip()
+
+
+_SUMMARY_MATCH_TAGS_JSON = _summary_tags_for_match_sql()
 _ALLOCATION_MATCH_CLUSTER = _json_tag_value_sql(
     "allocation.match_tags_json", "cluster"
 )
@@ -762,7 +786,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.org,
           attributed.repo,
           attributed.target_branch,
-          NULL AS resource_name,
+          attributed.resource_name,
           attributed.vendor_tags_json,
           attributed.source_allocation_scope,
           attributed.namespace,
@@ -805,7 +829,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.org, ''),
               COALESCE(attributed.repo, ''),
               COALESCE(attributed.target_branch, ''),
-              '',
+              COALESCE(attributed.resource_name, ''),
               COALESCE(attributed.vendor_tags_json, ''),
               COALESCE(attributed.source_allocation_scope, 'direct'),
               COALESCE(attributed.namespace, ''),
@@ -839,7 +863,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.org, ''),
               COALESCE(attributed.repo, ''),
               COALESCE(attributed.target_branch, ''),
-              '',
+              COALESCE(attributed.resource_name, ''),
               COALESCE(attributed.vendor_tags_json, ''),
               COALESCE(attributed.author, ''),
               COALESCE(attributed.owner, ''),
@@ -871,6 +895,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             base.org,
             base.repo,
             base.target_branch,
+            base.resource_name,
             base.vendor_tags_json,
             base.source_allocation_scope,
             base.namespace,
@@ -969,6 +994,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               summary.org,
               summary.repo,
               summary.target_branch,
+              summary.resource_name,
               summary.source_row_hash AS source_summary_row_hash,
               COALESCE(summary.source_allocation_scope, 'direct') AS source_allocation_scope,
               summary.namespace,
@@ -1085,8 +1111,11 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                  AND (
                    JSON_LENGTH(allocation.match_tags_json) = 0
                    OR (
-                     summary.vendor_tags_json IS NOT NULL
-                     AND JSON_CONTAINS(summary.vendor_tags_json, allocation.match_tags_json)
+                     ({_SUMMARY_MATCH_TAGS_JSON}) IS NOT NULL
+                     AND JSON_CONTAINS(
+                       ({_SUMMARY_MATCH_TAGS_JSON}),
+                       allocation.match_tags_json
+                     )
                    )
                  )
                  AND summary.usage_date >= COALESCE(allocation.valid_from, '1900-01-01')
@@ -1173,6 +1202,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.org,
           attributed.repo,
           attributed.target_branch,
+          attributed.resource_name,
           attributed.vendor_tags_json,
           attributed.source_allocation_scope,
           attributed.namespace,
