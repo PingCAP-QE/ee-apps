@@ -1678,7 +1678,7 @@ export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
                 <th scope="row">
                   <div className="issue-cell">
                     <a href={row.issue_url} target="_blank" rel="noreferrer" title={row.display_name}>
-                      {row.display_name}{row.issue_number ? ` #${row.issue_number}` : ""}
+                      {row.issue_number ? `[#${row.issue_number}] ` : ""}{row.case_name}
                     </a>
                     <div className="issue-cell__meta">
                       <span className={`status-pill status-pill--${String(row.issue_status).toLowerCase()}`}>
@@ -1767,8 +1767,8 @@ function sortIssueWeeklyRows(rows, sort) {
   return [...rows].sort((left, right) => {
     if (sort.column === "case_name") {
       return (
-        String(left.display_name || left.case_name || "").localeCompare(
-          String(right.display_name || right.case_name || ""),
+        String(left.case_name || "").localeCompare(
+          String(right.case_name || ""),
         ) * direction
       );
     }
@@ -1780,8 +1780,8 @@ function sortIssueWeeklyRows(rows, sort) {
     if (difference) {
       return difference * direction;
     }
-    return String(left.display_name || left.case_name || "").localeCompare(
-      String(right.display_name || right.case_name || ""),
+    return String(left.case_name || "").localeCompare(
+      String(right.case_name || ""),
     );
   });
 }
