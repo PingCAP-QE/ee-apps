@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Mapping
 
 
 def nullable_text(value: Any) -> str | None:
@@ -82,6 +82,16 @@ def hash_value(value: Any) -> str | int | float | None:
     if isinstance(value, Decimal):
         return str(value)
     return str(value)
+
+
+def tencent_ci_pool_key(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    service = str(row.get("service") or "")
+    return (
+        str(row.get("currency") or "USD").upper(),
+        str(row.get("service_name") or ""),
+        service,
+        str(row.get("project") or service),
+    )
 
 
 def bind_decimal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

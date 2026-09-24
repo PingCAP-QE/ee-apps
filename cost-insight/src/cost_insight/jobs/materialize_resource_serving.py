@@ -21,7 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import TENCENT_CI_SOURCE
-from cost_insight.common.row_utils import bind_decimal_rows
+from cost_insight.common.row_utils import bind_decimal_rows, tencent_ci_pool_key
 
 _AMOUNT_QUANTUM = Decimal("0.000000001")
 _AMOUNTS = ("list_cost", "effective_cost", "credit_amount", "net_cost")
@@ -223,13 +223,13 @@ def build_tencent_resource_serving_rows(
     shared_sources: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
     for source in sources:
         if source.get("source_allocation_scope") == "tencent_ci_shared":
-            shared_sources[_tencent_pool_key(source)].append(source)
+            shared_sources[tencent_ci_pool_key(source)].append(source)
 
     resources: dict[tuple[str, str, str, str], dict[tuple[str, str, str], dict[str, Any]]] = defaultdict(dict)
     for summary in summaries:
         if str(summary["source_row_hash"]) in direct_hashes:
             continue
-        pool_resources = resources[_tencent_pool_key(summary)]
+        pool_resources = resources[tencent_ci_pool_key(summary)]
         resource_name = str(summary.get("resource_name") or "")
         resource_key = (
             resource_name,
@@ -295,15 +295,6 @@ def build_tencent_resource_serving_rows(
 
     return _aggregate_contributions(contributions)
 
-
-def _tencent_pool_key(row: Mapping[str, Any]) -> tuple[str, str, str, str]:
-    service = str(row.get("service") or "")
-    return (
-        _currency(row),
-        str(row.get("service_name") or ""),
-        service,
-        str(row.get("project") or service),
-    )
 
 
 def _tencent_reference_field(rows: Sequence[Mapping[str, Any]]) -> str:

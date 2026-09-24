@@ -3,6 +3,7 @@ export const MIGRATE_STATUS_PATH = "/migrate-status";
 export const RUNTIME_INSIGHTS_PATH = "/runtime-insights";
 export const COST_PATH = "/cost";
 export const WEEKLY_COST_PATH = "/qa-cost-weekly";
+export const CI_WEEKLY_COST_PATH = "/ci-cost-weekly";
 export const ALL_COST_SOURCES = "all";
 export const DEFAULT_COST_SOURCE = "gcp:pingcap-testing-account";
 export const COST_DEFAULT_LAG_DAYS = 4;
@@ -34,6 +35,7 @@ export const NAV_PATHS = [
   MIGRATE_STATUS_PATH,
   COST_PATH,
   WEEKLY_COST_PATH,
+  CI_WEEKLY_COST_PATH,
   RUNTIME_INSIGHTS_PATH,
 ];
 
@@ -111,7 +113,7 @@ export function readFiltersFromSearch(defaultRange, pathname, search) {
 }
 
 export function buildFilterSearch(filters, pathname) {
-  if (pathname === "/" || pathname === WEEKLY_COST_PATH) {
+  if (pathname === "/" || pathname === WEEKLY_COST_PATH || pathname === CI_WEEKLY_COST_PATH) {
     return "";
   }
   const normalized = normalizeFiltersForPath(pathname, filters);

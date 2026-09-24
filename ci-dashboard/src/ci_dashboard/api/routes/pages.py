@@ -18,6 +18,7 @@ from ci_dashboard.api.queries.pages import (
     get_cost_trend_page,
     get_cost_unmatched_resources_page,
     get_cost_weekly_account_summaries_page,
+    get_ci_weekly_cost_report_page,
     get_weekly_cost_allocation_page,
     get_weekly_cost_report_page,
     get_weekly_cost_trend_page,
@@ -138,6 +139,13 @@ def cost_weekly_account_summaries_page(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_weekly_account_summaries_page(engine, filters)
+
+
+@router.get("/ci-weekly-cost")
+def ci_weekly_cost_report_page(
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_ci_weekly_cost_report_page(engine)
 
 
 @router.get("/weekly-cost")

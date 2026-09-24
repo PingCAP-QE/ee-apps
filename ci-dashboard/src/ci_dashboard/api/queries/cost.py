@@ -39,6 +39,10 @@ COST_SHARE_LIMIT = 8
 WEEKLY_COST_TEAM_SHARE_LIMIT = 8
 WEEKLY_COST_UNATTRIBUTED_TEAM_NAME = "Unattributed"
 WEEKLY_COST_NO_PROJECT_NAME = "(no project)"
+CI_WEEKLY_COST_SOURCES = (
+    ("gcp", "pingcap-testing-account"),
+    ("tencent", "100050658403"),
+)
 VALID_COST_SHARE_DIMENSIONS = frozenset(
     {"account", "owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
 )
@@ -899,6 +903,446 @@ def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dic
     return report
 
 
+def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
+    """Return the fixed two-account CI budget pace and active-period cost trend."""
+    today = _today()
+    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_end = last_week_start + timedelta(days=6)
+    previous_week_end = last_week_start - timedelta(days=1)
+    previous_week_start = previous_week_end - timedelta(days=6)
+    eight_week_start = last_week_start - timedelta(days=49)
+    previous_month_end = today.replace(day=1) - timedelta(days=1)
+    previous_month_start = previous_month_end.replace(day=1)
+    report: dict[str, Any] = {
+        "meta": {
+            "calendar_timezone": "UTC",
+            "cost_metric": "budget_basis_spend",
+        },
+        "last_complete_week": _ci_weekly_cost_period(last_week_start, last_week_end),
+        "previous_complete_week": _ci_weekly_cost_period(previous_week_start, previous_week_end),
+        "last_complete_month": _ci_weekly_cost_period(previous_month_start, previous_month_end),
+        "accounts": [],
+        "budget_period_cost": _ci_weekly_cost_empty_budget_period_cost(),
+        "weekly_cost_history": {"series": []},
+        "last_week_cost_share": _ci_weekly_cost_empty_last_week_cost_share(),
+    }
+
+    with engine.begin() as connection:
+        budget_rows = _ci_weekly_cost_budget_rows(connection)
+        active_plans = _ci_weekly_cost_active_plans(budget_rows, today)
+        source_bases = _ci_weekly_cost_source_bases(budget_rows)
+        data_start = min(
+            [eight_week_start, previous_month_start, *(plan["period_start_date"] for plan in active_plans)]
+        )
+        cost_values = _ci_weekly_cost_values(connection, data_start, today)
+        report["last_week_cost_share"] = _ci_weekly_cost_last_week_cost_share(
+            connection,
+            last_week_start,
+            last_week_end,
+        )
+
+    report["accounts"] = [
+        _ci_weekly_cost_account(
+            source,
+            budget_rows.get(source, ()),
+            source_bases.get(source),
+            cost_values,
+            last_week_start,
+            last_week_end,
+            previous_week_start,
+            previous_week_end,
+            previous_month_start,
+            previous_month_end,
+        )
+        for source in CI_WEEKLY_COST_SOURCES
+    ]
+    report["budget_period_cost"] = _ci_weekly_cost_budget_period_cost(
+        active_plans,
+        cost_values,
+        today,
+    )
+    report["weekly_cost_history"] = _ci_weekly_cost_weekly_history(
+        cost_values,
+        eight_week_start,
+        last_week_end,
+    )
+    return report
+
+
+def _ci_weekly_cost_period(start_date: date, end_date: date) -> dict[str, str]:
+    return {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
+
+
+def _ci_weekly_cost_empty_budget_period_cost() -> dict[str, Any]:
+    return {"metric": "budget_basis_spend", "accounts": []}
+
+
+def _ci_weekly_cost_empty_last_week_cost_share() -> dict[str, Any]:
+    return {"metric": "list_cost", "total_list_cost": 0.0, "teams": {"items": []}, "repos": {"items": []}}
+
+
+def _ci_weekly_cost_last_week_cost_share(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> dict[str, Any]:
+    list_cost_expr = _billing_report_list_cost_expr("c")
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project, c.repo,
+                   SUM(COALESCE({list_cost_expr}, 0)) AS list_cost
+            FROM cost_attribution_daily c
+            WHERE (
+                (c.vendor = 'gcp' AND c.account_id = 'pingcap-testing-account')
+                OR (c.vendor = 'tencent' AND c.account_id = '100050658403')
+            )
+              AND c.usage_date BETWEEN :start_date AND :end_date
+            GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project, c.repo
+            """
+        ),
+        {"start_date": start_date, "end_date": end_date},
+    ).mappings()
+    roster_groups = connection.execute(
+        text(
+            """
+            SELECT id, parent_id, name, path
+            FROM roster_groups
+            WHERE is_active = :is_active
+            ORDER BY id
+            """
+        ),
+        {"is_active": 1},
+    ).mappings()
+    dimensions = _weekly_cost_team_dimensions(tuple(rows), tuple(roster_groups))
+    team_items, total = _weekly_cost_share_items(dimensions["cross_account_teams"])
+    repo_items, _ = _weekly_cost_share_items(dimensions["repos"])
+    return {
+        "metric": "list_cost",
+        "total_list_cost": _money(total),
+        "teams": {"items": team_items},
+        "repos": {"items": repo_items},
+    }
+
+
+def _ci_weekly_cost_budget_rows(
+    connection: Connection,
+) -> dict[tuple[str, str], tuple[dict[str, Any], ...]]:
+    rows = connection.execute(
+        text(
+            """
+            SELECT vendor, accounts, period_start_date, period_end_date, budget_name, budget_amount,
+                   label_filters, cost_basis
+            FROM cost_budgets
+            WHERE LOWER(TRIM(platform)) = 'cicd'
+              AND (projects IS NULL OR TRIM(projects) IN ('', '[]'))
+            ORDER BY vendor, period_start_date, period_end_date, budget_name
+            """
+        )
+    ).mappings()
+    plans: dict[tuple[str, str], list[dict[str, Any]]] = {
+        source: [] for source in CI_WEEKLY_COST_SOURCES
+    }
+    for row in rows:
+        period_start = _parse_date(row["period_start_date"])
+        period_end = _parse_date(row["period_end_date"])
+        if period_start is None or period_end is None or period_start > period_end:
+            continue
+        if _weekly_cost_label_filters(row["label_filters"]):
+            continue
+        vendor = str(row["vendor"] or "")
+        for account_id in _weekly_cost_string_list(row["accounts"]):
+            source = (vendor, account_id)
+            if source in plans:
+                plans[source].append(
+                    {
+                        "source": source,
+                        "period_start_date": period_start,
+                        "period_end_date": period_end,
+                        "budget_name": str(row["budget_name"] or ""),
+                        "budget_amount": Decimal(str(row["budget_amount"] or 0)),
+                        "cost_basis": str(row["cost_basis"] or ""),
+                    }
+                )
+    _ci_weekly_cost_validate_plan_windows(plans)
+    return {source: tuple(rows) for source, rows in plans.items()}
+
+
+def _ci_weekly_cost_validate_plan_windows(
+    plans_by_source: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+) -> None:
+    for source, plans in plans_by_source.items():
+        previous_plan: Mapping[str, Any] | None = None
+        for plan in sorted(
+            plans,
+            key=lambda item: (
+                item["period_start_date"],
+                item["period_end_date"],
+                str(item["budget_name"]),
+            ),
+        ):
+            if (
+                previous_plan is not None
+                and plan["period_start_date"] <= previous_plan["period_end_date"]
+            ):
+                raise ValueError(
+                    f"overlapping CI budget plans for {_cost_source_value(*source)}: "
+                    f"{previous_plan['budget_name']!r} and {plan['budget_name']!r}"
+                )
+            previous_plan = plan
+
+
+def _ci_weekly_cost_active_plans(
+    budget_rows: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+    today: date,
+) -> list[Mapping[str, Any]]:
+    return [
+        plan
+        for plans in budget_rows.values()
+        for plan in plans
+        if plan["period_start_date"] <= today <= plan["period_end_date"]
+    ]
+
+
+def _ci_weekly_cost_plan_overlaps(
+    plan: Mapping[str, Any],
+    start_date: date,
+    end_date: date,
+) -> bool:
+    return plan["period_start_date"] <= end_date and start_date <= plan["period_end_date"]
+
+
+def _ci_weekly_cost_source_bases(
+    plans_by_source: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+) -> dict[tuple[str, str], str]:
+    # Fixed CI sources have one basis; report bases per period if that contract changes.
+    return {
+        source: str(plans[0]["cost_basis"])
+        for source, plans in plans_by_source.items()
+        if plans
+    }
+
+
+def _ci_weekly_cost_values(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> dict[tuple[tuple[str, str], date], dict[str, Decimal]]:
+    list_cost_expr = _billing_report_list_cost_expr("c")
+    net_cost_expr = _usd_cost_expr("c", "c.net_cost")
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT c.vendor, c.account_id, c.usage_date,
+                   SUM(COALESCE({list_cost_expr}, 0)) AS list_cost,
+                   SUM(COALESCE({net_cost_expr}, 0)) AS net_cost
+            FROM cost_attribution_daily c
+            WHERE (
+                (c.vendor = 'gcp' AND c.account_id = 'pingcap-testing-account')
+                OR (c.vendor = 'tencent' AND c.account_id = '100050658403')
+            )
+              AND c.usage_date BETWEEN :start_date AND :end_date
+            GROUP BY c.vendor, c.account_id, c.usage_date
+            """
+        ),
+        {"start_date": start_date, "end_date": end_date},
+    ).mappings()
+    return {
+        ((str(row["vendor"]), str(row["account_id"])), usage_date): {
+            "list_cost": Decimal(str(row["list_cost"] or 0)),
+            "net_cost": Decimal(str(row["net_cost"] or 0)),
+        }
+        for row in rows
+        if (usage_date := _parse_date(row["usage_date"])) is not None
+    }
+
+
+def _ci_weekly_cost_account(
+    source: tuple[str, str],
+    budget_rows: Sequence[Mapping[str, Any]],
+    cost_basis: str | None,
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    last_week_start: date,
+    last_week_end: date,
+    previous_week_start: date,
+    previous_week_end: date,
+    previous_month_start: date,
+    previous_month_end: date,
+) -> dict[str, Any]:
+    vendor, account_id = source
+    last_week = _ci_weekly_cost_usage(
+        source, budget_rows, cost_basis, cost_values, last_week_start, last_week_end
+    )
+    previous_week = _ci_weekly_cost_usage(
+        source, budget_rows, cost_basis, cost_values, previous_week_start, previous_week_end
+    )
+    return {
+        "cost_source": _cost_source_value(vendor, account_id),
+        "vendor": vendor,
+        "account_id": account_id,
+        "cost_basis": cost_basis,
+        "last_complete_week": last_week,
+        "week_wow_pct": _nullable_rate_pct(
+            last_week["actual_cost"] - previous_week["actual_cost"],
+            previous_week["actual_cost"],
+        ),
+        "last_complete_month": _ci_weekly_cost_usage(
+            source, budget_rows, cost_basis, cost_values, previous_month_start, previous_month_end
+        ),
+    }
+
+
+def _ci_weekly_cost_usage(
+    source: tuple[str, str],
+    budget_rows: Sequence[Mapping[str, Any]],
+    cost_basis: str | None,
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    start_date: date,
+    end_date: date,
+) -> dict[str, float | None]:
+    period_plans = [
+        plan for plan in budget_rows if _ci_weekly_cost_plan_overlaps(plan, start_date, end_date)
+    ]
+    budget = sum(
+        (_weekly_cost_budget_amount_for_window(plan, start_date, end_date) for plan in period_plans),
+        Decimal(0),
+    )
+    actual = (
+        sum(
+            (
+                _ci_weekly_cost_actual(
+                    cost_values,
+                    source,
+                    str(plan["cost_basis"]),
+                    max(start_date, plan["period_start_date"]),
+                    min(end_date, plan["period_end_date"]),
+                )
+                for plan in period_plans
+            ),
+            Decimal(0),
+        )
+        if period_plans
+        else _ci_weekly_cost_actual(cost_values, source, cost_basis, start_date, end_date)
+    )
+    actual_money = _money(actual)
+    budget_money = _money(budget) if period_plans else None
+    return {
+        "actual_cost": actual_money,
+        "period_budget": budget_money,
+        "utilization_pct": _nullable_rate_pct(actual_money, budget_money)
+        if budget_money is not None
+        else None,
+    }
+
+
+def _ci_weekly_cost_actual(
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    source: tuple[str, str],
+    cost_basis: str | None,
+    start_date: date,
+    end_date: date,
+) -> Decimal:
+    return sum(
+        (
+            amounts.get(cost_basis, Decimal(0))
+            for (fact_source, usage_date), amounts in cost_values.items()
+            if fact_source == source and start_date <= usage_date <= end_date
+        ),
+        Decimal(0),
+    )
+
+
+def _ci_weekly_cost_weekly_history(
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    start_date: date,
+    end_date: date,
+) -> dict[str, Any]:
+    week_starts = [start_date + timedelta(days=7 * index) for index in range(8)]
+    return {
+        "period": _ci_weekly_cost_period(start_date, end_date),
+        "series": [
+            {
+                "cost_source": _cost_source_value(*source),
+                "cost_metric": cost_metric,
+                "points": [
+                    {
+                        "week_start": week_start.isoformat(),
+                        "cost": _money(
+                            _ci_weekly_cost_actual(
+                                cost_values,
+                                source,
+                                cost_metric,
+                                week_start,
+                                week_start + timedelta(days=6),
+                            )
+                        ),
+                    }
+                    for week_start in week_starts
+                ],
+            }
+            for cost_metric in ("list_cost", "net_cost")
+            for source in CI_WEEKLY_COST_SOURCES
+        ],
+    }
+
+
+def _ci_weekly_cost_budget_period_cost(
+    active_plans: Sequence[Mapping[str, Any]],
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    today: date,
+) -> dict[str, Any]:
+    return {
+        "metric": "budget_basis_spend",
+        "accounts": [
+            _ci_weekly_cost_account_period_cost(source, plans, cost_values, today)
+            for source in CI_WEEKLY_COST_SOURCES
+            if (plans := [plan for plan in active_plans if plan["source"] == source])
+        ],
+    }
+
+
+def _ci_weekly_cost_account_period_cost(
+    source: tuple[str, str],
+    plans: Sequence[Mapping[str, Any]],
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    today: date,
+) -> dict[str, Any]:
+    start_date = min(plan["period_start_date"] for plan in plans)
+    weekly_costs: dict[date, Decimal] = {}
+    for plan in plans:
+        for (fact_source, usage_date), amounts in cost_values.items():
+            if fact_source != source or not plan["period_start_date"] <= usage_date <= plan["period_end_date"]:
+                continue
+            week_start = usage_date - timedelta(days=usage_date.weekday())
+            weekly_costs[week_start] = weekly_costs.get(week_start, Decimal(0)) + amounts[
+                str(plan["cost_basis"])
+            ]
+
+    week_start = start_date - timedelta(days=start_date.weekday())
+    current_week_start = today - timedelta(days=today.weekday())
+    cumulative_cost = Decimal(0)
+    points = []
+    while week_start <= current_week_start:
+        budget_basis_cost = weekly_costs.get(week_start, Decimal(0))
+        cumulative_cost += budget_basis_cost
+        points.append(
+            {
+                "week_start": week_start.isoformat(),
+                "budget_basis_cost": _money(budget_basis_cost),
+                "cumulative_budget_basis_cost": _money(cumulative_cost),
+            }
+        )
+        week_start += timedelta(days=7)
+
+    return {
+        "cost_source": _cost_source_value(*source),
+        "cost_basis": str(plans[0]["cost_basis"]),
+        "period": _ci_weekly_cost_period(start_date, today),
+        "total_budget": _money(sum((plan["budget_amount"] for plan in plans), Decimal(0))),
+        "points": points,
+    }
+
+
 def get_weekly_cost_trend(engine: Engine) -> dict[str, Any]:
     today = _today()
     last_week_start = today - timedelta(days=today.weekday() + 7)
@@ -1258,6 +1702,7 @@ def _weekly_cost_allocation_dimension_rows(
                   c.group_id,
                   c.owner,
                   c.project,
+                  c.repo,
                   SUM(COALESCE({list_cost_expr}, 0)) AS list_cost
                 FROM cost_sources s
                 JOIN cost_attribution_daily c
@@ -1266,7 +1711,7 @@ def _weekly_cost_allocation_dimension_rows(
                 WHERE s.is_active = :is_active
                   AND {qa_source_clause}
                   AND c.usage_date BETWEEN :start_date AND :end_date
-                GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project
+                GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project, c.repo
                 """
             ),
             {"is_active": 1, "start_date": start_date, "end_date": end_date},
@@ -1414,6 +1859,7 @@ def _weekly_cost_team_dimensions(
     level1_values: dict[str, dict[str, Any]] = {}
     level2_values: dict[str, dict[str, Any]] = {}
     project_values: dict[str, dict[str, Any]] = {}
+    repo_values: dict[str, dict[str, Any]] = {}
     cross_account_team_values: dict[str, dict[str, Any]] = {}
     owner_values: dict[str, dict[str, Any]] = {}
     source_project_values: dict[tuple[str, str, date, str], Decimal] = {}
@@ -1425,6 +1871,7 @@ def _weekly_cost_team_dimensions(
         cross_account_team = cross_account_team_descriptor(group_id)
         owner_name = _weekly_cost_owner_name(row["owner"])
         project_name = _weekly_cost_project_name(row["project"])
+        repo_name = str(row.get("repo") or "").strip() or "(no repo)"
         usage_date = _parse_date(row["usage_date"])
         if usage_date is None:
             continue
@@ -1447,11 +1894,17 @@ def _weekly_cost_team_dimensions(
             {"key": f"project:{project_name}", "name": project_name},
             amount,
         )
+        _add_weekly_cost_dimension_value(
+            repo_values,
+            {"key": f"repo:{repo_name}", "name": repo_name},
+            amount,
+        )
     return {
         "root_available": root is not None,
         "level1": level1_values,
         "level2": level2_values,
         "projects": project_values,
+        "repos": repo_values,
         "cross_account_teams": cross_account_team_values,
         "owners": owner_values,
         "source_project_values": source_project_values,

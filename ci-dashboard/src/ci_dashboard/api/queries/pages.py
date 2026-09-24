@@ -35,6 +35,7 @@ from ci_dashboard.api.queries.cost import (
     get_repo_group_cost_stack,
     get_unmatched_resources,
     get_weekly_account_summaries,
+    get_ci_weekly_cost_report,
     get_weekly_cost_allocation,
     get_weekly_cost_report,
     get_weekly_cost_trend,
@@ -322,6 +323,10 @@ def get_cost_weekly_account_summaries_page(
 
 def get_weekly_cost_report_page(engine: Engine, *, include_trend: bool = True) -> dict[str, Any]:
     return get_weekly_cost_report(engine, include_trend=include_trend)
+
+
+def get_ci_weekly_cost_report_page(engine: Engine) -> dict[str, Any]:
+    return get_ci_weekly_cost_report(engine)
 
 
 def get_weekly_cost_trend_page(engine: Engine) -> dict[str, Any]:

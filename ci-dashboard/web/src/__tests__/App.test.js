@@ -433,6 +433,173 @@ test("QA Cost Weekly direct route uses its fixed API URL and explains an old sou
   }
 });
 
+test("CI Cost Weekly uses its fixed endpoint and renders account-period budget gauges", async () => {
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  let renderer;
+
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return {
+      ok: true,
+      json: async () => ({
+        meta: {
+          calendar_timezone: "UTC",
+          cost_metric: "budget_basis_spend",
+        },
+        last_complete_week: { start_date: "2026-09-14", end_date: "2026-09-20" },
+        previous_complete_week: { start_date: "2026-09-07", end_date: "2026-09-13" },
+        last_complete_month: { start_date: "2026-08-01", end_date: "2026-08-31" },
+        accounts: [
+          {
+            cost_source: "gcp:pingcap-testing-account",
+            vendor: "gcp",
+            account_id: "pingcap-testing-account",
+            cost_basis: "list_cost",
+            week_wow_pct: -1.1,
+            last_complete_week: { actual_cost: 100, period_budget: 700, utilization_pct: 14.29 },
+            last_complete_month: { actual_cost: 310, period_budget: 3100, utilization_pct: 10 },
+          },
+          {
+            cost_source: "tencent:100050658403",
+            vendor: "tencent",
+            account_id: "100050658403",
+            cost_basis: "net_cost",
+            week_wow_pct: 1.1,
+            last_complete_week: { actual_cost: 200, period_budget: 1400, utilization_pct: 14.29 },
+            last_complete_month: { actual_cost: 0, period_budget: null, utilization_pct: null },
+          },
+        ],
+        last_week_cost_share: {
+          metric: "list_cost",
+          total_list_cost: 300,
+          teams: {
+            items: [{ key: "team:tidb", name: "TiDB", value: 200, share_pct: 66.67 }],
+          },
+          repos: {
+            items: [{ key: "repo:tidb", name: "pingcap/tidb", value: 300, share_pct: 100 }],
+          },
+        },
+        weekly_cost_history: {
+          series: [
+            {
+              cost_source: "gcp:pingcap-testing-account",
+              cost_metric: "list_cost",
+              points: [{ week_start: "2026-08-31", cost: 100 }],
+            },
+            {
+              cost_source: "tencent:100050658403",
+              cost_metric: "list_cost",
+              points: [{ week_start: "2026-08-31", cost: 200 }],
+            },
+            {
+              cost_source: "gcp:pingcap-testing-account",
+              cost_metric: "net_cost",
+              points: [{ week_start: "2026-08-31", cost: 80 }],
+            },
+            {
+              cost_source: "tencent:100050658403",
+              cost_metric: "net_cost",
+              points: [{ week_start: "2026-08-31", cost: 500 }],
+            },
+          ],
+        },
+        budget_period_cost: {
+          metric: "budget_basis_spend",
+          accounts: [
+            {
+              cost_source: "gcp:pingcap-testing-account",
+              cost_basis: "list_cost",
+              period: { start_date: "2026-09-01", end_date: "2026-09-23" },
+              total_budget: 21200,
+              points: [{
+                week_start: "2026-08-31",
+                budget_basis_cost: 100,
+                cumulative_budget_basis_cost: 100,
+              }],
+            },
+            {
+              cost_source: "tencent:100050658403",
+              cost_basis: "net_cost",
+              period: { start_date: "2026-09-01", end_date: "2026-09-23" },
+              total_budget: 84000,
+              points: [{
+                week_start: "2026-08-31",
+                budget_basis_cost: 200,
+                cumulative_budget_basis_cost: 200,
+              }],
+            },
+          ],
+        },
+      }),
+    };
+  };
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ["/ci-cost-weekly?start_date=2020-01-01&repo=pingcap%2Ftidb"] },
+          React.createElement(App),
+        ),
+      );
+      await Promise.resolve();
+    });
+
+    assert.deepEqual(requests, ["/api/v1/pages/ci-weekly-cost"]);
+    assert.equal(renderer.root.findAllByProps({ role: "progressbar" }).length, 4);
+    const historyChart = renderer.root.findByProps({
+      "aria-label": "Last 8 complete weeks stacked CI cost chart",
+    });
+    const historyBars = historyChart.findAllByType("rect").filter((bar) => bar.props.rx === 2);
+    assert.equal(historyBars.length, 4);
+    assert.equal(new Set(historyBars.map((bar) => bar.props.x)).size, 2);
+    assert.deepEqual(historyBars.map((bar) => bar.props.fill), [
+      "#1f4e79",
+      "#9cc9e7",
+      "#0f7c82",
+      "#93d6d1",
+    ]);
+    const historyLegend = renderer.root.findAllByProps({ "aria-pressed": false });
+    assert.equal(historyLegend.length, 4);
+    await act(async () => historyLegend[0].props.onClick());
+    const focusedHistoryChart = renderer.root.findByProps({
+      "aria-label": "Last 8 complete weeks stacked CI cost chart",
+    });
+    assert.equal(
+      focusedHistoryChart.findAllByType("rect").filter((bar) => bar.props.rx === 2).length,
+      1,
+    );
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /CI Cost Weekly/);
+    assert.doesNotMatch(rendered, /CI budget pace, ready for the weekly review/);
+    assert.doesNotMatch(rendered, /Fixed to the GCP and Tencent CI billing accounts/);
+    assert.match(rendered, /Overall/);
+    assert.match(rendered, /GCP list cost/);
+    assert.match(rendered, /Tencent net cost/);
+    assert.match(rendered, /Cumulative spend/);
+    assert.match(rendered, /Cost trend/);
+    assert.match(rendered, /Last week budget utilization · GCP list \+ Tencent net/);
+    assert.doesNotMatch(rendered, /Each week has list-cost and net-cost bars; each is stacked by GCP and Tencent/);
+    assert.match(rendered, /2026-09-14 – 2026-09-20/);
+    assert.match(rendered, /Last natural month/);
+    assert.match(rendered, /Last week list-cost share/);
+    assert.match(rendered, /Team share/);
+    assert.match(rendered, /Repository share/);
+    assert.match(rendered, /pingcap\/tidb/);
+    assert.match(rendered, /WoW -1\.1%/);
+    assert.match(rendered, /\$0\.00/);
+    assert.doesNotMatch(rendered, /GCP · pingcap-testing-account|TENCENT · tencent-organization-billing/);
+    assert.doesNotMatch(rendered, /Last complete week —/);
+    assert.match(rendered, /\$100\.00/);
+    assert.match(rendered, /Not configured/);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("weekly cost distinguishes no QA sources from configured zero-cost sources", async () => {
   const originalFetch = globalThis.fetch;
   let report = weeklyCostReport();

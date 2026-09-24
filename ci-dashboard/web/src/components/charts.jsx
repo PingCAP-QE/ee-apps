@@ -97,8 +97,8 @@ export function PageIntro({ eyebrow, title, description, kicker }) {
     <header className="page-intro">
       <div>
         <span className="page-intro__eyebrow">{eyebrow}</span>
-        <h2>{title}</h2>
-        <p>{description}</p>
+        {title ? <h2>{title}</h2> : null}
+        {description ? <p>{description}</p> : null}
       </div>
       {kicker ? <div className="page-intro__kicker">{kicker}</div> : null}
     </header>
@@ -256,6 +256,8 @@ export function TrendChart({
   const rightSeries = series.filter((item) => item.axis === "right");
   const leftLineSeries = leftSeries.filter((item) => item.type !== "bar");
   const leftBarSeries = leftSeries.filter((item) => item.type === "bar");
+  const barStackGroup = (item) => item.stackGroup ?? "__default";
+  const leftStackGroups = Array.from(new Set(leftBarSeries.map(barStackGroup)));
   const leftAxisIsPercent = yFormatter === formatPercent;
   const rightAxisIsPercent = rightYFormatter === formatPercent;
   const leftLineValues = leftLineSeries.flatMap((item) =>
@@ -264,10 +266,11 @@ export function TrendChart({
       .filter((value) => value != null),
   );
   const leftBarValues = stackBars
-    ? labels.map((label) =>
-        leftBarSeries.reduce(
-          (sum, item) => sum + (pointMaps.get(item.key)?.get(label) ?? 0),
-          0,
+    ? labels.flatMap((label) =>
+        leftStackGroups.map((stackGroup) =>
+          leftBarSeries
+            .filter((item) => barStackGroup(item) === stackGroup)
+            .reduce((sum, item) => sum + (pointMaps.get(item.key)?.get(label) ?? 0), 0),
         ),
       )
     : leftBarSeries.flatMap((item) =>
@@ -456,18 +459,32 @@ export function TrendChart({
             const value = pointMaps.get(item.key)?.get(label) ?? 0;
             const groupWidth = Math.min(barMaxWidth, xStep * barGroupWidthFactor || barMaxWidth);
             const stackedSeries = stackBars
-              ? barSeries.filter((candidate) => (candidate.axis || "left") === (item.axis || "left"))
+              ? barSeries.filter(
+                  (candidate) =>
+                    (candidate.axis || "left") === (item.axis || "left")
+                    && barStackGroup(candidate) === barStackGroup(item),
+                )
+              : [];
+            const stackedGroups = stackBars
+              ? Array.from(
+                  new Set(
+                    barSeries
+                      .filter((candidate) => (candidate.axis || "left") === (item.axis || "left"))
+                      .map(barStackGroup),
+                  ),
+                )
               : [];
             const axisSeriesIndex = stackBars
               ? stackedSeries.findIndex((candidate) => candidate.key === item.key)
               : seriesIndex;
+            const stackGroupIndex = stackBars ? stackedGroups.indexOf(barStackGroup(item)) : -1;
             const barWidth = stackBars
-              ? Math.max(groupWidth - 4, 10)
+              ? Math.max(groupWidth / Math.max(stackedGroups.length, 1) - 6, 10)
               : Math.max(groupWidth / Math.max(barSeries.length, 1) - 6, 10);
             const centerX = xForIndex(index);
             const groupStart = centerX - groupWidth / 2;
             const x = stackBars
-              ? centerX - barWidth / 2
+              ? groupStart + stackGroupIndex * (barWidth + 6)
               : groupStart + seriesIndex * (barWidth + 6);
             const axisRange =
               item.axis === "right"
