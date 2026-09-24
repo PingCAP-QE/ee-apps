@@ -132,7 +132,15 @@ function SnapshotProgressCard({ title, subtitle, tone = "default", items, loadin
                 <span className="progress-card__metric-label">{item.label}</span>
                 <span className="progress-card__metric-delta">{item.delta}</span>
               </div>
-              <strong className="progress-card__metric-value">{item.value}</strong>
+              <div className="progress-card__metric-value-row">
+                <strong className="progress-card__metric-value">{item.value}</strong>
+                {item.secondary ? (
+                  <div className="progress-card__secondary-metric">
+                    <span>{item.secondary.label}</span>
+                    <strong>{item.secondary.value}</strong>
+                  </div>
+                ) : null}
+              </div>
             </div>
           ))}
         </div>
@@ -309,6 +317,10 @@ export default function FlakyPage({ filters }) {
               label: "Fixed",
               value: formatNumber(issueFixProgress.fixed_issue_count || 0),
               delta: formatCountDelta(issueFixProgress.fixed_issue_delta || 0),
+              secondary: {
+                label: "Open",
+                value: formatNumber(issueFixProgress.open_issue_count || 0),
+              },
             },
           ]}
         />
@@ -349,7 +361,7 @@ export default function FlakyPage({ filters }) {
 
       <Panel
         title="Filtered-issue weekly case table"
-        subtitle="Each row keeps the issue link and shows weekly rate as rate (flaky runs / estimated runs)."
+        subtitle="Each row keeps the issue link. Weekly cells and Total use rate (flaky runs / estimated runs), with Total aggregated across the selected range."
         loading={page.loading}
         error={page.error}
         actions={showPanelActions ? (

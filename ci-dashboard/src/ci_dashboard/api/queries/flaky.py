@@ -750,6 +750,9 @@ def get_issue_fix_progress_snapshot(
         for row in previous_issue_rows
         if _resolve_issue_state_as_of(row, comparison_as_of_date) == "closed"
     )
+    current_open_issue_count = sum(
+        1 for row in current_issue_rows if _resolve_issue_state_as_of(row, as_of_date) == "open"
+    )
 
     current_in_review_pr_count = sum(
         1 for row in current_pull_rows if _resolve_pull_state_as_of(row, as_of_date) == "open"
@@ -791,6 +794,7 @@ def get_issue_fix_progress_snapshot(
         "filed_issue_delta": len(current_issue_rows) - len(previous_issue_rows),
         "fixed_issue_count": current_fixed_issue_count,
         "fixed_issue_delta": current_fixed_issue_count - previous_fixed_issue_count,
+        "open_issue_count": current_open_issue_count,
         "in_review_pr_count": current_in_review_pr_count,
         "in_review_pr_delta": current_in_review_pr_count - previous_in_review_pr_count,
         "merged_pr_count": current_merged_pr_count,

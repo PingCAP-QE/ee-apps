@@ -7161,6 +7161,7 @@ def test_flaky_page_issue_fix_progress_snapshot(
     assert progress["filed_issue_delta"] == 1
     assert progress["fixed_issue_count"] == 2
     assert progress["fixed_issue_delta"] == 1
+    assert progress["open_issue_count"] == 3
     assert progress["in_review_pr_count"] == 2
     assert progress["in_review_pr_delta"] == 0
     assert progress["merged_pr_count"] == 1
@@ -7254,6 +7255,7 @@ def test_flaky_issue_queries_ignore_branch_filter(sqlite_engine) -> None:
     assert issue_fix_progress["meta"]["applies_branch_to_prs"] is False
     assert issue_fix_progress["filed_issue_count"] == 2
     assert issue_fix_progress["fixed_issue_count"] == 1
+    assert issue_fix_progress["open_issue_count"] == 1
     assert issue_fix_progress["in_review_pr_count"] == 1
     assert issue_fix_progress["merged_pr_count"] == 1
 

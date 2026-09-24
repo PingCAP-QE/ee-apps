@@ -12,9 +12,11 @@ const incomingCostUrl = "/cost?start_date=2026-08-10&end_date=2026-08-10&cost_so
 
 let App;
 let CostPage;
+let FlakyPage;
 let CostFilterControls;
 let getDashboardVersion;
 let LabeledDonutShareChart;
+let IssueWeeklyRateTable;
 let WeeklyCostPage;
 let server;
 
@@ -27,9 +29,10 @@ before(async () => {
   });
   ({ default: App } = await server.ssrLoadModule("/src/App.jsx"));
   ({ default: CostPage } = await server.ssrLoadModule("/src/pages/CostPage.jsx"));
+  ({ default: FlakyPage } = await server.ssrLoadModule("/src/pages/FlakyPage.jsx"));
   ({ default: CostFilterControls } = await server.ssrLoadModule("/src/components/CostFilterControls.jsx"));
   ({ getDashboardVersion } = await server.ssrLoadModule("/src/components/layout.jsx"));
-  ({ LabeledDonutShareChart } = await server.ssrLoadModule("/src/components/charts.jsx"));
+  ({ LabeledDonutShareChart, IssueWeeklyRateTable } = await server.ssrLoadModule("/src/components/charts.jsx"));
   ({ default: WeeklyCostPage } = await server.ssrLoadModule("/src/pages/WeeklyCostPage.jsx"));
 });
 
@@ -114,6 +117,122 @@ test("labeled donut chart expands for crowded account/project labels", () => {
   const chart = renderer.root.findByProps({ role: "img", "aria-label": "Crowded allocations share chart" });
   assert.ok(Number(chart.props.viewBox.split(" ").at(-1)) > 390);
   renderer.unmount();
+});
+
+test("filtered issue weekly table aggregates selected weeks and sorts each column", async () => {
+  const weeks = ["2026-06-01", "2026-06-08"];
+  const rows = [
+    {
+      case_name: "Alpha",
+      display_name: "Alpha",
+      issue_number: 1,
+      issue_url: "https://github.com/pingcap/tidb/issues/1",
+      issue_status: "open",
+      metrics: [
+        { week_start: weeks[0], flaky_runs: 1, total_runs_est: 10, flaky_rate_pct: 10, cell: "10.00% (1/10)" },
+        { week_start: weeks[1], flaky_runs: 0, total_runs_est: 10, flaky_rate_pct: 0, cell: "0.00% (0/10)" },
+      ],
+    },
+    {
+      case_name: "Beta",
+      display_name: "Beta",
+      issue_number: 2,
+      issue_url: "https://github.com/pingcap/tidb/issues/2",
+      issue_status: "closed",
+      metrics: [
+        { week_start: weeks[0], flaky_runs: 1, total_runs_est: 20, flaky_rate_pct: 5, cell: "5.00% (1/20)" },
+        { week_start: weeks[1], flaky_runs: 10, total_runs_est: 10, flaky_rate_pct: 100, cell: "100.00% (10/10)" },
+      ],
+    },
+  ];
+  const renderer = TestRenderer.create(
+    React.createElement(IssueWeeklyRateTable, { weeks, rows }),
+  );
+  const caseNames = () => renderer.root
+    .findByType("tbody")
+    .findAllByType("tr")
+    .map((row) => row.findByType("a").children.join(""));
+  const sortButtons = () => renderer.root
+    .findAllByType("button")
+    .filter((button) => String(button.props["aria-label"] || "").startsWith("Sort "));
+
+  try {
+    assert.equal(sortButtons().length, 4);
+    assert.match(JSON.stringify(renderer.toJSON()), /5\.00% \(1\/20\)/);
+    assert.match(JSON.stringify(renderer.toJSON()), /36\.67% \(11\/30\)/);
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Sort Total descending" }).props.onClick();
+    });
+    assert.deepEqual(caseNames(), ["Beta", "Alpha"]);
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Sort Total ascending" }).props.onClick();
+    });
+    assert.deepEqual(caseNames(), ["Alpha", "Beta"]);
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Sort 2026-06-01 descending" }).props.onClick();
+    });
+    assert.deepEqual(caseNames(), ["Alpha", "Beta"]);
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Sort 2026-06-08 descending" }).props.onClick();
+    });
+    assert.deepEqual(caseNames(), ["Beta", "Alpha"]);
+
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Sort Case name descending" }).props.onClick();
+    });
+    await act(async () => {
+      renderer.root.findByProps({ "aria-label": "Sort Case name ascending" }).props.onClick();
+    });
+    assert.deepEqual(caseNames(), ["Alpha", "Beta"]);
+  } finally {
+    renderer.unmount();
+  }
+});
+
+test("flaky issue progress displays the current open-issue backlog", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      issue_fix_progress: {
+        meta: { as_of_date: "2026-06-30", comparison_as_of_date: "2026-06-23" },
+        filed_issue_count: 9,
+        filed_issue_delta: 2,
+        open_issue_count: 7,
+        fixed_issue_count: 2,
+        fixed_issue_delta: 1,
+      },
+    }),
+  });
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(FlakyPage, { filters: {} }));
+      await Promise.resolve();
+    });
+
+    const issueProgress = renderer.root.findByProps({ className: "progress-card progress-card--rose" });
+    const progressRows = issueProgress.findAllByProps({ className: "progress-card__row" });
+    assert.deepEqual(
+      progressRows.map((row) => row.findByProps({ className: "progress-card__metric-label" }).children.join("")),
+      ["Filed", "Fixed"],
+    );
+    assert.deepEqual(
+      progressRows.map((row) => row.findByProps({ className: "progress-card__metric-value" }).children.join("")),
+      ["9", "2"],
+    );
+    const openMetric = issueProgress.findByProps({ className: "progress-card__secondary-metric" });
+    assert.equal(openMetric.findByType("span").children.join(""), "Open");
+    assert.equal(openMetric.findByType("strong").children.join(""), "7");
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("Cost controls are production-wired for categorized accounts and include/exclude filters", async () => {
