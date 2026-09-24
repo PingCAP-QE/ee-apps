@@ -151,13 +151,14 @@ test("filtered issue weekly table aggregates selected weeks and sorts each colum
   const caseNames = () => renderer.root
     .findByType("tbody")
     .findAllByType("tr")
-    .map((row) => row.findByType("a").children.join(""));
+    .map((row) => row.findByType("a").children.join("").replace(/ #\d+$/, ""));
   const sortButtons = () => renderer.root
     .findAllByType("button")
     .filter((button) => String(button.props["aria-label"] || "").startsWith("Sort "));
 
   try {
     assert.equal(sortButtons().length, 4);
+    assert.equal(renderer.root.findAllByType("a")[0].children.join(""), "Alpha #1");
     assert.match(JSON.stringify(renderer.toJSON()), /5\.00% \(1\/20\)/);
     assert.match(JSON.stringify(renderer.toJSON()), /36\.67% \(11\/30\)/);
 
