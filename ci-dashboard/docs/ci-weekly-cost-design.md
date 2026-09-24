@@ -28,14 +28,14 @@ not changed by this migration.
 
 - completed-week and completed-month utilization for each configured source;
 - each account's `cost_basis`, actual cost, prorated plan budget, and utilization;
-- an active-plan cumulative series with `budget_basis_cost` and
-  `cumulative_budget_basis_cost`;
-- `meta.cost_metric: "budget_basis_spend"` and chart components that identify
-  each source and basis.
+- one active-plan cumulative series per account, each with
+  `budget_basis_cost` and `cumulative_budget_basis_cost`;
+- eight completed weekly points for each source and both list/net metrics; and
+- `meta.cost_metric: "budget_basis_spend"`.
 
 For every plan window, actual cost is measured using that plan's `cost_basis`.
-Budgets are prorated across the overlap with the completed period. The cumulative
-series sums each active plan using its own basis. Its total is therefore labeled
+Budgets are prorated across the overlap with the completed period. Each
+cumulative series uses its account's active plan basis and is labeled
 **budget-basis spend**, not list cost.
 
 Cost values are normalized to USD before comparison. This keeps GCP list cost
@@ -43,9 +43,18 @@ and Tencent net cost comparable to their USD budget amounts.
 
 ## Presentation contract
 
-The CI page labels every gauge with its plan basis. Its cumulative chart states
-that it is CI cumulative budget-basis spend and identifies the mixed aggregate
-as GCP list cost plus Tencent net cost.
+The Overall panel has a GCP list cost block and a Tencent net cost block.
+Each contains one equal-height row of last-week and last-natural-month spend
+cards, completed-week and completed-month gauges, and a cumulative chart that
+fills the remaining row width. The cost basis appears only in the block title.
+The Cost trend panel places a last-week utilization gauge on the left. It sums
+GCP list cost and Tencent net cost for both actual and budget, so its percentage
+uses a consistent basis. On the right, the last eight completed weeks appear as
+two bars per week (list cost and net cost). GCP uses the darker shade and
+Tencent the lighter shade; blue identifies list cost and teal identifies net
+cost. Selecting a legend item focuses that series; selecting it again restores
+all series. A final panel shows team and repository list-cost shares for the
+last complete week across both accounts.
 
 The shared weekly-cost gauges and chart retain their default list-cost field
 keys. CI supplies the budget-basis field keys, so QA Cost Weekly remains
@@ -67,8 +76,9 @@ Focused checks cover that:
 
 - GCP uses list cost even when net cost differs;
 - Tencent uses USD-normalized net cost when it differs from list cost;
-- the cumulative series uses the same mixed plan bases; and
-- CI Cost Weekly renders the fixed endpoint, basis labels, and cumulative chart.
+- the cumulative series uses plan basis, the eight-week series includes both
+  list and net metrics, and the share panels use both accounts' list cost; and
+- CI Cost Weekly renders the fixed endpoint, basis labels, charts, and shares.
 
 QA Cost Weekly keeps its existing list-cost contract and shared component
 defaults.

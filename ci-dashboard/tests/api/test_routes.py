@@ -4964,6 +4964,13 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
         "tencent:100050658403",
     ]
     assert [item["cost_basis"] for item in payload["accounts"]] == ["list_cost", "net_cost"]
+    assert "display_name" not in payload["accounts"][0]
+    assert payload["previous_complete_week"] == {
+        "start_date": "2026-09-07",
+        "end_date": "2026-09-13",
+    }
+    assert payload["accounts"][0]["week_wow_pct"] is None
+    assert payload["accounts"][1]["week_wow_pct"] is None
     assert payload["accounts"][0]["last_complete_week"] == {
         "actual_cost": 100.0,
         "period_budget": 700.0,
@@ -4985,38 +4992,114 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
         "utilization_pct": None,
     }
     assert "actual_list_cost" not in payload["accounts"][0]["last_complete_week"]
+    assert payload["last_week_cost_share"] == {
+        "metric": "list_cost",
+        "total_list_cost": 200.0,
+        "teams": {
+            "items": [
+                {
+                    "key": "team:none",
+                    "name": "(no team)",
+                    "value": 200.0,
+                    "interactive": False,
+                    "share_pct": 100.0,
+                }
+            ]
+        },
+        "repos": {
+            "items": [
+                {
+                    "key": "repo:tidb",
+                    "name": "tidb",
+                    "value": 200.0,
+                    "interactive": False,
+                    "share_pct": 100.0,
+                }
+            ]
+        },
+    }
+    history = payload["weekly_cost_history"]
+    assert history["period"] == {"start_date": "2026-07-27", "end_date": "2026-09-20"}
+    assert [(item["cost_source"], item["cost_metric"]) for item in history["series"]] == [
+        ("gcp:pingcap-testing-account", "list_cost"),
+        ("tencent:100050658403", "list_cost"),
+        ("gcp:pingcap-testing-account", "net_cost"),
+        ("tencent:100050658403", "net_cost"),
+    ]
+    assert [point["cost"] for point in history["series"][0]["points"]] == [
+        0.0,
+        0.0,
+        310.0,
+        0.0,
+        0.0,
+        100.0,
+        0.0,
+        100.0,
+    ]
+    assert [point["cost"] for point in history["series"][2]["points"]][-1] == 130.0
+    assert [point["cost"] for point in history["series"][3]["points"]][-1] == 500.0
     assert payload["budget_period_cost"] == {
         "metric": "budget_basis_spend",
-        "components": [
-            {"cost_source": "gcp:pingcap-testing-account", "cost_basis": "list_cost"},
-            {"cost_source": "tencent:100050658403", "cost_basis": "net_cost"},
-        ],
-        "period": {"start_date": "2026-09-01", "end_date": "2026-09-23"},
-        "total_budget": 105200.0,
-        "points": [
+        "accounts": [
             {
-                "week_start": "2026-08-31",
-                "budget_basis_cost": 600.0,
-                "cumulative_budget_basis_cost": 600.0,
+                "cost_source": "gcp:pingcap-testing-account",
+                "cost_basis": "list_cost",
+                "period": {"start_date": "2026-09-01", "end_date": "2026-09-23"},
+                "total_budget": 21200.0,
+                "points": [
+                    {
+                        "week_start": "2026-08-31",
+                        "budget_basis_cost": 100.0,
+                        "cumulative_budget_basis_cost": 100.0,
+                    },
+                    {
+                        "week_start": "2026-09-07",
+                        "budget_basis_cost": 0.0,
+                        "cumulative_budget_basis_cost": 100.0,
+                    },
+                    {
+                        "week_start": "2026-09-14",
+                        "budget_basis_cost": 100.0,
+                        "cumulative_budget_basis_cost": 200.0,
+                    },
+                    {
+                        "week_start": "2026-09-21",
+                        "budget_basis_cost": 0.0,
+                        "cumulative_budget_basis_cost": 200.0,
+                    },
+                ],
             },
             {
-                "week_start": "2026-09-07",
-                "budget_basis_cost": 0.0,
-                "cumulative_budget_basis_cost": 600.0,
-            },
-            {
-                "week_start": "2026-09-14",
-                "budget_basis_cost": 600.0,
-                "cumulative_budget_basis_cost": 1200.0,
-            },
-            {
-                "week_start": "2026-09-21",
-                "budget_basis_cost": 0.0,
-                "cumulative_budget_basis_cost": 1200.0,
+                "cost_source": "tencent:100050658403",
+                "cost_basis": "net_cost",
+                "period": {"start_date": "2026-09-01", "end_date": "2026-09-23"},
+                "total_budget": 84000.0,
+                "points": [
+                    {
+                        "week_start": "2026-08-31",
+                        "budget_basis_cost": 500.0,
+                        "cumulative_budget_basis_cost": 500.0,
+                    },
+                    {
+                        "week_start": "2026-09-07",
+                        "budget_basis_cost": 0.0,
+                        "cumulative_budget_basis_cost": 500.0,
+                    },
+                    {
+                        "week_start": "2026-09-14",
+                        "budget_basis_cost": 500.0,
+                        "cumulative_budget_basis_cost": 1000.0,
+                    },
+                    {
+                        "week_start": "2026-09-21",
+                        "budget_basis_cost": 0.0,
+                        "cumulative_budget_basis_cost": 1000.0,
+                    },
+                ],
             },
         ],
     }
-    assert "list_cost" not in payload["budget_period_cost"]["points"][0]
+    assert "list_cost" not in payload["budget_period_cost"]["accounts"][0]["points"][0]
 
 
 def test_weekly_cost_report_uses_current_budget_plan_membership_schema(

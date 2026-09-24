@@ -933,6 +933,45 @@ select {
   gap: 0.9rem;
 }
 
+.ci-weekly-cost__accounts,
+.ci-weekly-cost__account-block {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.ci-weekly-cost__account-block {
+  gap: 0.65rem;
+}
+
+.ci-weekly-cost__account-block h4 {
+  margin: 0;
+  color: var(--navy);
+  font-size: 0.96rem;
+}
+
+.ci-weekly-cost__account-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(10rem, 13rem)) minmax(18rem, 1fr);
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+.ci-weekly-cost__account-row .weekly-cost__cumulative-cost-trend {
+  grid-column: auto;
+  align-self: stretch;
+}
+
+.ci-weekly-cost__trend-layout {
+  display: grid;
+  grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+.ci-weekly-cost__trend-layout .weekly-cost__budget-card {
+  height: 100%;
+}
+
 .weekly-cost__budget-lane {
   display: grid;
   gap: 0.9rem;
@@ -1660,6 +1699,23 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+}
+
+button.chart-legend__item {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.25rem 0.35rem;
+}
+
+button.chart-legend__item:hover,
+button.chart-legend__item:focus-visible,
+.ci-weekly-cost__history-legend-item--focused {
+  color: var(--navy);
+  border-radius: 8px;
+  background: rgba(49, 87, 114, 0.1);
 }
 
 .chart-legend__swatch {
@@ -2963,6 +3019,11 @@ select {
     grid-column: span 1;
     grid-template-columns: 1fr;
     grid-template-rows: none;
+  }
+
+  .ci-weekly-cost__account-row,
+  .ci-weekly-cost__trend-layout {
+    grid-template-columns: 1fr;
   }
 
   .weekly-cost__budget-lane--summary {
