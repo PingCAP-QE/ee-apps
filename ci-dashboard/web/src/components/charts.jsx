@@ -1609,12 +1609,25 @@ export function DistinctCaseCountTable({ weeks, rows, scrollClassName = "" }) {
 }
 
 export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
+  const [sort, setSort] = useState({ column: null, direction: "desc" });
+
   if (!rows?.length) {
     return <EmptyState message="No flaky issues matched the current repo, branch, and date window." />;
   }
 
   const highlightStartIndex = Math.max(weeks.length - 2, 0);
-  const tableWidthPx = 360 + weeks.length * 170;
+  const rowsWithTotals = rows.map((row) => ({
+    ...row,
+    total: buildIssueTotalMetric(row.metrics),
+  }));
+  const sortedRows = sortIssueWeeklyRows(rowsWithTotals, sort);
+  const tableWidthPx = 360 + (weeks.length + 1) * 170;
+  const handleSort = (column) => {
+    setSort((current) => ({
+      column,
+      direction: current.column === column && current.direction === "desc" ? "asc" : "desc",
+    }));
+  };
 
   return (
     <div className={`table-scroll ${scrollClassName}`.trim()}>
@@ -1624,55 +1637,159 @@ export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
       >
         <colgroup>
           <col className="issue-weekly-case-col" />
+          <col className="issue-weekly-week-col" />
           {weeks.map((week) => (
             <col className="issue-weekly-week-col" key={week} />
           ))}
         </colgroup>
         <thead>
           <tr>
-            <th>Case name</th>
+            <IssueWeeklyRateSortHeader
+              column="case_name"
+              label="Case name"
+              sort={sort}
+              onSort={handleSort}
+              caseColumn
+            />
+            <IssueWeeklyRateSortHeader
+              column="total"
+              label="Total"
+              sort={sort}
+              onSort={handleSort}
+            />
             {weeks.map((week) => (
-              <th key={week}>{week}</th>
+              <IssueWeeklyRateSortHeader
+                key={week}
+                column={`week:${week}`}
+                label={week}
+                sort={sort}
+                onSort={handleSort}
+              />
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {sortedRows.map((row) => {
             const closeTimeLabel = row.issue_closed_at ? formatUtcCloseTime(row.issue_closed_at) : null;
             return (
-            <tr key={`${row.issue_number}-${row.case_name}`}>
-              <th scope="row">
-                <div className="issue-cell">
-                  <a href={row.issue_url} target="_blank" rel="noreferrer" title={row.display_name}>
-                    {row.display_name}
-                  </a>
-                  <div className="issue-cell__meta">
-                    <span className={`status-pill status-pill--${String(row.issue_status).toLowerCase()}`}>
-                      {row.issue_status}
-                    </span>
-                    {row.issue_branch ? <span>{row.issue_branch}</span> : null}
-                    {closeTimeLabel ? <span>{closeTimeLabel}</span> : null}
+              <tr key={`${row.issue_number}-${row.case_name}`}>
+                <th scope="row">
+                  <div className="issue-cell">
+                    <a href={row.issue_url} target="_blank" rel="noreferrer" title={row.display_name}>
+                      {row.issue_number ? `[#${row.issue_number}] ` : ""}{row.case_name}
+                    </a>
+                    <div className="issue-cell__meta">
+                      <span className={`status-pill status-pill--${String(row.issue_status).toLowerCase()}`}>
+                        {row.issue_status}
+                      </span>
+                      {row.issue_branch ? <span>{row.issue_branch}</span> : null}
+                      {closeTimeLabel ? <span>{closeTimeLabel}</span> : null}
+                    </div>
                   </div>
-                </div>
-              </th>
-              {row.metrics.map((metric, index) => {
-                const isRecentWeek = index >= highlightStartIndex;
-                const recentTone = metric.flaky_rate_pct > 0 ? "hot" : "cool";
-                return (
-                  <td
-                    key={`${row.issue_number}-${weeks[index]}`}
-                    className={isRecentWeek ? `metric-cell metric-cell--${recentTone}` : undefined}
-                  >
-                    {metric.cell}
-                  </td>
-                );
-              })}
-            </tr>
-          )})}
+                </th>
+                <td>{row.total.cell}</td>
+                {row.metrics.map((metric, index) => {
+                  const isRecentWeek = index >= highlightStartIndex;
+                  const recentTone = metric.flaky_rate_pct > 0 ? "hot" : "cool";
+                  return (
+                    <td
+                      key={`${row.issue_number}-${weeks[index]}`}
+                      className={isRecentWeek ? `metric-cell metric-cell--${recentTone}` : undefined}
+                    >
+                      {metric.cell}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
+}
+
+function IssueWeeklyRateSortHeader({ column, label, sort, onSort, caseColumn = false }) {
+  const isActive = sort.column === column;
+  const direction = isActive ? sort.direction : null;
+  const nextDirection = direction === "desc" ? "ascending" : "descending";
+
+  return (
+    <th
+      scope="col"
+      className="issue-weekly__sortable-header"
+      aria-sort={direction === "desc" ? "descending" : direction === "asc" ? "ascending" : "none"}
+    >
+      <button
+        type="button"
+        className={`issue-weekly__sort-button${caseColumn ? " issue-weekly__sort-button--case" : ""}`}
+        aria-label={`Sort ${label} ${nextDirection}`}
+        aria-pressed={isActive}
+        onClick={() => onSort(column)}
+      >
+        <span>{label}</span>
+        <span className="issue-weekly__sort-indicator" aria-hidden="true">
+          {direction === "desc" ? "↓" : direction === "asc" ? "↑" : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+function buildIssueTotalMetric(metrics) {
+  const totals = (metrics || []).reduce(
+    (sum, metric) => ({
+      flakyRuns: sum.flakyRuns + Number(metric.flaky_runs || 0),
+      totalRunsEst: sum.totalRunsEst + Number(metric.total_runs_est || 0),
+    }),
+    { flakyRuns: 0, totalRunsEst: 0 },
+  );
+  const flakyRatePct = totals.totalRunsEst
+    ? (totals.flakyRuns * 100) / totals.totalRunsEst
+    : 0;
+
+  return {
+    flaky_runs: totals.flakyRuns,
+    total_runs_est: totals.totalRunsEst,
+    flaky_rate_pct: flakyRatePct,
+    cell: `${flakyRatePct.toFixed(2)}% (${totals.flakyRuns}/${totals.totalRunsEst})`,
+  };
+}
+
+function sortIssueWeeklyRows(rows, sort) {
+  if (!sort.column) {
+    return rows;
+  }
+
+  const direction = sort.direction === "asc" ? 1 : -1;
+  return [...rows].sort((left, right) => {
+    if (sort.column === "case_name") {
+      return (
+        String(left.case_name || "").localeCompare(
+          String(right.case_name || ""),
+        ) * direction
+      );
+    }
+
+    const leftMetric = issueMetricForColumn(left, sort.column);
+    const rightMetric = issueMetricForColumn(right, sort.column);
+    const difference =
+      Number(leftMetric.flaky_rate_pct || 0) - Number(rightMetric.flaky_rate_pct || 0);
+    if (difference) {
+      return difference * direction;
+    }
+    return String(left.case_name || "").localeCompare(
+      String(right.case_name || ""),
+    );
+  });
+}
+
+function issueMetricForColumn(row, column) {
+  if (column === "total") {
+    return row.total;
+  }
+  const week = column.slice("week:".length);
+  return row.metrics.find((metric) => metric.week_start === week) || {};
 }
 
 export function BucketFlakyRateTable({
