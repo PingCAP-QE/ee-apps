@@ -1064,7 +1064,32 @@ def _ci_weekly_cost_budget_rows(
                         "cost_basis": str(row["cost_basis"] or ""),
                     }
                 )
+    _ci_weekly_cost_validate_plan_windows(plans)
     return {source: tuple(rows) for source, rows in plans.items()}
+
+
+def _ci_weekly_cost_validate_plan_windows(
+    plans_by_source: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+) -> None:
+    for source, plans in plans_by_source.items():
+        previous_plan: Mapping[str, Any] | None = None
+        for plan in sorted(
+            plans,
+            key=lambda item: (
+                item["period_start_date"],
+                item["period_end_date"],
+                str(item["budget_name"]),
+            ),
+        ):
+            if (
+                previous_plan is not None
+                and plan["period_start_date"] <= previous_plan["period_end_date"]
+            ):
+                raise ValueError(
+                    f"overlapping CI budget plans for {_cost_source_value(*source)}: "
+                    f"{previous_plan['budget_name']!r} and {plan['budget_name']!r}"
+                )
+            previous_plan = plan
 
 
 def _ci_weekly_cost_active_plans(
@@ -1846,7 +1871,7 @@ def _weekly_cost_team_dimensions(
         cross_account_team = cross_account_team_descriptor(group_id)
         owner_name = _weekly_cost_owner_name(row["owner"])
         project_name = _weekly_cost_project_name(row["project"])
-        repo_name = str(row["repo"] or "").strip() or "(no repo)"
+        repo_name = str(row.get("repo") or "").strip() or "(no repo)"
         usage_date = _parse_date(row["usage_date"])
         if usage_date is None:
             continue

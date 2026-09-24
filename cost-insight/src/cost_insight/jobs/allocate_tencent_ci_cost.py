@@ -15,7 +15,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import TENCENT_CI_SOURCE
-from cost_insight.common.row_utils import bind_decimal_rows
+from cost_insight.common.row_utils import bind_decimal_rows, tencent_ci_pool_key
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.refresh_attribution_daily import (
     _DELETE_ATTRIBUTION_DAILY,
@@ -115,18 +115,10 @@ def _shared_rows(
     summary_rows: tuple[dict[str, Any], ...],
     product_codes: tuple[str, ...],
 ) -> tuple[dict[str, Any], ...]:
-    pools: dict[tuple[str, str | None, str | None, str | None], list[dict[str, Any]]] = defaultdict(list)
+    pools: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
     for row, product_code in zip(summary_rows, product_codes, strict=True):
         if not product_code.startswith(_SUPERNODE_PREFIX):
-            service = row.get("service") or None
-            pools[
-                (
-                    str(row.get("currency") or "USD").upper(),
-                    row.get("service_name") or None,
-                    service,
-                    row.get("project") or service,
-                )
-            ].append(row)
+            pools[tencent_ci_pool_key(row)].append(row)
 
     weights = _build_weights(connection, usage_date)
     return tuple(
@@ -139,9 +131,9 @@ def _shared_rows(
             currency,
             pool,
             weights,
-            service_name=service_name,
-            service=service,
-            project=project,
+            service_name=service_name or None,
+            service=service or None,
+            project=project or None,
         )
     )
 

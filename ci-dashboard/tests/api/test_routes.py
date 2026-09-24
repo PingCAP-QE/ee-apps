@@ -4873,6 +4873,25 @@ def _insert_ci_weekly_cost_budget(
         )
 
 
+def test_ci_weekly_cost_rejects_overlapping_plans(sqlite_engine) -> None:
+    _add_ci_weekly_cost_budget_schema(sqlite_engine)
+    for budget_name in ("CI plan one", "CI plan two"):
+        _insert_ci_weekly_cost_budget(
+            sqlite_engine,
+            vendor="gcp",
+            account_id="pingcap-testing-account",
+            budget_name=budget_name,
+            period_start_date="2026-09-01",
+            period_end_date="2026-09-30",
+        )
+
+    with sqlite_engine.connect() as connection, pytest.raises(
+        ValueError,
+        match="overlapping CI budget plans for gcp:pingcap-testing-account",
+    ):
+        cost_queries._ci_weekly_cost_budget_rows(connection)
+
+
 def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
     sqlite_engine,
     api_client: TestClient,
