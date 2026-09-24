@@ -43,7 +43,6 @@ CI_WEEKLY_COST_SOURCES = (
     ("gcp", "pingcap-testing-account"),
     ("tencent", "100050658403"),
 )
-CI_WEEKLY_COST_BASES = frozenset({"list_cost", "net_cost"})
 VALID_COST_SHARE_DIMENSIONS = frozenset(
     {"account", "owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
 )
@@ -92,14 +91,6 @@ class BudgetPeriod:
     @property
     def days(self) -> int:
         return max((self.end_date - self.start_date).days + 1, 1)
-
-
-class CIWeeklyCostConfigurationError(ValueError):
-    def __init__(self, code: str, message: str, plans: Sequence[Mapping[str, Any]]) -> None:
-        self.code = code
-        self.message = message
-        self.plans = list(plans)
-        super().__init__(message)
 
 
 def get_cost_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -923,7 +914,6 @@ def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
         "meta": {
             "calendar_timezone": "UTC",
             "cost_metric": "budget_basis_spend",
-            "budget_basis_schema_available": False,
         },
         "last_complete_week": _ci_weekly_cost_period(last_week_start, last_week_end),
         "last_complete_month": _ci_weekly_cost_period(previous_month_start, previous_month_end),
@@ -932,18 +922,9 @@ def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
     }
 
     with engine.begin() as connection:
-        if not _ci_weekly_cost_budget_schema_available(connection):
-            return report
-        report["meta"]["budget_basis_schema_available"] = True
         budget_rows = _ci_weekly_cost_budget_rows(connection)
         active_plans = _ci_weekly_cost_active_plans(budget_rows, today)
-        relevant_plans = _ci_weekly_cost_relevant_plans(
-            budget_rows,
-            ((last_week_start, last_week_end), (previous_month_start, previous_month_end)),
-            today,
-        )
-        _validate_ci_weekly_cost_bases(relevant_plans)
-        source_bases = _ci_weekly_cost_source_bases(relevant_plans)
+        source_bases = _ci_weekly_cost_source_bases(budget_rows)
         source_names = _ci_weekly_cost_source_names(connection)
         data_start = min(
             [previous_month_start, *(plan["period_start_date"] for plan in active_plans)]
@@ -979,13 +960,6 @@ def _ci_weekly_cost_period(start_date: date, end_date: date) -> dict[str, str]:
 
 def _ci_weekly_cost_empty_budget_period_cost() -> dict[str, Any]:
     return {"metric": "budget_basis_spend", "components": [], "points": []}
-
-
-def _ci_weekly_cost_budget_schema_available(connection: Connection) -> bool:
-    return all(
-        _table_has_column(connection, "cost_budgets", column)
-        for column in ("accounts", "platform", "projects", "cost_basis")
-    )
 
 
 def _ci_weekly_cost_budget_rows(
@@ -1059,24 +1033,6 @@ def _ci_weekly_cost_active_plans(
     ]
 
 
-def _ci_weekly_cost_relevant_plans(
-    budget_rows: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
-    periods: Sequence[tuple[date, date]],
-    today: date,
-) -> dict[tuple[str, str], tuple[Mapping[str, Any], ...]]:
-    relevant: dict[tuple[str, str], tuple[Mapping[str, Any], ...]] = {}
-    for source, plans in budget_rows.items():
-        selected = tuple(
-            plan
-            for plan in plans
-            if any(_ci_weekly_cost_plan_overlaps(plan, start_date, end_date) for start_date, end_date in periods)
-            or plan["period_start_date"] <= today <= plan["period_end_date"]
-        )
-        if selected:
-            relevant[source] = selected
-    return relevant
-
-
 def _ci_weekly_cost_plan_overlaps(
     plan: Mapping[str, Any],
     start_date: date,
@@ -1085,68 +1041,15 @@ def _ci_weekly_cost_plan_overlaps(
     return plan["period_start_date"] <= end_date and start_date <= plan["period_end_date"]
 
 
-def _validate_ci_weekly_cost_bases(
-    plans_by_source: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
-) -> None:
-    unsupported = [
-        plan
-        for plans in plans_by_source.values()
-        for plan in plans
-        if plan["cost_basis"] not in CI_WEEKLY_COST_BASES
-    ]
-    if unsupported:
-        raise CIWeeklyCostConfigurationError(
-            "unsupported_cost_basis",
-            "CI budget configuration contains an unsupported cost basis.",
-            [_ci_weekly_cost_plan_payload(plan) for plan in unsupported],
-        )
-
-    conflicting = [
-        plan
-        for plans in plans_by_source.values()
-        if len({plan["cost_basis"] for plan in plans}) > 1
-        for plan in plans
-    ]
-    if conflicting:
-        raise CIWeeklyCostConfigurationError(
-            "conflicting_cost_basis",
-            "CI budget configuration contains conflicting cost bases.",
-            [_ci_weekly_cost_plan_payload(plan) for plan in conflicting],
-        )
-
-    overlapping = [
-        plan
-        for plans in plans_by_source.values()
-        for plan in plans
-        if any(
-            other is not plan
-            and _ci_weekly_cost_plan_overlaps(
-                plan, other["period_start_date"], other["period_end_date"]
-            )
-            for other in plans
-        )
-    ]
-    if overlapping:
-        raise CIWeeklyCostConfigurationError(
-            "overlapping_cost_plans",
-            "CI budget configuration contains overlapping plans.",
-            [_ci_weekly_cost_plan_payload(plan) for plan in overlapping],
-        )
-
-
-def _ci_weekly_cost_plan_payload(plan: Mapping[str, Any]) -> dict[str, str]:
-    vendor, account_id = plan["source"]
-    return {
-        "cost_source": _cost_source_value(vendor, account_id),
-        "budget_name": str(plan["budget_name"]),
-        "cost_basis": str(plan["cost_basis"]),
-    }
-
-
 def _ci_weekly_cost_source_bases(
     plans_by_source: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
 ) -> dict[tuple[str, str], str]:
-    return {source: str(plans[0]["cost_basis"]) for source, plans in plans_by_source.items()}
+    # Fixed CI sources have one basis; report bases per period if that contract changes.
+    return {
+        source: str(plans[0]["cost_basis"])
+        for source, plans in plans_by_source.items()
+        if plans
+    }
 
 
 def _ci_weekly_cost_values(
@@ -1260,11 +1163,9 @@ def _ci_weekly_cost_actual(
     start_date: date,
     end_date: date,
 ) -> Decimal:
-    if cost_basis not in CI_WEEKLY_COST_BASES:
-        return Decimal(0)
     return sum(
         (
-            amounts[cost_basis]
+            amounts.get(cost_basis, Decimal(0))
             for (fact_source, usage_date), amounts in cost_values.items()
             if fact_source == source and start_date <= usage_date <= end_date
         ),

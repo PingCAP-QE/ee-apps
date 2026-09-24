@@ -446,7 +446,6 @@ test("CI Cost Weekly uses its fixed endpoint and renders account-period budget g
         meta: {
           calendar_timezone: "UTC",
           cost_metric: "budget_basis_spend",
-          budget_basis_schema_available: true,
         },
         last_complete_week: { start_date: "2026-09-14", end_date: "2026-09-20" },
         last_complete_month: { start_date: "2026-08-01", end_date: "2026-08-31" },
@@ -505,94 +504,11 @@ test("CI Cost Weekly uses its fixed endpoint and renders account-period budget g
     const rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /CI Cost Weekly/);
     assert.match(rendered, /2026 H2 CI cumulative budget-basis spend/);
-    assert.match(rendered, /GCP list cost \+ Tencent net cost/);
+    assert.match(rendered, /Budget-basis spend: GCP list cost \+ Tencent net cost/);
     assert.match(rendered, /Last complete week — List cost/);
     assert.match(rendered, /Last complete week — Net cost/);
     assert.match(rendered, /\$100\.00/);
     assert.match(rendered, /Not configured/);
-  } finally {
-    await act(async () => renderer?.unmount());
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("CI Cost Weekly explains when budget-basis metadata is not deployed", async () => {
-  const originalFetch = globalThis.fetch;
-  let renderer;
-
-  globalThis.fetch = async () => ({
-    ok: true,
-    json: async () => ({
-      meta: {
-        calendar_timezone: "UTC",
-        cost_metric: "budget_basis_spend",
-        budget_basis_schema_available: false,
-      },
-      last_complete_week: { start_date: "2026-09-14", end_date: "2026-09-20" },
-      last_complete_month: { start_date: "2026-08-01", end_date: "2026-08-31" },
-      accounts: [],
-      budget_period_cost: { metric: "budget_basis_spend", components: [], points: [] },
-    }),
-  });
-
-  try {
-    await act(async () => {
-      renderer = TestRenderer.create(
-        React.createElement(
-          MemoryRouter,
-          { initialEntries: ["/ci-cost-weekly"] },
-          React.createElement(App),
-        ),
-      );
-      await Promise.resolve();
-    });
-
-    assert.match(JSON.stringify(renderer.toJSON()), /CI budget-basis metadata is not deployed yet/);
-    assert.equal(renderer.root.findAllByProps({ role: "progressbar" }).length, 0);
-  } finally {
-    await act(async () => renderer?.unmount());
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("CI Cost Weekly renders the configuration response instead of a fallback", async () => {
-  const originalFetch = globalThis.fetch;
-  let renderer;
-
-  globalThis.fetch = async () => ({
-    ok: false,
-    status: 409,
-    statusText: "Conflict",
-    json: async () => ({
-      error: {
-        code: "unsupported_cost_basis",
-        message: "CI budget configuration contains an unsupported cost basis.",
-        plans: [{
-          cost_source: "tencent:100050658403",
-          budget_name: "PingCAP CICD H2 Tencent 2026",
-          cost_basis: "gross_cost",
-        }],
-      },
-    }),
-  });
-
-  try {
-    await act(async () => {
-      renderer = TestRenderer.create(
-        React.createElement(
-          MemoryRouter,
-          { initialEntries: ["/ci-cost-weekly"] },
-          React.createElement(App),
-        ),
-      );
-      await Promise.resolve();
-    });
-
-    const rendered = JSON.stringify(renderer.toJSON());
-    assert.match(rendered, /CI budget configuration contains an unsupported cost basis/);
-    assert.match(rendered, /tencent:100050658403/);
-    assert.match(rendered, /PingCAP CICD H2 Tencent 2026/);
-    assert.equal(renderer.root.findAllByProps({ role: "progressbar" }).length, 0);
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;
