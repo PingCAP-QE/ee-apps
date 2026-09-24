@@ -2109,11 +2109,6 @@ select {
   stroke-width: 2;
 }
 
-.donut-chart__segment--highlight {
-  stroke: #f59e0b;
-  stroke-width: 4;
-}
-
 .donut-chart__segment--interactive {
   cursor: pointer;
   transition: transform 140ms ease, opacity 140ms ease;
@@ -2166,11 +2161,6 @@ select {
 
 .donut-legend__item--static {
   cursor: default;
-}
-
-.donut-legend__item--highlight {
-  border-color: rgba(217, 119, 6, 0.45);
-  background: rgba(251, 191, 36, 0.14);
 }
 
 .donut-legend__name {

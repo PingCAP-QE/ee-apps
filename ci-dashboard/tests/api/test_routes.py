@@ -2855,7 +2855,7 @@ def test_cost_owner_dimensions_do_not_fallback_to_author(
     assert body["series"][0]["label"] == "(no owner)"
 
 
-def test_cost_share_route_marks_low_share_regions(
+def test_cost_share_route_keeps_nonzero_low_share_regions_unhighlighted(
     sqlite_engine,
     api_client: TestClient,
 ) -> None:
@@ -2892,16 +2892,9 @@ def test_cost_share_route_marks_low_share_regions(
     assert response.status_code == 200
     body = response.json()
     assert body["meta"]["dimension"] == "region"
-    assert body["meta"]["highlight_threshold_pct"] == 1.0
     assert body["items"] == [
         {"name": "us-east-1", "value": 100.0, "share_pct": 99.5, "interactive": False},
-        {
-            "name": "ap-south-1",
-            "value": 0.5,
-            "share_pct": 0.5,
-            "interactive": False,
-            "highlight": True,
-        },
+        {"name": "ap-south-1", "value": 0.5, "share_pct": 0.5, "interactive": False},
     ]
 
     stack_response = api_client.get(
@@ -2921,6 +2914,48 @@ def test_cost_share_route_marks_low_share_regions(
         {"name": "us-east-1", "value": 100.0},
         {"name": "ap-south-1", "value": 0.5},
     ]
+
+
+def test_cost_share_route_omits_regions_displayed_as_zero_pct(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=100,
+        list_cost=100,
+        region="us-east-1",
+        dimension_hash="region-us-east-1",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-04-06",
+        repo="tidb",
+        group_id=110,
+        net_cost=0.01,
+        list_cost=0.01,
+        region="ap-south-1",
+        dimension_hash="region-ap-south-1",
+    )
+
+    response = api_client.get(
+        "/api/v1/pages/cost-share",
+        params={
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+            "dimension": "region",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"] == [
+        {"name": "us-east-1", "value": 100.0, "share_pct": 99.99, "interactive": False}
+    ]
+    assert body["meta"]["total_list_cost"] == 100.01
 
 
 def test_cost_share_route_normalizes_aws_service_names(
@@ -5932,11 +5967,6 @@ def test_cost_query_helpers_cover_edge_cases(sqlite_engine) -> None:
         limit=2,
         total=5,
     ) == [{"value": 5}]
-    assert cost_queries._share_items_limited_with_others(
-        [{"value": 5}, {"value": 4, "highlight": True}, {"value": 3}],
-        limit=2,
-        total=12,
-    )[-1]["highlight"] is True
 
 
 def test_budget_health_snapshot_marks_warning_when_over_pace(

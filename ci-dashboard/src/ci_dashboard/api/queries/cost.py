@@ -46,7 +46,6 @@ COST_DRILLDOWN_CHILD_GROUPS = {
     "team": "owner",
     "cost_driver": "sku",
 }
-LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
 RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE = 50
 RESOURCE_BREAKDOWN_MAX_PAGE_SIZE = 100
 UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
@@ -483,8 +482,8 @@ def get_cost_share(
     for item in all_items:
         item["share_pct"] = rate_pct(item["value"], total)
         item["interactive"] = False
-        if dimension == "region" and 0 < item["share_pct"] < LOW_REGION_SHARE_THRESHOLD_PCT:
-            item["highlight"] = True
+    if dimension == "region":
+        all_items = [item for item in all_items if item["share_pct"] >= 0.05]
 
     meta = _cost_dimension_meta(
         filters,
@@ -494,9 +493,6 @@ def get_cost_share(
         drilldown=drilldown,
         total_list_cost=round(total, 2),
     )
-    if dimension == "region":
-        meta["highlight_threshold_pct"] = LOW_REGION_SHARE_THRESHOLD_PCT
-
     return {
         "items": _share_items_limited_with_others(
             all_items,

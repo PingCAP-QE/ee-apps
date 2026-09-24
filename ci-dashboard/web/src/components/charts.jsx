@@ -1075,7 +1075,6 @@ export function DonutShareChart({
               const segmentClassName = [
                 "donut-chart__segment",
                 interactive ? "donut-chart__segment--interactive" : "",
-                item.highlight ? "donut-chart__segment--highlight" : "",
               ].filter(Boolean).join(" ");
               const element = (
                 <path
@@ -1136,7 +1135,6 @@ export function DonutShareChart({
             const legendClassName = [
               "donut-legend__item",
               interactive ? "" : "donut-legend__item--static",
-              item.highlight ? "donut-legend__item--highlight" : "",
             ].filter(Boolean).join(" ");
             if (interactive) {
               return (
