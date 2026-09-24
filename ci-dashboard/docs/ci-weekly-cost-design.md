@@ -57,27 +57,13 @@ Out of scope:
 
 ### Migration baseline and plan identity
 
-`sql/001_create_cost_tables.sql` is the legacy baseline: it has scalar
-`account_id` but no `accounts`, `projects`, or `platform` columns. The
-cost-basis migration starts only after
-`cost-insight/sql/028_add_cost_budget_plan_scope.sql` has added the following
-production shape and populated the published CICD plans:
+The deployed budget-plan schema already has `accounts`, `projects`, and
+`platform`; existing CICD plans use those columns. This change does not recreate
+or migrate that pre-existing plan scope. It requires the target plan to have
+verified JSON `accounts` membership and `platform = 'CICD'`; there is no legacy
+`account_id` fallback.
 
-```text
-accounts JSON NULL       -- JSON array of account IDs
-projects JSON NULL       -- NULL or [] for a source-wide CI plan
-team VARCHAR(255) NULL   -- shared QA plan scope
-platform VARCHAR(16)     -- CICD for a CI plan
-```
-
-That prerequisite migration must be applied before this migration and before
-the CI endpoint deploys. It must not infer the target plan's JSON membership
-from legacy `account_id`; the plan writer must publish the verified
-`accounts` membership and `platform = 'CICD'`. This migration therefore has no
-legacy `account_id` fallback. Its preflight must fail if the target plan has not
-already reached this shape.
-
-On that baseline, `sql/029_add_ci_budget_cost_basis.sql` adds one additive column:
+`sql/029_add_ci_budget_cost_basis.sql` adds the only new column:
 
 ```sql
 ALTER TABLE cost_budgets
@@ -111,16 +97,18 @@ WHERE vendor = 'tencent'
 ```
 
 The seed phase is performed with budget writers paused (or otherwise serialized)
-so the count and update cannot race. The TiDB migration command must execute the
-following sentinel preflight and exit non-zero unless its only output is
-`CI_BUDGET_TARGET_COUNT_OK`; only then may it run the `UPDATE`, which repeats
-this exact predicate and embeds the same count check so an error-continuing
-runner cannot seed multiple rows:
+so the count and update cannot race. The migration executes this sentinel and
+its `UPDATE` in one script. It prints `CI_BUDGET_TARGET_COUNT_OK` only for one
+target; otherwise the invalid JSON passed to `JSON_EXTRACT` causes a statement
+error and prevents the following `UPDATE`. The `UPDATE` repeats this exact
+predicate and embeds the same count check so an error-continuing runner cannot
+seed multiple rows:
 
-```sh
-seed_guard="$(mysql --batch --skip-column-names "$TIDB_DATABASE" <<'SQL'
-SELECT CASE WHEN COUNT(*) = 1 THEN 'CI_BUDGET_TARGET_COUNT_OK'
-            ELSE CONCAT('CI_BUDGET_TARGET_COUNT_INVALID:', COUNT(*)) END
+```sql
+SELECT CASE
+  WHEN COUNT(*) = 1 THEN 'CI_BUDGET_TARGET_COUNT_OK'
+  ELSE JSON_EXTRACT(CONCAT('CI_BUDGET_TARGET_COUNT_INVALID:', COUNT(*)), '$')
+END AS seed_guard
 FROM cost_budgets
 WHERE vendor = 'tencent'
   AND LOWER(TRIM(platform)) = 'cicd'
@@ -128,12 +116,6 @@ WHERE vendor = 'tencent'
   AND budget_name = 'PingCAP CICD H2 Tencent 2026'
   AND period_start_date = '2026-09-01'
   AND period_end_date = '2027-03-31';
-SQL
-)"
-test "$seed_guard" = 'CI_BUDGET_TARGET_COUNT_OK' || {
-  printf '%s\n' "$seed_guard" >&2
-  exit 1
-}
 ```
 
 ```sql
@@ -353,10 +335,9 @@ explains that budget-basis metadata is not deployed. It must not assume
 
 ## Implementation boundaries
 
-1. First add and apply `cost-insight/sql/028_add_cost_budget_plan_scope.sql`;
-   then apply `029_add_ci_budget_cost_basis.sql` and run its serialized,
-   sentinel-checked Tencent seed. Extend any budget writer validation to accept
-   only the two documented basis values.
+1. Apply `cost-insight/sql/029_add_ci_budget_cost_basis.sql` and run its
+   serialized, sentinel-checked Tencent seed. Extend any budget writer validation
+   to accept only the two documented basis values.
 2. In `ci-dashboard/src/ci_dashboard/api/queries/cost.py`, make the CI weekly
    query read `cost_basis`, aggregate both USD-normalized candidates, and select
    the candidate per plan for gauges and active-period points.
@@ -375,10 +356,11 @@ existing daily attribution facts at request time.
 
 Deploy in this order:
 
-1. apply `028_add_cost_budget_plan_scope.sql` and verify that the target plan
-   has `platform = 'CICD'` and JSON `accounts` containing `100050658403`;
-2. apply `029_add_ci_budget_cost_basis.sql` with the sentinel preflight,
-   confirm every non-target legacy row reads as `list_cost`, and confirm the
+1. verify that the existing target plan has `platform = 'CICD'` and JSON
+   `accounts` containing `100050658403`;
+2. apply `029_add_ci_budget_cost_basis.sql`; its embedded sentinel must print
+   `CI_BUDGET_TARGET_COUNT_OK` before the seed `UPDATE` runs. Confirm every
+   non-target row reads as `list_cost`, and confirm the
    JSON-identity selector returns exactly one Tencent row with
    `cost_basis = 'net_cost'` and a USD amount;
 3. deploy the dashboard change; and

@@ -1,5 +1,5 @@
 -- Apply while budget writers are paused (or otherwise serialized). This migration
--- requires the CICD plan scope columns added by sql/028_add_cost_budget_plan_scope.sql.
+-- requires the existing CICD plan scope columns: accounts, projects, and platform.
 ALTER TABLE cost_budgets
   ADD COLUMN IF NOT EXISTS cost_basis VARCHAR(16) NOT NULL DEFAULT 'list_cost'
   AFTER budget_amount;
