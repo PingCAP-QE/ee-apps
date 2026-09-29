@@ -69,6 +69,7 @@ class SyncBuildsSummary:
     source_rows_scanned: int = 0
     rows_written: int = 0
     rows_skipped: int = 0
+    reconciled_rows: int = 0
     last_source_prow_row_id: int = 0
 
 

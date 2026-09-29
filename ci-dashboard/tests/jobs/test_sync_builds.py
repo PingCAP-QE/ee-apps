@@ -559,6 +559,82 @@ def test_sync_builds_marks_failure_state_on_fetch_error(sqlite_engine, monkeypat
     assert "boom" in (state.last_error or "")
 
 
+def test_sync_builds_reconciles_recent_pending_source_row(sqlite_engine) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO prow_jobs (
+                  id, prowJobId, namespace, jobName, type, state, optional, report,
+                  org, repo, base_ref, pull, context, url, author, retest, event_guid,
+                  startTime, completionTime, spec, status
+                ) VALUES (
+                  1, 'pending-job', 'prow', 'unit', 'presubmit', 'pending', 0, 1,
+                  'pingcap', 'tidb', 'master', 123, 'unit',
+                  'https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/unit/1/',
+                  'alice', 0, 'guid-1', '2026-04-13T10:00:00Z', NULL, '{}', '{}'
+                )
+                """
+            )
+        )
+
+    settings = Settings(
+        database=DatabaseSettings(
+            url="sqlite+pysqlite:///:memory:",
+            host=None,
+            port=None,
+            user=None,
+            password=None,
+            database=None,
+            ssl_ca=None,
+        ),
+        jobs=JobSettings(batch_size=10),
+        log_level="INFO",
+    )
+    run_sync_builds(sqlite_engine, settings, now=datetime(2026, 4, 13, 10, 5, 0))
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE prow_jobs
+                SET state = 'success', completionTime = '2026-04-13T10:10:00Z',
+                    status = '{"completionTime":"2026-04-13T10:10:00Z"}'
+                WHERE id = 1
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE ci_l1_builds
+                SET target_branch = 'release-8.5'
+                WHERE source_prow_job_id = 'pending-job'
+                """
+            )
+        )
+
+    summary = run_sync_builds(sqlite_engine, settings, now=datetime(2026, 4, 13, 10, 15, 0))
+
+    with sqlite_engine.begin() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT state, completion_time, total_seconds, target_branch
+                FROM ci_l1_builds
+                WHERE source_prow_job_id = 'pending-job'
+                """
+            )
+        ).mappings().one()
+
+    assert summary.source_rows_scanned == 0
+    assert summary.reconciled_rows == 1
+    assert row["state"] == "success"
+    assert str(row["completion_time"]).startswith("2026-04-13 10:10:00")
+    assert row["total_seconds"] == 600
+    assert row["target_branch"] == "release-8.5"
+
+
 def test_sync_builds_time_window_is_repeatable(sqlite_engine) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
