@@ -18,7 +18,8 @@ Execution model:
 3. map each source row into one normalized build row
 4. bulk upsert by `source_prow_job_id`
 5. save progress watermark after each committed batch
-6. mark final job status in `ci_job_state`
+6. reconcile up to one batch of builds started in the last two days that remain `pending` locally while their source row is terminal; update only outcome and timing fields
+7. mark final job status in `ci_job_state`
 
 Per-row mapping:
 
