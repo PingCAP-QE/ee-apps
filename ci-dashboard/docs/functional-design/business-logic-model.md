@@ -18,7 +18,7 @@ Execution model:
 3. map each source row into one normalized build row
 4. bulk upsert by `source_prow_job_id`
 5. save progress watermark after each committed batch
-6. reconcile up to one batch of builds started in the last two days that remain `pending` locally while their source row is terminal; update only outcome and timing fields
+6. reconcile all builds started in the last two days that remain `pending` locally and link to a terminal `prow_jobs` row; update source-owned outcome, build-execution (`build_id`, `pod_name`), and timing fields while preserving derived and Jenkins-owned fields
 7. mark final job status in `ci_job_state`
 
 Per-row mapping:

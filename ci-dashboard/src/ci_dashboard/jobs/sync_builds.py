@@ -43,12 +43,16 @@ FETCH_SOURCE_ROWS = text(
 
 FETCH_RECENT_TERMINAL_PENDING_SOURCE_ROWS = text(
     f"""
-    SELECT p.*, b.id AS target_build_id
+    SELECT p.*, b.id AS target_build_id, b.start_time AS target_start_time
     FROM ci_l1_builds AS b
     JOIN prow_jobs AS p ON p.id = b.source_prow_row_id
     WHERE b.state = 'pending'
       AND b.completion_time IS NULL
       AND b.start_time >= :start_time_from
+      AND (
+        b.start_time > :after_start_time
+        OR (b.start_time = :after_start_time AND b.id > :after_build_id)
+      )
       AND LOWER(p.state) IN ({", ".join(repr(state) for state in _TERMINAL_BUILD_STATES)})
     ORDER BY b.start_time, b.id
     LIMIT :batch_size
@@ -145,38 +149,57 @@ def reconcile_recent_pending_builds(
     start_time_from: datetime,
     batch_size: int,
 ) -> tuple[int, int]:
-    source_rows = list(
-        connection.execute(
-            FETCH_RECENT_TERMINAL_PENDING_SOURCE_ROWS,
-            {"start_time_from": start_time_from, "batch_size": batch_size},
-        ).mappings()
-    )
-    updates: list[dict[str, Any]] = []
+    reconciled_rows = 0
     skipped_rows = 0
-    for source_row in source_rows:
-        try:
-            build_row = map_build_row(source_row)
-            target_build_id = _coerce_int(_required(source_row, "target_build_id"))
-        except ValueError as exc:
-            skipped_rows += 1
-            LOG.warning(
-                "skipping malformed terminal source row during pending-build reconciliation",
-                extra={
-                    "job_name": JOB_NAME,
-                    "source_prow_row_id": _get_first(source_row, "id"),
-                    "reason": str(exc),
+    after_start_time = start_time_from
+    after_build_id = 0
+
+    while True:
+        source_rows = list(
+            connection.execute(
+                FETCH_RECENT_TERMINAL_PENDING_SOURCE_ROWS,
+                {
+                    "start_time_from": start_time_from,
+                    "after_start_time": after_start_time,
+                    "after_build_id": after_build_id,
+                    "batch_size": batch_size,
                 },
-            )
-            continue
-        update = build_row.as_db_params()
-        update["id"] = target_build_id
-        updates.append(update)
+            ).mappings()
+        )
+        if not source_rows:
+            break
 
-    if not updates:
-        return 0, skipped_rows
+        last_source_row = source_rows[-1]
+        after_start_time = _parse_datetime(_required(last_source_row, "target_start_time"))
+        if after_start_time is None:
+            raise ValueError("pending build reconciliation row is missing target_start_time")
+        after_build_id = _coerce_int(_required(last_source_row, "target_build_id"))
 
-    result = connection.execute(_pending_build_reconcile_statement(), updates)
-    return int(result.rowcount or 0), skipped_rows
+        updates: list[dict[str, Any]] = []
+        for source_row in source_rows:
+            try:
+                build_row = map_build_row(source_row)
+                target_build_id = _coerce_int(_required(source_row, "target_build_id"))
+            except ValueError as exc:
+                skipped_rows += 1
+                LOG.warning(
+                    "skipping malformed terminal source row during pending-build reconciliation",
+                    extra={
+                        "job_name": JOB_NAME,
+                        "source_prow_row_id": _get_first(source_row, "id"),
+                        "reason": str(exc),
+                    },
+                )
+                continue
+            update = build_row.as_db_params()
+            update["id"] = target_build_id
+            updates.append(update)
+
+        if updates:
+            result = connection.execute(_pending_build_reconcile_statement(), updates)
+            reconciled_rows += int(result.rowcount or 0)
+
+    return reconciled_rows, skipped_rows
 
 
 def fetch_source_rows_for_time_window(
@@ -388,7 +411,6 @@ def run_sync_builds(
                 start_time_from=reconcile_now - PENDING_BUILD_RECONCILE_LOOKBACK,
                 batch_size=settings.jobs.batch_size,
             )
-            summary.rows_written += reconciled_rows
             summary.rows_skipped += skipped_rows
             summary.reconciled_rows += reconciled_rows
             if reconciled_rows or skipped_rows:
