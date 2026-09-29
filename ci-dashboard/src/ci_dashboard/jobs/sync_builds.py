@@ -144,7 +144,7 @@ def fetch_source_rows(connection: Connection, after_id: int, batch_size: int) ->
 
 
 def reconcile_recent_pending_builds(
-    connection: Connection,
+    engine: Engine,
     *,
     start_time_from: datetime,
     batch_size: int,
@@ -155,49 +155,50 @@ def reconcile_recent_pending_builds(
     after_build_id = 0
 
     while True:
-        source_rows = list(
-            connection.execute(
-                FETCH_RECENT_TERMINAL_PENDING_SOURCE_ROWS,
-                {
-                    "start_time_from": start_time_from,
-                    "after_start_time": after_start_time,
-                    "after_build_id": after_build_id,
-                    "batch_size": batch_size,
-                },
-            ).mappings()
-        )
-        if not source_rows:
-            break
-
-        last_source_row = source_rows[-1]
-        after_start_time = _parse_datetime(_required(last_source_row, "target_start_time"))
-        if after_start_time is None:
-            raise ValueError("pending build reconciliation row is missing target_start_time")
-        after_build_id = _coerce_int(_required(last_source_row, "target_build_id"))
-
-        updates: list[dict[str, Any]] = []
-        for source_row in source_rows:
-            try:
-                build_row = map_build_row(source_row)
-                target_build_id = _coerce_int(_required(source_row, "target_build_id"))
-            except ValueError as exc:
-                skipped_rows += 1
-                LOG.warning(
-                    "skipping malformed terminal source row during pending-build reconciliation",
-                    extra={
-                        "job_name": JOB_NAME,
-                        "source_prow_row_id": _get_first(source_row, "id"),
-                        "reason": str(exc),
+        with engine.begin() as connection:
+            source_rows = list(
+                connection.execute(
+                    FETCH_RECENT_TERMINAL_PENDING_SOURCE_ROWS,
+                    {
+                        "start_time_from": start_time_from,
+                        "after_start_time": after_start_time,
+                        "after_build_id": after_build_id,
+                        "batch_size": batch_size,
                     },
-                )
-                continue
-            update = build_row.as_db_params()
-            update["id"] = target_build_id
-            updates.append(update)
+                ).mappings()
+            )
+            if not source_rows:
+                break
 
-        if updates:
-            result = connection.execute(_pending_build_reconcile_statement(), updates)
-            reconciled_rows += int(result.rowcount or 0)
+            last_source_row = source_rows[-1]
+            after_start_time = _parse_datetime(_required(last_source_row, "target_start_time"))
+            if after_start_time is None:
+                raise ValueError("pending build reconciliation row is missing target_start_time")
+            after_build_id = _coerce_int(_required(last_source_row, "target_build_id"))
+
+            updates: list[dict[str, Any]] = []
+            for source_row in source_rows:
+                try:
+                    build_row = map_build_row(source_row)
+                    target_build_id = _coerce_int(_required(source_row, "target_build_id"))
+                except ValueError as exc:
+                    skipped_rows += 1
+                    LOG.warning(
+                        "skipping malformed terminal source row during pending-build reconciliation",
+                        extra={
+                            "job_name": JOB_NAME,
+                            "source_prow_row_id": _get_first(source_row, "id"),
+                            "reason": str(exc),
+                        },
+                    )
+                    continue
+                update = build_row.as_db_params()
+                update["id"] = target_build_id
+                updates.append(update)
+
+            if updates:
+                result = connection.execute(_pending_build_reconcile_statement(), updates)
+                reconciled_rows += int(result.rowcount or 0)
 
     return reconciled_rows, skipped_rows
 
@@ -405,26 +406,26 @@ def run_sync_builds(
 
         reconcile_now = _to_naive_utc(now or datetime.now(timezone.utc))
         assert reconcile_now is not None
-        with engine.begin() as connection:
-            reconciled_rows, skipped_rows = reconcile_recent_pending_builds(
-                connection,
-                start_time_from=reconcile_now - PENDING_BUILD_RECONCILE_LOOKBACK,
-                batch_size=settings.jobs.batch_size,
+        reconciled_rows, skipped_rows = reconcile_recent_pending_builds(
+            engine,
+            start_time_from=reconcile_now - PENDING_BUILD_RECONCILE_LOOKBACK,
+            batch_size=settings.jobs.batch_size,
+        )
+        summary.rows_skipped += skipped_rows
+        summary.reconciled_rows += reconciled_rows
+        if reconciled_rows or skipped_rows:
+            LOG.info(
+                "reconciled recent pending builds",
+                extra={
+                    "job_name": JOB_NAME,
+                    "reconciled_rows": reconciled_rows,
+                    "rows_skipped": skipped_rows,
+                    "start_time_from": (
+                        reconcile_now - PENDING_BUILD_RECONCILE_LOOKBACK
+                    ).isoformat(sep=" "),
+                },
             )
-            summary.rows_skipped += skipped_rows
-            summary.reconciled_rows += reconciled_rows
-            if reconciled_rows or skipped_rows:
-                LOG.info(
-                    "reconciled recent pending builds",
-                    extra={
-                        "job_name": JOB_NAME,
-                        "reconciled_rows": reconciled_rows,
-                        "rows_skipped": skipped_rows,
-                        "start_time_from": (
-                            reconcile_now - PENDING_BUILD_RECONCILE_LOOKBACK
-                        ).isoformat(sep=" "),
-                    },
-                )
+        with engine.begin() as connection:
             mark_job_succeeded(connection, JOB_NAME, {"last_source_prow_row_id": watermark})
         return summary
     except Exception as exc:
