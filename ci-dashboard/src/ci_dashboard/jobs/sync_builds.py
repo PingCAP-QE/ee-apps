@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
 from sqlalchemy import text
@@ -28,6 +28,8 @@ from ci_dashboard.jobs.state_store import (
 LOG = logging.getLogger(__name__)
 
 JOB_NAME = "ci-sync-builds"
+PENDING_BUILD_RECONCILE_LOOKBACK = timedelta(days=2)
+_TERMINAL_BUILD_STATES = ("success", "pass", "failure", "error", "timeout", "timed_out", "aborted")
 
 FETCH_SOURCE_ROWS = text(
     """
@@ -35,6 +37,24 @@ FETCH_SOURCE_ROWS = text(
     FROM prow_jobs
     WHERE id > :after_id
     ORDER BY id
+    LIMIT :batch_size
+    """
+)
+
+FETCH_RECENT_TERMINAL_PENDING_SOURCE_ROWS = text(
+    f"""
+    SELECT p.*, b.id AS target_build_id, b.start_time AS target_start_time
+    FROM ci_l1_builds AS b
+    JOIN prow_jobs AS p ON p.id = b.source_prow_row_id
+    WHERE b.state = 'pending'
+      AND b.completion_time IS NULL
+      AND b.start_time >= :start_time_from
+      AND (
+        b.start_time > :after_start_time
+        OR (b.start_time = :after_start_time AND b.id > :after_build_id)
+      )
+      AND LOWER(p.state) IN ({", ".join(repr(state) for state in _TERMINAL_BUILD_STATES)})
+    ORDER BY b.start_time, b.id
     LIMIT :batch_size
     """
 )
@@ -121,6 +141,66 @@ def fetch_source_rows(connection: Connection, after_id: int, batch_size: int) ->
         {"after_id": after_id, "batch_size": batch_size},
     )
     return list(result.mappings())
+
+
+def reconcile_recent_pending_builds(
+    engine: Engine,
+    *,
+    start_time_from: datetime,
+    batch_size: int,
+) -> tuple[int, int]:
+    reconciled_rows = 0
+    skipped_rows = 0
+    after_start_time = start_time_from
+    after_build_id = 0
+
+    while True:
+        with engine.begin() as connection:
+            source_rows = list(
+                connection.execute(
+                    FETCH_RECENT_TERMINAL_PENDING_SOURCE_ROWS,
+                    {
+                        "start_time_from": start_time_from,
+                        "after_start_time": after_start_time,
+                        "after_build_id": after_build_id,
+                        "batch_size": batch_size,
+                    },
+                ).mappings()
+            )
+            if not source_rows:
+                break
+
+            last_source_row = source_rows[-1]
+            after_start_time = _parse_datetime(_required(last_source_row, "target_start_time"))
+            if after_start_time is None:
+                raise ValueError("pending build reconciliation row is missing target_start_time")
+            after_build_id = _coerce_int(_required(last_source_row, "target_build_id"))
+
+            updates: list[dict[str, Any]] = []
+            for source_row in source_rows:
+                try:
+                    build_row = map_build_row(source_row)
+                    target_build_id = _coerce_int(_required(source_row, "target_build_id"))
+                except ValueError as exc:
+                    skipped_rows += 1
+                    LOG.warning(
+                        "skipping malformed terminal source row during pending-build reconciliation",
+                        extra={
+                            "job_name": JOB_NAME,
+                            "source_prow_row_id": _get_first(source_row, "id"),
+                            "reason": str(exc),
+                        },
+                    )
+                    continue
+                update = build_row.as_db_params()
+                update["id"] = target_build_id
+                updates.append(update)
+
+            if updates:
+                result = connection.execute(_pending_build_reconcile_statement(), updates)
+                reconciled_rows += int(result.rowcount or 0)
+
+    return reconciled_rows, skipped_rows
 
 
 def fetch_source_rows_for_time_window(
@@ -283,7 +363,12 @@ def normalize_build_batch(source_rows: list[Mapping[str, Any]]) -> tuple[list[No
     return build_rows, skipped_rows
 
 
-def run_sync_builds(engine: Engine, settings: Settings) -> SyncBuildsSummary:
+def run_sync_builds(
+    engine: Engine,
+    settings: Settings,
+    *,
+    now: datetime | None = None,
+) -> SyncBuildsSummary:
     summary = SyncBuildsSummary()
     watermark = 0
 
@@ -319,6 +404,27 @@ def run_sync_builds(engine: Engine, settings: Settings) -> SyncBuildsSummary:
                     },
                 )
 
+        reconcile_now = _to_naive_utc(now or datetime.now(timezone.utc))
+        assert reconcile_now is not None
+        reconciled_rows, skipped_rows = reconcile_recent_pending_builds(
+            engine,
+            start_time_from=reconcile_now - PENDING_BUILD_RECONCILE_LOOKBACK,
+            batch_size=settings.jobs.batch_size,
+        )
+        summary.rows_skipped += skipped_rows
+        summary.reconciled_rows += reconciled_rows
+        if reconciled_rows or skipped_rows:
+            LOG.info(
+                "reconciled recent pending builds",
+                extra={
+                    "job_name": JOB_NAME,
+                    "reconciled_rows": reconciled_rows,
+                    "rows_skipped": skipped_rows,
+                    "start_time_from": (
+                        reconcile_now - PENDING_BUILD_RECONCILE_LOOKBACK
+                    ).isoformat(sep=" "),
+                },
+            )
         with engine.begin() as connection:
             mark_job_succeeded(connection, JOB_NAME, {"last_source_prow_row_id": watermark})
         return summary
@@ -482,6 +588,27 @@ def _coerce_optional_bool(value: Any) -> bool | None:
         if lowered in {"0", "false", "no", "n"}:
             return False
     raise ValueError(f"Unsupported boolean value: {value!r}")
+
+
+def _pending_build_reconcile_statement():
+    return text(
+        """
+        UPDATE ci_l1_builds
+        SET
+          state = :state,
+          build_id = COALESCE(:build_id, build_id),
+          pod_name = COALESCE(:pod_name, pod_name),
+          pending_time = COALESCE(:pending_time, pending_time),
+          completion_time = COALESCE(:completion_time, completion_time),
+          queue_wait_seconds = COALESCE(:queue_wait_seconds, queue_wait_seconds),
+          run_seconds = COALESCE(:run_seconds, run_seconds),
+          total_seconds = COALESCE(:total_seconds, total_seconds),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = :id
+          AND state = 'pending'
+          AND completion_time IS NULL
+        """
+    )
 
 
 def _build_update_by_id_statement():
