@@ -176,7 +176,7 @@ WHERE job_name = 'sync-gcs-cache-last-seen';
 
 如果 `last_succeeded_at < NOW() - INTERVAL 30 HOUR` → 告警。
 
-> `sync-gcs-cache-last-seen` 将 GCS audit log 数据写入 BigQuery last-seen 表（不在 TiDB 中），每日运行。无法直接查询目标表的新鲜度，只能通过 `cost_job_state` 间接检查。此项依赖 cost-insight 数据库连接。
+> `sync-gcs-cache-last-seen` 将 GCS audit log 数据写入 BigQuery last-seen 表（不在 TiDB 中），每日运行。无法直接查询目标表的新鲜度，只能通过共享 TiDB database 中的 `cost_job_state` 间接检查。
 
 ### 14. `roster_employees` — 员工花名册最新更新时间
 

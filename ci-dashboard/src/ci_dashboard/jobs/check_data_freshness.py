@@ -254,7 +254,6 @@ class CheckResult:
     value: Any  # raw DB result
     lag_description: str  # human-readable lag, e.g. "6h 30m" or "—"
     error: str | None = None
-    skipped: bool = False  # True when the check was not executed (e.g. no DB)
 
 
 @dataclass
@@ -264,7 +263,7 @@ class Report:
 
     @property
     def failed(self) -> list[CheckResult]:
-        return [r for r in self.results if not r.passed and not r.skipped]
+        return [r for r in self.results if not r.passed]
 
     @property
     def passed_all(self) -> bool:
@@ -380,8 +379,7 @@ def _format_lark_message(report: Report) -> str:
     # report.timestamp is UTC; convert to CST for display.
     cst = report.timestamp + timedelta(hours=8)
     date_str = cst.strftime("%Y-%m-%d %H:%M CST")
-    passed = [r for r in report.results if r.passed and not r.skipped]
-    skipped = [r for r in report.results if r.skipped]
+    passed = [r for r in report.results if r.passed]
     failed = report.failed
 
     failed_by_level: dict[str, list[CheckResult]] = {}
@@ -393,8 +391,6 @@ def _format_lark_message(report: Report) -> str:
     # Summary line (always first).
     parts = [f"📊 Daily Freshness — {date_str}"]
     parts.append(f"{len(failed)} failed, {len(passed)} passed")
-    if skipped:
-        parts.append(f"{len(skipped)} skipped")
     lines.append(" | ".join(parts))
 
     if not failed:
@@ -415,9 +411,6 @@ def _format_lark_message(report: Report) -> str:
                 f" (threshold: {r.check.threshold_description})"
             )
 
-    if skipped:
-        skipped_names = [r.check.name for r in skipped]
-        lines.append(f"\n⏭️ Skipped: {', '.join(skipped_names)}")
 
     return "\n".join(lines)
 

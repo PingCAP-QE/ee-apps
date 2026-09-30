@@ -335,7 +335,6 @@ class TestRunAllChecks:
     def test_runs_cost_checks_from_shared_engine(self, fresh_engine: Engine) -> None:
         report = run_all_checks(fresh_engine)
         assert len(report.results) == len(CHECKS)
-        assert all(not result.skipped for result in report.results)
 
 
 # ---------------------------------------------------------------------------
@@ -363,15 +362,6 @@ class TestReport:
         assert len(report.failed) == 1
         assert report.failed[0].check.name == "ci_l1_pod_lifecycle"
 
-    def test_skipped_not_counted_as_failed(self) -> None:
-        report = Report(timestamp=_utcnow(), results=[
-            CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=_utcnow(), lag_description="0h 0m"),
-            CheckResult(check=CHECKS_BY_NAME["cost_attribution_daily"], passed=True,
-                        value=None, lag_description="skipped", skipped=True),
-        ])
-        assert report.passed_all is True
-        assert report.failed == []
 
 
 # ---------------------------------------------------------------------------
@@ -420,30 +410,6 @@ class TestFormatLarkMessage:
         assert "⚪" in msg
         assert "LOW" in msg
 
-    def test_all_clear_with_skipped(self) -> None:
-        results = [
-            CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=_utcnow(), lag_description="0h 0m"),
-            CheckResult(check=CHECKS_BY_NAME["cost_attribution_daily"], passed=True,
-                        value=None, lag_description="skipped", skipped=True),
-        ]
-        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
-        msg = _format_lark_message(report)
-        assert "0 failed" in msg
-        assert "1 passed" in msg
-        assert "1 skipped" in msg
-
-    def test_failure_report_shows_skipped(self) -> None:
-        results = [
-            CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=False,
-                        value=datetime(2026, 6, 25, 2, 0), lag_description="5h 0m"),
-            CheckResult(check=CHECKS_BY_NAME["cost_attribution_daily"], passed=True,
-                        value=None, lag_description="skipped", skipped=True),
-        ]
-        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
-        msg = _format_lark_message(report)
-        assert "⏭️" in msg
-        assert "cost_attribution_daily" in msg
 
 
 # ---------------------------------------------------------------------------
@@ -512,7 +478,6 @@ class TestRunCheckDataFreshness:
         monkeypatch.setenv("LARK_APP_ID", "app-1")
         monkeypatch.setenv("LARK_APP_SECRET", "secret-1")
         monkeypatch.setenv("FRESHNESS_NOTIFY_OPEN_ID", "ou_test")
-        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
         from ci_dashboard.common.config import get_settings, load_settings
 
         _seed_all_checks(fresh_engine)
@@ -531,7 +496,6 @@ class TestRunCheckDataFreshness:
         monkeypatch.setenv("LARK_APP_ID", "app-1")
         monkeypatch.setenv("LARK_APP_SECRET", "secret-1")
         monkeypatch.setenv("FRESHNESS_NOTIFY_OPEN_ID", "ou_test")
-        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
         from ci_dashboard.common.config import get_settings, load_settings
 
         # Seed only checks that work in SQLite (skip archive_error_logs).
@@ -589,7 +553,6 @@ class TestRunCheckDataFreshness:
         monkeypatch.setenv("LARK_APP_ID", "app-1")
         monkeypatch.setenv("LARK_APP_SECRET", "secret-1")
         monkeypatch.setenv("FRESHNESS_NOTIFY_OPEN_ID", "ou_test")
-        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
         monkeypatch.setenv("FRESHNESS_DRY_RUN", "true")
         from ci_dashboard.common.config import get_settings, load_settings
 
@@ -616,7 +579,6 @@ class TestRunCheckDataFreshness:
         report = run_check_data_freshness(load_settings())
         cost_results = [result for result in report.results if result.check.db == "cost"]
         assert cost_results
-        assert all(not result.skipped for result in cost_results)
         assert all(result.passed for result in cost_results)
 
 
