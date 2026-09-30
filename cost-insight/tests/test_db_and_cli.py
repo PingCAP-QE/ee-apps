@@ -412,7 +412,7 @@ def test_configure_logging_accepts_unknown_level() -> None:
     configure_logging("not-a-level")
 
 
-def test_cli_runs_sync_gcs_cache_last_seen_without_database(monkeypatch, capsys) -> None:
+def test_cli_runs_dry_sync_gcs_cache_last_seen_without_database(monkeypatch, capsys) -> None:
     calls = []
     settings = SimpleNamespace(
         gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
@@ -445,6 +445,44 @@ def test_cli_runs_sync_gcs_cache_last_seen_without_database(monkeypatch, capsys)
 
     assert exit_code == 0
     assert calls == [False]
+    assert '"distinct_objects": 45' in capsys.readouterr().out
+
+
+def test_cli_tracks_non_dry_sync_gcs_cache_last_seen(monkeypatch, capsys) -> None:
+    calls = []
+    settings = SimpleNamespace(
+        gcp_billing=GcpBillingSettings(account_id="pingcap-testing-account"),
+        aws_billing=AwsBillingSettings(),
+        gcs_cache=SimpleNamespace(),
+        log_level="INFO",
+    )
+    engine = SimpleNamespace(dispose=lambda: calls.append("disposed"))
+
+    def fake_get_settings(require_database=True):
+        calls.append(require_database)
+        return settings
+
+    monkeypatch.setattr(cli, "get_settings", fake_get_settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: engine)
+    monkeypatch.setattr(
+        cli,
+        "run_tracked_sync_gcs_cache_last_seen",
+        lambda _engine, **kwargs: SyncGcsCacheLastSeenResult(
+            account_id="pingcap-testing-account",
+            bucket_name="pingcap-ci-bazel-remote-cache-us-central1",
+            run_date=date(2026, 6, 8),
+            source_rows_seen=123,
+            distinct_objects=45,
+            dry_run=False,
+            bytes_processed=678,
+        ),
+    )
+
+    exit_code = cli.main(["sync-gcs-cache-last-seen", "--run-date", "2026-06-08"])
+
+    assert exit_code == 0
+    assert calls == [True, "disposed"]
     assert '"distinct_objects": 45' in capsys.readouterr().out
 
 
