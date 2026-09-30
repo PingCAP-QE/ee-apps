@@ -7,7 +7,6 @@ cronjob_name="ci-dashboard-data-freshness-check"
 schedule="0 7 * * *"
 time_zone="Asia/Shanghai"
 db_secret="ci-dashboard-db"
-cost_db_secret=""
 lark_webhook_url=""
 dry_run="false"
 log_level="INFO"
@@ -43,9 +42,8 @@ Optional:
   --cronjob-name NAME           CronJob name. Default: ci-dashboard-data-freshness-check
   --schedule CRON               Cron expression. Default: "0 7 * * *"
   --time-zone TZ                CronJob timeZone. Default: Asia/Shanghai
-  --db-secret NAME              Secret for CI dashboard DB. Default: ci-dashboard-db
-  --cost-db-secret NAME         Secret for Cost-Insight DB. When omitted, cost checks
-                                are skipped (treated as passed, no alert).
+  --db-secret NAME              Secret for the shared CI Dashboard and Cost Insight DB.
+                                Default: ci-dashboard-db
   --dry-run true|false          Set FRESHNESS_DRY_RUN. Default: false
   --log-level LEVEL             CI_DASHBOARD_LOG_LEVEL override. Default: INFO
   --image-pull-policy P         Image pull policy. Default: IfNotPresent
@@ -81,8 +79,6 @@ while [[ $# -gt 0 ]]; do
       time_zone="${2:-}"; shift 2 ;;
     --db-secret)
       db_secret="${2:-}"; shift 2 ;;
-    --cost-db-secret)
-      cost_db_secret="${2:-}"; shift 2 ;;
     --lark-webhook-url)
       lark_webhook_url="${2:-}"; shift 2 ;;
     --dry-run)
@@ -174,16 +170,6 @@ EOF
   )
 fi
 
-# Build env block for cost DB secret
-cost_db_env_block=""
-if [[ -n "${cost_db_secret}" ]]; then
-  cost_db_env_block=$(cat <<EOF
-                - secretRef:
-                    name: ${cost_db_secret}
-EOF
-  )
-fi
-
 lark_env_block=""
 if [[ -n "${lark_webhook_url}" ]]; then
   lark_env_block=$(cat <<EOF
@@ -231,7 +217,6 @@ ${service_account_block}
               envFrom:
                 - secretRef:
                     name: ${db_secret}
-${cost_db_env_block}
               env:
                 - name: CI_DASHBOARD_LOG_LEVEL
                   value: ${log_level}

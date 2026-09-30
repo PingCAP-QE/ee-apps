@@ -26,7 +26,10 @@ from cost_insight.jobs.refresh_attribution_daily import (
     CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
 )
-from cost_insight.jobs.sync_gcs_cache_last_seen import run_sync_gcs_cache_last_seen
+from cost_insight.jobs.sync_gcs_cache_last_seen import (
+    run_sync_gcs_cache_last_seen,
+    run_tracked_sync_gcs_cache_last_seen,
+)
 from cost_insight.jobs.sync_aws_billing_summary import (
     AWS_CUR_LEGACY_SCHEMA_VERSION,
     AWS_SPLIT_COST_SCHEMA_VERSION,
@@ -402,6 +405,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ):
         raise ValueError("--limit cannot be used with destructive replacement")
     require_database = getattr(args, "require_database", True)
+    if args.command == "sync-gcs-cache-last-seen" and not args.dry_run:
+        require_database = True
     settings = get_settings(require_database=require_database)
     configure_logging(settings.log_level)
 
@@ -954,11 +959,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             engine.dispose()
 
     if args.command == "sync-gcs-cache-last-seen":
-        summary = run_sync_gcs_cache_last_seen(
-            settings=settings.gcs_cache,
-            run_date=args.run_date,
-            dry_run=args.dry_run,
-        )
+        if args.dry_run:
+            summary = run_sync_gcs_cache_last_seen(
+                settings=settings.gcs_cache,
+                run_date=args.run_date,
+                dry_run=True,
+            )
+        else:
+            engine = build_engine(settings)
+            try:
+                summary = run_tracked_sync_gcs_cache_last_seen(
+                    engine,
+                    settings=settings.gcs_cache,
+                    run_date=args.run_date,
+                )
+            finally:
+                engine.dispose()
         print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
         return 0
 

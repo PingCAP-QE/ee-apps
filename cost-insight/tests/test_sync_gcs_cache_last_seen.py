@@ -1,12 +1,17 @@
 from datetime import date, datetime, timezone
 
+import pytest
+from sqlalchemy import create_engine, text
+
 import cost_insight.jobs.sync_gcs_cache_last_seen as sync_gcs_cache_last_seen
 from cost_insight.common.bigquery import BigQueryQueryResult
+from cost_insight.jobs import state_store
 from cost_insight.common.config import GcsCacheSettings
 from cost_insight.jobs.sync_gcs_cache_last_seen import (
     build_sync_gcs_cache_last_seen_dry_run_query,
     build_sync_gcs_cache_last_seen_query,
     run_sync_gcs_cache_last_seen,
+    run_tracked_sync_gcs_cache_last_seen,
 )
 
 
@@ -80,6 +85,86 @@ def test_run_sync_gcs_cache_last_seen_returns_summary_from_executor() -> None:
     assert summary.source_rows_seen == 345
     assert summary.bytes_processed == 987654321
     assert summary.dry_run is True
+
+
+def test_tracked_sync_gcs_cache_last_seen_records_job_state() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_job_state (
+                  job_name TEXT PRIMARY KEY,
+                  watermark_json TEXT NOT NULL,
+                  last_started_at TIMESTAMP,
+                  last_succeeded_at TIMESTAMP,
+                  last_status TEXT NOT NULL,
+                  last_error TEXT,
+                  updated_at TIMESTAMP NOT NULL
+                )
+                """
+            )
+        )
+
+    summary = run_tracked_sync_gcs_cache_last_seen(
+        engine,
+        settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+        run_date=date(2026, 6, 8),
+        execute=lambda _query, parameters: BigQueryQueryResult(
+            rows=({"distinct_objects": 12, "source_rows_seen": 345},),
+            total_bytes_processed=987654321,
+        ),
+    )
+
+    with engine.connect() as connection:
+        state = state_store.get_job_state(connection, "sync-gcs-cache-last-seen")
+    assert summary.distinct_objects == 12
+    assert state is not None
+    assert state.last_status == "succeeded"
+    assert state.last_succeeded_at is not None
+    assert state.watermark == {
+        "distinct_objects": 12,
+        "run_date": "2026-06-08",
+        "source_rows_seen": 345,
+    }
+
+
+def test_tracked_sync_gcs_cache_last_seen_records_failure() -> None:
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_job_state (
+                  job_name TEXT PRIMARY KEY,
+                  watermark_json TEXT NOT NULL,
+                  last_started_at TIMESTAMP,
+                  last_succeeded_at TIMESTAMP,
+                  last_status TEXT NOT NULL,
+                  last_error TEXT,
+                  updated_at TIMESTAMP NOT NULL
+                )
+                """
+            )
+        )
+
+    def fail(_query, parameters):
+        raise RuntimeError("BigQuery unavailable")
+
+    with pytest.raises(RuntimeError, match="BigQuery unavailable"):
+        run_tracked_sync_gcs_cache_last_seen(
+            engine,
+            settings=GcsCacheSettings(project_id="pingcap-testing-account"),
+            run_date=date(2026, 6, 8),
+            execute=fail,
+        )
+
+    with engine.connect() as connection:
+        state = state_store.get_job_state(connection, "sync-gcs-cache-last-seen")
+    assert state is not None
+    assert state.last_status == "failed"
+    assert state.last_succeeded_at is None
+    assert state.last_error == "RuntimeError('BigQuery unavailable')"
 
 
 def test_run_sync_gcs_cache_last_seen_defaults_to_yesterday_utc(monkeypatch) -> None:

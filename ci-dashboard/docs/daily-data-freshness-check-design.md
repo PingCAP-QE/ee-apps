@@ -244,20 +244,18 @@ Schedule: 0 7 * * *  # 每天北京时间 07:00（UTC+8）
 
 ## 数据库连接
 
-检查 Job 需要访问两个 MySQL 数据库：
+ci-dashboard、Cost Insight 和 roster 使用同一个 TiDB database；检查 Job 只使用
+`ci-dashboard` DB Secret，所有检查必须执行，不能因缺少 Cost 专用连接而跳过。
 
-| 数据库 | 检查的表 |
-|--------|---------|
-| ci-dashboard DB | `ci_l1_builds`, `ci_l1_pod_lifecycle`, `ci_job_state`, `ci_l1_flaky_issues`, `ci_l1_pr_events`, `problem_case_runs`, `prow_jobs`, `github_tickets` |
-| cost-insight DB | `cost_bq_export_summary_daily`, `cost_attribution_daily`, `cost_unmatched_resource_daily`, `cost_job_state` |
-| roster DB（可能与 ci-dashboard 同库） | `roster_employees` |
-
-ci-dashboard 和 cost-insight 可能使用不同的 TiDB 实例或同一实例的不同 database。需要确认连接方式（两个 engine 分别连接还是共用一个连接池跨库查询）。
+| 域 | 检查的表 |
+|----|---------|
+| CI Dashboard | `ci_l1_builds`, `ci_l1_pod_lifecycle`, `ci_job_state`, `ci_l1_flaky_issues`, `ci_l1_pr_events`, `problem_case_runs`, `prow_jobs`, `github_tickets` |
+| Cost Insight | `cost_bq_export_summary_daily`, `cost_attribution_daily`, `cost_unmatched_resource_daily`, `cost_job_state` |
+| Roster | `roster_employees` |
 
 ## 待确认项
 
 1. **ee-ops 中的实际 CronJob 频率**：`sync-builds`、`sync-pr-events`、`refresh-build-derived`、所有 cost-insight job 的 CronJob 定义在 ee-ops 仓库。拿到实际频率后可微调容忍阈值。
 2. **飞书群 chat_id**：需要确定告警发送到哪个群。
 3. **夜间降级策略**：`ci_l1_builds`、`ci_l1_pod_lifecycle` 和 `prow_jobs` 在夜间（22:00-08:00）CI 不活跃时可能产生误报。是否需要按时间段降级告警级别？
-4. **ci-dashboard 和 cost-insight 数据库连接**：确认两个数据库是否在同一个 TiDB 实例上，以及 Job 如何配置多库访问。
 5. **`github_tickets` 同步频率**：确认 tibuild/chatops-lark 写入 `github_tickets` 的实际频率（实时/定时），以校准 30h 容忍度是否合理。
