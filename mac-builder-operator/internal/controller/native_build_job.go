@@ -112,6 +112,10 @@ func (j *nativeBuildJob) Run() (*buildResult, error) {
 		return result, err
 	}
 
+	if err := j.resolveBuildVersion(); err != nil {
+		return result, err
+	}
+
 	if err := j.generateBuildScript(); err != nil {
 		return result, err
 	}
@@ -343,6 +347,72 @@ export CARGO_NET_GIT_FETCH_WITH_CLI=true
 	if err := os.WriteFile(j.envFilePath, []byte(envContent), 0644); err != nil {
 		return fmt.Errorf("failed to write env file: %w", err)
 	}
+	return nil
+}
+
+// defaultVersioningStrategyURL mirrors the deno script used by the
+// pingcap-get-set-release-version Tekton task.
+const defaultVersioningStrategyURL = "https://cdn.jsdelivr.net/gh/PingCAP-QE/ci@main/scripts/flow/build/versioning-strategy.ts"
+
+// resolveBuildVersion computes the release version from the checked-out source
+// when spec.build.version is empty. Darwin builds no longer run a Tekton
+// get-release-ver task, so the agent resolves the version itself (mirroring
+// pingcap-get-set-release-version's steps).
+func (j *nativeBuildJob) resolveBuildVersion() error {
+	if strings.TrimSpace(j.spec.Build.Version) != "" {
+		return nil
+	}
+
+	sourceDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
+	rawVersionPath := filepath.Join(j.workspaceDir, "raw-version.txt")
+	branchesPath := filepath.Join(j.workspaceDir, "branches.txt")
+	newTagPath := filepath.Join(j.workspaceDir, "new-tag")
+	versionPath := filepath.Join(j.workspaceDir, "resolved-version.txt")
+
+	j.logger.Info("Resolving build version from source...")
+
+	prepareScript := fmt.Sprintf(`set -e
+if git tag | grep -E "v[0-9]+[.][0-9]+[.][0-9]+(-(alpha|beta|rc|release|nextgen|fips|cse)([.0-9]+)?)?$" > /dev/null; then
+  git tag | grep -vE "^v[0-9]+[.][0-9]+[.][0-9]+(-(((alpha|beta|rc|release|nextgen)([.].+)?)|fips|cse|202[1-9][0-1][0-9][0-3][0-9]-[0-9a-f]{7,10}))?$" | xargs git tag -d || true
+fi
+git tag | grep -E "^v20[0-9][0-9].[0-1]{1,2}.[0-3][0-9]" | xargs git tag -d || true
+git describe --tags --always --dirty > %q
+git branch --contains > %q
+`, rawVersionPath, branchesPath)
+	if err := j.exec(exec.Command("sh", "-c", prepareScript), sourceDir); err != nil {
+		return fmt.Errorf("failed to prepare version inputs: %w", err)
+	}
+
+	denoCmd := exec.Command("deno", "run", "--allow-read", "--allow-write", defaultVersioningStrategyURL,
+		"--git_version_file="+rawVersionPath,
+		"--contain_branches_file="+branchesPath,
+		"--save_build_git_tag_file="+newTagPath,
+		"--save_release_version_file="+versionPath,
+	)
+	if err := j.exec(denoCmd); err != nil {
+		return fmt.Errorf("failed to compute version: %w", err)
+	}
+
+	applyScript := fmt.Sprintf(`set -e
+if [ -f %q ]; then
+  NEW_TAG=$(cat %q)
+  git tag --contains | xargs git tag -d
+  git tag -f "$NEW_TAG"
+fi
+`, newTagPath, newTagPath)
+	if err := j.exec(exec.Command("sh", "-c", applyScript), sourceDir); err != nil {
+		return fmt.Errorf("failed to apply version tag: %w", err)
+	}
+
+	versionBytes, err := os.ReadFile(versionPath)
+	if err != nil {
+		return fmt.Errorf("failed to read resolved version: %w", err)
+	}
+	j.spec.Build.Version = strings.TrimSpace(string(versionBytes))
+	if j.spec.Build.Version == "" {
+		return fmt.Errorf("resolved an empty build version")
+	}
+	j.logger.Info("Resolved build version", "version", j.spec.Build.Version)
 	return nil
 }
 
