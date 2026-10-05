@@ -175,12 +175,27 @@ func (s *devbuildsrvc) Capabilities(context.Context) (*devbuild.DevBuildCapabili
 			ID:              product,
 			Label:           productLabel(product),
 			Editions:        []string{"community"},
-			Platforms:       []string{"linux", "linux/amd64", "linux/arm64"},
+			Platforms:       platformsForProduct(product),
 			DefaultEdition:  "community",
 			DefaultPlatform: "linux",
 		})
 	}
 	return result, nil
+}
+
+// macSupportedProduct is the product with macOS (darwin) devbuild support in
+// this milestone.
+const macSupportedProduct = "pd"
+
+// platformsForProduct returns the build platforms advertised for a product.
+// macOS (darwin) devbuilds run through the Tekton pipeline backed by a MacBuild
+// CustomRun and are currently supported for pd only.
+func platformsForProduct(product string) []string {
+	platforms := []string{"linux", "linux/amd64", "linux/arm64"}
+	if product == macSupportedProduct {
+		platforms = append(platforms, "darwin", "darwin/amd64", "darwin/arm64")
+	}
+	return platforms
 }
 
 // Create and trigger devbuild

@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,4 +31,21 @@ func TestSafeErrorSummary(t *testing.T) {
 		assert.Equal(t, "pipeline failed token=[redacted]", *got)
 	}
 	assert.Nil(t, safeErrorSummary(""))
+}
+
+func TestCapabilitiesAdvertisesDarwinForPD(t *testing.T) {
+	srv := &devbuildsrvc{productRepoMap: map[string]string{"pd": "tikv/pd", "tidb": "pingcap/tidb"}}
+
+	got, err := srv.Capabilities(context.Background())
+	assert.NoError(t, err)
+
+	platforms := map[string][]string{}
+	for _, p := range got.Products {
+		platforms[p.ID] = p.Platforms
+	}
+
+	assert.Subset(t, platforms["pd"], []string{"linux", "darwin", "darwin/amd64", "darwin/arm64"})
+	assert.Subset(t, platforms["tidb"], []string{"linux"})
+	assert.NotContains(t, platforms["tidb"], "darwin/amd64")
+	assert.NotContains(t, platforms["tidb"], "darwin/arm64")
 }
