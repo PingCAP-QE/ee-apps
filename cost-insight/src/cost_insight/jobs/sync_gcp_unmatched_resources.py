@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import GcpBillingSettings
+from cost_insight.common.gcp_summary_identity import build_gcp_summary_row_hash
 from cost_insight.common.row_utils import (
     bind_decimal_rows,
     coerce_date,
@@ -24,6 +25,7 @@ from cost_insight.common.row_utils import (
 from cost_insight.jobs import state_store
 from cost_insight.jobs.cost_sources import ensure_cost_source_enabled, upsert_cost_source
 from cost_insight.jobs.job_keys import source_job_name
+from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.sources.gcp_billing_export import (
     decimal_or_none,
     fetch_gcp_unmatched_resource_rows,
@@ -38,6 +40,7 @@ HASH_FIELDS = (
     "billing_account_id",
     "export_partition_date",
     "usage_date",
+    "region",
     "service_name",
     "sku_name",
     "namespace",
@@ -47,6 +50,7 @@ HASH_FIELDS = (
     "target_branch",
     "vendor_tags_json",
     "resource_name",
+    "source_summary_row_hash",
 )
 SPLIT_HASH_FIELDS = HASH_FIELDS + (
     "source_allocation_scope",
@@ -59,6 +63,10 @@ SPLIT_HASH_FIELDS = HASH_FIELDS + (
     "service_exec_id",
 )
 UNMATCHED_RESOURCE_TABLE = "cost_unmatched_resource_daily"
+# Larger batches with large resource labels exceed TiDB's per-query memory limit.
+RESOURCE_WRITE_BATCH_SIZE = 10
+# A usage-date replacement must also bound its total transaction size.
+RESOURCE_REPLACEMENT_TRANSACTION_ROW_LIMIT = 1_000
 _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
@@ -161,6 +169,14 @@ def run_sync_gcp_unmatched_resources(
                     )
                 state_store.mark_job_succeeded(connection, job_name, watermark)
 
+            run_materialize_resource_serving(
+                engine,
+                start_date=usage_start_date,
+                end_date=usage_end_date,
+                vendor="gcp",
+                account_id=settings.account_id,
+            )
+
         return SyncGcpUnmatchedResourcesSummary(
             account_id=settings.account_id,
             usage_start_date=usage_start_date,
@@ -197,14 +213,16 @@ def _watermark(
 
 
 def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
-    is_split_source = "source_allocation_scope" in row
+    is_split_source = bool(row.get("source_schema_version"))
     normalized = {
         "vendor": nullable_text(row.get("vendor")) or "gcp",
         "account_id": nullable_text(row.get("account_id")),
         "billing_account_id": nullable_text(row.get("billing_account_id")),
         "export_partition_date": coerce_date(row.get("export_partition_date")),
         "usage_date": coerce_date(row.get("usage_date")),
+        "region": nullable_text(row.get("region")),
         "service_name": nullable_text(row.get("service_name")),
+
         "sku_name": nullable_text(row.get("sku_name")),
         "namespace": nullable_text(row.get("namespace")),
         "author": nullable_text(row.get("author")),
@@ -212,11 +230,25 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
         "repo": nullable_text(row.get("repo")),
         "target_branch": nullable_text(row.get("target_branch")),
         "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
+        "summary_vendor_tags_json": normalize_vendor_tags_json(
+            row.get("summary_vendor_tags_json")
+        ),
+        # ``resource_name`` is concrete display identity. The source summary can
+        # intentionally use a workload name (or NULL), so keep it separately.
         "resource_name": nullable_text(row.get("resource_name")),
+        "resource_id": nullable_text(row.get("resource_id")),
+        "summary_resource_name": nullable_text(row.get("summary_resource_name")),
         "parent_resource_name": nullable_text(row.get("parent_resource_name")),
+        "source_schema_version": nullable_text(row.get("source_schema_version")),
         "source_allocation_scope": nullable_text(row.get("source_allocation_scope")) or "direct",
+        "cluster_name": nullable_text(row.get("cluster_name")),
+        "cluster_location": nullable_text(row.get("cluster_location")),
+        "kubernetes_cost_class": nullable_text(row.get("kubernetes_cost_class")),
+        "kubernetes_residual_type": nullable_text(row.get("kubernetes_residual_type")),
+        "kubernetes_cost_component": nullable_text(row.get("kubernetes_cost_component")),
         "workload_name": nullable_text(row.get("workload_name")),
         "workload_type": nullable_text(row.get("workload_type")),
+
         "owner": nullable_text(row.get("owner")),
         "service": nullable_text(row.get("service")),
         "project": nullable_text(row.get("project")),
@@ -237,15 +269,56 @@ def _normalize_resource_row(row: dict[str, Any]) -> dict[str, Any]:
     if normalized["resource_name"] is None:
         raise ValueError(f"Missing resource_name in unmatched resource row: {row!r}")
     normalized["is_split_source"] = is_split_source
+    normalized["source_summary_row_hash"] = build_gcp_summary_row_hash(
+        _summary_identity_for_resource_row(normalized)
+    )
     normalized["source_row_hash"] = build_unmatched_resource_row_hash(normalized)
     return normalized
 
 
+def _summary_identity_for_resource_row(row: dict[str, Any]) -> dict[str, Any]:
+    summary_identity = {
+        **row,
+        "resource_name": row["summary_resource_name"],
+        # AWS summaries retain only compact routing tags. A full provider-label
+        # fallback here would produce a detail hash with no matching summary.
+        "vendor_tags_json": (
+            row["summary_vendor_tags_json"]
+            if row["vendor"] == "aws"
+            else row["summary_vendor_tags_json"] or row["vendor_tags_json"]
+        ),
+    }
+    # GCP's summary query intentionally rolls all resource labels into one
+    # attribution fact; labels remain resource metadata, not summary identity.
+    if row["vendor"] == "gcp":
+        summary_identity["vendor_tags_json"] = None
+    return summary_identity
+
+
+def _superseded_source_summary_row_hash(row: dict[str, Any]) -> str | None:
+    if row.get("vendor") != "aws" or row.get("summary_vendor_tags_json") is None:
+        return None
+    tags = json.loads(row["summary_vendor_tags_json"])
+    if "usedby" not in tags:
+        return None
+    tags.pop("usedby")
+    old_row = {
+        **row,
+        "summary_vendor_tags_json": normalize_vendor_tags_json(tags),
+    }
+    return build_gcp_summary_row_hash(_summary_identity_for_resource_row(old_row))
+
+
 def build_unmatched_resource_row_hash(row: dict[str, Any]) -> str:
     hash_fields = SPLIT_HASH_FIELDS if row.get("is_split_source") else HASH_FIELDS
-    if row.get("vendor_tags_json") is None:
+    hash_row = row
+    # AWS summary lineage uses only its compact routing tags. Full provider
+    # labels are resource metadata and must not create a second raw billing row.
+    if row.get("vendor") == "aws" and "summary_vendor_tags_json" in row:
+        hash_row = {**row, "vendor_tags_json": row["summary_vendor_tags_json"]}
+    if hash_row.get("vendor_tags_json") is None:
         hash_fields = tuple(field for field in hash_fields if field != "vendor_tags_json")
-    payload = {field: hash_value(row.get(field)) for field in hash_fields}
+    payload = {field: hash_value(hash_row.get(field)) for field in hash_fields}
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
@@ -267,11 +340,15 @@ def write_unmatched_resource_rows(
         return 0
     with engine.begin() as connection:
         if target_table == UNMATCHED_RESOURCE_TABLE:
-            _delete_superseded_unlabeled_resource_rows(connection, rows)
-        connection.execute(
-            _build_upsert_statement(connection, target_table=target_table),
-            _bind_rows(connection, rows),
-        )
+            _delete_superseded_resource_rows(connection, rows)
+        for start in range(0, len(rows), RESOURCE_WRITE_BATCH_SIZE):
+            _write_unmatched_resource_rows(
+                connection,
+                rows[start : start + RESOURCE_WRITE_BATCH_SIZE],
+                target_table=target_table,
+            )
+        if target_table == UNMATCHED_RESOURCE_TABLE:
+            _invalidate_resource_serving_publications(connection, rows)
     return len(rows)
 
 
@@ -287,6 +364,7 @@ def replace_unmatched_resource_usage_dates(
     dry_run: bool,
     batch_size: int,
     target_table: str = UNMATCHED_RESOURCE_TABLE,
+    transaction_row_limit: int | None = None,
 ) -> int:
     """Replace a bounded usage-date range without deleting other month rows."""
     if usage_start_date > usage_end_date:
@@ -317,28 +395,84 @@ def replace_unmatched_resource_usage_dates(
             },
         )
         return 0
-    rows_written = 0
-    batch: list[dict[str, Any]] = []
+    if transaction_row_limit is not None and transaction_row_limit <= 0:
+        raise ValueError("transaction_row_limit must be positive")
+    batch_size = min(batch_size, RESOURCE_WRITE_BATCH_SIZE)
+    replacement_params = {
+        "vendor": vendor,
+        "account_id": account_id,
+        "usage_start_date": usage_start_date,
+        "usage_end_date": usage_end_date,
+    }
+    if transaction_row_limit is None:
+        rows_written = 0
+        batch: list[dict[str, Any]] = []
+        with engine.begin() as connection:
+            connection.execute(
+                _delete_unmatched_resource_usage_dates_statement(target_table),
+                replacement_params,
+            )
+            if target_table == UNMATCHED_RESOURCE_TABLE:
+                _invalidate_resource_serving_publication_range(connection, replacement_params)
+            for row in rows:
+                batch.append(row)
+                if len(batch) >= batch_size:
+                    _write_unmatched_resource_rows(connection, batch, target_table=target_table)
+                    rows_written += len(batch)
+                    batch.clear()
+            if batch:
+                _write_unmatched_resource_rows(connection, batch, target_table=target_table)
+                rows_written += len(batch)
+        return rows_written
+
+    # The historical baseline opts in to bounded transactions. Invalidate
+    # first, so a failed reimport cannot publish partial raw rows; a retry
+    # deletes and rebuilds the whole requested range.
     with engine.begin() as connection:
         connection.execute(
             _delete_unmatched_resource_usage_dates_statement(target_table),
-            {
-                "vendor": vendor,
-                "account_id": account_id,
-                "usage_start_date": usage_start_date,
-                "usage_end_date": usage_end_date,
-            },
+            replacement_params,
         )
-        for row in rows:
-            batch.append(row)
-            if len(batch) >= batch_size:
-                _write_unmatched_resource_rows(connection, batch, target_table=target_table)
-                rows_written += len(batch)
-                batch.clear()
-        if batch:
-            _write_unmatched_resource_rows(connection, batch, target_table=target_table)
-            rows_written += len(batch)
+        if target_table == UNMATCHED_RESOURCE_TABLE:
+            _invalidate_resource_serving_publication_range(connection, replacement_params)
+
+    rows_written = 0
+    transaction_rows: list[dict[str, Any]] = []
+    for row in rows:
+        transaction_rows.append(row)
+        if len(transaction_rows) >= transaction_row_limit:
+            rows_written += _write_unmatched_resource_replacement_transaction(
+                engine,
+                transaction_rows,
+                batch_size=batch_size,
+                target_table=target_table,
+            )
+            transaction_rows.clear()
+    if transaction_rows:
+        rows_written += _write_unmatched_resource_replacement_transaction(
+            engine,
+            transaction_rows,
+            batch_size=batch_size,
+            target_table=target_table,
+        )
     return rows_written
+
+
+def _write_unmatched_resource_replacement_transaction(
+    engine: Engine,
+    rows: Sequence[dict[str, Any]],
+    *,
+    batch_size: int,
+    target_table: str,
+) -> int:
+    with engine.begin() as connection:
+        for start in range(0, len(rows), batch_size):
+            _write_unmatched_resource_rows(
+                connection,
+                rows[start : start + batch_size],
+                target_table=target_table,
+            )
+    return len(rows)
 
 
 def _write_unmatched_resource_rows(
@@ -353,6 +487,47 @@ def _write_unmatched_resource_rows(
     )
 
 
+def _invalidate_resource_serving_publication_range(
+    connection: Connection,
+    params: dict[str, Any],
+) -> None:
+    if _table_exists(connection, "cost_resource_serving_publication"):
+        connection.execute(_INVALIDATE_RESOURCE_SERVING_PUBLICATION_RANGE, params)
+
+
+def _invalidate_resource_serving_publications(
+    connection: Connection,
+    rows: Sequence[dict[str, Any]],
+) -> None:
+    if not _table_exists(connection, "cost_resource_serving_publication"):
+        return
+    for vendor, account_id, usage_date in {
+        (row["vendor"], row["account_id"], row["usage_date"]) for row in rows
+    }:
+        connection.execute(
+            _INVALIDATE_RESOURCE_SERVING_PUBLICATION,
+            {"vendor": vendor, "account_id": account_id, "usage_date": usage_date},
+        )
+
+
+def _table_exists(connection: Connection, table_name: str) -> bool:
+    if connection.dialect.name == "sqlite":
+        return connection.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table_name"),
+            {"table_name": table_name},
+        ).first() is not None
+    return connection.execute(
+        text(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = :table_name
+            LIMIT 1
+            """
+        ),
+        {"table_name": table_name},
+    ).first() is not None
+
+
 def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     bound_rows = list(rows)
     if connection.dialect.name != "sqlite":
@@ -360,34 +535,38 @@ def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[d
     return bind_decimal_rows(bound_rows)
 
 
-def _delete_superseded_unlabeled_resource_rows(
+def _delete_superseded_resource_rows(
     connection: Connection,
     rows: Sequence[dict[str, Any]],
 ) -> None:
-    # Label backfills change the hash shape; remove the old legacy unlabeled row first.
-    # The reverse direction is handled by partition replacement to avoid deleting
-    # legitimate labeled rows when labeled and unlabeled groups coexist.
-    params = [
-        {
-            "vendor": row.get("vendor") or "",
-            "account_id": row.get("account_id") or "",
-            "billing_account_id": row.get("billing_account_id") or "",
-            "export_partition_date": row["export_partition_date"],
-            "usage_date": row["usage_date"],
-            "service_name": row.get("service_name") or "",
-            "sku_name": row.get("sku_name") or "",
-            "namespace": row.get("namespace") or "",
-            "author": row.get("author") or "",
-            "org": row.get("org") or "",
-            "repo": row.get("repo") or "",
-            "target_branch": row.get("target_branch") or "",
-            "resource_name": row.get("resource_name") or "",
-        }
-        for row in rows
-        if row.get("vendor_tags_json") is not None
-    ]
+    # Label backfills change the hash shape. AWS usedby is added to the compact
+    # summary tag set, while resource rows retain full provider tags, so match
+    # the prior source-summary hash rather than the resource JSON.
+    params = []
+    for row in rows:
+        superseded_source_summary_row_hash = _superseded_source_summary_row_hash(row)
+        if row.get("vendor_tags_json") is None and superseded_source_summary_row_hash is None:
+            continue
+        params.append(
+            {
+                "vendor": row.get("vendor") or "",
+                "account_id": row.get("account_id") or "",
+                "billing_account_id": row.get("billing_account_id") or "",
+                "export_partition_date": row["export_partition_date"],
+                "usage_date": row["usage_date"],
+                "service_name": row.get("service_name") or "",
+                "sku_name": row.get("sku_name") or "",
+                "namespace": row.get("namespace") or "",
+                "author": row.get("author") or "",
+                "org": row.get("org") or "",
+                "repo": row.get("repo") or "",
+                "target_branch": row.get("target_branch") or "",
+                "resource_name": row.get("resource_name") or "",
+                "superseded_source_summary_row_hash": superseded_source_summary_row_hash,
+            }
+        )
     if params:
-        connection.execute(_DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS, params)
+        connection.execute(_DELETE_SUPERSEDED_RESOURCE_ROWS, params)
 
 
 def _build_upsert_statement(
@@ -405,6 +584,7 @@ def _build_upsert_statement(
               billing_account_id,
               export_partition_date,
               usage_date,
+              region,
               service_name,
               sku_name,
               namespace,
@@ -414,6 +594,7 @@ def _build_upsert_statement(
               vendor_tags_json,
               author,
               resource_name,
+              resource_id,
               parent_resource_name,
               source_allocation_scope,
               workload_name,
@@ -428,13 +609,15 @@ def _build_upsert_statement(
               credit_amount,
               net_cost,
               source_export_time,
-              source_row_hash
+              source_row_hash,
+              source_summary_row_hash
             ) VALUES (
               :vendor,
               :account_id,
               :billing_account_id,
               :export_partition_date,
               :usage_date,
+              :region,
               :service_name,
               :sku_name,
               :namespace,
@@ -444,6 +627,7 @@ def _build_upsert_statement(
               :vendor_tags_json,
               :author,
               :resource_name,
+              :resource_id,
               :parent_resource_name,
               :source_allocation_scope,
               :workload_name,
@@ -458,11 +642,15 @@ def _build_upsert_statement(
               :credit_amount,
               :net_cost,
               :source_export_time,
-              :source_row_hash
+              :source_row_hash,
+              :source_summary_row_hash
             )
             ON CONFLICT(vendor, account_id, export_partition_date, source_row_hash)
             DO UPDATE SET
               billing_account_id = excluded.billing_account_id,
+              vendor_tags_json = excluded.vendor_tags_json,
+              resource_id = excluded.resource_id,
+              resource_name = excluded.resource_name,
               usage_seconds = excluded.usage_seconds,
               list_cost = excluded.list_cost,
               effective_cost = excluded.effective_cost,
@@ -477,6 +665,8 @@ def _build_upsert_statement(
               project = excluded.project,
               service_exec_id = excluded.service_exec_id,
               source_export_time = excluded.source_export_time,
+              source_summary_row_hash = excluded.source_summary_row_hash,
+              region = excluded.region,
               updated_at = CURRENT_TIMESTAMP
             """
         )
@@ -488,6 +678,7 @@ def _build_upsert_statement(
           billing_account_id,
           export_partition_date,
           usage_date,
+          region,
           service_name,
           sku_name,
           namespace,
@@ -497,6 +688,7 @@ def _build_upsert_statement(
           vendor_tags_json,
           author,
           resource_name,
+          resource_id,
           parent_resource_name,
           source_allocation_scope,
           workload_name,
@@ -511,13 +703,15 @@ def _build_upsert_statement(
           credit_amount,
           net_cost,
           source_export_time,
-          source_row_hash
+          source_row_hash,
+          source_summary_row_hash
         ) VALUES (
           :vendor,
           :account_id,
           :billing_account_id,
           :export_partition_date,
           :usage_date,
+          :region,
           :service_name,
           :sku_name,
           :namespace,
@@ -527,6 +721,7 @@ def _build_upsert_statement(
           :vendor_tags_json,
           :author,
           :resource_name,
+          :resource_id,
           :parent_resource_name,
           :source_allocation_scope,
           :workload_name,
@@ -541,11 +736,15 @@ def _build_upsert_statement(
           :credit_amount,
           :net_cost,
           :source_export_time,
-          :source_row_hash
+          :source_row_hash,
+          :source_summary_row_hash
         )
         ON DUPLICATE KEY UPDATE
           -- Dimension columns are part of source_row_hash; same hash means same dimensions.
           billing_account_id = VALUES(billing_account_id),
+          vendor_tags_json = VALUES(vendor_tags_json),
+          resource_id = VALUES(resource_id),
+          resource_name = VALUES(resource_name),
           usage_seconds = VALUES(usage_seconds),
           list_cost = VALUES(list_cost),
           effective_cost = VALUES(effective_cost),
@@ -560,6 +759,8 @@ def _build_upsert_statement(
           project = VALUES(project),
           service_exec_id = VALUES(service_exec_id),
           source_export_time = VALUES(source_export_time),
+          source_summary_row_hash = VALUES(source_summary_row_hash),
+          region = VALUES(region),
           updated_at = CURRENT_TIMESTAMP
         """
     )
@@ -582,7 +783,22 @@ def _delete_unmatched_resource_usage_dates_statement(target_table: str):
     )
 
 
-_DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS = text(
+_INVALIDATE_RESOURCE_SERVING_PUBLICATION = text(
+    """
+    DELETE FROM cost_resource_serving_publication
+    WHERE vendor = :vendor AND account_id = :account_id AND usage_date = :usage_date
+    """
+)
+_INVALIDATE_RESOURCE_SERVING_PUBLICATION_RANGE = text(
+    """
+    DELETE FROM cost_resource_serving_publication
+    WHERE vendor = :vendor AND account_id = :account_id
+      AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+    """
+)
+
+
+_DELETE_SUPERSEDED_RESOURCE_ROWS = text(
     """
     DELETE FROM cost_unmatched_resource_daily
     WHERE vendor = :vendor
@@ -598,6 +814,9 @@ _DELETE_SUPERSEDED_UNLABELED_RESOURCE_ROWS = text(
       AND COALESCE(repo, '') = :repo
       AND COALESCE(target_branch, '') = :target_branch
       AND resource_name = :resource_name
-      AND vendor_tags_json IS NULL
+      AND (
+        vendor_tags_json IS NULL
+        OR source_summary_row_hash = :superseded_source_summary_row_hash
+      )
     """
 )

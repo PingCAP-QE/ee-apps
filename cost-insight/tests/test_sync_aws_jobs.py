@@ -3,14 +3,19 @@ from datetime import date
 import pytest
 from sqlalchemy import create_engine, text
 
+import cost_insight.jobs.sync_aws_unmatched_resources as aws_unmatched_resources
+import cost_insight.jobs.sync_gcp_unmatched_resources as gcp_unmatched_resources
+from cost_insight.sources.aws_flat_cur_export import fetch_aws_flat_cur_summary_rows
 from cost_insight.common.config import AwsBillingSettings
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_aws_billing_summary import (
     AWS_SPLIT_COST_SCHEMA_VERSION,
+    AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
     AwsBillingSource,
     JOB_NAME as SUMMARY_JOB_NAME,
     _add_months,
+    _default_fetch_rows,
     _month_floor,
     _start_partition_from_state,
     _watermark as summary_watermark,
@@ -75,6 +80,11 @@ def _sqlite_engine():
               author TEXT,
               source_schema_version TEXT,
               source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+              cluster_name TEXT,
+              cluster_location TEXT,
+              kubernetes_cost_class TEXT,
+              kubernetes_residual_type TEXT,
+              kubernetes_cost_component TEXT,
               namespace TEXT,
               workload_name TEXT,
               workload_type TEXT,
@@ -86,6 +96,7 @@ def _sqlite_engine():
               effective_cost REAL,
               credit_amount REAL,
               net_cost REAL,
+              currency TEXT NOT NULL DEFAULT 'USD',
               source_export_time TEXT,
               source_row_hash TEXT NOT NULL,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -101,6 +112,7 @@ def _sqlite_engine():
               billing_account_id TEXT,
               export_partition_date TEXT NOT NULL,
               usage_date TEXT NOT NULL,
+              region TEXT,
               service_name TEXT,
               sku_name TEXT,
               namespace TEXT,
@@ -110,6 +122,7 @@ def _sqlite_engine():
               vendor_tags_json TEXT,
               author TEXT,
               resource_name TEXT NOT NULL,
+              resource_id TEXT,
               parent_resource_name TEXT,
               source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
               workload_name TEXT,
@@ -123,8 +136,10 @@ def _sqlite_engine():
               effective_cost REAL,
               credit_amount REAL,
               net_cost REAL,
+              currency TEXT NOT NULL DEFAULT 'USD',
               source_export_time TEXT,
               source_row_hash TEXT NOT NULL,
+              source_summary_row_hash TEXT,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
               UNIQUE(vendor, account_id, export_partition_date, source_row_hash)
@@ -187,6 +202,89 @@ def test_split_source_profile_selects_its_table_and_available_date() -> None:
     assert result.rows_seen == 0
     assert seen["billing_table"] == "pingcap-testing-account.multicloud_cur.ods_aws_946646677266_split_cost"
     assert seen["earliest_usage_date"] == date(2026, 8, 2)
+
+
+def test_legacy_source_passes_a_bounded_usage_window_to_the_fetcher() -> None:
+    engine = _sqlite_engine()
+    seen: dict[str, object] = {}
+
+    def fetch_rows(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    try:
+        run_sync_aws_billing_summary(
+            engine,
+            settings=AwsBillingSettings(account_id="946646677266"),
+            account_id="946646677266",
+            export_partition_start=date(2026, 6, 1),
+            export_partition_end=date(2026, 6, 1),
+            earliest_usage_date=date(2026, 6, 1),
+            usage_start_date=date(2026, 6, 1),
+            usage_end_date=date(2026, 6, 5),
+            dry_run=True,
+            fetch_rows=fetch_rows,
+        )
+    finally:
+        engine.dispose()
+
+    assert seen["earliest_usage_date"] == date(2026, 6, 1)
+    assert seen["usage_end_date"] == date(2026, 6, 5)
+
+
+def test_aws_summary_rejects_reversed_export_partitions() -> None:
+    engine = _sqlite_engine()
+
+    try:
+        with pytest.raises(
+            ValueError,
+            match="export_partition_start must be before or equal to export_partition_end",
+        ):
+            run_sync_aws_billing_summary(
+                engine,
+                settings=AwsBillingSettings(account_id="946646677266"),
+                account_id="946646677266",
+                export_partition_start=date(2026, 9, 1),
+                export_partition_end=date(2026, 8, 1),
+                dry_run=True,
+            )
+    finally:
+        engine.dispose()
+
+
+def test_f04_source_uses_the_dedicated_fetcher_without_extra_configuration() -> None:
+    assert _default_fetch_rows(AWS_TIDB_CLOUD_F04_SCHEMA_VERSION) is fetch_aws_flat_cur_summary_rows
+
+    engine = _sqlite_engine()
+    seen: dict[str, object] = {}
+
+    def fetch_rows(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    try:
+        run_sync_aws_billing_summary(
+            engine,
+            settings=AwsBillingSettings(account_id="380838443567"),
+            account_id="380838443567",
+            export_partition_start=date(2026, 9, 1),
+            export_partition_end=date(2026, 9, 1),
+            earliest_usage_date=date(2026, 9, 1),
+            usage_start_date=date(2026, 9, 1),
+            usage_end_date=date(2026, 9, 5),
+            dry_run=True,
+            source=AwsBillingSource(
+                account_id="380838443567",
+                billing_table="gcp-digital-bi.aws_prod_billing.aws_prod_billing_data",
+                schema_version=AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
+                available_from=date(2026, 9, 2),
+            ),
+            fetch_rows=fetch_rows,
+        )
+    finally:
+        engine.dispose()
+
+    assert seen["earliest_usage_date"] == date(2026, 9, 2)
 
 
 def _resource_row() -> dict[str, object]:
@@ -354,6 +452,61 @@ def test_run_sync_aws_billing_summary_can_replace_existing_partitions() -> None:
         engine.dispose()
 
 
+def test_regular_split_summary_sync_replaces_changed_hashes() -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=2)
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 5, 1),
+    )
+    try:
+        run_sync_aws_billing_summary(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            source=source,
+            fetch_rows=lambda **_kwargs: [_summary_row("2026-05-01"), _summary_row("2026-05-02")],
+        )
+
+        replacement = _summary_row("2026-05-02")
+        replacement["source_allocation_scope"] = "eks_pod"
+        replacement["namespace"] = "default"
+        replacement["list_cost"] = "12.00"
+        result = run_sync_aws_billing_summary(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            export_partition_start=date(2026, 5, 1),
+            export_partition_end=date(2026, 5, 1),
+            usage_start_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+            fetch_rows=lambda **_kwargs: [replacement],
+        )
+
+        assert result.touched_usage_dates == (date(2026, 5, 2),)
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date, source_allocation_scope, list_cost
+                    FROM cost_bq_export_summary_daily
+                    ORDER BY usage_date, source_allocation_scope
+                    """
+                )
+            ).all()
+        assert rows == [
+            ("2026-05-01", "direct", 10.0),
+            ("2026-05-02", "eks_pod", 12.0),
+        ]
+    finally:
+        engine.dispose()
+
+
 def test_split_summary_replacement_only_deletes_requested_usage_dates() -> None:
     engine = _sqlite_engine()
     settings = AwsBillingSettings(account_id="946646677266", page_size=2)
@@ -403,6 +556,26 @@ def test_split_summary_replacement_only_deletes_requested_usage_dates() -> None:
         assert rows == [("2026-05-01", 10.0), ("2026-05-02", 12.34567891)]
     finally:
         engine.dispose()
+
+
+def test_split_summary_replacement_rejects_limited_source() -> None:
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+    )
+
+    with pytest.raises(ValueError, match="cannot be used with limit"):
+        run_sync_aws_billing_summary(
+            object(),
+            settings=AwsBillingSettings(account_id=source.account_id),
+            account_id=source.account_id,
+            limit=1,
+            replace_existing_usage_dates=True,
+            usage_start_date=date(2026, 5, 2),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+        )
 
 
 def test_split_summary_replacement_rejects_empty_source() -> None:
@@ -527,6 +700,36 @@ def test_run_sync_aws_unmatched_resources_writes_rows() -> None:
         engine.dispose()
 
 
+def test_run_sync_aws_unmatched_resources_caps_database_write_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=11)
+    batch_sizes: list[int] = []
+    original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+
+    def record_write(*args, **kwargs):
+        batch_sizes.append(len(args[1]))
+        return original_write(*args, **kwargs)
+
+    rows = [{**_resource_row(), "resource_name": f"i-{index:016x}"} for index in range(11)]
+    monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", record_write)
+    try:
+        summary = run_sync_aws_unmatched_resources(
+            engine,
+            settings=settings,
+            account_id="946646677266",
+            usage_start_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 1),
+            fetch_rows=lambda **_kwargs: rows,
+        )
+
+        assert summary.rows_written == 11
+        assert batch_sizes == [10, 1]
+    finally:
+        engine.dispose()
+
+
 def test_split_unmatched_replacement_only_deletes_requested_usage_dates() -> None:
     engine = _sqlite_engine()
     settings = AwsBillingSettings(account_id="946646677266", page_size=2)
@@ -583,6 +786,54 @@ def test_split_unmatched_replacement_only_deletes_requested_usage_dates() -> Non
         engine.dispose()
 
 
+def test_split_unmatched_replacement_caps_database_write_batches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266", page_size=11)
+    source = AwsBillingSource(
+        account_id="946646677266",
+        billing_table="project.dataset.split_cost",
+        schema_version=AWS_SPLIT_COST_SCHEMA_VERSION,
+        available_from=date(2026, 5, 1),
+    )
+    batch_sizes: list[int] = []
+    individual_invalidation_batch_sizes: list[int] = []
+    original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+    original_invalidate = gcp_unmatched_resources._invalidate_resource_serving_publications
+
+    def record_write(*args, **kwargs):
+        batch_sizes.append(len(args[1]))
+        return original_write(*args, **kwargs)
+
+    def record_invalidate(*args, **kwargs):
+        individual_invalidation_batch_sizes.append(len(args[1]))
+        return original_invalidate(*args, **kwargs)
+
+    rows = [{**_resource_row(), "resource_name": f"i-{index:016x}"} for index in range(11)]
+    monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", record_write)
+    monkeypatch.setattr(
+        gcp_unmatched_resources, "_invalidate_resource_serving_publications", record_invalidate
+    )
+    try:
+        summary = run_sync_aws_unmatched_resources(
+            engine,
+            settings=settings,
+            account_id=source.account_id,
+            usage_start_date=date(2026, 5, 2),
+            usage_end_date=date(2026, 5, 2),
+            source=source,
+            replace_existing_usage_dates=True,
+            fetch_rows=lambda **_kwargs: rows,
+        )
+
+        assert summary.rows_written == 11
+        assert batch_sizes == [10, 1]
+        assert individual_invalidation_batch_sizes == []
+    finally:
+        engine.dispose()
+
+
 def test_split_unmatched_replacement_rejects_empty_source() -> None:
     engine = _sqlite_engine()
     source = AwsBillingSource(
@@ -603,6 +854,65 @@ def test_split_unmatched_replacement_rejects_empty_source() -> None:
                 replace_existing_usage_dates=True,
                 fetch_rows=lambda **_kwargs: [],
             )
+    finally:
+        engine.dispose()
+
+
+def test_aws_label_enrichment_updates_existing_raw_resource_row() -> None:
+    engine = _sqlite_engine()
+    settings = AwsBillingSettings(account_id="946646677266")
+    first_row = {
+        **_resource_row(),
+        "summary_vendor_tags_json": '{"cluster":"prow"}',
+        "vendor_tags_json": '{"Name":"old-name","cluster":"prow"}',
+    }
+    updated_row = {**first_row, "vendor_tags_json": '{"Name":"new-name","cluster":"prow"}'}
+    try:
+        for row in (first_row, updated_row):
+            run_sync_aws_unmatched_resources(
+                engine,
+                settings=settings,
+                account_id="946646677266",
+                usage_start_date=date(2026, 5, 1),
+                usage_end_date=date(2026, 5, 1),
+                fetch_rows=lambda **_kwargs: [row],
+            )
+        with engine.begin() as connection:
+            count, vendor_tags_json = connection.execute(
+                text("SELECT COUNT(*), MAX(vendor_tags_json) FROM cost_unmatched_resource_daily")
+            ).one()
+        assert (count, vendor_tags_json) == (1, '{"Name":"new-name","cluster":"prow"}')
+    finally:
+        engine.dispose()
+
+
+def test_aws_resource_sync_rematerializes_its_source_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _sqlite_engine()
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        aws_unmatched_resources,
+        "run_materialize_resource_serving",
+        lambda _engine, **kwargs: calls.append(kwargs),
+    )
+    try:
+        run_sync_aws_unmatched_resources(
+            engine,
+            settings=AwsBillingSettings(account_id="946646677266"),
+            account_id="946646677266",
+            usage_start_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 2),
+            fetch_rows=lambda **_kwargs: [_resource_row()],
+        )
+        assert calls == [
+            {
+                "start_date": date(2026, 5, 1),
+                "end_date": date(2026, 5, 2),
+                "vendor": "aws",
+                "account_id": "946646677266",
+            }
+        ]
     finally:
         engine.dispose()
 

@@ -4,17 +4,20 @@ import re
 from urllib import parse as urllib_parse
 
 GCP_HOST = "https://prow.tidb.net"
-IDC_HOST = "https://do.pingcap.net"
+TENCENT_HOST = "https://do.pingcap.net"
 PROW_NATIVE_PREFIX = "https://prow.tidb.net/view/gs/"
 JENKINS_PREFIXES = (
     "https://prow.tidb.net/jenkins/",
-    "https://do.pingcap.net/",
+    f"{TENCENT_HOST}/",
 )
 INTERNAL_JENKINS_HOST_PREFIXES = (
     "http://jenkins.jenkins.svc.cluster.local",
     "https://jenkins.jenkins.svc.cluster.local",
 )
-CANONICAL_JENKINS_PATH_PREFIX = "/jenkins/job/"
+CANONICAL_JENKINS_PATH_PREFIXES = (
+    "/jenkins/job/",
+    "/jenkins-staging/job/",
+)
 CANONICAL_PROW_PATH_PREFIX = "/view/gs/"
 TRAILING_BUILD_NUMBER_RE = re.compile(r"/\d+/?$")
 
@@ -33,7 +36,7 @@ def normalize_build_url(url: str | None) -> str | None:
         if host == "prow.tidb.net":
             canonical_host = GCP_HOST
         elif host == "do.pingcap.net":
-            canonical_host = IDC_HOST
+            canonical_host = TENCENT_HOST
         elif host == "jenkins.jenkins.svc.cluster.local":
             canonical_host = GCP_HOST
     else:
@@ -48,10 +51,10 @@ def normalize_build_url(url: str | None) -> str | None:
         path = f"/{path.lstrip('/')}"
     if path.startswith("/job/"):
         path = f"/jenkins{path}"
-    if path.startswith(CANONICAL_JENKINS_PATH_PREFIX) or path.startswith(CANONICAL_PROW_PATH_PREFIX):
+    if path.startswith((*CANONICAL_JENKINS_PATH_PREFIXES, CANONICAL_PROW_PATH_PREFIX)):
         return _canonical_full_url(path, canonical_host=canonical_host or GCP_HOST)
 
-    if any(normalized.startswith(prefix) for prefix in INTERNAL_JENKINS_HOST_PREFIXES) and path.startswith(CANONICAL_JENKINS_PATH_PREFIX):
+    if any(normalized.startswith(prefix) for prefix in INTERNAL_JENKINS_HOST_PREFIXES) and path.startswith(CANONICAL_JENKINS_PATH_PREFIXES):
         return _canonical_full_url(path, canonical_host=GCP_HOST)
     return None
 
@@ -72,7 +75,7 @@ def normalized_job_path_from_key(normalized_build_url: str | None) -> str | None
 def classify_cloud_phase(url: str | None) -> str:
     if url and url.startswith(GCP_HOST):
         return "GCP"
-    return "IDC"
+    return "TENCENT"
 
 
 def classify_build_system(url: str | None) -> str:
@@ -95,7 +98,7 @@ def build_job_url(normalized_job_path: str | None, cloud_phase: str | None) -> s
         return path if path.endswith("/") else f"{path}/"
     if not path.startswith("/"):
         path = f"/{path}"
-    host = GCP_HOST if str(cloud_phase or "").upper() == "GCP" else IDC_HOST
+    host = GCP_HOST if str(cloud_phase or "").upper() == "GCP" else TENCENT_HOST
     return f"{host}{path}"
 
 

@@ -4,47 +4,39 @@ import {
   formatCostSourceLabel,
   formatCompactCurrency,
   formatCurrency,
-  formatDateRangeLabel,
   formatPercent,
-  getLaggedTrailingDateRange,
   useApiData,
 } from "../lib/api";
 import { ALL_COST_SOURCES, DEFAULT_COST_SOURCE } from "../lib/filterUrl";
 import {
-  BudgetHealthGauge,
   DonutShareChart,
   PageIntro,
   Panel,
   StatCard,
   TrendChart,
-  UnattachedBlockVolumeTable,
-  UnmatchedResourceTable,
+  ResourceBreakdownTable,
 } from "../components/charts";
 import { SegmentedControl, buildDimensionChipClassName } from "../components/controls";
+import { COST_BREAKDOWN_GROUPS } from "../components/CostFilterControls";
 
-const SHARED_COST_GROUP = "Efficiency & Quality";
-const COST_ALLOCATION_BASIS_OPTIONS = [
-  { key: "current_attribution", label: "Current attribution" },
-  { key: "residual_allocated", label: "K8S residual allocated" },
-];
-const COST_ALLOCATION_BASIS_LABELS = {
-  current_attribution: "Current attribution",
-  residual_allocated: "K8S residual allocated",
-};
 const NO_OWNER_LABEL = "(no owner)";
 
-export default function CostPage({ filters }) {
-  const [isWeeklyLevel2Shared, setIsWeeklyLevel2Shared] = useState(false);
-  const [isSelectedLevel2Shared, setIsSelectedLevel2Shared] = useState(false);
-  const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
-  const [allocationBasis, setAllocationBasis] = useState("current_attribution");
-  const [allocationNotice, setAllocationNotice] = useState("");
+export default function CostPage({
+  filters,
+  costBreakdownGroupBy: controlledCostBreakdownGroupBy,
+}) {
+  const costBreakdownGroupBy = controlledCostBreakdownGroupBy ?? "owner";
   const [costBreakdownDrilldown, setCostBreakdownDrilldown] = useState(null);
   const [selectedCostStackName, setSelectedCostStackName] = useState("");
-  const [selectedResourceOwner, setSelectedResourceOwner] = useState(NO_OWNER_LABEL);
+  const [resourceScope, setResourceScope] = useState({
+    dimension: "owner",
+    value: NO_OWNER_LABEL,
+  });
+  const [resourceBreakdownRequested, setResourceBreakdownRequested] = useState(false);
   const [unmatchedServiceName, setUnmatchedServiceName] = useState("");
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
-  const weeklyOverviewRange = getLaggedTrailingDateRange();
+  const [resourceCursor, setResourceCursor] = useState(null);
+  const [resourceItems, setResourceItems] = useState([]);
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
   const selectedCostSourceValue =
@@ -54,16 +46,18 @@ export default function CostPage({ filters }) {
     ? "Net cost (excluding credits)"
     : "Net cost";
 
-  const weeklyOverviewFilters = {
-    ...weeklyOverviewRange,
-    granularity: "week",
-    cost_source: selectedCostSourceValue,
-  };
   const costFilters = {
     start_date: filters.start_date,
     end_date: filters.end_date,
     granularity: filters.granularity === "month" ? "month" : "week",
     cost_source: selectedCostSourceValue,
+    branch: filters.branch,
+    owner_include: filters.owner_include,
+    owner_exclude: filters.owner_exclude,
+    team_include: filters.team_include,
+    team_exclude: filters.team_exclude,
+    project_include: filters.project_include,
+    project_exclude: filters.project_exclude,
   };
   const costBreakdownDrilldownTargetGroup =
     COST_BREAKDOWN_DRILLDOWN_GROUPS[costBreakdownGroupBy] || null;
@@ -81,33 +75,43 @@ export default function CostPage({ filters }) {
   const costTrendFilters = {
     ...costFilters,
     ...costDrilldownFilters,
-    allocation_basis: allocationBasis,
   };
   const costStackFilters = {
     ...costFilters,
     ...costDrilldownFilters,
     group_by: effectiveCostBreakdownGroupBy,
-    allocation_basis: allocationBasis,
   };
   const costShareFilters = {
     ...costFilters,
     ...costDrilldownFilters,
     dimension: effectiveCostBreakdownGroupBy,
-    allocation_basis: allocationBasis,
   };
   const engineeringGroupFilters = {
     ...costFilters,
-    allocation_basis: allocationBasis,
   };
-  const unmatchedResourceFilters = {
+  const resourceBreakdownScope = {
     ...costFilters,
-    owner: selectedResourceOwner,
+    ...(resourceScope.owner
+      ? {
+          owner: resourceScope.owner,
+          scope_dimension: resourceScope.dimension,
+          scope_value: resourceScope.value,
+        }
+      : resourceScope.dimension === "owner"
+        ? { owner: resourceScope.value }
+        : {
+            scope_dimension: resourceScope.dimension,
+            scope_value: resourceScope.value,
+          }),
     service_name: unmatchedServiceName,
     sort_by: unmatchedSortBy,
-    allocation_basis: allocationBasis,
   };
-  const weeklyOverview = useApiData("/api/v1/pages/cost-weekly-overview", weeklyOverviewFilters);
-  const allocationOverview = useApiData("/api/v1/pages/cost-allocation-overview", costFilters);
+  const resourceBreakdownScopeKey = JSON.stringify(resourceBreakdownScope);
+  const unmatchedResourceFilters = {
+    ...resourceBreakdownScope,
+    cursor: resourceCursor,
+  };
+  const unmatchedResourceRequestKey = JSON.stringify(unmatchedResourceFilters);
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
@@ -118,20 +122,9 @@ export default function CostPage({ filters }) {
   const unmatchedResources = useApiData(
     "/api/v1/pages/cost-unmatched-resources",
     unmatchedResourceFilters,
-  );
-  const unattachedBlockVolumes = useApiData(
-    "/api/v1/pages/cost-unattached-block-volumes",
-    costFilters,
+    resourceBreakdownRequested,
   );
   const summary = trend.data?.meta?.summary || {};
-  const budgetHealth = weeklyOverview.data?.budget_health;
-  const configuredAnnualBudget = Number(budgetHealth?.annual_budget || 0);
-  const weeklyBudget = Number(budgetHealth?.weekly_budget || 0);
-  const hasConfiguredBudget = configuredAnnualBudget > 0;
-  const budgetPeriodLabel =
-    budgetHealth?.budget_start_date && budgetHealth?.budget_end_date
-      ? `${budgetHealth.budget_start_date}～${budgetHealth.budget_end_date}`
-      : "Budget period unavailable";
   const activeCostBreakdownGroup = COST_BREAKDOWN_GROUPS.find(
     (group) => group.key === effectiveCostBreakdownGroupBy,
   ) || COST_BREAKDOWN_GROUPS[0];
@@ -140,40 +133,33 @@ export default function CostPage({ filters }) {
   );
   const canDrillDownCostBreakdown =
     Boolean(costBreakdownDrilldownTargetGroup) && !costBreakdownDrilldown;
-  const isOwnerResourceDrilldown = effectiveCostBreakdownGroupBy === "owner";
+  const isResourceScopeGroup = ["owner", "team", "project"].includes(
+    effectiveCostBreakdownGroupBy,
+  );
   const costBreakdownSubtitle = costBreakdownDrilldown
-    ? `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: ${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
-    : `${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
-  const weeklyLevel2Items = withSharedCostAllocation(
-    weeklyOverview.data?.level2_share?.items,
-    isWeeklyLevel2Shared,
-  );
-  const selectedLevel2Items = withSharedCostAllocation(
-    engineeringGroupShare.data?.level2?.items,
-    isSelectedLevel2Shared,
-  );
-  const allocationOverviewMatchesFilters =
-    allocationOverview.data?.scope?.cost_source ===
-      (selectedCostSourceValue || null) &&
-    allocationOverview.data?.scope?.start_date === costFilters.start_date &&
-    allocationOverview.data?.scope?.end_date === costFilters.end_date;
-  const hasCurrentAllocationOverview =
-    allocationOverviewMatchesFilters &&
-    allocationOverview.data?.is_available &&
-    !allocationOverview.loading &&
-    !allocationOverview.error;
-  const showKubernetesAllocation =
-    allocationOverview.loading ||
-    Boolean(allocationOverview.error) ||
-    hasCurrentAllocationOverview;
+    ? `${activeCostBreakdownGroup.label} share and bucketed stack under ${parentCostBreakdownGroup?.label || "parent"}: ${costBreakdownDrilldown.parentName}.`
+    : `Share and bucketed stack grouped by ${activeCostBreakdownGroup.description}.`;
   const costShareItems = withCostBreakdownDrilldown(
     costShare.data?.items,
-    canDrillDownCostBreakdown || isOwnerResourceDrilldown,
+    canDrillDownCostBreakdown || isResourceScopeGroup,
   );
 
-  const selectResourceOwner = (item) => {
-    setSelectedResourceOwner(item.name);
+  const selectResourceScope = (dimension, item) => {
+    const teamOwnerDrilldown =
+      dimension === "owner" && costBreakdownDrilldown?.parentGroup === "team";
+    setResourceScope(
+      teamOwnerDrilldown
+        ? {
+            dimension: "team",
+            value: costBreakdownDrilldown.parentName,
+            owner: item.name,
+          }
+        : { dimension, value: item.name },
+    );
+    setResourceBreakdownRequested(true);
     setUnmatchedServiceName("");
+    setResourceCursor(null);
+    setResourceItems([]);
   };
 
   const startCostBreakdownDrilldown = (item) => {
@@ -185,6 +171,13 @@ export default function CostPage({ filters }) {
       parentName: item.name,
       childGroup: costBreakdownDrilldownTargetGroup,
     });
+    if (costBreakdownGroupBy === "team") {
+      setResourceScope({ dimension: "team", value: item.name });
+      setResourceBreakdownRequested(true);
+      setUnmatchedServiceName("");
+      setResourceCursor(null);
+      setResourceItems([]);
+    }
     setSelectedCostStackName("");
   };
 
@@ -193,10 +186,22 @@ export default function CostPage({ filters }) {
     setSelectedCostStackName("");
   };
 
-  const resetResourceOwner = () => {
-    setSelectedResourceOwner(NO_OWNER_LABEL);
+  const resetResourceScope = () => {
+    setResourceScope({ dimension: "owner", value: NO_OWNER_LABEL });
     setUnmatchedServiceName("");
+    setResourceCursor(null);
+    setResourceItems([]);
   };
+
+  useEffect(() => {
+    setCostBreakdownDrilldown(null);
+    setSelectedCostStackName("");
+    setResourceScope({ dimension: "owner", value: NO_OWNER_LABEL });
+    setResourceBreakdownRequested(false);
+    setUnmatchedServiceName("");
+    setResourceCursor(null);
+    setResourceItems([]);
+  }, [costBreakdownGroupBy]);
 
   useEffect(() => {
     if (!selectedCostStackName) {
@@ -206,6 +211,29 @@ export default function CostPage({ filters }) {
       setSelectedCostStackName("");
     }
   }, [repoGroupStack.data?.items, selectedCostStackName]);
+
+  useEffect(() => {
+    setResourceCursor(null);
+    setResourceItems([]);
+  }, [resourceBreakdownScopeKey]);
+
+  useEffect(() => {
+    if (unmatchedResources.responseKey !== unmatchedResourceRequestKey) {
+      return;
+    }
+    if (unmatchedResources.data?.meta?.pending_dates?.length) {
+      setResourceItems([]);
+      return;
+    }
+    setResourceItems((current) => (
+      resourceCursor ? [...current, ...(unmatchedResources.data?.items || [])] : (unmatchedResources.data?.items || [])
+    ));
+  }, [
+    resourceCursor,
+    unmatchedResourceRequestKey,
+    unmatchedResources.data,
+    unmatchedResources.responseKey,
+  ]);
 
   useEffect(() => {
     if (!unmatchedServiceName || !unmatchedResources.data?.meta?.services) {
@@ -218,27 +246,6 @@ export default function CostPage({ filters }) {
     }
   }, [unmatchedResources.data?.meta?.services, unmatchedServiceName]);
 
-  useEffect(() => {
-    if (
-      allocationBasis === "residual_allocated" &&
-      !costShare.loading &&
-      !costShare.error &&
-      costShare.responseKey === JSON.stringify(costShareFilters) &&
-      costShare.data?.meta?.allocation_basis !== "residual_allocated"
-    ) {
-      setAllocationNotice(
-        "K8S residual allocation is unavailable for this scope; the API is showing current attribution.",
-      );
-    }
-  }, [
-    allocationBasis,
-    costShare.data?.meta?.allocation_basis,
-    costShare.error,
-    costShare.loading,
-    costShare.responseKey,
-    JSON.stringify(costShareFilters),
-  ]);
-
   return (
     <div className="page-stack">
       <PageIntro
@@ -248,83 +255,8 @@ export default function CostPage({ filters }) {
         kicker={`${costFilters.granularity} buckets · ${selectedCostSourceLabel}`}
       />
 
-      <Panel
-        title="Weekly overview"
-        subtitle={formatDateRangeLabel(weeklyOverviewRange.start_date, weeklyOverviewRange.end_date)}
-        loading={weeklyOverview.loading}
-        error={weeklyOverview.error}
-        className="cost-weekly-overview"
-      >
-        <div className="cost-weekly-overview__grid">
-          <div className="cost-weekly-overview__cards">
-            <StatCard
-              label="List cost"
-              value={formatCurrency(weeklyOverview.data?.summary?.list_cost)}
-              detail="Previous complete week"
-              delta={formatDelta(weeklyOverview.data?.summary?.list_cost_wow_pct)}
-              tone="teal"
-            />
-            <StatCard
-              label={netCostLabel}
-              value={formatCurrency(weeklyOverview.data?.summary?.net_cost)}
-              detail={
-                hasConfiguredBudget
-                  ? `Weekly budget ${formatCurrency(weeklyBudget)}`
-                  : "Budget not configured for this source"
-              }
-              delta={formatDelta(weeklyOverview.data?.summary?.net_cost_wow_pct)}
-              tone="amber"
-            />
-          </div>
-          <DonutShareChart
-            title="Level 2 groups"
-            subtitle={
-              isWeeklyLevel2Shared
-                ? `${SHARED_COST_GROUP} cost redistributed proportionally.`
-                : "Groups above 1% of list cost."
-            }
-            items={weeklyLevel2Items}
-            totalValue={weeklyOverview.data?.level2_share?.meta?.total_list_cost}
-            totalLabel="list cost"
-            emptyMessage="No Level 2 group above 1% for the previous complete week."
-            onItemSelect={(item) => {
-              if (item.name === SHARED_COST_GROUP) {
-                setIsWeeklyLevel2Shared(true);
-              }
-            }}
-            headerAction={
-              isWeeklyLevel2Shared ? (
-                <button
-                  type="button"
-                  className="donut-card__action"
-                  onClick={() => setIsWeeklyLevel2Shared(false)}
-                >
-                  Reset
-                </button>
-              ) : null
-            }
-          />
-          <DonutShareChart
-            title="services rate"
-            subtitle="Services above 1% of list cost."
-            items={weeklyOverview.data?.service_share?.items}
-            totalValue={weeklyOverview.data?.service_share?.meta?.total_list_cost}
-            totalLabel="list cost"
-            emptyMessage="No service cost data for the previous complete week."
-          />
-          <BudgetHealthGauge
-            title="Budget pace"
-            subtitle="Observed fiscal-period net cost, a lag-adjusted checkpoint, and a period-end forecast from the prior 14 observed days."
-            data={weeklyOverview.data?.budget_health}
-            emptyMessage="Budget pace is not configured for this source yet."
-          />
-        </div>
-      </Panel>
-
       <section
-        className={`stats-grid cost-summary-grid${
-          showKubernetesAllocation ? " cost-summary-grid--with-allocation" : ""
-        }`}
+        className="stats-grid cost-summary-grid"
       >
         <StatCard
           label={netCostLabel}
@@ -347,45 +279,6 @@ export default function CostPage({ filters }) {
           detail={`${formatCurrency(summary.matched_resource_cost)} / ${formatCurrency(summary.total_resource_cost)} list cost matched by author or owner email`}
           tone="amber"
         />
-        <StatCard
-          label="Fiscal budget"
-          value={hasConfiguredBudget ? formatCurrency(configuredAnnualBudget) : "--"}
-          detail={
-            hasConfiguredBudget
-              ? budgetPeriodLabel
-              : "Budget not configured for the selected source"
-          }
-          tone="rose"
-        />
-        {showKubernetesAllocation ? (
-          <div className="cost-allocation-slot">
-            <section
-              className="cost-allocation-overview stat-card stat-card--teal"
-              title="K8S cards exclude control-plane costs with a matched owner; those costs remain in the standard owner cost view."
-            >
-              <span className="stat-card__label">K8S allocated cost</span>
-              <strong className="stat-card__value">
-                {allocationOverview.loading
-                  ? "Loading..."
-                  : allocationOverview.error
-                    ? "Unavailable"
-                    : formatCurrency(allocationOverview.data.workload_split_cost)}
-              </strong>
-              <div className="stat-card__meta">
-                <span className="cost-allocation-overview__detail">
-                  {allocationOverview.loading
-                    ? "Loading Kubernetes allocation..."
-                    : allocationOverview.error
-                      ? `Could not load allocation: ${allocationOverview.error}`
-                      : <>
-                          <span>K8S unallocated cost</span>
-                          <strong>{formatCurrency(allocationOverview.data.kubernetes_unallocated_cost)}</strong>
-                        </>}
-                </span>
-              </div>
-            </section>
-          </div>
-        ) : null}
       </section>
 
       <Panel
@@ -398,14 +291,6 @@ export default function CostPage({ filters }) {
         className="cost-breakdown-panel"
         actions={
           <>
-            <CostAllocationBasisSelector
-              value={allocationBasis}
-              onChange={(nextBasis) => {
-                setAllocationBasis(nextBasis);
-                setAllocationNotice("");
-                setSelectedCostStackName("");
-              }}
-            />
             {costBreakdownDrilldown ? (
               <button
                 type="button"
@@ -415,159 +300,151 @@ export default function CostPage({ filters }) {
                 Back
               </button>
             ) : null}
-            <CostBreakdownGroupSelector
-              value={costBreakdownGroupBy}
-              onChange={(nextGroup) => {
-                setCostBreakdownGroupBy(nextGroup);
-                setCostBreakdownDrilldown(null);
-                setSelectedCostStackName("");
-              }}
-            />
           </>
         }
       >
-        {allocationNotice ? <p className="panel-notice">{allocationNotice}</p> : null}
         <div className="cost-breakdown-grid">
-          <DonutShareChart
-            className="cost-share-donut"
-            title={`${activeCostBreakdownGroup.label} share${costBreakdownDrilldownTitleSuffix}`}
-            items={costShareItems}
-            totalValue={costShare.data?.meta?.total_list_cost}
-            totalLabel="list cost"
-            emptyMessage="No cost share data for the current filters."
-            onItemSelect={
-              isOwnerResourceDrilldown
-                ? selectResourceOwner
-                : canDrillDownCostBreakdown
+            <DonutShareChart
+              className="cost-share-donut"
+              title={`${activeCostBreakdownGroup.label} share${costBreakdownDrilldownTitleSuffix}`}
+              items={costShareItems}
+              totalValue={costShare.data?.meta?.total_list_cost}
+              totalLabel="list cost"
+              emptyMessage="No cost share data for the current filters."
+              onItemSelect={
+                canDrillDownCostBreakdown
                   ? startCostBreakdownDrilldown
-                  : undefined
-            }
-          />
-          <article className="cost-stack-card">
-            <header className="donut-card__header">
-              <div>
-                <strong>Cost trend{costBreakdownDrilldownTitleSuffix}</strong>
-              </div>
-            </header>
-            <CostStackTrend
-              data={repoGroupStack.data}
-              trendData={trend.data}
-              granularity={costFilters.granularity}
-              selectedName={selectedCostStackName}
-              onSelect={setSelectedCostStackName}
-              drilldownEnabled={canDrillDownCostBreakdown}
-              onDrilldown={startCostBreakdownDrilldown}
-              showComparisonLines={!costBreakdownDrilldown}
+                  : isResourceScopeGroup
+                    ? (item) => selectResourceScope(effectiveCostBreakdownGroupBy, item)
+                    : undefined
+              }
             />
-          </article>
-        </div>
+            <article className="cost-stack-card">
+              <header className="donut-card__header">
+                <div>
+                  <strong>Cost trend{costBreakdownDrilldownTitleSuffix}</strong>
+                </div>
+              </header>
+              <CostStackTrend
+                data={repoGroupStack.data}
+                trendData={trend.data}
+                granularity={costFilters.granularity}
+                selectedName={selectedCostStackName}
+                onSelect={setSelectedCostStackName}
+                drilldownEnabled={canDrillDownCostBreakdown}
+                onDrilldown={startCostBreakdownDrilldown}
+                showComparisonLines={!costBreakdownDrilldown}
+              />
+            </article>
+          </div>
       </Panel>
 
       <Panel
-        title={`Resource breakdown: ${selectedResourceOwner}`}
-        subtitle="Top 10 billable resource rows for the selected Owner share segment, with their available labels."
+        title={`Resource breakdown: ${resourceScope.owner || resourceScope.value}`}
+        subtitle={
+          resourceBreakdownRequested
+            ? "Complete resource list for the selected Cost breakdown segment."
+            : "Load resource details for the selected Cost breakdown segment on demand."
+        }
         loading={unmatchedResources.loading}
         error={unmatchedResources.error}
         actions={
-          <>
-            <UnmatchedResourcesControls
-              serviceName={unmatchedServiceName}
-              serviceOptions={unmatchedResources.data?.meta?.services}
-              sortBy={unmatchedSortBy}
-              onServiceChange={setUnmatchedServiceName}
-              onSortChange={setUnmatchedSortBy}
-            />
-            {selectedResourceOwner !== NO_OWNER_LABEL ? (
-              <button
-                type="button"
-                className="donut-card__action"
-                onClick={resetResourceOwner}
-              >
-                Reset owner
-              </button>
-            ) : null}
-          </>
-        }
-      >
-        <UnmatchedResourceTable items={unmatchedResources.data?.items} />
-      </Panel>
-
-      <Panel
-        title="Engineering Group allocation"
-        subtitle={`${COST_ALLOCATION_BASIS_LABELS[allocationBasis]}: list cost share under Engineering Group, split once by direct child groups and once by second-level groups.`}
-        loading={engineeringGroupShare.loading}
-        error={engineeringGroupShare.error}
-        actions={
-          <CostAllocationBasisSelector
-            value={allocationBasis}
-            onChange={(nextBasis) => {
-              setAllocationBasis(nextBasis);
-              setAllocationNotice("");
-              setSelectedCostStackName("");
-            }}
-          />
-        }
-      >
-        {allocationNotice ? <p className="panel-notice">{allocationNotice}</p> : null}
-        <div className="donut-grid">
-          <DonutShareChart
-            title="Level 1 groups"
-            subtitle="Direct children under Engineering Group."
-            items={engineeringGroupShare.data?.level1?.items}
-            totalLabel="list cost"
-            emptyMessage="No Engineering Group level-1 cost share data yet."
-          />
-          <DonutShareChart
-            title="Level 2 groups"
-            subtitle={
-              isSelectedLevel2Shared
-                ? `${SHARED_COST_GROUP} cost redistributed proportionally.`
-                : "Second-level teams under Engineering Group."
-            }
-            items={selectedLevel2Items}
-            totalLabel="list cost"
-            emptyMessage="No Engineering Group level-2 cost share data yet."
-            onItemSelect={(item) => {
-              if (item.name === SHARED_COST_GROUP) {
-                setIsSelectedLevel2Shared(true);
-              }
-            }}
-            headerAction={
-              isSelectedLevel2Shared ? (
+          resourceBreakdownRequested ? (
+            <>
+              <UnmatchedResourcesControls
+                serviceName={unmatchedServiceName}
+                serviceOptions={unmatchedResources.data?.meta?.services}
+                sortBy={unmatchedSortBy}
+                onServiceChange={(value) => {
+                  setUnmatchedServiceName(value);
+                  setResourceCursor(null);
+                  setResourceItems([]);
+                }}
+                onSortChange={(value) => {
+                  setUnmatchedSortBy(value);
+                  setResourceCursor(null);
+                  setResourceItems([]);
+                }}
+              />
+              {resourceScope.dimension !== "owner" || resourceScope.value !== NO_OWNER_LABEL ? (
                 <button
                   type="button"
                   className="donut-card__action"
-                  onClick={() => setIsSelectedLevel2Shared(false)}
+                  onClick={resetResourceScope}
                 >
-                  Reset
+                  Reset scope
                 </button>
-              ) : null
-            }
-          />
-        </div>
+              ) : null}
+            </>
+          ) : null
+        }
+      >
+        {resourceBreakdownRequested ? (
+          unmatchedResources.data?.meta?.pending_dates?.length ? (
+            <div className="empty-state">
+              Resource data is unavailable for {unmatchedResources.data.meta.pending_dates.join(", ")}.{" "}
+              <a href="https://github.com/PingCAP-QE/ee-apps/tree/main/cost-insight#billing-summary-pipeline">
+                Refresh the resource-serving projection
+              </a>{" "}
+              before retrying.
+            </div>
+          ) : (
+            <>
+              <ResourceBreakdownTable items={resourceItems} />
+              {unmatchedResources.data?.meta?.next_cursor ? (
+                <button
+                  type="button"
+                  className="donut-card__action"
+                  onClick={() => setResourceCursor(unmatchedResources.data.meta.next_cursor)}
+                >
+                  Load more
+                </button>
+              ) : null}
+            </>
+          )
+        ) : (
+          <button
+            type="button"
+            className="donut-card__action"
+            onClick={() => setResourceBreakdownRequested(true)}
+          >
+            Load resource breakdown
+          </button>
+        )}
       </Panel>
 
-      <Panel
-        title="Unattached Block Volumes"
-        subtitle="AWS available EBS volumes and GCP Persistent Disk / Hyperdisk volumes with no users. Cost is shown when billing rows can be matched by volume id."
-        loading={unattachedBlockVolumes.loading}
-        error={unattachedBlockVolumes.error}
-      >
-        <UnattachedBlockVolumeTable items={unattachedBlockVolumes.data?.items} />
-      </Panel>
+      <section className="cost-analysis-grid">
+        <Panel
+          title="Engineering Group cost share"
+          subtitle="List cost share under Engineering Group, split once by direct child groups and once by second-level groups."
+          loading={engineeringGroupShare.loading}
+          error={engineeringGroupShare.error}
+        >
+          <div className="donut-grid">
+            <DonutShareChart
+              className="engineering-group-share__chart"
+              title="Level 1 groups"
+              subtitle="Direct children under Engineering Group."
+              items={engineeringGroupShare.data?.level1?.items}
+              totalLabel="list cost"
+              emptyMessage="No Engineering Group level-1 cost share data yet."
+            />
+            <DonutShareChart
+              className="engineering-group-share__chart"
+              title="Level 2 groups"
+              subtitle="Second-level teams under Engineering Group."
+              items={engineeringGroupShare.data?.level2?.items}
+              totalLabel="list cost"
+              emptyMessage="No Engineering Group level-2 cost share data yet."
+            />
+          </div>
+        </Panel>
+
+      </section>
+
     </div>
   );
 }
-
-const COST_BREAKDOWN_GROUPS = [
-  { key: "owner", label: "Owner", description: "owners" },
-  { key: "team", label: "Team", description: "teams" },
-  { key: "sku", label: "SKU", description: "SKUs" },
-  { key: "cost_driver", label: "SKU class", description: "SKU classes" },
-  { key: "project", label: "Project", description: "projects" },
-  { key: "region", label: "Region", description: "regions" },
-  { key: "service_exec_id", label: "Exec ID", description: "service exec IDs" },
-];
 
 const COST_BREAKDOWN_DRILLDOWN_GROUPS = {
   team: "owner",
@@ -578,28 +455,6 @@ const UNMATCHED_RESOURCE_SORT_OPTIONS = [
   { key: "list_cost", label: "List cost" },
   { key: "duration", label: "Duration" },
 ];
-
-function CostBreakdownGroupSelector({ value, onChange }) {
-  return (
-    <SegmentedControl
-      ariaLabel="Cost breakdown grouping"
-      options={COST_BREAKDOWN_GROUPS}
-      value={value}
-      onChange={onChange}
-    />
-  );
-}
-
-function CostAllocationBasisSelector({ value, onChange }) {
-  return (
-    <SegmentedControl
-      ariaLabel="Cost allocation basis"
-      options={COST_ALLOCATION_BASIS_OPTIONS}
-      value={value}
-      onChange={onChange}
-    />
-  );
-}
 
 function UnmatchedResourcesControls({
   serviceName,
@@ -649,12 +504,7 @@ function CostStackTrend({
   const series = selectedName
     ? baseSeries
     : showComparisonLines
-      ? withCostComparisonLines(
-          baseSeries,
-          trendData?.series,
-          granularity,
-          trendData?.meta?.budget_targets,
-        )
+      ? withCostNetComparisonLine(baseSeries, trendData?.series)
       : baseSeries;
 
   if (!items.length || !series?.length) {
@@ -731,36 +581,6 @@ function formatMonthAxisLabel(value) {
   return match[1];
 }
 
-function withSharedCostAllocation(items, enabled) {
-  if (!items?.length) {
-    return items;
-  }
-
-  const originalTotal = items.reduce((sum, item) => sum + Number(item.value || 0), 0);
-  const sharedItem = items.find((item) => item.name === SHARED_COST_GROUP);
-  const sharedValue = Number(sharedItem?.value || 0);
-  const recipients = items.filter((item) => item.name !== SHARED_COST_GROUP);
-  const recipientTotal = recipients.reduce((sum, item) => sum + Number(item.value || 0), 0);
-
-  if (!enabled || !sharedItem || !sharedValue || !recipientTotal || !originalTotal) {
-    return items.map((item) => ({
-      ...item,
-      interactive: item.name === SHARED_COST_GROUP,
-    }));
-  }
-
-  return recipients.map((item) => {
-    const originalValue = Number(item.value || 0);
-    const value = originalValue + sharedValue * (originalValue / recipientTotal);
-    return {
-      ...item,
-      value,
-      share_pct: (value / originalTotal) * 100,
-      interactive: false,
-    };
-  });
-}
-
 function withCostBreakdownDrilldown(items, enabled) {
   if (!enabled || !items?.length) {
     return items;
@@ -772,13 +592,7 @@ function withCostBreakdownDrilldown(items, enabled) {
   }));
 }
 
-function formatDelta(value) {
-  const numeric = Number(value || 0);
-  const sign = numeric > 0 ? "+" : "";
-  return `WoW ${sign}${formatPercent(numeric)}`;
-}
-
-function withCostComparisonLines(baseSeries, trendSeries, granularity, budgetTargets) {
+function withCostNetComparisonLine(baseSeries, trendSeries) {
   if (!baseSeries?.length) {
     return baseSeries;
   }
@@ -804,32 +618,5 @@ function withCostComparisonLines(baseSeries, trendSeries, granularity, budgetTar
     }
   }
 
-  const targetsByBucket =
-    budgetTargets && typeof budgetTargets === "object" ? budgetTargets : {};
-  if (!Object.keys(targetsByBucket).length) {
-    return [...baseSeries, ...overlays];
-  }
-  const budgetPoints = labels.map((label) => {
-    const budgetTarget = Number(targetsByBucket[label] || 0);
-    if (!budgetTarget) {
-      return [label, null];
-    }
-    return [label, budgetTarget];
-  });
-  if (!budgetPoints.some(([, value]) => value != null)) {
-    return [...baseSeries, ...overlays];
-  }
-
-  return [
-    ...baseSeries,
-    ...overlays,
-    {
-      key: "budget_target",
-      label: granularity === "month" ? "Monthly budget" : "Weekly budget",
-      type: "line",
-      dash: true,
-      showPoints: false,
-      points: budgetPoints,
-    },
-  ];
+  return [...baseSeries, ...overlays];
 }

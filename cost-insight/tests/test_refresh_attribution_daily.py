@@ -1,17 +1,17 @@
 import hashlib
 import json
+import re
 from datetime import date
 
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import OperationalError
 
-from cost_insight.jobs import state_store
+from cost_insight.jobs import refresh_attribution_daily, state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.refresh_attribution_daily import (
-    _INSERT_ATTRIBUTION_DAILY,
     _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,
-    JOB_NAME,
     SUMMARY_JOB_NAME,
     CostAttributionSource,
     _positive_rowcount,
@@ -19,11 +19,15 @@ from cost_insight.jobs.refresh_attribution_daily import (
     _summary_insert_statements,
     _watermark,
     normalized_identity_sql,
-    run_refresh_cost_attribution_daily,
     run_refresh_cost_attribution_from_summary,
 )
 
 SOURCE = CostAttributionSource(vendor="gcp", account_id="pingcap-testing-account")
+_JOIN_ON_CLAUSE = re.compile(
+    r"\bON\b(.*?)(?=\b(?:LEFT\s+JOIN|JOIN|WHERE|GROUP\s+BY|HAVING)\b)",
+    re.DOTALL | re.IGNORECASE,
+)
+_SUBQUERY_IN_JOIN_ON = re.compile(r"\b(?:SELECT|EXISTS)\b", re.IGNORECASE)
 
 
 def _sqlite_engine():
@@ -103,14 +107,18 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
             return None
         return value
 
+    def json_key(path):
+        if not path.startswith("$."):
+            return None
+        key = path[2:]
+        return json.loads(key) if key.startswith('"') and key.endswith('"') else key
+
     def json_extract(value, path):
         if value is None:
             return None
         parsed = json.loads(value)
-        if not isinstance(parsed, dict) or not path.startswith("$."):
-            return None
-        key = path[2:]
-        if key not in parsed:
+        key = json_key(path)
+        if not isinstance(parsed, dict) or key not in parsed:
             return None
         extracted = parsed[key]
         if extracted is None:
@@ -133,8 +141,17 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
         if not isinstance(parsed, dict):
             return value
         for path in paths:
-            if path.startswith("$."):
-                parsed.pop(path[2:], None)
+            key = json_key(path)
+            if key is not None:
+                parsed.pop(key, None)
+        return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
+
+    def json_set(value, *path_values):
+        parsed = json.loads(value)
+        for path, replacement in zip(path_values[::2], path_values[1::2], strict=True):
+            key = json_key(path)
+            if key is not None:
+                parsed[key] = replacement
         return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
 
     def json_contains(target, candidate):
@@ -162,10 +179,76 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
     raw_connection.create_function("JSON_EXTRACT", 2, json_extract)
     raw_connection.create_function("JSON_LENGTH", 1, json_length)
     raw_connection.create_function("JSON_REMOVE", -1, json_remove)
+    raw_connection.create_function("JSON_SET", -1, json_set)
     raw_connection.create_function("JSON_TYPE", 1, json_type)
     raw_connection.create_function("JSON_UNQUOTE", 1, json_unquote)
     raw_connection.create_function("SHA2", 2, sha2)
     raw_connection.create_function("SUBSTRING_INDEX", 3, substring_index)
+
+
+def test_allocation_tag_match_prefers_underscore_shared_pool() -> None:
+    engine = _sqlite_engine()
+    expression = refresh_attribution_daily._allocation_tags_for_match_sql(":vendor_tags_json")
+    try:
+        with engine.connect() as connection:
+            matched_tags = connection.execute(
+                text(f"SELECT {expression}"),
+                {
+                    "vendor_tags_json": (
+                        '{"tenant":"tenant-0858","shared_pool":"canonical-pool",'
+                        '"shared-pool":"legacy-pool"}'
+                    )
+                },
+            ).scalar_one()
+    finally:
+        engine.dispose()
+
+    assert json.loads(matched_tags) == {"shared_pool": "canonical-pool"}
+
+
+def test_summary_match_tags_restore_legacy_usedby_without_overwriting_explicit_tags() -> None:
+    engine = _sqlite_engine()
+    expression = refresh_attribution_daily._summary_tags_for_match_sql(
+        ":vendor_tags_json",
+        ":author",
+        ":source_schema_version",
+        ":owner",
+    )
+    try:
+        with engine.connect() as connection:
+            restored = connection.execute(
+                text(f"SELECT {expression}"),
+                {
+                    "vendor_tags_json": '{"cluster":"cluster-1"}',
+                    "author": "test-infra",
+                    "source_schema_version": None,
+                    "owner": None,
+                },
+            ).scalar_one()
+            explicit = connection.execute(
+                text(f"SELECT {expression}"),
+                {
+                    "vendor_tags_json": '{"usedby":"explicit"}',
+                    "author": "test-infra",
+                    "source_schema_version": None,
+                    "owner": None,
+                },
+            ).scalar_one()
+            split_owner = connection.execute(
+                text(f"SELECT {expression}"),
+                {
+                    "vendor_tags_json": None,
+                    "author": "owner@pingcap.com",
+                    "source_schema_version": "aws_split_cost_v1",
+                    "owner": "owner@pingcap.com",
+                },
+            ).scalar_one()
+    finally:
+        engine.dispose()
+
+    assert json.loads(restored) == {"cluster": "cluster-1", "usedby": "test-infra"}
+    assert json.loads(explicit) == {"usedby": "explicit"}
+    assert split_owner is None
 
 
 def test_watermark_formats_dates() -> None:
@@ -198,57 +281,6 @@ def test_normalized_identity_sql_replaces_label_unsafe_characters() -> None:
     assert "'.'" in sql
     assert "'_'" in sql
     assert "' '" in sql
-
-
-def test_run_refresh_attribution_dry_run_counts_raw_rows() -> None:
-    engine = _sqlite_engine()
-    try:
-        with engine.begin() as connection:
-            connection.execute(
-                text(
-                    """
-                    CREATE TABLE cost_raw_details (
-                      usage_date DATE NOT NULL,
-                      vendor TEXT NOT NULL,
-                      account_id TEXT NOT NULL
-                    )
-                    """
-                )
-            )
-            connection.execute(
-                text(
-                    """
-                    INSERT INTO cost_raw_details (usage_date, vendor, account_id)
-                    VALUES
-                      ('2026-05-09', 'gcp', 'pingcap-testing-account'),
-                      ('2026-05-10', 'gcp', 'pingcap-testing-account'),
-                      ('2026-05-10', 'aws', '123456789012')
-                    """
-                )
-            )
-
-        summary = run_refresh_cost_attribution_daily(
-            engine,
-            source=SOURCE,
-            start_date=date(2026, 5, 9),
-            end_date=date(2026, 5, 10),
-            dry_run=True,
-        )
-
-        assert summary.raw_rows == 2
-        assert summary.rows_deleted == 0
-        assert summary.rows_inserted == 0
-        assert summary.dry_run is True
-        with engine.begin() as connection:
-            assert (
-                state_store.get_job_state(
-                    connection,
-                    source_job_name(JOB_NAME, vendor=SOURCE.vendor, account_id=SOURCE.account_id),
-                )
-                is None
-            )
-    finally:
-        engine.dispose()
 
 
 def test_run_refresh_attribution_from_summary_dry_run_counts_summary_rows() -> None:
@@ -306,50 +338,60 @@ def test_run_refresh_attribution_from_summary_dry_run_counts_summary_rows() -> N
         engine.dispose()
 
 
-def test_run_refresh_attribution_marks_success(monkeypatch) -> None:
+@pytest.mark.parametrize("vendor", ["aws", "azure"])
+def test_run_refresh_tag_allocated_vendor_requires_tcms_before_writing(vendor: str) -> None:
     engine = _sqlite_engine()
-    executed = []
-
-    def fake_execute(self, statement, params=None, *args, **kwargs):
-        sql = str(statement)
-        if "DELETE FROM cost_attribution_daily" in sql:
-            executed.append(("delete", params))
-
-            class Result:
-                rowcount = 4
-
-            return Result()
-        if "INSERT INTO cost_attribution_daily" in sql:
-            executed.append(("insert", params))
-
-            class Result:
-                rowcount = 7
-
-            return Result()
-        return original_execute(self, statement, params, *args, **kwargs)
-
-    original_execute = Connection.execute
-    monkeypatch.setattr("sqlalchemy.engine.base.Connection.execute", fake_execute)
-
+    source = CostAttributionSource(vendor=vendor, account_id="account-1")
     try:
-        summary = run_refresh_cost_attribution_daily(
-            engine,
-            source=SOURCE,
-            start_date=date(2026, 5, 9),
-            end_date=date(2026, 5, 10),
-        )
-
-        assert summary.rows_deleted == 4
-        assert summary.rows_inserted == 7
-        assert [kind for kind, _params in executed] == ["delete", "insert"]
-        assert executed[0][1]["account_id"] == "pingcap-testing-account"
-        with engine.begin() as connection:
-            state = state_store.get_job_state(
-                connection,
-                source_job_name(JOB_NAME, vendor=SOURCE.vendor, account_id=SOURCE.account_id),
+        with pytest.raises(ValueError, match="tcms_allocation_table is required"):
+            run_refresh_cost_attribution_from_summary(
+                engine,
+                source=source,
+                start_date=date(2026, 8, 10),
+                end_date=date(2026, 8, 10),
             )
-        assert state is not None
-        assert state.last_status == "succeeded"
+
+        with engine.begin() as connection:
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(
+                        SUMMARY_JOB_NAME,
+                        vendor=source.vendor,
+                        account_id=source.account_id,
+                    ),
+                )
+                is None
+            )
+    finally:
+        engine.dispose()
+
+
+def test_run_refresh_aws_attribution_requires_readable_tcms_before_writing() -> None:
+    engine = _sqlite_engine()
+    source = CostAttributionSource(vendor="aws", account_id="946646677266")
+    try:
+        with pytest.raises(OperationalError, match="no such table"):
+            run_refresh_cost_attribution_from_summary(
+                engine,
+                source=source,
+                start_date=date(2026, 8, 10),
+                end_date=date(2026, 8, 10),
+                tcms_allocation_table="missing_resource_allocation",
+            )
+
+        with engine.begin() as connection:
+            assert (
+                state_store.get_job_state(
+                    connection,
+                    source_job_name(
+                        SUMMARY_JOB_NAME,
+                        vendor=source.vendor,
+                        account_id=source.account_id,
+                    ),
+                )
+                is None
+            )
     finally:
         engine.dispose()
 
@@ -357,6 +399,37 @@ def test_run_refresh_attribution_marks_success(monkeypatch) -> None:
 def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None:
     engine = _sqlite_engine()
     executed = []
+    materializer_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        refresh_attribution_daily,
+        "run_materialize_resource_serving",
+        lambda _engine, **kwargs: materializer_calls.append(kwargs),
+    )
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_resource_serving_publication (
+                  basis_key TEXT,
+                  vendor TEXT,
+                  account_id TEXT,
+                  usage_date TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_resource_serving_publication VALUES
+                  ('native', 'gcp', 'pingcap-testing-account', '2026-05-09'),
+                  ('native', 'gcp', 'pingcap-testing-account', '2026-05-11'),
+                  ('eq_allocated', 'gcp', 'pingcap-testing-account', '2026-05-09'),
+                  ('native', 'aws', '946646677266', '2026-05-09')
+                """
+            )
+        )
 
     def fake_execute(self, statement, params=None, *args, **kwargs):
         sql = str(statement)
@@ -390,6 +463,14 @@ def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None
         assert summary.rows_deleted == 2
         assert summary.rows_inserted == 5
         assert [kind for kind, _params in executed] == ["delete", "insert-summary"]
+        assert materializer_calls == [
+            {
+                "start_date": date(2026, 5, 9),
+                "end_date": date(2026, 5, 10),
+                "vendor": "gcp",
+                "account_id": "pingcap-testing-account",
+            }
+        ]
         with engine.begin() as connection:
             state = state_store.get_job_state(
                 connection,
@@ -399,26 +480,72 @@ def test_run_refresh_attribution_from_summary_marks_success(monkeypatch) -> None
                     account_id=SOURCE.account_id,
                 ),
             )
+            remaining_publications = connection.execute(
+                text(
+                    """
+                    SELECT basis_key, vendor, account_id, usage_date
+                    FROM cost_resource_serving_publication
+                    ORDER BY basis_key, vendor, usage_date
+                    """
+                )
+            ).all()
         assert state is not None
         assert state.last_status == "succeeded"
+        assert remaining_publications == [
+            ("eq_allocated", "gcp", "pingcap-testing-account", "2026-05-09"),
+            ("native", "aws", "946646677266", "2026-05-09"),
+            ("native", "gcp", "pingcap-testing-account", "2026-05-11"),
+        ]
     finally:
         engine.dispose()
 
 
-def test_run_refresh_attribution_marks_failure(monkeypatch) -> None:
+def test_refresh_failure_rolls_back_resource_serving_invalidation(monkeypatch) -> None:
     engine = _sqlite_engine()
-
-    def fake_execute(self, statement, params=None, *args, **kwargs):
-        if "DELETE FROM cost_attribution_daily" in str(statement):
-            raise RuntimeError("delete failed")
-        return original_execute(self, statement, params, *args, **kwargs)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                CREATE TABLE cost_resource_serving_publication (
+                  basis_key TEXT,
+                  vendor TEXT,
+                  account_id TEXT,
+                  usage_date TEXT
+                )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO cost_resource_serving_publication VALUES
+                  ('native', 'gcp', 'pingcap-testing-account', '2026-05-09')
+                """
+            )
+        )
 
     original_execute = Connection.execute
+
+    def fake_execute(self, statement, params=None, *args, **kwargs):
+        sql = str(statement)
+        if "DELETE FROM cost_attribution_daily" in sql or (
+            "FROM cost_bq_export_summary_daily summary" in sql
+        ):
+            class Result:
+                rowcount = 1
+
+            return Result()
+        return original_execute(self, statement, params, *args, **kwargs)
+
+    def fail_after_invalidation(*args, **kwargs):
+        raise RuntimeError("failed after publication invalidation")
+
     monkeypatch.setattr("sqlalchemy.engine.base.Connection.execute", fake_execute)
+    monkeypatch.setattr(state_store, "mark_job_succeeded", fail_after_invalidation)
 
     try:
-        with pytest.raises(RuntimeError, match="delete failed"):
-            run_refresh_cost_attribution_daily(
+        with pytest.raises(RuntimeError, match="failed after publication invalidation"):
+            run_refresh_cost_attribution_from_summary(
                 engine,
                 source=SOURCE,
                 start_date=date(2026, 5, 9),
@@ -426,27 +553,19 @@ def test_run_refresh_attribution_marks_failure(monkeypatch) -> None:
             )
 
         with engine.begin() as connection:
+            assert connection.execute(
+                text("SELECT COUNT(*) FROM cost_resource_serving_publication")
+            ).scalar_one() == 1
             state = state_store.get_job_state(
                 connection,
-                source_job_name(JOB_NAME, vendor=SOURCE.vendor, account_id=SOURCE.account_id),
+                source_job_name(
+                    SUMMARY_JOB_NAME,
+                    vendor=SOURCE.vendor,
+                    account_id=SOURCE.account_id,
+                ),
             )
         assert state is not None
         assert state.last_status == "failed"
-        assert "RuntimeError" in (state.last_error or "")
-    finally:
-        engine.dispose()
-
-
-def test_run_refresh_attribution_rejects_invalid_range() -> None:
-    engine = _sqlite_engine()
-    try:
-        with pytest.raises(ValueError, match="start_date"):
-            run_refresh_cost_attribution_daily(
-                engine,
-                source=SOURCE,
-                start_date=date(2026, 5, 10),
-                end_date=date(2026, 5, 9),
-            )
     finally:
         engine.dispose()
 
@@ -486,7 +605,8 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
-                      net_cost REAL
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD'
                     )
                     """
                 )
@@ -528,6 +648,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                       effective_cost REAL,
                       credit_amount REAL,
                       net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD',
                       source_rows INTEGER,
                       dimension_hash TEXT,
                       source_summary_row_hash TEXT
@@ -566,7 +687,15 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                     INSERT INTO roster_employees (id, email, github_id, en_name, group_id, manager_id)
                     VALUES
                       (1, 'alice@pingcap.com', 'alice', 'Alice', 10, 100),
-                      (2, 'bob@pingcap.com', 'bob', 'Bob', 20, 200)
+                      (2, 'bob@pingcap.com', 'bob', 'Bob', 20, 200),
+                      (3, 'no-github-1@pingcap.com', NULL, 'No Github One', 30, 300),
+                      (4, 'no-github-2@pingcap.com', NULL, 'No Github Two', 40, 400),
+                      (5, 'shared@one.com', 'shared-one', 'Shared One', 30, 300),
+                      (6, 'shared@two.com', 'shared-two', 'Shared Two', 40, 400),
+                      (7, 'flare.zuo@pingcap.com', 'wuhui.zuo', 'Flare Zuo', 30, 300),
+                      (8, 'local-only@pingcap.com', 'not-local-only', 'Local Only', 40, 400),
+                      (9, 'yinsu@pingcap.com', 'yinsu', 'Yinsu', 10, 100),
+                      (10, 'collision@pingcap.com', 'no_github_1', 'Collision', 40, 400)
                     """
                 )
             )
@@ -599,6 +728,10 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                       (
                         'gcp', 'pingcap-testing-account', 'pvc-direct-author', 'uid-direct',
                         'alice', 'pingcap', 'tidb'
+                      ),
+                      (
+                        'gcp', 'pingcap-testing-account', 'pvc-override', 'uid-override',
+                        'flaky-claw', 'pingcap', 'tidb'
                       )
                     """
                 )
@@ -608,23 +741,93 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                     """
                         INSERT INTO cost_bq_export_summary_daily (
                           usage_date, vendor, account_id, service_name, sku_name,
-                          resource_name, author, list_cost, effective_cost, credit_amount, net_cost,
+                          resource_name, author, owner, list_cost, effective_cost, credit_amount, net_cost,
                           source_row_hash
                     ) VALUES
                       (
                         '2026-08-16', 'gcp', 'pingcap-testing-account',
-                            'Compute Engine', 'Persistent Disk', 'pvc-unique', NULL, 10, 10, 0, 10,
+                            'Compute Engine', 'Persistent Disk', 'pvc-unique', NULL, NULL, 10, 10, 0, 10,
                             'summary-pvc-unique'
                       ),
                       (
                         '2026-08-16', 'gcp', 'pingcap-testing-account',
-                            'Compute Engine', 'Persistent Disk', 'pvc-shared', NULL, 20, 20, 0, 20,
+                            'Compute Engine', 'Persistent Disk', 'pvc-shared', NULL, NULL, 20, 20, 0, 20,
                             'summary-pvc-shared'
                       ),
                       (
                         '2026-08-16', 'gcp', 'pingcap-testing-account',
-                            'Compute Engine', 'Persistent Disk', 'pvc-direct-author', 'bob', 30, 30, 0, 30,
+                            'Compute Engine', 'Persistent Disk', 'pvc-direct-author', 'bob', NULL, 30, 30, 0, 30,
                             'summary-pvc-direct-author'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'unmatched-gcp-author', 'unknown-author', NULL, 35, 35, 0, 35,
+                            'summary-unmatched-gcp-author'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'pvc-override', '', NULL, 36, 36, 0, 36,
+                            'summary-pvc-override'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'direct-override', ' flaky-claw ', NULL, 37, 37, 0, 37,
+                            'summary-direct-override'
+                      ),
+                      (
+                        '2026-08-16', 'gcp', 'pingcap-testing-account',
+                            'Compute Engine', 'Persistent Disk', 'email-author', 'alice@pingcap.com', NULL, 38, 38, 0, 38,
+                            'summary-email-author'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'owner-label', 'bob', 'alice', 40, 40, 0, 40,
+                            'summary-owner-label'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'owner-fallback', NULL, 'alice', 50, 50, 0, 50,
+                            'summary-owner-fallback'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'owner-placeholder', NULL, '-', 60, 60, 0, 60,
+                            'summary-owner-placeholder'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'owner-literal', NULL, 'data_at_rest', 70, 70, 0, 70,
+                            'summary-owner-literal'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'ambiguous-author', 'shared', NULL, 80, 80, 0, 80,
+                            'summary-ambiguous-author'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'empty-author', '', NULL, 90, 90, 0, 90,
+                            'summary-empty-author'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'author-wins', 'unknown-author', 'alice', 100, 100, 0, 100,
+                            'summary-author-wins'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'owner-email', NULL, 'local-only', 110, 110, 0, 110,
+                            'summary-owner-email'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'owner-normalized', NULL, 'flare_zuo', 120, 120, 0, 120,
+                            'summary-owner-normalized'
+                      ),
+                      (
+                        '2026-08-16', 'tencent', '100050658404',
+                            '容器服务 TKE', 'native node', 'email-normalized-collision', 'no-github-1', NULL, 130, 130, 0, 130,
+                            'summary-email-normalized-collision'
                       )
                     """
                 )
@@ -637,7 +840,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             end_date=date(2026, 8, 16),
         )
 
-        assert summary.rows_inserted == 3
+        assert summary.rows_inserted == 7
         with engine.begin() as connection:
             rows = {
                 row["resource_name"]: dict(row)
@@ -647,6 +850,7 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
                         SELECT resource_name, author, org, repo, owner, attribution_source,
                                attribution_status, employee_id, net_cost, source_summary_row_hash
                         FROM cost_attribution_daily
+                        WHERE vendor = 'gcp'
                         """
                     )
                 ).mappings()
@@ -688,6 +892,199 @@ def test_summary_attribution_resolves_unambiguous_pvc_pod_owner() -> None:
             "net_cost": 30.0,
             "source_summary_row_hash": "summary-pvc-direct-author",
         }
+        assert rows["unmatched-gcp-author"] == {
+            "resource_name": "unmatched-gcp-author",
+            "author": "unknown-author",
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "author_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 35.0,
+            "source_summary_row_hash": "summary-unmatched-gcp-author",
+        }
+        assert rows["pvc-override"] == {
+            "resource_name": "pvc-override",
+            "author": "flaky-claw",
+            "org": "pingcap",
+            "repo": "tidb",
+            "owner": "yinsu@pingcap.com",
+            "attribution_source": "pvc_pod_override",
+            "attribution_status": "matched",
+            "employee_id": 9,
+            "net_cost": 36.0,
+            "source_summary_row_hash": "summary-pvc-override",
+        }
+        assert rows["direct-override"] == {
+            "resource_name": "direct-override",
+            "author": "flaky-claw",
+            "org": None,
+            "repo": None,
+            "owner": "yinsu@pingcap.com",
+            "attribution_source": "author_override",
+            "attribution_status": "matched",
+            "employee_id": 9,
+            "net_cost": 37.0,
+            "source_summary_row_hash": "summary-direct-override",
+        }
+        assert rows["email-author"] == {
+            "resource_name": "email-author",
+            "author": "alice@pingcap.com",
+            "org": None,
+            "repo": None,
+            "owner": "alice@pingcap.com",
+            "attribution_source": "author_email",
+            "attribution_status": "matched",
+            "employee_id": 1,
+            "net_cost": 38.0,
+            "source_summary_row_hash": "summary-email-author",
+        }
+        tencent_source = CostAttributionSource(vendor="tencent", account_id="100050658404")
+        summary = run_refresh_cost_attribution_from_summary(
+            engine,
+            source=tencent_source,
+            start_date=date(2026, 8, 16),
+            end_date=date(2026, 8, 16),
+        )
+
+        assert summary.rows_inserted == 10
+        with engine.begin() as connection:
+            attribution_rows = [
+                dict(row)
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT resource_name, author, org, repo, owner, attribution_source,
+                               attribution_status, employee_id, net_cost, source_summary_row_hash
+                        FROM cost_attribution_daily
+                        WHERE vendor = 'tencent'
+                        """
+                    )
+                ).mappings()
+            ]
+        rows = {row["resource_name"]: row for row in attribution_rows}
+        assert sum(row["resource_name"] == "owner-placeholder" for row in attribution_rows) == 1
+        assert rows["owner-label"] == {
+            "resource_name": "owner-label",
+            "author": "bob",
+            "org": None,
+            "repo": None,
+            "owner": "bob@pingcap.com",
+            "attribution_source": "author_github",
+            "attribution_status": "matched",
+            "employee_id": 2,
+            "net_cost": 40.0,
+            "source_summary_row_hash": "summary-owner-label",
+        }
+        assert rows["owner-fallback"] == {
+            "resource_name": "owner-fallback",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": "alice@pingcap.com",
+            "attribution_source": "owner_github",
+            "attribution_status": "matched",
+            "employee_id": 1,
+            "net_cost": 50.0,
+            "source_summary_row_hash": "summary-owner-fallback",
+        }
+        assert rows["owner-placeholder"] == {
+            "resource_name": "owner-placeholder",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "owner_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 60.0,
+            "source_summary_row_hash": "summary-owner-placeholder",
+        }
+        assert rows["owner-literal"] == {
+            "resource_name": "owner-literal",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "owner_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 70.0,
+            "source_summary_row_hash": "summary-owner-literal",
+        }
+        assert rows["ambiguous-author"] == {
+            "resource_name": "ambiguous-author",
+            "author": "shared",
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "author_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 80.0,
+            "source_summary_row_hash": "summary-ambiguous-author",
+        }
+        assert rows["email-normalized-collision"] == {
+            "resource_name": "email-normalized-collision",
+            "author": "no-github-1",
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "author_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 130.0,
+            "source_summary_row_hash": "summary-email-normalized-collision",
+        }
+        assert rows["empty-author"] == {
+            "resource_name": "empty-author",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "missing_author",
+            "attribution_status": "unattributed",
+            "employee_id": None,
+            "net_cost": 90.0,
+            "source_summary_row_hash": "summary-empty-author",
+        }
+        assert rows["author-wins"] == {
+            "resource_name": "author-wins",
+            "author": "unknown-author",
+            "org": None,
+            "repo": None,
+            "owner": None,
+            "attribution_source": "author_label",
+            "attribution_status": "unmatched",
+            "employee_id": None,
+            "net_cost": 100.0,
+            "source_summary_row_hash": "summary-author-wins",
+        }
+        assert rows["owner-email"] == {
+            "resource_name": "owner-email",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": "local-only@pingcap.com",
+            "attribution_source": "owner_email",
+            "attribution_status": "matched",
+            "employee_id": 8,
+            "net_cost": 110.0,
+            "source_summary_row_hash": "summary-owner-email",
+        }
+        assert rows["owner-normalized"] == {
+            "resource_name": "owner-normalized",
+            "author": None,
+            "org": None,
+            "repo": None,
+            "owner": "flare.zuo@pingcap.com",
+            "attribution_source": "owner_normalized",
+            "attribution_status": "matched",
+            "employee_id": 7,
+            "net_cost": 120.0,
+            "source_summary_row_hash": "summary-owner-normalized",
+        }
     finally:
         engine.dispose()
 
@@ -725,10 +1122,12 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       service TEXT,
                       project TEXT,
                       service_exec_id TEXT,
+                      source_row_hash TEXT,
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
-                      net_cost REAL
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD'
                     )
                     """
                 )
@@ -771,8 +1170,10 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       effective_cost REAL,
                       credit_amount REAL,
                       net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD',
                       source_rows INTEGER,
-                      dimension_hash TEXT
+                      dimension_hash TEXT,
+                      source_summary_row_hash TEXT
                     )
                     """
                 )
@@ -862,6 +1263,22 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                         4, 'aws', '946646677266',
                         '{"cluster":"cluster-source-label"}', 'bob@pingcap.com',
                         'TestInfra', 'project-x', 'exec-1', NULL, NULL
+                      ),
+                      (
+                        5, 'aws', '946646677266',
+                        '{"tenant":"tenant-0858"}', 'dave@pingcap.com',
+                        'TestInfra', 'project-tenant', 'exec-tenant', NULL, NULL
+                      ),
+                      (
+                        6, 'aws', '946646677266',
+                        '{"tenant":"tenant-0858","shared-pool":"pool-tenant"}',
+                        'carol@pingcap.com', 'TestInfra', 'project-tenant-pool',
+                        'exec-tenant-pool', NULL, NULL
+                      ),
+                      (
+                        7, 'aws', NULL, '{"cluster":"cluster-tenant"}',
+                        'bob@pingcap.com', 'ClusterService', '   ',
+                        'exec-global-cluster', NULL, NULL
                       )
                     """
                 )
@@ -931,7 +1348,54 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                         '{"cluster":"cluster-source-label"}',
                         NULL, NULL, 'dave@pingcap.com', 'direct-service',
                         'direct-project', 'direct-exec', 17, 17, 0, 17
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'TenantUsage', 'us-east-1', 'tenant-0858', NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL, NULL,
+                        'alice', NULL, NULL, NULL, NULL, NULL, 19, 19, 0, 19
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'TenantPoolUsage', 'us-east-1', 'tenant-0858', NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
+                        '{"shared_pool":"pool-tenant"}', 'alice', NULL, NULL, NULL, NULL, NULL,
+                        23, 23, 0, 23
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'MissingTenantPoolUsage', 'us-east-1', NULL, NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
+                        '{"shared_pool":"pool-tenant"}', 'alice', NULL, NULL, NULL, NULL, NULL,
+                        29, 29, 0, 29
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'TenantClusterUsage', 'us-east-1', 'tenant-0858', NULL,
+                        'USE1-BoxUsage:m6i.large', 'compute', NULL,
+                        '{"cluster":"cluster-tenant"}', 'alice', NULL, NULL, NULL, NULL, NULL,
+                        31, 31, 0, 31
                       )
+                    """
+                )
+            )
+            connection.execute(
+                text("UPDATE cost_bq_export_summary_daily SET source_row_hash = 'summary-' || id")
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      usage_date, vendor, account_id, service_name, sku_name, region,
+                      usage_type, cost_driver_key, source_row_hash, list_cost,
+                      effective_cost, credit_amount, net_cost
+                    ) VALUES
+                      ('2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                       'CollisionUsage', 'us-east-1', 'USE1-BoxUsage:m6i.large', 'compute',
+                       'summary-collision-a', 2, 2, 0, 2),
+                      ('2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                       'CollisionUsage', 'us-east-1', 'USE1-BoxUsage:m6i.large', 'compute',
+                       'summary-collision-b', 3, 3, 0, 3)
                     """
                 )
             )
@@ -944,7 +1408,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 9
+        assert summary.rows_inserted == 14
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
@@ -958,10 +1422,13 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                       owner,
                       service,
                       project,
+                      service_exec_id,
                       attribution_source,
                       attribution_status,
                       allocate_method,
                       employee_id,
+                      source_summary_row_hash,
+                      dimension_hash,
                       ROUND(net_cost, 2) AS net_cost
                     FROM cost_attribution_daily
                     ORDER BY COALESCE(allocate_method, ''), sku_name, project
@@ -996,12 +1463,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         cluster_y_row = find_row(
             sku_name="ClusterUsage", project="project-y", allocate_method="logical"
         )
-        shared_x_row = find_row(
-            sku_name="SharedUsage", project="project-x", allocate_method="shared_weighted"
-        )
-        shared_y_row = find_row(
-            sku_name="SharedUsage", project="project-y", allocate_method="shared_weighted"
-        )
+        shared_row = find_row(sku_name="SharedUsage")
         split_label_row = find_row(
             sku_name="SplitLabelUsage", project="direct-project", allocate_method="direct_label"
         )
@@ -1010,13 +1472,35 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         )
 
         fake_author_row = find_row(sku_name="FakeAuthorClusterUsage", author="alice")
+        tenant_row = find_row(
+            sku_name="TenantUsage", project="project-tenant", author="alice", allocate_method="vendor_tag"
+        )
+        tenant_pool_row = find_row(
+            sku_name="TenantPoolUsage",
+            project="project-tenant-pool",
+            author="alice",
+            allocate_method="vendor_tag",
+        )
+        missing_tenant_pool_row = find_row(sku_name="MissingTenantPoolUsage", author="alice")
+        tenant_cluster_row = find_row(
+            sku_name="TenantClusterUsage",
+            project="project-tenant",
+            author="alice",
+            allocate_method="logical",
+        )
 
-        assert total_net_cost == 113.0
+        assert total_net_cost == 220.0
         assert {row["region"] for row in rows} == {"us-east-1"}
+        collision_rows = [row for row in rows if row["sku_name"] == "CollisionUsage"]
+        assert {row["source_summary_row_hash"] for row in collision_rows} == {
+            "summary-collision-a",
+            "summary-collision-b",
+        }
+        assert len({row["dimension_hash"] for row in collision_rows}) == 2
         assert cluster_x_row["usage_type"] == "USE1-BoxUsage:m6i.large"
         assert cluster_x_row["cost_driver_key"] == "compute"
-        assert shared_x_row["usage_type"] == "USE1-DataTransfer-Out-Bytes"
-        assert shared_x_row["cost_driver_key"] == "data_transfer"
+        assert shared_row["usage_type"] == "USE1-DataTransfer-Out-Bytes"
+        assert shared_row["cost_driver_key"] == "data_transfer"
         assert author_row["owner"] is None
         assert author_row["attribution_source"] == "missing_author"
         assert author_row["attribution_status"] == "unattributed"
@@ -1025,6 +1509,24 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert fake_author_row["attribution_source"] == "missing_label_allocation"
         assert fake_author_row["attribution_status"] == "unattributed"
         assert fake_author_row["employee_id"] is None
+        assert tenant_row["owner"] == "dave@pingcap.com"
+        assert tenant_row["attribution_source"] == "owner_email"
+        assert tenant_row["attribution_status"] == "matched"
+        assert tenant_row["employee_id"] == 4
+        assert tenant_pool_row["owner"] == "carol@pingcap.com"
+        assert tenant_pool_row["attribution_source"] == "owner_email"
+        assert tenant_pool_row["attribution_status"] == "matched"
+        assert tenant_pool_row["employee_id"] == 3
+        assert missing_tenant_pool_row["owner"] is None
+        assert missing_tenant_pool_row["attribution_source"] == "missing_author"
+        assert missing_tenant_pool_row["attribution_status"] == "unattributed"
+        assert missing_tenant_pool_row["employee_id"] is None
+        assert tenant_cluster_row["owner"] == "bob@pingcap.com"
+        assert tenant_cluster_row["service"] == "ClusterService"
+        assert tenant_cluster_row["service_exec_id"] == "exec-global-cluster"
+        assert tenant_cluster_row["attribution_source"] == "owner_email"
+        assert tenant_cluster_row["attribution_status"] == "matched"
+        assert tenant_cluster_row["employee_id"] == 2
         assert cluster_x_row["owner"] == "bob@pingcap.com"
         assert split_label_row["owner"] == "dave@pingcap.com"
         assert split_label_row["service"] == "direct-service"
@@ -1047,14 +1549,10 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert cluster_y_row["attribution_source"] == "owner_email"
         assert cluster_y_row["attribution_status"] == "matched"
         assert cluster_y_row["employee_id"] == 3
-        assert shared_x_row["service"] == "TestInfra"
-        assert shared_x_row["attribution_source"] == "label_shared"
-        assert shared_x_row["attribution_status"] == "shared"
-        assert shared_x_row["net_cost"] == 2.37
-        assert shared_y_row["service"] == "TestInfra"
-        assert shared_y_row["attribution_source"] == "label_shared"
-        assert shared_y_row["attribution_status"] == "shared"
-        assert shared_y_row["net_cost"] == 2.63
+        assert shared_row["service"] is None
+        assert shared_row["attribution_source"] == "missing_author"
+        assert shared_row["attribution_status"] == "unattributed"
+        assert shared_row["net_cost"] == 5.0
 
         with engine.begin() as connection:
             connection.execute(
@@ -1081,7 +1579,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert subset_summary.rows_inserted == 8
+        assert subset_summary.rows_inserted == 14
         with engine.begin() as connection:
             subset_rows = connection.execute(
                 text(
@@ -1104,7 +1602,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert subset_total_net_cost == 113.0
+        assert subset_total_net_cost == 220.0
         subset_authored_cluster = next(
             row
             for row in subset_rows
@@ -1165,7 +1663,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
             tcms_allocation_table="resource_allocation",
         )
 
-        assert expired_tcms_summary.rows_inserted == 8
+        assert expired_tcms_summary.rows_inserted == 14
         with engine.begin() as connection:
             fallback_rows = connection.execute(
                 text(
@@ -1194,7 +1692,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
                 text("SELECT ROUND(SUM(net_cost), 2) FROM cost_attribution_daily")
             ).scalar_one()
 
-        assert fallback_total_net_cost == 113.0
+        assert fallback_total_net_cost == 220.0
         fallback_auth = next(row for row in fallback_rows if row["sku_name"] == "BoxUsage")
         fallback_auth_cluster = next(
             row for row in fallback_rows if row["sku_name"] == "AuthClusterUsage"
@@ -1209,7 +1707,7 @@ def test_run_refresh_aws_summary_with_tcms_preserves_author_and_allocates_shared
         assert fallback_cluster["service"] is None
         assert fallback_cluster["project"] is None
         assert fallback_cluster["net_cost"] == 50.0
-        assert fallback_shared["attribution_source"] == "missing_label_allocation"
+        assert fallback_shared["attribution_source"] == "missing_author"
         assert fallback_shared["attribution_status"] == "unattributed"
         assert fallback_shared["allocate_method"] is None
         assert fallback_shared["net_cost"] == 5.0
@@ -1250,10 +1748,12 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       service TEXT,
                       project TEXT,
                       service_exec_id TEXT,
+                      source_row_hash TEXT,
                       list_cost REAL,
                       effective_cost REAL,
                       credit_amount REAL,
-                      net_cost REAL
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD'
                     )
                     """
                 )
@@ -1296,8 +1796,10 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                       effective_cost REAL,
                       credit_amount REAL,
                       net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD',
                       source_rows INTEGER,
-                      dimension_hash TEXT
+                      dimension_hash TEXT,
+                      source_summary_row_hash TEXT
                     )
                     """
                 )
@@ -1380,6 +1882,16 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                         2, 'aws', '946646677266',
                         '{"cluster":"cluster-internal"}', 'bob@pingcap.com',
                         'TestInfra', 'project-internal', 'exec-internal', NULL, NULL
+                      ),
+                      (
+                        3, 'aws', '946646677266',
+                        '{"usedby":"test-infra"}', 'bob@pingcap.com',
+                        'TestInfra', 'project-usedby', 'exec-usedby', NULL, NULL
+                      ),
+                      (
+                        4, 'azure', 'subscription-1',
+                        '{"usedby":"test-infra"}', 'bob@pingcap.com',
+                        'TestInfra', 'project-azure', 'exec-azure', NULL, NULL
                       )
                     """
                 )
@@ -1389,27 +1901,42 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                     """
                     INSERT INTO cost_bq_export_summary_daily (
                       usage_date, vendor, account_id, service_name, sku_name, region, org, repo,
-                      target_branch, vendor_tags_json, author, source_schema_version, owner, list_cost,
+                      target_branch, resource_name, vendor_tags_json, author, source_schema_version, owner, list_cost,
                       effective_cost, credit_amount, net_cost
                     ) VALUES
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'ExternalOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        'ExternalOwnerUsage', 'us-east-1', NULL, NULL, NULL, NULL,
                         '{"cluster":"cluster-external"}',
                         NULL, NULL, NULL, 10, 10, 0, 10
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'InternalOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        'InternalOwnerUsage', 'us-east-1', NULL, NULL, NULL, NULL,
                         '{"cluster":"cluster-internal"}',
                         NULL, NULL, NULL, 20, 20, 0, 20
                       ),
                       (
                         '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
-                        'EncodedOwnerUsage', 'us-east-1', NULL, NULL, NULL,
+                        'EncodedOwnerUsage', 'us-east-1', NULL, NULL, NULL, NULL,
                         NULL,
                         NULL, 'aws_split_cost_v1', 'tiworkload_at_pingcap.com',
                         30, 30, 0, 30
+                      ),
+                      (
+                        '2026-07-14', 'aws', '946646677266', 'AmazonEC2',
+                        'LegacyUsedbyUsage', 'us-east-1', NULL, NULL, NULL, NULL,
+                        NULL,
+                        'test-infra', NULL, NULL,
+                        40, 40, 0, 40
+                      ),
+                      (
+                        '2026-07-14', 'azure', 'subscription-1', 'Microsoft.Compute',
+                        'Virtual Machine', 'westus2', NULL, NULL, NULL,
+                        '/subscriptions/subscription-1/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm-1',
+                        '{"usedby":"test-infra"}',
+                        NULL, NULL, NULL,
+                        50, 50, 0, 50
                       )
                     """
                 )
@@ -1423,7 +1950,7 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
             tcms_allocation_table="resource_allocation",
         )
 
-        assert summary.rows_inserted == 3
+        assert summary.rows_inserted == 4
         with engine.begin() as connection:
             rows = connection.execute(
                 text(
@@ -1431,6 +1958,9 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
                     SELECT
                       sku_name,
                       owner,
+                      service,
+                      project,
+                      allocate_method,
                       attribution_key,
                       attribution_source,
                       attribution_status,
@@ -1452,7 +1982,16 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
         encoded_row = next(
             row for row in rows if row["sku_name"] == "EncodedOwnerUsage"
         )
+        usedby_row = next(
+            row for row in rows if row["sku_name"] == "LegacyUsedbyUsage"
+        )
 
+        assert usedby_row["owner"] == "bob@pingcap.com"
+        assert usedby_row["service"] == "TestInfra"
+        assert usedby_row["project"] == "project-usedby"
+        assert usedby_row["allocate_method"] == "vendor_tag"
+        assert usedby_row["attribution_source"] == "owner_email"
+        assert usedby_row["attribution_status"] == "matched"
         assert external_row["owner"] == "external@vendor.com"
         assert external_row["attribution_key"] == "owner_email:external@vendor.com"
         assert external_row["attribution_source"] == "owner_email"
@@ -1472,36 +2011,40 @@ def test_run_refresh_aws_summary_with_tcms_keeps_non_roster_owner_email() -> Non
         assert encoded_row["attribution_source"] == "source_label"
         assert encoded_row["attribution_status"] == "matched"
         assert encoded_row["employee_id"] == 3
+
+        azure_summary = run_refresh_cost_attribution_from_summary(
+            engine,
+            source=CostAttributionSource(vendor="azure", account_id="subscription-1"),
+            start_date=date(2026, 7, 14),
+            end_date=date(2026, 7, 14),
+            tcms_allocation_table="resource_allocation",
+        )
+        assert azure_summary.rows_inserted == 1
+        with engine.begin() as connection:
+            azure_row = connection.execute(
+                text(
+                    """
+                    SELECT resource_name, owner, service, project, allocate_method,
+                           attribution_source, attribution_status
+                    FROM cost_attribution_daily
+                    WHERE vendor = 'azure'
+                    """
+                )
+            ).mappings().one()
+        assert dict(azure_row) == {
+            "resource_name": (
+                "/subscriptions/subscription-1/resourceGroups/rg/"
+                "providers/Microsoft.Compute/virtualMachines/vm-1"
+            ),
+            "owner": "bob@pingcap.com",
+            "service": "TestInfra",
+            "project": "project-azure",
+            "allocate_method": "vendor_tag",
+            "attribution_source": "owner_email",
+            "attribution_status": "matched",
+        }
     finally:
         engine.dispose()
-
-
-def test_insert_sql_contains_roster_matching_and_daily_dimensions() -> None:
-    sql = str(_INSERT_ATTRIBUTION_DAILY)
-
-    assert "LEFT JOIN roster_employees github_employee" in sql
-    assert "LEFT JOIN roster_employees override_employee" in sql
-    assert "override_employee.is_active" not in sql
-    assert "github_employee.is_active" not in sql
-    assert "email_employee.is_active" not in sql
-    assert "normalized_employee.is_active" not in sql
-    assert "flaky-claw" in sql
-    assert "yinsu@pingcap.com" in sql
-    assert "ti-chi-bot" in sql
-    assert "wei.zheng@pingcap.com" in sql
-    assert "author_override" in sql
-    assert "LEFT JOIN roster_employees normalized_employee" in sql
-    assert "LOWER(github_employee.github_id) = LOWER(raw.author)" in sql
-    assert "SUBSTRING_INDEX(email_employee.email, '@', 1)" in sql
-    assert "LEFT JOIN roster_groups matched_group" in sql
-    assert "author_github" in sql
-    assert "author_email" in sql
-    assert "author_normalized" in sql
-    assert "missing_author" in sql
-    assert "resource_name" in sql
-    assert "target_branch" in sql
-    assert "SHA2(" in sql
-    assert "{normalized_" not in sql
 
 
 def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() -> None:
@@ -1526,7 +2069,15 @@ def test_summary_insert_sql_uses_summary_source_and_nullable_resource_columns() 
     assert "github_employee.is_active" not in sql
     assert "email_employee.is_active" not in sql
     assert "normalized_employee.is_active" not in sql
-    assert "LOWER(github_employee.github_id) = LOWER(COALESCE(summary.author, pvc_mapping.author))" in sql
+    summary_identity = (
+        "COALESCE(NULLIF(TRIM(summary.author), ''), "
+        "NULLIF(TRIM(pvc_mapping.author), ''), NULLIF(TRIM(summary.owner), ''))"
+    )
+    assert f"LOWER(github_employee.github_id) = LOWER({summary_identity})" in sql
+    assert f"AND {normalized_identity_sql(summary_identity)} <> ''" in sql
+    assert "FROM roster_employees\n    UNION ALL" in sql
+    assert "HAVING COUNT(DISTINCT candidates.employee_id) = 1" in sql
+    assert "owner_github" in sql
     assert "FROM cost_kubernetes_pvc_pod_mapping" in sql
     assert "HAVING COUNT(DISTINCT pod_uid) = 1" in sql
     assert "pvc_pod_github" in sql
@@ -1545,20 +2096,18 @@ def test_tcms_table_identifier_is_quoted_and_validated() -> None:
         _quote_table_identifier("tcms-cost.resource_allocation")
 
 
-def test_aws_summary_insert_statements_include_tcms_allocation() -> None:
+def test_aws_summary_insert_statement_keeps_tcms_matching_without_pool_weighting() -> None:
     statements = _summary_insert_statements(
         source=CostAttributionSource(vendor="aws", account_id="946646677266"),
         tcms_allocation_table="tcms_cost.resource_allocation",
     )
 
-    assert len(statements) == 2
+    assert len(statements) == 1
     logical_sql = str(statements[0])
-    shared_sql = str(statements[1])
 
     assert "`tcms_cost`.`resource_allocation` allocation_raw" in logical_sql
     assert "summary.vendor_tags_json" in logical_sql
-    assert "JSON_EXTRACT(summary.vendor_tags_json, '$.shared_pool')" in logical_sql
-    assert "JSON_EXTRACT(summary.vendor_tags_json, '$.cluster')" in logical_sql
+    assert "JSON_SET(COALESCE(summary.vendor_tags_json, JSON_OBJECT()), '$.usedby'" in logical_sql
     assert "match_tags_json" in logical_sql
     assert "JSON_REMOVE" in logical_sql
     assert "missing_label_allocation" in logical_sql
@@ -1572,23 +2121,196 @@ def test_aws_summary_insert_statements_include_tcms_allocation() -> None:
     assert "workload_name" in logical_sql
     assert "workload_type" in logical_sql
     assert "summary.owner IS NOT NULL THEN 'source_label'" in logical_sql
-
-    assert "WITH allocation_match AS" in shared_sql
-    assert "ROW_NUMBER() OVER" in shared_sql
-    assert "JSON_REMOVE" in shared_sql
-    assert "label_shared" in shared_sql
-    assert "shared_weighted" in shared_sql
-    assert "allocation_count IS NULL" in shared_sql
-    assert "logical.service" in shared_sql
-    assert "summary.sku_name" in shared_sql
-    assert "source_allocation_scope" in shared_sql
-    assert "ROUND(" not in shared_sql
+    assert "shared_weighted" not in logical_sql
+    assert "label_shared" not in logical_sql
 
 
-def test_non_aws_summary_insert_uses_existing_statement() -> None:
+def test_azure_summary_insert_uses_tcms_matching() -> None:
+    statements = _summary_insert_statements(
+        source=CostAttributionSource(vendor="azure", account_id="subscription-1"),
+        tcms_allocation_table="tcms_cost.resource_allocation",
+    )
+
+    assert len(statements) == 1
+    logical_sql = str(statements[0])
+    assert "`tcms_cost`.`resource_allocation` allocation_raw" in logical_sql
+    assert "attributed.resource_name" in logical_sql
+    assert "COALESCE(attributed.resource_name, '')" in logical_sql
+
+
+def test_gcp_summary_insert_uses_existing_statement() -> None:
     statements = _summary_insert_statements(
         source=CostAttributionSource(vendor="gcp", account_id="pingcap-testing-account"),
         tcms_allocation_table="tcms_cost.resource_allocation",
     )
 
     assert statements == (_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,)
+
+
+@pytest.mark.parametrize(
+    ("source", "tcms_allocation_table", "expected_on_clause_count"),
+    (
+        (SOURCE, None, 7),
+        (CostAttributionSource(vendor="aws", account_id="946646677266"), "tcms_cost.resource_allocation", 11),
+        (CostAttributionSource(vendor="azure", account_id="subscription-1"), "tcms_cost.resource_allocation", 11),
+    ),
+    ids=("standard", "aws-tcms", "azure-tcms"),
+)
+def test_summary_insert_variants_do_not_use_tidb_unsupported_on_subqueries(
+    source: CostAttributionSource,
+    tcms_allocation_table: str | None,
+    expected_on_clause_count: int,
+) -> None:
+    statements = _summary_insert_statements(
+        source=source,
+        tcms_allocation_table=tcms_allocation_table,
+    )
+
+    assert len(statements) == 1
+    for statement in statements:
+        on_clauses = _JOIN_ON_CLAUSE.findall(str(statement))
+        assert len(on_clauses) == expected_on_clause_count
+        for on_clause in on_clauses:
+            assert _SUBQUERY_IN_JOIN_ON.search(on_clause) is None, on_clause.strip()
+
+
+def test_attribution_carries_currency_and_separates_dimension_hashes() -> None:
+    engine = _sqlite_engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE roster_employees (
+                      id INTEGER PRIMARY KEY, email TEXT, github_id TEXT,
+                      en_name TEXT, group_id INTEGER, manager_id INTEGER
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE roster_groups (
+                      id INTEGER PRIMARY KEY, is_active INTEGER, manager_id INTEGER
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cost_bq_export_summary_daily (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      usage_date TEXT NOT NULL,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT NOT NULL,
+                      service_name TEXT,
+                      sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
+                      region TEXT,
+                      org TEXT,
+                      repo TEXT,
+                      target_branch TEXT,
+                      resource_name TEXT,
+                      vendor_tags_json TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
+                      author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
+                      source_row_hash TEXT,
+                      list_cost REAL,
+                      effective_cost REAL,
+                      credit_amount REAL,
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD'
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE cost_attribution_daily (
+                      usage_date TEXT NOT NULL,
+                      vendor TEXT NOT NULL,
+                      account_id TEXT NOT NULL,
+                      service_name TEXT,
+                      sku_name TEXT,
+                      usage_type TEXT,
+                      cost_driver_key TEXT,
+                      region TEXT,
+                      org TEXT,
+                      repo TEXT,
+                      target_branch TEXT,
+                      resource_name TEXT,
+                      vendor_tags_json TEXT,
+                      source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                      namespace TEXT,
+                      workload_name TEXT,
+                      workload_type TEXT,
+                      author TEXT,
+                      owner TEXT,
+                      service TEXT,
+                      project TEXT,
+                      service_exec_id TEXT,
+                      attribution_key TEXT,
+                      attribution_source TEXT,
+                      attribution_status TEXT,
+                      employee_id INTEGER,
+                      group_id INTEGER,
+                      manager_id INTEGER,
+                      usage_seconds REAL,
+                      list_cost REAL,
+                      effective_cost REAL,
+                      credit_amount REAL,
+                      net_cost REAL,
+                      currency TEXT NOT NULL DEFAULT 'USD',
+                      source_rows INTEGER,
+                      dimension_hash TEXT,
+                      source_summary_row_hash TEXT
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO cost_bq_export_summary_daily (
+                      usage_date, vendor, account_id, author, list_cost,
+                      effective_cost, credit_amount, net_cost, currency, source_row_hash
+                    ) VALUES
+                      ('2026-08-16', 'gcp', 'pingcap-testing-account', 'alice',
+                       10, 10, 0, 10, 'CNY', 'summary-cny'),
+                      ('2026-08-16', 'gcp', 'pingcap-testing-account', 'alice',
+                       10, 10, 0, 10, 'USD', 'summary-usd')
+                    """
+                )
+            )
+
+        summary = run_refresh_cost_attribution_from_summary(
+            engine,
+            source=SOURCE,
+            start_date=date(2026, 8, 16),
+            end_date=date(2026, 8, 16),
+        )
+        assert summary.rows_inserted == 2
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    "SELECT currency, net_cost, dimension_hash FROM cost_attribution_daily "
+                    "ORDER BY currency"
+                )
+            ).mappings().all()
+        assert [row["currency"] for row in rows] == ["CNY", "USD"]
+        assert [row["net_cost"] for row in rows] == [10.0, 10.0]
+        assert len({row["dimension_hash"] for row in rows}) == 2
+    finally:
+        engine.dispose()

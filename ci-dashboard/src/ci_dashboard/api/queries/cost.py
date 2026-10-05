@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import calendar
+import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import text
@@ -19,6 +23,7 @@ VALID_COST_STACK_GROUPS = frozenset(
     {
         "repo",
         "author",
+        "account",
         "owner",
         "team",
         "target_branch",
@@ -31,33 +36,41 @@ VALID_COST_STACK_GROUPS = frozenset(
     }
 )
 COST_SHARE_LIMIT = 8
-VALID_COST_SHARE_DIMENSIONS = frozenset(
-    {"owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
+WEEKLY_COST_TEAM_SHARE_LIMIT = 8
+WEEKLY_COST_UNATTRIBUTED_TEAM_NAME = "Unattributed"
+WEEKLY_COST_NO_PROJECT_NAME = "(no project)"
+CI_WEEKLY_COST_SOURCES = (
+    ("gcp", "pingcap-testing-account"),
+    ("tencent", "100050658403"),
 )
-SOURCE_COST_DIMENSIONS = frozenset(
-    {"service", "sku", "cost_driver", "project", "service_exec_id", "region"}
+VALID_COST_SHARE_DIMENSIONS = frozenset(
+    {"account", "owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
 )
 COST_DRILLDOWN_CHILD_GROUPS = {
     "team": "owner",
     "cost_driver": "sku",
 }
-LOW_REGION_SHARE_THRESHOLD_PCT = 1.0
-UNMATCHED_RESOURCE_LIMIT = 10
-UNMATCHED_RESOURCE_MAX_WINDOW_DAYS = 31
+RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE = 50
+RESOURCE_BREAKDOWN_MAX_PAGE_SIZE = 100
 UNMATCHED_RESOURCE_SORTS = frozenset({"list_cost", "duration"})
+RESOURCE_BREAKDOWN_SCOPE_DIMENSIONS = frozenset({"team", "project"})
 NO_OWNER_LABEL = "(no owner)"
-KUBERNETES_UNALLOCATED_RECORD_LIMIT = 100
+NO_TEAM_LABEL = "(no team)"
 ENGINEERING_GROUP_NAME = "Engineering Group"
 COST_DATA_LAG_DAYS = 4
+CNY_PER_USD = Decimal("6.5")
 FORECAST_WINDOW_DAYS = 14
 BUDGET_FALLBACK_MAX_DAYS = 31
 CURRENT_ATTRIBUTION_BASIS = "current_attribution"
-RESIDUAL_ALLOCATED_BASIS = "residual_allocated"
-VALID_COST_ALLOCATION_BASES = frozenset(
-    {CURRENT_ATTRIBUTION_BASIS, RESIDUAL_ALLOCATED_BASIS}
-)
 COST_ATTRIBUTION_SOURCE_DATE_INDEX = "idx_cost_attribution_source_date_employee"
+TIFLASH_COST_SOURCES = frozenset(
+    {
+        ("gcp", "pingcap-testing-account"),
+        ("aws", "946646677266"),
+    }
+)
 COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
+WeeklyCostBudgetScope = tuple[set[tuple[str, str]], set[str] | None, date, date]
 COST_DRIVER_LABELS = {
     "compute": "Compute",
     "block_storage": "Block storage",
@@ -78,15 +91,6 @@ class BudgetPeriod:
     @property
     def days(self) -> int:
         return max((self.end_date - self.start_date).days + 1, 1)
-
-
-@dataclass(frozen=True)
-class CostAllocationBasis:
-    """The cost rows and effective allocation basis for a dashboard request."""
-
-    name: str
-    from_clause: str = "cost_attribution_daily c"
-    cte: str = ""
 
 
 def get_cost_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -126,40 +130,49 @@ def get_cost_trend(
     *,
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
-    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
-        basis = _cost_allocation_basis(connection, filters, allocation_basis)
         drilldown = _cost_drilldown_filter(
             connection,
             child_group=None,
             drilldown_group=drilldown_group,
             drilldown_value=drilldown_value,
         )
-        query_basis = _cost_basis_for_dimension(
-            basis,
-            drilldown["group"] if drilldown else None,
-        )
-        from_clause = query_basis.from_clause
+        from_clause = "cost_attribution_daily c"
+        index_hint = _cost_aggregate_read_hint(connection, filters)
         if drilldown:
-            from_clause = _cost_basis_from_clause(query_basis, drilldown["from_clause"])
+            from_clause = drilldown["from_clause"]
             where_clause = f"{where_clause} AND {drilldown['condition']}"
             params = {**params, **drilldown["params"]}
+        from_clause, team_filter_params = _cost_filter_from_clause(connection, filters, from_clause)
+        params.update(team_filter_params)
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         list_cost_expr = _billing_report_list_cost_expr("c")
+        net_cost_expr = _usd_cost_expr("c", "c.net_cost")
+        effective_cost_expr = _usd_cost_expr("c", "c.effective_cost")
         rows = connection.execute(
             text(
                 f"""
-                {query_basis.cte}
-                SELECT
-                  {bucket} AS bucket_start,
-                  SUM(c.net_cost) AS net_cost,
-                  SUM(c.effective_cost) AS effective_cost,
-                  SUM({list_cost_expr}) AS list_cost
-                FROM {from_clause}
-                WHERE {where_clause}
-                GROUP BY bucket_start
+                WITH bucketed AS (
+                  SELECT {index_hint}
+                    {bucket} AS bucket_start,
+                    SUM({net_cost_expr}) AS net_cost,
+                    SUM({effective_cost_expr}) AS effective_cost,
+                    SUM({list_cost_expr}) AS list_cost,
+                    SUM(CASE WHEN c.list_cost IS NOT NULL THEN {list_cost_expr} ELSE 0 END) AS total_resource_cost,
+                    SUM(CASE WHEN c.list_cost IS NOT NULL AND c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
+                  FROM {from_clause}
+                  WHERE {where_clause}
+                  GROUP BY bucket_start
+                )
+                SELECT bucket_start,
+                  net_cost,
+                  effective_cost,
+                  list_cost,
+                  SUM(total_resource_cost) OVER () AS total_resource_cost,
+                  SUM(matched_resource_cost) OVER () AS matched_resource_cost
+                FROM bucketed
                 ORDER BY bucket_start
                 """
             ),
@@ -167,31 +180,11 @@ def get_cost_trend(
         ).mappings()
         data_rows = [dict(row) for row in rows]
         buckets = _bucket_starts(filters, data_rows)
-        budget_targets = _budget_targets_for_filters(
-            connection,
-            filters,
-            buckets=buckets,
-        )
-        coverage_row = connection.execute(
-            text(
-                f"""
-                {query_basis.cte}
-                SELECT
-                  SUM({list_cost_expr}) AS total_resource_cost,
-                  SUM(CASE WHEN c.attribution_status = 'matched' THEN {list_cost_expr} ELSE 0 END) AS matched_resource_cost
-                FROM {from_clause}
-                WHERE {where_clause}
-                  AND c.list_cost IS NOT NULL
-                """
-            ),
-            params,
-        ).mappings().first()
-
     summary_net_cost = sum(_money(row["net_cost"]) for row in data_rows)
     summary_effective_cost = sum(_money(row["effective_cost"]) for row in data_rows)
     summary_list_cost = sum(_money(row["list_cost"]) for row in data_rows)
-    total_resource_cost = _money(coverage_row["total_resource_cost"]) if coverage_row else 0.0
-    matched_resource_cost = _money(coverage_row["matched_resource_cost"]) if coverage_row else 0.0
+    total_resource_cost = _money(data_rows[0]["total_resource_cost"]) if data_rows else 0.0
+    matched_resource_cost = _money(data_rows[0]["matched_resource_cost"]) if data_rows else 0.0
 
     net_cost_by_bucket = {bucket: 0.0 for bucket in buckets}
     list_cost_by_bucket = {bucket: 0.0 for bucket in buckets}
@@ -225,8 +218,7 @@ def get_cost_trend(
                 if drilldown
                 else {}
             ),
-            "budget_targets": budget_targets,
-            "allocation_basis": basis.name,
+            "allocation_basis": CURRENT_ATTRIBUTION_BASIS,
             "summary": {
                 "net_cost": round(summary_net_cost, 2),
                 "effective_cost": round(summary_effective_cost, 2),
@@ -239,583 +231,20 @@ def get_cost_trend(
     }
 
 
-def get_cost_allocation_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
-    """Return Kubernetes allocated and unallocated metrics alongside cost breakdowns."""
-    with engine.begin() as connection:
-        where_clause, params = _build_cost_where(filters, table_alias="c")
-        list_cost_expr = _billing_report_list_cost_expr("c")
-        workload_split_condition = """
-            (
-              c.source_allocation_scope IN (
-                'kubernetes_pod',
-                'eks_pod',
-                'gke_pod',
-                'tke_pod'
-              )
-              OR (
-                c.source_allocation_scope = 'split_child'
-                AND NULLIF(c.namespace, '') IS NOT NULL
-              )
-            )
-        """
-        kubernetes_unallocated_condition = _kubernetes_unallocated_condition(connection, "c")
-        kubernetes_parent_residual_condition = _kubernetes_parent_residual_condition("c")
-        legacy_person_attribution_condition = _has_valid_legacy_person_attribution("c")
-        if _cost_kubernetes_allocation_table_exists(connection):
-            allocation_where_clause, allocation_params = _build_cost_where(filters, table_alias="a")
-            allocation_date_filters = replace(filters, branch=None)
-            allocation_date_where_clause, allocation_date_params = _build_cost_where(
-                allocation_date_filters,
-                table_alias="a",
-            )
-            allocation_rows_cte = f"""
-                WITH {_kubernetes_allocation_fact_active_roster_cte()},
-                allocation_fact AS (
-                  SELECT
-                    CASE
-                      WHEN {_kubernetes_allocation_fact_allocated_condition('a', 'roster')}
-                        THEN 'workload_split'
-                      ELSE 'unallocated'
-                    END AS allocation_scope,
-                    a.list_cost
-                  FROM cost_kubernetes_workload_allocation_daily a
-                  {_kubernetes_allocation_fact_roster_join('a', 'roster')}
-                  WHERE {allocation_where_clause}
-                    AND (
-                      {_kubernetes_allocation_fact_allocated_condition('a', 'roster')}
-                      OR {_kubernetes_allocation_fact_unallocated_condition('a', 'roster')}
-                    )
-                ), allocation_fact_dates AS (
-                  SELECT DISTINCT
-                    a.vendor,
-                    a.account_id,
-                    a.usage_date
-                  FROM cost_kubernetes_workload_allocation_daily a
-                  WHERE {allocation_date_where_clause}
-                ), legacy_rows AS (
-                  SELECT
-                    CASE
-                      WHEN (
-                        {workload_split_condition}
-                        OR (
-                          {kubernetes_parent_residual_condition}
-                          AND {legacy_person_attribution_condition}
-                        )
-                      ) THEN 'workload_split'
-                      ELSE 'unallocated'
-                    END AS allocation_scope,
-                    {list_cost_expr} AS list_cost
-                  FROM cost_attribution_daily c
-                  WHERE {where_clause}
-                    AND (
-                      {workload_split_condition}
-                      OR (
-                        {kubernetes_parent_residual_condition}
-                        AND {legacy_person_attribution_condition}
-                      )
-                      OR {kubernetes_unallocated_condition}
-                    )
-                    -- An allocation fact is authoritative for its source/date. This
-                    -- prevents node or control-plane costs from being counted twice.
-                    AND NOT EXISTS (
-                      SELECT 1
-                      FROM allocation_fact_dates a
-                      WHERE a.vendor = c.vendor
-                        AND a.account_id = c.account_id
-                        AND a.usage_date = c.usage_date
-                    )
-                ), allocation_rows AS (
-                  SELECT allocation_scope, list_cost FROM allocation_fact
-                  UNION ALL
-                  SELECT allocation_scope, list_cost FROM legacy_rows
-                )
-            """
-            query_params = {**params, **allocation_params, **allocation_date_params}
-        else:
-            # Keep the page available while the schema migration is rolled out.
-            allocation_rows_cte = f"""
-                WITH allocation_rows AS (
-                  SELECT
-                    CASE
-                      WHEN (
-                        {workload_split_condition}
-                        OR (
-                          {kubernetes_parent_residual_condition}
-                          AND {legacy_person_attribution_condition}
-                        )
-                      ) THEN 'workload_split'
-                      ELSE 'unallocated'
-                    END AS allocation_scope,
-                    {list_cost_expr} AS list_cost
-                  FROM cost_attribution_daily c
-                  WHERE {where_clause}
-                    AND (
-                      {workload_split_condition}
-                      OR (
-                        {kubernetes_parent_residual_condition}
-                        AND {legacy_person_attribution_condition}
-                      )
-                      OR {kubernetes_unallocated_condition}
-                    )
-                )
-            """
-            query_params = params
-        row = connection.execute(
-            text(
-                f"""
-                {allocation_rows_cte}
-                SELECT
-                  SUM(
-                    CASE WHEN allocation_scope = 'workload_split'
-                      THEN list_cost
-                      ELSE 0
-                    END
-                  ) AS workload_split_cost,
-                  SUM(
-                    CASE WHEN allocation_scope = 'unallocated'
-                      THEN list_cost
-                      ELSE 0
-                    END
-                  ) AS kubernetes_unallocated_cost,
-                  COUNT(*) AS allocation_cost_row_count
-                FROM allocation_rows
-                """
-            ),
-            query_params,
-        ).mappings().first()
-
-    workload_split_cost = _money(row["workload_split_cost"]) if row else 0.0
-    kubernetes_unallocated_cost = _money(row["kubernetes_unallocated_cost"]) if row else 0.0
-    allocation_cost_row_count = int(row["allocation_cost_row_count"] or 0) if row else 0
-    return {
-        "scope": filters.meta(),
-        "is_available": allocation_cost_row_count > 0,
-        "workload_split_cost": workload_split_cost,
-        "kubernetes_unallocated_cost": kubernetes_unallocated_cost,
-    }
 
 
-def get_kubernetes_unallocated_costs(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
-    """Return Kubernetes costs without a valid person allocation by service and region."""
-    with engine.begin() as connection:
-        where_clause, params = _build_cost_where(filters, table_alias="c")
-        list_cost_expr = _billing_report_list_cost_expr("c")
-        kubernetes_unallocated_condition = _kubernetes_unallocated_condition(
-            connection,
-            "c",
-        )
-        if _cost_kubernetes_allocation_table_exists(connection):
-            fact_where_clause, fact_params = _build_cost_where(filters, table_alias="a")
-            date_filters = replace(filters, branch=None)
-            fact_date_where_clause, fact_date_params = _build_cost_where(
-                date_filters,
-                table_alias="a",
-            )
-            fact_service_expr = _kubernetes_allocation_fact_service_expr("a")
-            allocation_fact_cte = f"""
-                WITH {_kubernetes_allocation_fact_active_roster_cte()},
-                allocation_fact_dates AS (
-                  SELECT DISTINCT a.vendor, a.account_id, a.usage_date
-                  FROM cost_kubernetes_workload_allocation_daily a
-                  WHERE {fact_date_where_clause}
-                ), allocation_fact_rows AS (
-                  SELECT
-                    -- Use the provider's billing-service name when an allocation
-                    -- fact writer defines one; unknown vendors remain generic.
-                    {fact_service_expr} AS service_name,
-                    COALESCE(NULLIF(a.cluster_location, ''), '(no region)') AS region,
-                    SUM(a.list_cost) AS list_cost,
-                    CAST(NULL AS DECIMAL(16, 2)) AS effective_cost,
-                    CAST(NULL AS DECIMAL(16, 2)) AS net_cost,
-                    COUNT(*) AS cost_record_count
-                  FROM cost_kubernetes_workload_allocation_daily a
-                  {_kubernetes_allocation_fact_roster_join('a', 'roster')}
-                  WHERE {fact_where_clause}
-                    AND {_kubernetes_allocation_fact_unallocated_condition('a', 'roster')}
-                  GROUP BY service_name, region
-                ),
-            """
-            legacy_exclusion = """
-                    AND NOT EXISTS (
-                      SELECT 1
-                      FROM allocation_fact_dates a
-                      WHERE a.vendor = c.vendor
-                        AND a.account_id = c.account_id
-                        AND a.usage_date = c.usage_date
-                    )
-            """
-            query_params = {**params, **fact_params, **fact_date_params}
-            all_rows_prefix = "SELECT * FROM allocation_fact_rows UNION ALL"
-        else:
-            allocation_fact_cte = "WITH"
-            legacy_exclusion = ""
-            query_params = params
-            all_rows_prefix = ""
-        rows = connection.execute(
-            text(
-                f"""
-                {allocation_fact_cte} legacy_rows AS (
-                  SELECT
-                    COALESCE(NULLIF(c.service_name, ''), '(no service)') AS service_name,
-                    COALESCE(NULLIF(c.region, ''), '(no region)') AS region,
-                    SUM({list_cost_expr}) AS list_cost,
-                    SUM(c.effective_cost) AS effective_cost,
-                    SUM(c.net_cost) AS net_cost,
-                    COUNT(*) AS cost_record_count
-                  FROM cost_attribution_daily c
-                  WHERE {where_clause}
-                    AND {kubernetes_unallocated_condition}
-                    {legacy_exclusion}
-                  GROUP BY service_name, region
-                ), all_rows AS (
-                  {all_rows_prefix}
-                  SELECT * FROM legacy_rows
-                )
-                SELECT
-                  service_name,
-                  region,
-                  SUM(list_cost) AS list_cost,
-                  SUM(effective_cost) AS effective_cost,
-                  SUM(net_cost) AS net_cost,
-                  SUM(cost_record_count) AS cost_record_count
-                FROM all_rows
-                GROUP BY service_name, region
-                ORDER BY list_cost DESC, effective_cost DESC, service_name, region
-                """
-            ),
-            query_params,
-        ).mappings()
-
-    items = [
-        {
-            "service_name": str(row["service_name"]),
-            "region": str(row["region"]),
-            "list_cost": _money(row["list_cost"]),
-            "effective_cost": (
-                None if row["effective_cost"] is None else _money(row["effective_cost"])
-            ),
-            "net_cost": None if row["net_cost"] is None else _money(row["net_cost"]),
-            "cost_record_count": int(row["cost_record_count"] or 0),
-        }
-        for row in rows
-    ]
-    return {
-        "scope": filters.meta(),
-        "is_available": bool(items),
-        "items": items,
-    }
 
 
-def get_kubernetes_unallocated_records(
-    engine: Engine,
-    filters: CommonFilters,
-    *,
-    service_name: str,
-    region: str,
-    limit: int = KUBERNETES_UNALLOCATED_RECORD_LIMIT,
-) -> dict[str, Any]:
-    """Return user-facing cost groups behind one Kubernetes service/region summary."""
-    service_name = service_name.strip()
-    region = region.strip()
-    limit = max(1, min(limit, KUBERNETES_UNALLOCATED_RECORD_LIMIT))
-
-    with engine.begin() as connection:
-        legacy_where_clause, legacy_params = _build_cost_where(filters, table_alias="c")
-        record_params = {
-            **legacy_params,
-            "record_service_name": service_name,
-            "record_region": region,
-        }
-        record_selects: list[str] = []
-        cte_prefix = ""
-        legacy_exclusion = ""
-
-        if _cost_kubernetes_allocation_table_exists(connection):
-            fact_where_clause, fact_params = _build_cost_where(filters, table_alias="a")
-            date_filters = replace(filters, branch=None)
-            fact_date_where_clause, fact_date_params = _build_cost_where(
-                date_filters,
-                table_alias="a",
-            )
-            fact_service_expr = _kubernetes_allocation_fact_service_expr("a")
-            fact_region_expr = "COALESCE(NULLIF(a.cluster_location, ''), '(no region)')"
-            record_selects.append(
-                f"""
-                SELECT
-                  {fact_service_expr} AS service_name,
-                  {fact_region_expr} AS region,
-                  NULLIF(a.author, '') AS owner,
-                  NULLIF(a.org, '') AS project,
-                  NULLIF(a.repo, '') AS repo,
-                  COALESCE(NULLIF(a.workload_name, ''), '') AS resource_name,
-                  NULLIF(a.namespace, '') AS namespace,
-                  '' AS labels,
-                  a.list_cost AS list_cost
-                FROM cost_kubernetes_workload_allocation_daily a
-                {_kubernetes_allocation_fact_roster_join('a', 'roster')}
-                WHERE {fact_where_clause}
-                  AND {_kubernetes_allocation_fact_unallocated_condition('a', 'roster')}
-                  AND {fact_service_expr} = :record_service_name
-                  AND {fact_region_expr} = :record_region
-                """
-            )
-            cte_prefix = f"""
-                WITH {_kubernetes_allocation_fact_active_roster_cte()},
-                allocation_fact_dates AS (
-                  SELECT DISTINCT a.vendor, a.account_id, a.usage_date
-                  FROM cost_kubernetes_workload_allocation_daily a
-                  WHERE {fact_date_where_clause}
-                ), records AS (
-            """
-            legacy_exclusion = """
-                  AND NOT EXISTS (
-                    SELECT 1
-                    FROM allocation_fact_dates a
-                    WHERE a.vendor = c.vendor
-                      AND a.account_id = c.account_id
-                      AND a.usage_date = c.usage_date
-                  )
-            """
-            record_params.update(fact_params)
-            record_params.update(fact_date_params)
-
-        legacy_service_expr = "COALESCE(NULLIF(c.service_name, ''), '(no service)')"
-        legacy_region_expr = "COALESCE(NULLIF(c.region, ''), '(no region)')"
-        record_selects.append(
-            f"""
-            SELECT
-              {legacy_service_expr} AS service_name,
-              {legacy_region_expr} AS region,
-              NULLIF(c.owner, '') AS owner,
-              NULLIF(c.project, '') AS project,
-              NULLIF(c.repo, '') AS repo,
-              NULLIF(c.resource_name, '') AS resource_name,
-              NULLIF(c.namespace, '') AS namespace,
-              {_json_text_expr(connection, 'c.vendor_tags_json')} AS labels,
-              {_billing_report_list_cost_expr('c')} AS list_cost
-            FROM cost_attribution_daily c
-            WHERE {legacy_where_clause}
-              AND {_kubernetes_unallocated_condition(connection, 'c')}
-              AND {legacy_service_expr} = :record_service_name
-              AND {legacy_region_expr} = :record_region
-              {legacy_exclusion}
-            """
-        )
-
-        if cte_prefix:
-            records_sql = f"{cte_prefix}{' UNION ALL '.join(record_selects)}),"
-        else:
-            records_sql = f"WITH records AS ({record_selects[0]}),"
-
-        rows = connection.execute(
-            text(
-                f"""
-                {records_sql}
-                grouped_records AS (
-                  SELECT
-                    COALESCE(owner, '') AS owner,
-                    COALESCE(project, '') AS project,
-                    COALESCE(repo, '') AS repo,
-                    COALESCE(resource_name, '') AS resource_name,
-                    COALESCE(namespace, '') AS namespace,
-                    COALESCE(labels, '') AS labels,
-                    COUNT(*) AS cost_record_count,
-                    SUM(list_cost) AS list_cost
-                  FROM records
-                  GROUP BY
-                    COALESCE(owner, ''),
-                    COALESCE(project, ''),
-                    COALESCE(repo, ''),
-                    COALESCE(resource_name, ''),
-                    COALESCE(namespace, ''),
-                    COALESCE(labels, '')
-                )
-                SELECT
-                  owner,
-                  project,
-                  repo,
-                  resource_name,
-                  namespace,
-                  labels,
-                  cost_record_count,
-                  list_cost
-                FROM grouped_records
-                """
-            ),
-            record_params,
-        ).mappings()
-
-    # Normalize JSON key ordering before grouping so equivalent vendor-label
-    # objects from different source rows remain a single visible cost group.
-    grouped_items: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
-    for row in rows:
-        labels = _format_vendor_labels(row["labels"])
-        key = (
-            str(row["owner"] or ""),
-            str(row["project"] or ""),
-            str(row["repo"] or ""),
-            _user_facing_dimension(row["resource_name"]),
-            _user_facing_dimension(row["namespace"]),
-            labels,
-        )
-        item = grouped_items.setdefault(
-            key,
-            {
-                "owner": key[0],
-                "project": key[1],
-                "repo": key[2],
-                "resource_name": key[3],
-                "namespace": key[4],
-                "labels": key[5],
-                "cost_record_count": 0,
-                "list_cost": 0.0,
-            },
-        )
-        item["cost_record_count"] += int(row["cost_record_count"] or 0)
-        item["list_cost"] += _money(row["list_cost"])
-
-    all_items = sorted(
-        grouped_items.values(),
-        key=lambda item: (
-            -item["list_cost"],
-            item["owner"],
-            item["project"],
-            item["repo"],
-            item["resource_name"],
-            item["namespace"],
-            item["labels"],
-        ),
-    )
-    total_count = len(all_items)
-    items = [
-        {**item, "list_cost": _money(item["list_cost"])}
-        for item in all_items[:limit]
-    ]
-    return {
-        "scope": filters.meta(),
-        "service_name": service_name,
-        "region": region,
-        "total_count": total_count,
-        "returned_count": len(items),
-        "has_more": total_count > len(items),
-        "items": items,
-    }
 
 
-def get_weekly_overview(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+def get_budget_pace(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     cost_filters = _cost_filters(filters)
-    previous_start, previous_end = _previous_window(cost_filters)
-    previous_filters = CommonFilters(
-        start_date=previous_start,
-        end_date=previous_end,
-        branch=cost_filters.branch,
-        granularity=cost_filters.granularity,
-        cost_vendor=cost_filters.cost_vendor,
-        cost_account_id=cost_filters.cost_account_id,
-    )
-    if engine.dialect.name == "sqlite":
-        with engine.begin() as connection:
-            current_summary = _cost_summary(connection, cost_filters)
-            previous_summary = _cost_summary(connection, previous_filters)
-            budget_health = _budget_health_snapshot(connection, cost_filters)
-            service_share = _service_share_by_threshold(
-                connection,
-                cost_filters,
-                min_share_pct=1.0,
-            )
-            level2_share = _engineering_share_by_level_threshold(
-                connection,
-                cost_filters,
-                level=2,
-                min_share_pct=1.0,
-            )
-    else:
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {
-                "current_summary": executor.submit(_get_cost_summary, engine, cost_filters),
-                "previous_summary": executor.submit(_get_cost_summary, engine, previous_filters),
-                "budget_health": executor.submit(_get_budget_health_snapshot, engine, cost_filters),
-                "service_share": executor.submit(
-                    _get_service_share_by_threshold,
-                    engine,
-                    cost_filters,
-                    min_share_pct=1.0,
-                ),
-                "level2_share": executor.submit(
-                    _get_engineering_share_by_level_threshold,
-                    engine,
-                    cost_filters,
-                    level=2,
-                    min_share_pct=1.0,
-                ),
-            }
-            sections = {name: future.result() for name, future in futures.items()}
-        current_summary = sections["current_summary"]
-        previous_summary = sections["previous_summary"]
-        budget_health = sections["budget_health"]
-        service_share = sections["service_share"]
-        level2_share = sections["level2_share"]
-
+    with engine.begin() as connection:
+        budget_health = _budget_health_snapshot(connection, cost_filters)
     return {
         "scope": cost_filters.meta(),
-        "previous_scope": previous_filters.meta(),
-        "summary": {
-            "list_cost": current_summary["list_cost"],
-            "net_cost": current_summary["net_cost"],
-            "previous_list_cost": previous_summary["list_cost"],
-            "previous_net_cost": previous_summary["net_cost"],
-            "list_cost_wow_pct": rate_pct(
-                current_summary["list_cost"] - previous_summary["list_cost"],
-                previous_summary["list_cost"],
-            ),
-            "net_cost_wow_pct": rate_pct(
-                current_summary["net_cost"] - previous_summary["net_cost"],
-                previous_summary["net_cost"],
-            ),
-        },
         "budget_health": budget_health,
-        "service_share": service_share,
-        "level2_share": level2_share,
     }
-
-
-def _get_cost_summary(engine: Engine, filters: CommonFilters) -> dict[str, float]:
-    with engine.begin() as connection:
-        return _cost_summary(connection, filters)
-
-
-def _get_service_share_by_threshold(
-    engine: Engine,
-    filters: CommonFilters,
-    *,
-    min_share_pct: float,
-) -> dict[str, Any]:
-    with engine.begin() as connection:
-        return _service_share_by_threshold(connection, filters, min_share_pct=min_share_pct)
-
-
-def _get_budget_health_snapshot(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any] | None:
-    with engine.begin() as connection:
-        return _budget_health_snapshot(connection, filters)
-
-
-def _get_engineering_share_by_level_threshold(
-    engine: Engine,
-    filters: CommonFilters,
-    *,
-    level: int,
-    min_share_pct: float,
-) -> dict[str, Any]:
-    with engine.begin() as connection:
-        return _engineering_share_by_level_threshold(
-            connection,
-            filters,
-            level=level,
-            min_share_pct=min_share_pct,
-        )
 
 
 def get_repo_group_cost_stack(
@@ -825,17 +254,17 @@ def get_repo_group_cost_stack(
     group_by: str = "repo",
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
-    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     if group_by not in VALID_COST_STACK_GROUPS:
         group_by = "repo"
 
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
-        basis = _cost_allocation_basis(connection, filters, allocation_basis)
-        query_basis = _cost_basis_for_dimension(basis, group_by)
+        index_hint = _cost_aggregate_read_hint(connection, filters)
         bucket = bucket_expr(connection, "c.usage_date", filters.granularity)
         dimension = _cost_stack_dimension(connection, group_by)
+        dimension_key_expr = _cost_stack_dimension_key_expr(connection, dimension["expr"])
+        dimension_label_expr = _cost_stack_dimension_label_expr(connection, dimension["expr"])
         drilldown = _cost_drilldown_filter(
             connection,
             child_group=group_by,
@@ -849,112 +278,116 @@ def get_repo_group_cost_stack(
                 "params": {**dimension["params"], **drilldown["params"]},
             }
             where_clause = f"{where_clause} AND {drilldown['condition']}"
-        dimension = _cost_basis_dimension(query_basis, dimension)
-        list_cost_expr = _billing_report_list_cost_expr("c")
-        top_rows = connection.execute(
-            text(
-                f"""
-                {query_basis.cte}
-                SELECT
-                  {dimension["expr"]} AS dimension_name,
-                  SUM({list_cost_expr}) AS list_cost
-                FROM {dimension["from_clause"]}
-                WHERE {where_clause}
-                GROUP BY dimension_name
-                ORDER BY list_cost DESC, dimension_name
-                LIMIT :limit
-                """
-            ),
-            {
-                **params,
-                **dimension["params"],
-                # Fetch one additional dimension so we only create an Others series
-                # when more than COST_STACK_LIMIT dimensions actually exist.
-                "limit": COST_STACK_LIMIT + 1,
-            },
-        ).mappings()
-        top_dimensions = [str(row["dimension_name"] or dimension["empty_label"]) for row in top_rows]
-        if not top_dimensions:
-            return {
-                "series": [],
-                "items": [],
-                "meta": _cost_dimension_meta(
-                    filters,
-                    limit=COST_STACK_LIMIT,
-                    dimension_key="group_by",
-                    dimension=group_by,
-                    drilldown=drilldown,
-                    allocation_basis=basis.name,
-                ),
-            }
-
-        has_others = len(top_dimensions) > COST_STACK_LIMIT
-        visible_dimensions = (
-            top_dimensions[: COST_STACK_LIMIT - 1] if has_others else top_dimensions
+        from_clause, team_filter_params = _cost_filter_from_clause(
+            connection, filters, dimension["from_clause"]
         )
-        dimension_conditions = []
-        dimension_params: dict[str, Any] = {}
-        for index, dimension_name in enumerate(visible_dimensions):
-            dimension_key = f"dimension_{index}"
-            dimension_conditions.append(
-                f"{dimension['expr']} = :{dimension_key}"
-            )
-            dimension_params[dimension_key] = dimension_name
+        dimension = {**dimension, "from_clause": from_clause}
+        params.update(team_filter_params)
 
-        stack_dimension = dimension["expr"]
-        if has_others:
-            stack_dimension = (
-                f"CASE WHEN {' OR '.join(dimension_conditions)} "
-                f"THEN {dimension['expr']} ELSE :others_dimension END"
-            )
-            dimension_params["others_dimension"] = COST_STACK_OTHERS_DIMENSION
-
+        list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
                 f"""
-                {query_basis.cte}
-                SELECT
+                SELECT {index_hint}
                   {bucket} AS bucket_start,
-                  {stack_dimension} AS dimension_name,
+                  {dimension_key_expr} AS dimension_key,
+                  {dimension_label_expr} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
                 FROM {dimension["from_clause"]}
                 WHERE {where_clause}
-                GROUP BY bucket_start, dimension_name
-                ORDER BY bucket_start, dimension_name
+                GROUP BY bucket_start, dimension_key
+                ORDER BY bucket_start, dimension_key
                 """
             ),
-            {**params, **dimension["params"], **dimension_params},
+            {**params, **dimension["params"]},
         ).mappings()
         data_rows = [dict(row) for row in rows]
+
+    dimension_totals: dict[str, Any] = {}
+    labels_by_dimension_key: dict[str, str] = {}
+    for row in data_rows:
+        dimension_name = str(row["dimension_name"] or dimension["empty_label"])
+        dimension_key = str(row["dimension_key"] or dimension_name.lower())
+        labels_by_dimension_key[dimension_key] = min(
+            labels_by_dimension_key.get(dimension_key, dimension_name),
+            dimension_name,
+        )
+        list_cost = row["list_cost"]
+        if dimension_key not in dimension_totals:
+            dimension_totals[dimension_key] = list_cost
+        elif list_cost is not None:
+            dimension_totals[dimension_key] = (
+                list_cost
+                if dimension_totals[dimension_key] is None
+                else dimension_totals[dimension_key] + list_cost
+            )
+
+    top_dimensions = sorted(
+        dimension_totals,
+        key=lambda key: (
+            dimension_totals[key] is None,
+            -(dimension_totals[key] or 0),
+            key,
+        ),
+    )
+    if not top_dimensions:
+        return {
+            "series": [],
+            "items": [],
+            "meta": _cost_dimension_meta(
+                filters,
+                limit=COST_STACK_LIMIT,
+                dimension_key="group_by",
+                dimension=group_by,
+                drilldown=drilldown,
+            ),
+        }
+
+    has_others = len(top_dimensions) > COST_STACK_LIMIT
+    visible_dimensions = (
+        top_dimensions[: COST_STACK_LIMIT - 1] if has_others else top_dimensions
+    )
+    visible_dimension_keys = set(visible_dimensions)
+    if has_others:
+        for row in data_rows:
+            dimension_key = str(row["dimension_key"] or "")
+            if dimension_key not in visible_dimension_keys:
+                row["dimension_key"] = COST_STACK_OTHERS_DIMENSION
 
     buckets = _bucket_starts(filters, data_rows)
     stack_dimensions = [
         *visible_dimensions,
         *([COST_STACK_OTHERS_DIMENSION] if has_others else []),
     ]
+    labels_by_dimension_key[COST_STACK_OTHERS_DIMENSION] = "Others"
     others_key = (
         _cost_stack_key(group_by, COST_STACK_OTHERS_DIMENSION, len(stack_dimensions) - 1)
         if has_others
         else None
     )
+    stack_keys = {
+        dimension_key: _cost_stack_key(
+            group_by,
+            labels_by_dimension_key[dimension_key]
+            if dimension_key != COST_STACK_OTHERS_DIMENSION
+            else dimension_key,
+            index,
+        )
+        for index, dimension_key in enumerate(stack_dimensions)
+    }
     values_by_key = {
-        _cost_stack_key(group_by, dimension_name, index): {bucket: 0.0 for bucket in buckets}
-        for index, dimension_name in enumerate(stack_dimensions)
+        stack_keys[dimension_key]: {bucket: 0.0 for bucket in buckets}
+        for dimension_key in stack_dimensions
     }
     labels_by_key = {
-        _cost_stack_key(group_by, dimension_name, index): (
-            "Others" if dimension_name == COST_STACK_OTHERS_DIMENSION else dimension_name
-        )
-        for index, dimension_name in enumerate(stack_dimensions)
-    }
-    key_by_name = {
-        dimension_name: _cost_stack_key(group_by, dimension_name, index)
-        for index, dimension_name in enumerate(stack_dimensions)
+        stack_keys[dimension_key]: labels_by_dimension_key[dimension_key]
+        for dimension_key in stack_dimensions
     }
     for row in data_rows:
-        dimension_name = str(row["dimension_name"] or dimension["empty_label"])
-        key = key_by_name[dimension_name]
-        values_by_key[key][str(row["bucket_start"])] = _money(row["list_cost"])
+        dimension_key = str(row["dimension_key"] or "")
+        key = stack_keys[dimension_key]
+        bucket_start = str(row["bucket_start"])
+        values_by_key[key][bucket_start] += float(row["list_cost"] or 0)
 
     return {
         "series": [
@@ -962,14 +395,14 @@ def get_repo_group_cost_stack(
                 "key": key,
                 "label": labels_by_key[key],
                 "type": "bar",
-                "points": [[bucket, values_by_key[key].get(bucket, 0.0)] for bucket in buckets],
+                "points": [[bucket, _money(values_by_key[key].get(bucket))] for bucket in buckets],
             }
             for key in values_by_key
         ],
         "items": [
             {
                 "name": labels_by_key[key],
-                "value": round(sum(values_by_key[key].values()), 2),
+                "value": round(sum(_money(value) for value in values_by_key[key].values()), 2),
                 **(
                     {"interactive": False}
                     if key == others_key
@@ -984,7 +417,6 @@ def get_repo_group_cost_stack(
             dimension_key="group_by",
             dimension=group_by,
             drilldown=drilldown,
-            allocation_basis=basis.name,
         ),
     }
 
@@ -996,15 +428,13 @@ def get_cost_share(
     dimension: str = "owner",
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
-    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     if dimension not in VALID_COST_SHARE_DIMENSIONS:
         dimension = "owner"
 
     with engine.begin() as connection:
         where_clause, params = _build_cost_where(filters, table_alias="c")
-        basis = _cost_allocation_basis(connection, filters, allocation_basis)
-        query_basis = _cost_basis_for_dimension(basis, dimension)
+        index_hint = _cost_aggregate_read_hint(connection, filters)
         dimension_config = _cost_share_dimension(connection, dimension)
         drilldown = _cost_drilldown_filter(
             connection,
@@ -1019,13 +449,16 @@ def get_cost_share(
                 "params": {**dimension_config["params"], **drilldown["params"]},
             }
             where_clause = f"{where_clause} AND {drilldown['condition']}"
-        dimension_config = _cost_basis_dimension(query_basis, dimension_config)
+        from_clause, team_filter_params = _cost_filter_from_clause(
+            connection, filters, dimension_config["from_clause"]
+        )
+        dimension_config = {**dimension_config, "from_clause": from_clause}
+        params.update(team_filter_params)
         list_cost_expr = _billing_report_list_cost_expr("c")
         rows = connection.execute(
             text(
                 f"""
-                {query_basis.cte}
-                SELECT
+                SELECT {index_hint}
                   {dimension_config["expr"]} AS dimension_name,
                   SUM({list_cost_expr}) AS list_cost
                 FROM {dimension_config["from_clause"]}
@@ -1053,8 +486,8 @@ def get_cost_share(
     for item in all_items:
         item["share_pct"] = rate_pct(item["value"], total)
         item["interactive"] = False
-        if dimension == "region" and 0 < item["share_pct"] < LOW_REGION_SHARE_THRESHOLD_PCT:
-            item["highlight"] = True
+    if dimension == "region":
+        all_items = [item for item in all_items if item["share_pct"] >= 0.05]
 
     meta = _cost_dimension_meta(
         filters,
@@ -1063,11 +496,7 @@ def get_cost_share(
         dimension=dimension,
         drilldown=drilldown,
         total_list_cost=round(total, 2),
-        allocation_basis=basis.name,
     )
-    if dimension == "region":
-        meta["highlight_threshold_pct"] = LOW_REGION_SHARE_THRESHOLD_PCT
-
     return {
         "items": _share_items_limited_with_others(
             all_items,
@@ -1081,11 +510,8 @@ def get_cost_share(
 def get_engineering_group_share(
     engine: Engine,
     filters: CommonFilters,
-    *,
-    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     with engine.begin() as connection:
-        basis = _cost_allocation_basis(connection, filters, allocation_basis)
         root = connection.execute(
             text(
                 """
@@ -1106,7 +532,7 @@ def get_engineering_group_share(
                     "meta": {
                         **filters.meta(),
                         "group_name": ENGINEERING_GROUP_NAME,
-                        "allocation_basis": basis.name,
+                        "allocation_basis": CURRENT_ATTRIBUTION_BASIS,
                     },
                 },
                 "level2": {
@@ -1114,26 +540,123 @@ def get_engineering_group_share(
                     "meta": {
                         **filters.meta(),
                         "group_name": ENGINEERING_GROUP_NAME,
-                        "allocation_basis": basis.name,
+                        "allocation_basis": CURRENT_ATTRIBUTION_BASIS,
                     },
                 },
             }
 
-        level1 = _engineering_share_by_level(connection, filters, root, level=1, basis=basis)
-        level2 = _engineering_share_by_level(connection, filters, root, level=2, basis=basis)
+        where_clause, params = _build_cost_where(filters, table_alias="c")
+        index_hint = _cost_aggregate_read_hint(connection, filters)
+        list_cost_expr = _billing_report_list_cost_expr("c")
+        level1_match = _like_prefix_expr(connection, "c_group.path", "level1_group.path")
+        level2_match = _like_prefix_expr(connection, "c_group.path", "level2_group.path")
+        from_clause, team_filter_params = _cost_filter_from_clause(
+            connection,
+            filters,
+            f"""cost_attribution_daily c
+                JOIN roster_groups c_group ON c_group.id = c.group_id
+                JOIN roster_groups level1_group
+                  ON level1_group.is_active = 1
+                 AND level1_group.parent_id = :root_id
+                 AND {level1_match}
+                LEFT JOIN roster_groups level2_group
+                  ON level2_group.is_active = 1
+                 AND level2_group.parent_id = level1_group.id
+                 AND {level2_match}""",
+        )
+        params.update(team_filter_params)
+        rows = connection.execute(
+            text(
+                f"""
+                SELECT {index_hint}
+                  level1_group.id AS level1_id,
+                  level1_group.name AS level1_name,
+                  level2_group.id AS level2_id,
+                  level2_group.name AS level2_name,
+                  SUM({list_cost_expr}) AS list_cost
+                FROM {from_clause}
+                WHERE {where_clause}
+                  AND c_group.path IS NOT NULL
+                  AND c_group.path LIKE :root_path_like
+                GROUP BY level1_group.id, level1_group.name, level2_group.id, level2_group.name
+                """
+            ),
+            {
+                **params,
+                "root_id": root["id"],
+                "root_path_like": f"{root['path']}%",
+            },
+        ).mappings()
+        level1_costs: dict[tuple[Any, str], Any] = {}
+        level2_costs: dict[tuple[Any, str], Any] = {}
+        for row in rows:
+            list_cost = row["list_cost"]
+            level1_key = (row["level1_id"], str(row["level1_name"]))
+            if level1_key not in level1_costs:
+                level1_costs[level1_key] = list_cost
+            elif list_cost is not None:
+                level1_costs[level1_key] = (
+                    list_cost
+                    if level1_costs[level1_key] is None
+                    else level1_costs[level1_key] + list_cost
+                )
+            if row["level2_id"] is not None:
+                level2_key = (row["level2_id"], str(row["level2_name"]))
+                if level2_key not in level2_costs:
+                    level2_costs[level2_key] = list_cost
+                elif list_cost is not None:
+                    level2_costs[level2_key] = (
+                        list_cost
+                        if level2_costs[level2_key] is None
+                        else level2_costs[level2_key] + list_cost
+                    )
 
-    return {
-        "level1": level1,
-        "level2": level2,
-    }
+    level1_items = [
+        {"name": key[1], "value": _money(level1_costs[key])}
+        for key in sorted(
+            level1_costs,
+            key=lambda key: (level1_costs[key] is None, -(level1_costs[key] or 0), key[1]),
+        )
+    ]
+    level2_items = [
+        {"name": key[1], "value": _money(level2_costs[key])}
+        for key in sorted(
+            level2_costs,
+            key=lambda key: (level2_costs[key] is None, -(level2_costs[key] or 0), key[1]),
+        )
+    ]
+    for level, items in ((1, level1_items), (2, level2_items)):
+        total = sum(item["value"] for item in items)
+        for item in items:
+            item["share_pct"] = rate_pct(item["value"], total)
+            item["interactive"] = False
+        share = {
+            "items": items,
+            "meta": {
+                **filters.meta(),
+                "group_name": ENGINEERING_GROUP_NAME,
+                "level": level,
+                "total_list_cost": round(total, 2),
+                "allocation_basis": CURRENT_ATTRIBUTION_BASIS,
+            },
+        }
+        if level == 1:
+            level1 = share
+        else:
+            level2 = share
+
+    return {"level1": level1, "level2": level2}
 
 
 def list_cost_sources(engine: Engine) -> dict[str, Any]:
     with engine.begin() as connection:
+        category = (
+            "category" if _table_has_column(connection, "cost_sources", "category") else "NULL"
+        )
         rows = connection.execute(
             text(
-                """
-                SELECT vendor, account_id, display_name
+                f"""
+                SELECT vendor, account_id, display_name, {category} AS category
                 FROM cost_sources
                 WHERE is_active = :is_active
                 ORDER BY vendor, account_id
@@ -1148,10 +671,1917 @@ def list_cost_sources(engine: Engine) -> dict[str, Any]:
                 "vendor": str(row["vendor"]),
                 "account_id": str(row["account_id"]),
                 "display_name": str(row["display_name"] or ""),
+                "category": str(row["category"] or "") or None,
             }
             for row in rows
         ]
     return {"items": items}
+
+
+def get_cost_filter_values(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    scope_filters = CommonFilters(
+        start_date=filters.start_date,
+        end_date=filters.end_date,
+        branch=filters.branch,
+        granularity=filters.granularity,
+        cost_vendor=filters.cost_vendor,
+        cost_account_id=filters.cost_account_id,
+        cost_sources=filters.cost_sources,
+    )
+    with engine.begin() as connection:
+        where_clause, params = _build_cost_where(scope_filters, table_alias="c")
+        dimensions = {
+            "owner": _cost_share_dimension(connection, "owner"),
+            "team": _cost_share_dimension(connection, "team"),
+            "project": _cost_share_dimension(connection, "project"),
+        }
+        values: dict[str, list[dict[str, str]]] = {}
+        for key, dimension in dimensions.items():
+            rows = connection.execute(
+                text(
+                    f"""
+                    SELECT DISTINCT {dimension["expr"]} AS value
+                    FROM {dimension["from_clause"]}
+                    WHERE {where_clause}
+                    ORDER BY value
+                    """
+                ),
+                {**params, **dimension["params"]},
+            ).mappings()
+            values[key] = [
+                {"value": str(row["value"] or dimension["empty_label"]), "label": str(row["value"] or dimension["empty_label"])}
+                for row in rows
+            ]
+    return {"items": values}
+
+
+def _weekly_cost_qa_source_clause(connection: Connection, *, table_alias: str = "s") -> str | None:
+    prefix = f"{table_alias}." if table_alias else ""
+    if _table_has_column(connection, "cost_sources", "category"):
+        return f"{prefix}category = 'QA'"
+    if _table_has_column(connection, "cost_sources", "purpose"):
+        return f"NULLIF(TRIM({prefix}purpose), '') IS NOT NULL"
+    return None
+
+
+def _weekly_cost_purpose_expr(connection: Connection, *, table_alias: str = "s") -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    return f"TRIM({prefix}purpose)" if _table_has_column(connection, "cost_sources", "purpose") else "''"
+
+
+def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dict[str, Any]:
+    today = _today()
+    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_end = last_week_start + timedelta(days=6)
+    previous_week_end = last_week_start - timedelta(days=1)
+    previous_week_start = previous_week_end - timedelta(days=6)
+    previous_month_end = today.replace(day=1) - timedelta(days=1)
+    previous_month_start = previous_month_end.replace(day=1)
+    data_start = min(previous_week_start, previous_month_start)
+    data_end = max(last_week_end, previous_month_end)
+    history_start = last_week_start - timedelta(days=49)
+    history_weeks = [
+        {
+            "start_date": (history_start + timedelta(days=7 * index)).isoformat(),
+            "end_date": (history_start + timedelta(days=7 * index + 6)).isoformat(),
+        }
+        for index in range(8)
+    ]
+    report: dict[str, Any] = {
+        "meta": {
+            "calendar_timezone": "UTC",
+            "cost_metric": "list_cost",
+            "purpose_schema_available": False,
+        },
+        "last_week": {
+            "start_date": last_week_start.isoformat(),
+            "end_date": last_week_end.isoformat(),
+        },
+        "previous_week": {
+            "start_date": previous_week_start.isoformat(),
+            "end_date": previous_week_end.isoformat(),
+        },
+        "previous_month": {
+            "start_date": previous_month_start.isoformat(),
+            "end_date": previous_month_end.isoformat(),
+        },
+        "summary": {
+            "last_week_cost": 0.0,
+            "previous_week_cost": 0.0,
+            "week_wow_pct": None,
+            "previous_month_cost": 0.0,
+        },
+        "items": [],
+    }
+    list_cost_history: dict[str, Any] | None = None
+    if include_trend:
+        report["list_cost_history"] = _weekly_cost_empty_list_cost_history(
+            history_start,
+            last_week_end,
+            history_weeks,
+        )
+
+    with engine.begin() as connection:
+        qa_source_clause = _weekly_cost_qa_source_clause(connection)
+        if qa_source_clause is None:
+            return report
+        report["meta"]["purpose_schema_available"] = True
+        purpose_expr = _weekly_cost_purpose_expr(connection)
+        list_cost_expr = _billing_report_list_cost_expr("c")
+        rows = connection.execute(
+            text(
+                f"""
+                SELECT
+                  s.vendor,
+                  s.account_id,
+                  s.display_name,
+                  {purpose_expr} AS purpose,
+                  SUM(
+                    CASE WHEN c.usage_date BETWEEN :last_week_start AND :last_week_end
+                      THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
+                  ) AS last_week_cost,
+                  SUM(
+                    CASE WHEN c.usage_date BETWEEN :previous_week_start AND :previous_week_end
+                      THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
+                  ) AS previous_week_cost,
+                  SUM(
+                    CASE WHEN c.usage_date BETWEEN :previous_month_start AND :previous_month_end
+                      THEN COALESCE({list_cost_expr}, 0) ELSE 0 END
+                  ) AS previous_month_cost
+                FROM cost_sources s
+                LEFT JOIN cost_attribution_daily c
+                  ON c.vendor = s.vendor
+                 AND c.account_id = s.account_id
+                 AND c.usage_date BETWEEN :data_start AND :data_end
+                WHERE s.is_active = :is_active
+                  AND {qa_source_clause}
+                GROUP BY s.vendor, s.account_id, s.display_name, {purpose_expr}
+                ORDER BY
+                  CASE s.vendor
+                    WHEN 'aws' THEN 0
+                    WHEN 'gcp' THEN 1
+                    ELSE 2
+                  END,
+                  s.account_id
+                """
+            ),
+            {
+                "last_week_start": last_week_start,
+                "last_week_end": last_week_end,
+                "previous_week_start": previous_week_start,
+                "previous_week_end": previous_week_end,
+                "previous_month_start": previous_month_start,
+                "previous_month_end": previous_month_end,
+                "data_start": data_start,
+                "data_end": data_end,
+                "is_active": 1,
+            },
+        ).mappings()
+        items = [
+            {
+                "cost_source": _cost_source_value(str(row["vendor"]), str(row["account_id"])),
+                "vendor": str(row["vendor"]),
+                "account_id": str(row["account_id"]),
+                "display_name": str(row["display_name"] or ""),
+                "purpose": str(row["purpose"] or ""),
+                "last_week_cost": _money(row["last_week_cost"]),
+                "previous_week_cost": _money(row["previous_week_cost"]),
+                "previous_month_cost": _money(row["previous_month_cost"]),
+            }
+            for row in rows
+        ]
+        if include_trend:
+            list_cost_history = _weekly_cost_list_cost_history(
+                connection,
+                items,
+                last_week_start,
+                last_week_end,
+                qa_source_clause=qa_source_clause,
+            )
+        weekly_dimension_rows, roster_group_rows, budget_rows = _weekly_cost_allocation_inputs(
+            connection,
+            last_week_start,
+            last_week_end,
+            qa_source_clause=qa_source_clause,
+        )
+
+    total_last_week_cost = _money(sum(item["last_week_cost"] for item in items))
+    total_previous_week_cost = _money(sum(item["previous_week_cost"] for item in items))
+    total_previous_month_cost = _money(sum(item["previous_month_cost"] for item in items))
+    for item in items:
+        item["week_wow_pct"] = _nullable_rate_pct(
+            item["last_week_cost"] - item["previous_week_cost"],
+            item["previous_week_cost"],
+        )
+        item["last_week_share_pct"] = _nullable_rate_pct(
+            item["last_week_cost"], total_last_week_cost
+        )
+
+    report["summary"] = {
+        "last_week_cost": total_last_week_cost,
+        "previous_week_cost": total_previous_week_cost,
+        "week_wow_pct": _nullable_rate_pct(
+            total_last_week_cost - total_previous_week_cost,
+            total_previous_week_cost,
+        ),
+        "previous_month_cost": total_previous_month_cost,
+    }
+    report["items"] = items
+    if list_cost_history is not None:
+        report["list_cost_history"] = list_cost_history
+    allocation = _weekly_cost_allocation_response(
+        weekly_dimension_rows,
+        roster_group_rows,
+        budget_rows,
+        last_week_start,
+        last_week_end,
+        total_last_week_cost,
+        {(item["vendor"], item["account_id"]) for item in items},
+    )
+    report["team_share"] = allocation["team_share"]
+    report["budget_pace"] = allocation["budget_pace"]
+    return report
+
+
+def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
+    """Return the fixed two-account CI budget pace and active-period cost trend."""
+    today = _today()
+    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_end = last_week_start + timedelta(days=6)
+    previous_week_end = last_week_start - timedelta(days=1)
+    previous_week_start = previous_week_end - timedelta(days=6)
+    eight_week_start = last_week_start - timedelta(days=49)
+    previous_month_end = today.replace(day=1) - timedelta(days=1)
+    previous_month_start = previous_month_end.replace(day=1)
+    report: dict[str, Any] = {
+        "meta": {
+            "calendar_timezone": "UTC",
+            "cost_metric": "budget_basis_spend",
+        },
+        "last_complete_week": _ci_weekly_cost_period(last_week_start, last_week_end),
+        "previous_complete_week": _ci_weekly_cost_period(previous_week_start, previous_week_end),
+        "last_complete_month": _ci_weekly_cost_period(previous_month_start, previous_month_end),
+        "accounts": [],
+        "budget_period_cost": _ci_weekly_cost_empty_budget_period_cost(),
+        "weekly_cost_history": {"series": []},
+        "last_week_cost_share": _ci_weekly_cost_empty_last_week_cost_share(),
+    }
+
+    with engine.begin() as connection:
+        budget_rows = _ci_weekly_cost_budget_rows(connection)
+        active_plans = _ci_weekly_cost_active_plans(budget_rows, today)
+        source_bases = _ci_weekly_cost_source_bases(budget_rows)
+        data_start = min(
+            [eight_week_start, previous_month_start, *(plan["period_start_date"] for plan in active_plans)]
+        )
+        cost_values = _ci_weekly_cost_values(connection, data_start, today)
+        report["last_week_cost_share"] = _ci_weekly_cost_last_week_cost_share(
+            connection,
+            last_week_start,
+            last_week_end,
+        )
+
+    report["accounts"] = [
+        _ci_weekly_cost_account(
+            source,
+            budget_rows.get(source, ()),
+            source_bases.get(source),
+            cost_values,
+            last_week_start,
+            last_week_end,
+            previous_week_start,
+            previous_week_end,
+            previous_month_start,
+            previous_month_end,
+        )
+        for source in CI_WEEKLY_COST_SOURCES
+    ]
+    report["budget_period_cost"] = _ci_weekly_cost_budget_period_cost(
+        active_plans,
+        cost_values,
+        today,
+    )
+    report["weekly_cost_history"] = _ci_weekly_cost_weekly_history(
+        cost_values,
+        eight_week_start,
+        last_week_end,
+    )
+    return report
+
+
+def _ci_weekly_cost_period(start_date: date, end_date: date) -> dict[str, str]:
+    return {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
+
+
+def _ci_weekly_cost_empty_budget_period_cost() -> dict[str, Any]:
+    return {"metric": "budget_basis_spend", "accounts": []}
+
+
+def _ci_weekly_cost_empty_last_week_cost_share() -> dict[str, Any]:
+    return {"metric": "list_cost", "total_list_cost": 0.0, "teams": {"items": []}, "repos": {"items": []}}
+
+
+def _ci_weekly_cost_last_week_cost_share(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> dict[str, Any]:
+    list_cost_expr = _billing_report_list_cost_expr("c")
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project, c.repo,
+                   SUM(COALESCE({list_cost_expr}, 0)) AS list_cost
+            FROM cost_attribution_daily c
+            WHERE (
+                (c.vendor = 'gcp' AND c.account_id = 'pingcap-testing-account')
+                OR (c.vendor = 'tencent' AND c.account_id = '100050658403')
+            )
+              AND c.usage_date BETWEEN :start_date AND :end_date
+            GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project, c.repo
+            """
+        ),
+        {"start_date": start_date, "end_date": end_date},
+    ).mappings()
+    roster_groups = connection.execute(
+        text(
+            """
+            SELECT id, parent_id, name, path
+            FROM roster_groups
+            WHERE is_active = :is_active
+            ORDER BY id
+            """
+        ),
+        {"is_active": 1},
+    ).mappings()
+    dimensions = _weekly_cost_team_dimensions(tuple(rows), tuple(roster_groups))
+    team_items, total = _weekly_cost_share_items(dimensions["cross_account_teams"])
+    repo_items, _ = _weekly_cost_share_items(dimensions["repos"])
+    return {
+        "metric": "list_cost",
+        "total_list_cost": _money(total),
+        "teams": {"items": team_items},
+        "repos": {"items": repo_items},
+    }
+
+
+def _ci_weekly_cost_budget_rows(
+    connection: Connection,
+) -> dict[tuple[str, str], tuple[dict[str, Any], ...]]:
+    rows = connection.execute(
+        text(
+            """
+            SELECT vendor, accounts, period_start_date, period_end_date, budget_name, budget_amount,
+                   label_filters, cost_basis
+            FROM cost_budgets
+            WHERE LOWER(TRIM(platform)) = 'cicd'
+              AND (projects IS NULL OR TRIM(projects) IN ('', '[]'))
+            ORDER BY vendor, period_start_date, period_end_date, budget_name
+            """
+        )
+    ).mappings()
+    plans: dict[tuple[str, str], list[dict[str, Any]]] = {
+        source: [] for source in CI_WEEKLY_COST_SOURCES
+    }
+    for row in rows:
+        period_start = _parse_date(row["period_start_date"])
+        period_end = _parse_date(row["period_end_date"])
+        if period_start is None or period_end is None or period_start > period_end:
+            continue
+        if _weekly_cost_label_filters(row["label_filters"]):
+            continue
+        vendor = str(row["vendor"] or "")
+        for account_id in _weekly_cost_string_list(row["accounts"]):
+            source = (vendor, account_id)
+            if source in plans:
+                plans[source].append(
+                    {
+                        "source": source,
+                        "period_start_date": period_start,
+                        "period_end_date": period_end,
+                        "budget_name": str(row["budget_name"] or ""),
+                        "budget_amount": Decimal(str(row["budget_amount"] or 0)),
+                        "cost_basis": str(row["cost_basis"] or ""),
+                    }
+                )
+    _ci_weekly_cost_validate_plan_windows(plans)
+    return {source: tuple(rows) for source, rows in plans.items()}
+
+
+def _ci_weekly_cost_validate_plan_windows(
+    plans_by_source: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+) -> None:
+    for source, plans in plans_by_source.items():
+        previous_plan: Mapping[str, Any] | None = None
+        for plan in sorted(
+            plans,
+            key=lambda item: (
+                item["period_start_date"],
+                item["period_end_date"],
+                str(item["budget_name"]),
+            ),
+        ):
+            if (
+                previous_plan is not None
+                and plan["period_start_date"] <= previous_plan["period_end_date"]
+            ):
+                raise ValueError(
+                    f"overlapping CI budget plans for {_cost_source_value(*source)}: "
+                    f"{previous_plan['budget_name']!r} and {plan['budget_name']!r}"
+                )
+            previous_plan = plan
+
+
+def _ci_weekly_cost_active_plans(
+    budget_rows: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+    today: date,
+) -> list[Mapping[str, Any]]:
+    return [
+        plan
+        for plans in budget_rows.values()
+        for plan in plans
+        if plan["period_start_date"] <= today <= plan["period_end_date"]
+    ]
+
+
+def _ci_weekly_cost_plan_overlaps(
+    plan: Mapping[str, Any],
+    start_date: date,
+    end_date: date,
+) -> bool:
+    return plan["period_start_date"] <= end_date and start_date <= plan["period_end_date"]
+
+
+def _ci_weekly_cost_source_bases(
+    plans_by_source: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+) -> dict[tuple[str, str], str]:
+    # Fixed CI sources have one basis; report bases per period if that contract changes.
+    return {
+        source: str(plans[0]["cost_basis"])
+        for source, plans in plans_by_source.items()
+        if plans
+    }
+
+
+def _ci_weekly_cost_values(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> dict[tuple[tuple[str, str], date], dict[str, Decimal]]:
+    list_cost_expr = _billing_report_list_cost_expr("c")
+    net_cost_expr = _usd_cost_expr("c", "c.net_cost")
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT c.vendor, c.account_id, c.usage_date,
+                   SUM(COALESCE({list_cost_expr}, 0)) AS list_cost,
+                   SUM(COALESCE({net_cost_expr}, 0)) AS net_cost
+            FROM cost_attribution_daily c
+            WHERE (
+                (c.vendor = 'gcp' AND c.account_id = 'pingcap-testing-account')
+                OR (c.vendor = 'tencent' AND c.account_id = '100050658403')
+            )
+              AND c.usage_date BETWEEN :start_date AND :end_date
+            GROUP BY c.vendor, c.account_id, c.usage_date
+            """
+        ),
+        {"start_date": start_date, "end_date": end_date},
+    ).mappings()
+    return {
+        ((str(row["vendor"]), str(row["account_id"])), usage_date): {
+            "list_cost": Decimal(str(row["list_cost"] or 0)),
+            "net_cost": Decimal(str(row["net_cost"] or 0)),
+        }
+        for row in rows
+        if (usage_date := _parse_date(row["usage_date"])) is not None
+    }
+
+
+def _ci_weekly_cost_account(
+    source: tuple[str, str],
+    budget_rows: Sequence[Mapping[str, Any]],
+    cost_basis: str | None,
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    last_week_start: date,
+    last_week_end: date,
+    previous_week_start: date,
+    previous_week_end: date,
+    previous_month_start: date,
+    previous_month_end: date,
+) -> dict[str, Any]:
+    vendor, account_id = source
+    last_week = _ci_weekly_cost_usage(
+        source, budget_rows, cost_basis, cost_values, last_week_start, last_week_end
+    )
+    previous_week = _ci_weekly_cost_usage(
+        source, budget_rows, cost_basis, cost_values, previous_week_start, previous_week_end
+    )
+    return {
+        "cost_source": _cost_source_value(vendor, account_id),
+        "vendor": vendor,
+        "account_id": account_id,
+        "cost_basis": cost_basis,
+        "last_complete_week": last_week,
+        "week_wow_pct": _nullable_rate_pct(
+            last_week["actual_cost"] - previous_week["actual_cost"],
+            previous_week["actual_cost"],
+        ),
+        "last_complete_month": _ci_weekly_cost_usage(
+            source, budget_rows, cost_basis, cost_values, previous_month_start, previous_month_end
+        ),
+    }
+
+
+def _ci_weekly_cost_usage(
+    source: tuple[str, str],
+    budget_rows: Sequence[Mapping[str, Any]],
+    cost_basis: str | None,
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    start_date: date,
+    end_date: date,
+) -> dict[str, float | None]:
+    period_plans = [
+        plan for plan in budget_rows if _ci_weekly_cost_plan_overlaps(plan, start_date, end_date)
+    ]
+    budget = sum(
+        (_weekly_cost_budget_amount_for_window(plan, start_date, end_date) for plan in period_plans),
+        Decimal(0),
+    )
+    actual = (
+        sum(
+            (
+                _ci_weekly_cost_actual(
+                    cost_values,
+                    source,
+                    str(plan["cost_basis"]),
+                    max(start_date, plan["period_start_date"]),
+                    min(end_date, plan["period_end_date"]),
+                )
+                for plan in period_plans
+            ),
+            Decimal(0),
+        )
+        if period_plans
+        else _ci_weekly_cost_actual(cost_values, source, cost_basis, start_date, end_date)
+    )
+    actual_money = _money(actual)
+    budget_money = _money(budget) if period_plans else None
+    return {
+        "actual_cost": actual_money,
+        "period_budget": budget_money,
+        "utilization_pct": _nullable_rate_pct(actual_money, budget_money)
+        if budget_money is not None
+        else None,
+    }
+
+
+def _ci_weekly_cost_actual(
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    source: tuple[str, str],
+    cost_basis: str | None,
+    start_date: date,
+    end_date: date,
+) -> Decimal:
+    return sum(
+        (
+            amounts.get(cost_basis, Decimal(0))
+            for (fact_source, usage_date), amounts in cost_values.items()
+            if fact_source == source and start_date <= usage_date <= end_date
+        ),
+        Decimal(0),
+    )
+
+
+def _ci_weekly_cost_weekly_history(
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    start_date: date,
+    end_date: date,
+) -> dict[str, Any]:
+    week_starts = [start_date + timedelta(days=7 * index) for index in range(8)]
+    return {
+        "period": _ci_weekly_cost_period(start_date, end_date),
+        "series": [
+            {
+                "cost_source": _cost_source_value(*source),
+                "cost_metric": cost_metric,
+                "points": [
+                    {
+                        "week_start": week_start.isoformat(),
+                        "cost": _money(
+                            _ci_weekly_cost_actual(
+                                cost_values,
+                                source,
+                                cost_metric,
+                                week_start,
+                                week_start + timedelta(days=6),
+                            )
+                        ),
+                    }
+                    for week_start in week_starts
+                ],
+            }
+            for cost_metric in ("list_cost", "net_cost")
+            for source in CI_WEEKLY_COST_SOURCES
+        ],
+    }
+
+
+def _ci_weekly_cost_budget_period_cost(
+    active_plans: Sequence[Mapping[str, Any]],
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    today: date,
+) -> dict[str, Any]:
+    return {
+        "metric": "budget_basis_spend",
+        "accounts": [
+            _ci_weekly_cost_account_period_cost(source, plans, cost_values, today)
+            for source in CI_WEEKLY_COST_SOURCES
+            if (plans := [plan for plan in active_plans if plan["source"] == source])
+        ],
+    }
+
+
+def _ci_weekly_cost_account_period_cost(
+    source: tuple[str, str],
+    plans: Sequence[Mapping[str, Any]],
+    cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    today: date,
+) -> dict[str, Any]:
+    start_date = min(plan["period_start_date"] for plan in plans)
+    weekly_costs: dict[date, Decimal] = {}
+    for plan in plans:
+        for (fact_source, usage_date), amounts in cost_values.items():
+            if fact_source != source or not plan["period_start_date"] <= usage_date <= plan["period_end_date"]:
+                continue
+            week_start = usage_date - timedelta(days=usage_date.weekday())
+            weekly_costs[week_start] = weekly_costs.get(week_start, Decimal(0)) + amounts[
+                str(plan["cost_basis"])
+            ]
+
+    week_start = start_date - timedelta(days=start_date.weekday())
+    current_week_start = today - timedelta(days=today.weekday())
+    cumulative_cost = Decimal(0)
+    points = []
+    while week_start <= current_week_start:
+        budget_basis_cost = weekly_costs.get(week_start, Decimal(0))
+        cumulative_cost += budget_basis_cost
+        points.append(
+            {
+                "week_start": week_start.isoformat(),
+                "budget_basis_cost": _money(budget_basis_cost),
+                "cumulative_budget_basis_cost": _money(cumulative_cost),
+            }
+        )
+        week_start += timedelta(days=7)
+
+    return {
+        "cost_source": _cost_source_value(*source),
+        "cost_basis": str(plans[0]["cost_basis"]),
+        "period": _ci_weekly_cost_period(start_date, today),
+        "total_budget": _money(sum((plan["budget_amount"] for plan in plans), Decimal(0))),
+        "points": points,
+    }
+
+
+def get_weekly_cost_trend(engine: Engine) -> dict[str, Any]:
+    today = _today()
+    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_end = last_week_start + timedelta(days=6)
+    history_start = last_week_start - timedelta(days=49)
+    history_weeks = [
+        {
+            "start_date": (history_start + timedelta(days=7 * index)).isoformat(),
+            "end_date": (history_start + timedelta(days=7 * index + 6)).isoformat(),
+        }
+        for index in range(8)
+    ]
+    report: dict[str, Any] = {
+        "meta": {"purpose_schema_available": False},
+        "list_cost_history": _weekly_cost_empty_list_cost_history(
+            history_start,
+            last_week_end,
+            history_weeks,
+        ),
+    }
+    with engine.begin() as connection:
+        qa_source_clause = _weekly_cost_qa_source_clause(connection)
+        if qa_source_clause is None:
+            return report
+        report["meta"]["purpose_schema_available"] = True
+        items = _weekly_cost_active_source_items(connection, qa_source_clause=qa_source_clause)
+        report["list_cost_history"] = _weekly_cost_list_cost_history(
+            connection,
+            items,
+            last_week_start,
+            last_week_end,
+            qa_source_clause=qa_source_clause,
+        )
+        budget_period_cost = _weekly_cost_budget_period_cost(
+            connection,
+            today,
+            {(item["vendor"], item["account_id"]) for item in items},
+            qa_source_clause=qa_source_clause,
+        )
+        if budget_period_cost["points"]:
+            report["budget_period_cost"] = budget_period_cost
+    return report
+
+
+def _weekly_cost_active_source_items(
+    connection: Connection,
+    *,
+    qa_source_clause: str,
+) -> list[dict[str, Any]]:
+    purpose_expr = _weekly_cost_purpose_expr(connection)
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT vendor, account_id, display_name, {purpose_expr} AS purpose
+            FROM cost_sources s
+            WHERE is_active = :is_active
+              AND {qa_source_clause}
+            ORDER BY
+              CASE vendor
+                WHEN 'aws' THEN 0
+                WHEN 'gcp' THEN 1
+                ELSE 2
+              END,
+              account_id
+            """
+        ),
+        {"is_active": 1},
+    ).mappings()
+    return [
+        {
+            "cost_source": _cost_source_value(str(row["vendor"]), str(row["account_id"])),
+            "vendor": str(row["vendor"]),
+            "account_id": str(row["account_id"]),
+            "display_name": str(row["display_name"] or ""),
+            "purpose": str(row["purpose"] or ""),
+        }
+        for row in rows
+    ]
+
+
+def _weekly_cost_empty_list_cost_history(
+    history_start: date,
+    last_week_end: date,
+    history_weeks: Sequence[Mapping[str, str]],
+) -> dict[str, Any]:
+    return {
+        "metric": "list_cost",
+        "start_date": history_start.isoformat(),
+        "end_date": last_week_end.isoformat(),
+        "weeks": list(history_weeks),
+        "series": [],
+    }
+
+
+def _weekly_cost_list_cost_history(
+    connection: Connection,
+    items: Sequence[Mapping[str, Any]],
+    last_week_start: date,
+    last_week_end: date,
+    *,
+    qa_source_clause: str,
+) -> dict[str, Any]:
+    history_start = last_week_start - timedelta(days=49)
+    history_weeks = [
+        {
+            "start_date": (history_start + timedelta(days=7 * index)).isoformat(),
+            "end_date": (history_start + timedelta(days=7 * index + 6)).isoformat(),
+        }
+        for index in range(8)
+    ]
+    history_rows = connection.execute(
+        text(
+            f"""
+            SELECT
+              s.vendor,
+              s.account_id,
+              c.usage_date,
+              SUM(COALESCE({_billing_report_list_cost_expr("c")}, 0)) AS list_cost
+            FROM cost_sources s
+            LEFT JOIN cost_attribution_daily c
+              ON c.vendor = s.vendor
+             AND c.account_id = s.account_id
+             AND c.usage_date BETWEEN :history_start AND :last_week_end
+            WHERE s.is_active = :is_active
+              AND {qa_source_clause}
+            GROUP BY s.vendor, s.account_id, c.usage_date
+            """
+        ),
+        {
+            "history_start": history_start,
+            "last_week_end": last_week_end,
+            "is_active": 1,
+        },
+    ).mappings()
+    history_values = {
+        item["cost_source"]: {week["start_date"]: Decimal(0) for week in history_weeks}
+        for item in items
+    }
+    for row in history_rows:
+        if row["usage_date"] is None:
+            continue
+        usage_date = date.fromisoformat(str(row["usage_date"]))
+        week_start = usage_date - timedelta(days=usage_date.weekday())
+        source = _cost_source_value(str(row["vendor"]), str(row["account_id"]))
+        if source in history_values:
+            history_values[source][week_start.isoformat()] += Decimal(str(row["list_cost"] or 0))
+    series = []
+    for item in items:
+        values = history_values[item["cost_source"]]
+        total_list_cost = sum(values.values())
+        series.append(
+            {
+                "cost_source": item["cost_source"],
+                "vendor": item["vendor"],
+                "account_id": item["account_id"],
+                "display_name": item["display_name"],
+                "purpose": item["purpose"],
+                "total_list_cost": _money(total_list_cost),
+                "points": [
+                    {"week_start": week["start_date"], "list_cost": _money(values[week["start_date"]])}
+                    for week in history_weeks
+                ],
+            }
+        )
+    series.sort(
+        key=lambda item: (
+            -sum(history_values[item["cost_source"]].values()),
+            item["vendor"],
+            item["account_id"],
+        )
+    )
+    return {
+        **_weekly_cost_empty_list_cost_history(history_start, last_week_end, history_weeks),
+        "series": series,
+    }
+
+
+def _weekly_cost_empty_budget_period_cost() -> dict[str, Any]:
+    return {
+        "metric": "list_cost",
+        "period": None,
+        "total_budget": 0.0,
+        "points": [],
+    }
+
+
+def _weekly_cost_budget_period_cost(
+    connection: Connection,
+    today: date,
+    qa_sources: set[tuple[str, str]],
+    *,
+    qa_source_clause: str,
+) -> dict[str, Any]:
+    plans = _weekly_cost_product_budget_plans(
+        _weekly_cost_budget_rows(connection, today, today),
+        qa_sources,
+        today,
+    )
+    if not plans:
+        return _weekly_cost_empty_budget_period_cost()
+
+    start_date = min(scope[2] for scope, _budget in plans)
+    budget_scopes = [scope for scope, _budget in plans]
+    dimension_rows = _weekly_cost_allocation_dimension_rows(
+        connection,
+        start_date,
+        today,
+        qa_source_clause=qa_source_clause,
+    )
+    dimensions = _weekly_cost_team_dimensions(dimension_rows, [])
+    weekly_costs: dict[date, Decimal] = {}
+    for (vendor, account_id, usage_date, project), amount in dimensions[
+        "source_project_values"
+    ].items():
+        if _weekly_cost_matches_budget_scopes(
+            vendor,
+            account_id,
+            usage_date,
+            project,
+            budget_scopes,
+        ):
+            week_start = usage_date - timedelta(days=usage_date.weekday())
+            weekly_costs[week_start] = weekly_costs.get(week_start, Decimal(0)) + amount
+
+    week_start = start_date - timedelta(days=start_date.weekday())
+    current_week_start = today - timedelta(days=today.weekday())
+    cumulative_cost = Decimal(0)
+    points = []
+    while week_start <= current_week_start:
+        list_cost = weekly_costs.get(week_start, Decimal(0))
+        cumulative_cost += list_cost
+        points.append(
+            {
+                "week_start": week_start.isoformat(),
+                "list_cost": _money(list_cost),
+                "cumulative_list_cost": _money(cumulative_cost),
+            }
+        )
+        week_start += timedelta(days=7)
+
+    return {
+        "metric": "list_cost",
+        "period": {"start_date": start_date.isoformat(), "end_date": today.isoformat()},
+        "total_budget": _money(sum((budget for _scope, budget in plans), Decimal(0))),
+        "points": points,
+    }
+
+
+def get_weekly_cost_allocation(engine: Engine, period: str = "week") -> dict[str, Any]:
+    today = _today()
+    if period == "week":
+        start_date = today - timedelta(days=today.weekday() + 7)
+        end_date = start_date + timedelta(days=6)
+    elif period == "month":
+        end_date = today.replace(day=1) - timedelta(days=1)
+        start_date = end_date.replace(day=1)
+    elif period == "current_month":
+        start_date = today.replace(day=1)
+        next_month = date(
+            start_date.year + (start_date.month == 12),
+            start_date.month % 12 + 1,
+            1,
+        )
+        end_date = next_month - timedelta(days=1)
+    else:
+        raise ValueError(f"unsupported allocation period: {period}")
+
+    report: dict[str, Any] = {
+        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+        "meta": {"purpose_schema_available": False},
+    }
+    with engine.begin() as connection:
+        qa_source_clause = _weekly_cost_qa_source_clause(connection)
+        if qa_source_clause is None:
+            return report
+        report["meta"]["purpose_schema_available"] = True
+        qa_sources = _weekly_cost_qa_sources(connection, qa_source_clause=qa_source_clause)
+        dimension_rows, roster_group_rows, budget_rows = _weekly_cost_allocation_inputs(
+            connection,
+            start_date,
+            end_date,
+            qa_source_clause=qa_source_clause,
+        )
+
+    total_actual = _money(sum((Decimal(str(row["list_cost"] or 0)) for row in dimension_rows), Decimal(0)))
+    report.update(
+        _weekly_cost_allocation_response(
+            dimension_rows,
+            roster_group_rows,
+            budget_rows,
+            start_date,
+            end_date,
+            total_actual,
+            qa_sources,
+            include_daily_cost=period == "month",
+        )
+    )
+    return report
+
+
+def _weekly_cost_qa_sources(
+    connection: Connection,
+    *,
+    qa_source_clause: str,
+) -> set[tuple[str, str]]:
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT vendor, account_id
+            FROM cost_sources s
+            WHERE is_active = :is_active
+              AND {qa_source_clause}
+            """
+        ),
+        {"is_active": 1},
+    ).mappings()
+    return {(str(row["vendor"]), str(row["account_id"])) for row in rows}
+
+
+def _weekly_cost_allocation_inputs(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+    *,
+    qa_source_clause: str,
+) -> tuple[tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...]]:
+    dimension_rows = _weekly_cost_allocation_dimension_rows(
+        connection,
+        start_date,
+        end_date,
+        qa_source_clause=qa_source_clause,
+    )
+    roster_group_rows, budget_rows = _weekly_cost_allocation_metadata(
+        connection,
+        start_date,
+        end_date,
+    )
+    return dimension_rows, roster_group_rows, budget_rows
+
+
+def _weekly_cost_allocation_dimension_rows(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+    *,
+    qa_source_clause: str,
+) -> tuple[Mapping[str, Any], ...]:
+    list_cost_expr = _billing_report_list_cost_expr("c")
+    return tuple(
+        connection.execute(
+            text(
+                f"""
+                SELECT
+                  c.vendor,
+                  c.account_id,
+                  c.usage_date,
+                  c.group_id,
+                  c.owner,
+                  c.project,
+                  c.repo,
+                  SUM(COALESCE({list_cost_expr}, 0)) AS list_cost
+                FROM cost_sources s
+                JOIN cost_attribution_daily c
+                  ON c.vendor = s.vendor
+                 AND c.account_id = s.account_id
+                WHERE s.is_active = :is_active
+                  AND {qa_source_clause}
+                  AND c.usage_date BETWEEN :start_date AND :end_date
+                GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project, c.repo
+                """
+            ),
+            {"is_active": 1, "start_date": start_date, "end_date": end_date},
+        ).mappings()
+    )
+
+
+def _weekly_cost_allocation_metadata(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> tuple[tuple[Mapping[str, Any], ...], tuple[Mapping[str, Any], ...]]:
+    roster_group_rows = tuple(
+        connection.execute(
+            text(
+                """
+                SELECT id, parent_id, name, path
+                FROM roster_groups
+                WHERE is_active = :is_active
+                ORDER BY id
+                """
+            ),
+            {"is_active": 1},
+        ).mappings()
+    )
+    return roster_group_rows, _weekly_cost_budget_rows(connection, start_date, end_date)
+
+
+def _weekly_cost_allocation_response(
+    dimension_rows: Sequence[Mapping[str, Any]],
+    roster_group_rows: Sequence[Mapping[str, Any]],
+    budget_rows: Sequence[Mapping[str, Any]],
+    start_date: date,
+    end_date: date,
+    total_actual: float,
+    qa_sources: set[tuple[str, str]],
+    include_daily_cost: bool = False,
+) -> dict[str, Any]:
+    team_dimensions = _weekly_cost_team_dimensions(dimension_rows, roster_group_rows)
+    budget_pace, budget_scopes = _weekly_cost_budget_pace(
+        team_dimensions,
+        budget_rows,
+        start_date,
+        end_date,
+        total_actual,
+        qa_sources,
+    )
+    budget_pace["team_cost"] = _weekly_cost_team_cost(team_dimensions)
+    if include_daily_cost:
+        budget_pace["overall"]["daily_list_cost"] = _weekly_cost_cumulative_daily_cost(
+            team_dimensions,
+            start_date,
+            end_date,
+            budget_scopes,
+        )
+    return {
+        "team_share": _weekly_cost_team_share(team_dimensions),
+        "budget_pace": budget_pace,
+    }
+
+
+def _weekly_cost_team_dimensions(
+    dimension_rows: Sequence[Mapping[str, Any]],
+    roster_group_rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    groups_by_id = {
+        group_id: {
+            "id": group_id,
+            "parent_id": _weekly_cost_group_id(row["parent_id"]),
+            "name": str(row["name"] or "(unnamed team)"),
+            "path": str(row["path"] or ""),
+        }
+        for row in roster_group_rows
+        if (group_id := _weekly_cost_group_id(row["id"])) is not None
+    }
+    root = next(
+        (
+            group
+            for group in groups_by_id.values()
+            if group["name"] == ENGINEERING_GROUP_NAME
+        ),
+        None,
+    )
+    level1_groups = (
+        [group for group in groups_by_id.values() if group["parent_id"] == root["id"]]
+        if root
+        else []
+    )
+    unallocated_level1 = {
+        "key": "team:unattributed",
+        "name": WEEKLY_COST_UNATTRIBUTED_TEAM_NAME,
+    }
+    unallocated_level2 = {
+        "key": "team:unattributed",
+        "name": WEEKLY_COST_UNATTRIBUTED_TEAM_NAME,
+    }
+
+    def level_descriptors(group_id: int | None) -> tuple[dict[str, str], dict[str, str]]:
+        group = groups_by_id.get(group_id) if group_id is not None else None
+        if not root or not group or not _weekly_cost_path_contains(root["path"], group["path"]):
+            return unallocated_level1, unallocated_level2
+        level1 = next(
+            (
+                candidate
+                for candidate in level1_groups
+                if _weekly_cost_path_contains(candidate["path"], group["path"])
+            ),
+            None,
+        )
+        if level1 is None:
+            return unallocated_level1, unallocated_level2
+        level1_descriptor = {
+            "key": f"team:{level1['id']}",
+            "name": level1["name"],
+        }
+        level2 = next(
+            (
+                candidate
+                for candidate in groups_by_id.values()
+                if candidate["parent_id"] == level1["id"]
+                and candidate["path"]
+                and _weekly_cost_path_contains(candidate["path"], group["path"])
+            ),
+            None,
+        )
+        if level2 is None:
+            return level1_descriptor, {
+                "key": f"team:{level1['id']}:unassigned",
+                "name": "(not in a level 2 team)",
+            }
+        return level1_descriptor, {
+            "key": f"team:{level2['id']}",
+            "name": level2["name"],
+        }
+
+    def cross_account_team_descriptor(group_id: int | None) -> dict[str, str]:
+        level2 = level_descriptors(group_id)[1]
+        if level2["key"] == "team:unattributed" or level2["key"].endswith(":unassigned"):
+            return {"key": "team:none", "name": "(no team)"}
+        return {
+            "key": level2["key"],
+            "name": level2["name"],
+        }
+
+    level1_values: dict[str, dict[str, Any]] = {}
+    level2_values: dict[str, dict[str, Any]] = {}
+    project_values: dict[str, dict[str, Any]] = {}
+    repo_values: dict[str, dict[str, Any]] = {}
+    cross_account_team_values: dict[str, dict[str, Any]] = {}
+    owner_values: dict[str, dict[str, Any]] = {}
+    source_project_values: dict[tuple[str, str, date, str], Decimal] = {}
+    daily_list_cost: dict[date, Decimal] = {}
+    for row in dimension_rows:
+        amount = Decimal(str(row["list_cost"] or 0))
+        group_id = _weekly_cost_group_id(row["group_id"])
+        level1, level2 = level_descriptors(group_id)
+        cross_account_team = cross_account_team_descriptor(group_id)
+        owner_name = _weekly_cost_owner_name(row["owner"])
+        project_name = _weekly_cost_project_name(row["project"])
+        repo_name = str(row.get("repo") or "").strip() or "(no repo)"
+        usage_date = _parse_date(row["usage_date"])
+        if usage_date is None:
+            continue
+        source = (str(row["vendor"]), str(row["account_id"]), usage_date)
+        source_project_key = (*source, project_name)
+        source_project_values[source_project_key] = (
+            source_project_values.get(source_project_key, Decimal(0)) + amount
+        )
+        daily_list_cost[usage_date] = daily_list_cost.get(usage_date, Decimal(0)) + amount
+        _add_weekly_cost_dimension_value(level1_values, level1, amount)
+        _add_weekly_cost_dimension_value(level2_values, level2, amount)
+        _add_weekly_cost_dimension_value(cross_account_team_values, cross_account_team, amount)
+        _add_weekly_cost_dimension_value(
+            owner_values,
+            {"key": f"owner:{owner_name}", "name": owner_name},
+            amount,
+        )
+        _add_weekly_cost_dimension_value(
+            project_values,
+            {"key": f"project:{project_name}", "name": project_name},
+            amount,
+        )
+        _add_weekly_cost_dimension_value(
+            repo_values,
+            {"key": f"repo:{repo_name}", "name": repo_name},
+            amount,
+        )
+    return {
+        "root_available": root is not None,
+        "level1": level1_values,
+        "level2": level2_values,
+        "projects": project_values,
+        "repos": repo_values,
+        "cross_account_teams": cross_account_team_values,
+        "owners": owner_values,
+        "source_project_values": source_project_values,
+        "daily_list_cost": daily_list_cost,
+    }
+
+
+def _weekly_cost_cumulative_daily_cost(
+    dimensions: Mapping[str, Any],
+    start_date: date,
+    end_date: date,
+    budget_scopes: Sequence[WeeklyCostBudgetScope] | None,
+) -> list[dict[str, Any]]:
+    daily_values = dimensions["daily_list_cost"]
+    if budget_scopes is not None:
+        daily_values = {}
+        for (vendor, account_id, usage_date, project), amount in dimensions[
+            "source_project_values"
+        ].items():
+            if _weekly_cost_matches_budget_scopes(
+                vendor, account_id, usage_date, project, budget_scopes
+            ):
+                daily_values[usage_date] = daily_values.get(usage_date, Decimal(0)) + amount
+    cumulative = Decimal(0)
+    days = (end_date - start_date).days + 1
+    items = []
+    for offset in range(days):
+        usage_date = start_date + timedelta(days=offset)
+        list_cost = daily_values.get(usage_date, Decimal(0))
+        cumulative += list_cost
+        items.append(
+            {
+                "date": usage_date.isoformat(),
+                "list_cost": _money(list_cost),
+                "cumulative_list_cost": _money(cumulative),
+            }
+        )
+    return items
+
+
+def _weekly_cost_path_contains(parent_path: str, child_path: str) -> bool:
+    if not parent_path or not child_path:
+        return False
+    normalized_parent = parent_path.rstrip("/")
+    normalized_child = child_path.rstrip("/")
+    return normalized_child == normalized_parent or normalized_child.startswith(
+        f"{normalized_parent}/"
+    )
+
+
+def _weekly_cost_team_share(dimensions: Mapping[str, Any]) -> dict[str, Any]:
+    level1_items, total_list_cost = _weekly_cost_share_items(dimensions["level1"])
+    level2_items, _ = _weekly_cost_share_items(dimensions["level2"])
+    project_items, _ = _weekly_cost_share_items(dimensions["projects"])
+    owner_items, _ = _weekly_cost_share_items(dimensions["owners"])
+    return {
+        "metric": "list_cost",
+        "total_list_cost": _money(total_list_cost),
+        "root_group_name": ENGINEERING_GROUP_NAME,
+        "root_group_available": bool(dimensions["root_available"]),
+        "level1": {"items": level1_items},
+        "level2": {"items": level2_items},
+        "projects": {"items": project_items},
+        "owners": {"items": owner_items},
+    }
+
+
+def _weekly_cost_team_cost(dimensions: Mapping[str, Any]) -> dict[str, Any]:
+    items, total_list_cost = _weekly_cost_share_items(dimensions["cross_account_teams"])
+    return {
+        "metric": "list_cost",
+        "total_list_cost": _money(total_list_cost),
+        "items": [
+            {
+                "key": item["key"],
+                "name": item["name"],
+                "actual_list_cost": item["value"],
+                "share_pct": item["share_pct"],
+                "interactive": False,
+            }
+            for item in items
+        ],
+    }
+
+
+def _weekly_cost_budget_pace(
+    dimensions: Mapping[str, Any],
+    budget_rows: Sequence[Mapping[str, Any]],
+    start_date: date,
+    end_date: date,
+    overall_actual: float,
+    qa_sources: set[tuple[str, str]],
+) -> tuple[
+    dict[str, Any],
+    Sequence[WeeklyCostBudgetScope] | None,
+]:
+    if budget_rows and "accounts" in budget_rows[0]:
+        return _weekly_cost_current_budget_pace(
+            dimensions,
+            budget_rows,
+            start_date,
+            end_date,
+            qa_sources,
+        )
+    overall_budget = Decimal(0)
+    has_overall_budget = False
+    budget_scopes: list[WeeklyCostBudgetScope] = []
+    project_budgets: dict[str, Decimal] = {}
+    project_names: dict[str, str] = {}
+    for row in budget_rows:
+        budget_window = _weekly_cost_budget_window(row, start_date, end_date)
+        if budget_window is None:
+            continue
+        period_budget, scope_start, scope_end = budget_window
+        label_filters = _weekly_cost_label_filters(row["label_filters"])
+        has_group = row["group_id"] is not None
+        has_manager = row["manager_id"] is not None
+        has_repo = bool(str(row["repo"] or "").strip())
+        sources = {(str(row["vendor"]), str(row["account_id"]))}
+        if not has_group and not has_manager and not has_repo and not label_filters:
+            overall_budget += period_budget
+            has_overall_budget = True
+            budget_scopes.append((sources, None, scope_start, scope_end))
+            continue
+        project = label_filters.get("project") if len(label_filters) == 1 else None
+        if (
+            not has_group
+            and not has_manager
+            and not has_repo
+            and isinstance(project, str)
+            and project.strip()
+        ):
+            overall_budget += period_budget
+            has_overall_budget = True
+            project_name = _weekly_cost_project_name(project)
+            budget_scopes.append((sources, {project_name}, scope_start, scope_end))
+            project_key = f"project:{project_name}"
+            project_names[project_key] = project_name
+            project_budgets[project_key] = project_budgets.get(project_key, Decimal(0)) + period_budget
+            continue
+    scoped_actual = (
+        _weekly_cost_budget_scoped_actual(dimensions, budget_scopes)
+        if budget_scopes
+        else Decimal(str(overall_actual))
+    )
+    return (
+        {
+            "metric": "list_cost",
+            "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+            "overall": {
+                "actual_list_cost": _money(scoped_actual),
+                "period_budget": _money(overall_budget) if has_overall_budget else None,
+                "utilization_pct": (
+                    _nullable_rate_pct(_money(scoped_actual), _money(overall_budget))
+                    if has_overall_budget
+                    else None
+                ),
+            },
+            "projects": _weekly_cost_budget_items(
+                dimensions["projects"],
+                project_budgets,
+                project_names,
+            ),
+        },
+        budget_scopes or None,
+    )
+
+
+def _weekly_cost_current_budget_pace(
+    dimensions: Mapping[str, Any],
+    budget_rows: Sequence[Mapping[str, Any]],
+    start_date: date,
+    end_date: date,
+    qa_sources: set[tuple[str, str]],
+) -> tuple[
+    dict[str, Any],
+    Sequence[WeeklyCostBudgetScope],
+]:
+    overall_budget = Decimal(0)
+    has_overall_budget = False
+    project_values: dict[str, dict[str, Any]] = {}
+    budget_scopes: list[WeeklyCostBudgetScope] = []
+    planned_projects: set[str] = set()
+    project_budgets: dict[str, Decimal] = {}
+    project_names: dict[str, str] = {}
+
+    for row in budget_rows:
+        budget_window = _weekly_cost_budget_window(row, start_date, end_date)
+        if budget_window is None:
+            continue
+        period_budget, scope_start, scope_end = budget_window
+        sources = _weekly_cost_budget_sources(row, qa_sources)
+        if not sources:
+            continue
+        label_filters = _weekly_cost_label_filters(row["label_filters"])
+        has_unsupported_scope = (
+            row["group_id"] is not None
+            or row["manager_id"] is not None
+            or bool(str(row["repo"] or "").strip())
+            or set(label_filters) - {"project"}
+        )
+        if has_unsupported_scope:
+            continue
+        projects = _weekly_cost_string_list(row["projects"])
+        if not projects:
+            projects = _weekly_cost_string_list(label_filters.get("project"))
+        overall_budget += period_budget
+        has_overall_budget = True
+        budget_scopes.append((sources, set(projects) or None, scope_start, scope_end))
+        if projects:
+            planned_projects.update(projects)
+        if projects or period_budget > 0:
+            plan_key = f"budget-plan:{row['id']}"
+            plan_name = str(
+                row["budget_name"]
+                or " / ".join(projects)
+                or (
+                    " / ".join(
+                        f"{vendor.upper()} / {account_id}"
+                        for vendor, account_id in sorted(sources)
+                    )
+                    + f" (plan {row['id']})"
+                )
+            )
+            project_values[plan_key] = {
+                "name": plan_name,
+                "value": _weekly_cost_scoped_actual(
+                    dimensions,
+                    sources,
+                    set(projects) or None,
+                    scope_start,
+                    scope_end,
+                ),
+                "project_account_usage": _weekly_cost_project_account_usage(
+                    dimensions,
+                    sources,
+                    set(projects) or None,
+                    scope_start,
+                    scope_end,
+                    period_budget,
+                ),
+            }
+            project_names[plan_key] = plan_name
+            project_budgets[plan_key] = period_budget
+
+    for key, item in dimensions["projects"].items():
+        if item["name"] not in planned_projects:
+            project_values[key] = {"name": item["name"], "value": item["value"]}
+
+    overall_actual = _weekly_cost_budget_scoped_actual(dimensions, budget_scopes)
+    return (
+        {
+            "metric": "list_cost",
+            "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+            "overall": {
+                "actual_list_cost": _money(overall_actual),
+                "period_budget": _money(overall_budget) if has_overall_budget else None,
+                "utilization_pct": (
+                    _nullable_rate_pct(overall_actual, _money(overall_budget))
+                    if has_overall_budget
+                    else None
+                ),
+            },
+            "projects": _weekly_cost_budget_items(project_values, project_budgets, project_names),
+        },
+        budget_scopes,
+    )
+
+
+def _weekly_cost_budget_rows(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> tuple[Mapping[str, Any], ...]:
+    if _table_has_column(connection, "cost_budgets", "accounts"):
+        rows = connection.execute(
+            text(
+                """
+                SELECT
+                  id,
+                  vendor,
+                  accounts,
+                  projects,
+                  team,
+                  platform,
+                  period_start_date,
+                  period_end_date,
+                  budget_name,
+                  label_filters,
+                  group_id,
+                  manager_id,
+                  repo,
+                  budget_amount
+                FROM cost_budgets
+                WHERE LOWER(TRIM(platform)) = 'qa'
+                  AND period_start_date <= :end_date
+                  AND period_end_date >= :start_date
+                """
+            ),
+            {"start_date": start_date, "end_date": end_date},
+        ).mappings()
+        return tuple(rows)
+    qa_source_clause = _weekly_cost_qa_source_clause(connection)
+    if qa_source_clause is None:
+        return ()
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT
+              b.vendor,
+              b.account_id,
+              b.period_start_date,
+              b.period_end_date,
+              b.label_filters,
+              b.group_id,
+              b.manager_id,
+              b.repo,
+              b.budget_amount
+            FROM cost_budgets b
+            JOIN cost_sources s
+              ON s.vendor = b.vendor
+             AND s.account_id = b.account_id
+            WHERE s.is_active = :is_active
+              AND {qa_source_clause}
+              AND b.period_start_date <= :end_date
+              AND b.period_end_date >= :start_date
+            """
+        ),
+        {"is_active": 1, "start_date": start_date, "end_date": end_date},
+    ).mappings()
+    return tuple(rows)
+
+
+def _weekly_cost_budget_sources(
+    row: Mapping[str, Any],
+    qa_sources: set[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    vendor = str(row["vendor"] or "")
+    accounts = _weekly_cost_string_list(row["accounts"])
+    return {(vendor, account_id) for account_id in accounts if (vendor, account_id) in qa_sources}
+
+
+def _weekly_cost_product_budget_plans(
+    budget_rows: Sequence[Mapping[str, Any]],
+    qa_sources: set[tuple[str, str]],
+    today: date,
+) -> list[tuple[WeeklyCostBudgetScope, Decimal]]:
+    if not budget_rows:
+        return []
+
+    has_membership_schema = "accounts" in budget_rows[0]
+    plans = []
+    for row in budget_rows:
+        period_start = _parse_date(row["period_start_date"])
+        period_end = _parse_date(row["period_end_date"])
+        if (
+            period_start is None
+            or period_end is None
+            or period_start > period_end
+            or not period_start <= today <= period_end
+        ):
+            continue
+        sources = (
+            _weekly_cost_budget_sources(row, qa_sources)
+            if has_membership_schema
+            else {(str(row["vendor"]), str(row["account_id"]))} & qa_sources
+        )
+        if not sources:
+            continue
+        label_filters = _weekly_cost_label_filters(row["label_filters"])
+        if (
+            row["group_id"] is not None
+            or row["manager_id"] is not None
+            or bool(str(row["repo"] or "").strip())
+            or set(label_filters) - {"project"}
+        ):
+            continue
+        projects = _weekly_cost_string_list(row["projects"]) if has_membership_schema else []
+        if not projects:
+            projects = _weekly_cost_string_list(label_filters.get("project"))
+        if not projects:
+            continue
+        budget_amount = Decimal(str(row["budget_amount"] or 0))
+        if budget_amount <= 0:
+            continue
+        plans.append(
+            (
+                (sources, set(projects), period_start, min(period_end, today)),
+                budget_amount,
+            )
+        )
+    return plans
+
+
+def _weekly_cost_matches_budget_scopes(
+    vendor: str,
+    account_id: str,
+    usage_date: date,
+    project: str,
+    budget_scopes: Sequence[WeeklyCostBudgetScope],
+) -> bool:
+    return any(
+        (vendor, account_id) in sources
+        and (projects is None or project in projects)
+        and scope_start <= usage_date <= scope_end
+        for sources, projects, scope_start, scope_end in budget_scopes
+    )
+
+
+def _weekly_cost_budget_scoped_actual(
+    dimensions: Mapping[str, Any],
+    budget_scopes: Sequence[WeeklyCostBudgetScope],
+) -> Decimal:
+    return sum(
+        (
+            amount
+            for (vendor, account_id, usage_date, project), amount in dimensions[
+                "source_project_values"
+            ].items()
+            if _weekly_cost_matches_budget_scopes(
+                vendor, account_id, usage_date, project, budget_scopes
+            )
+        ),
+        Decimal(0),
+    )
+
+
+def _weekly_cost_scoped_actual(
+    dimensions: Mapping[str, Any],
+    sources: set[tuple[str, str]],
+    projects: set[str] | None,
+    start_date: date,
+    end_date: date,
+) -> Decimal:
+    return sum(
+        (
+            amount
+            for (vendor, account_id, usage_date, project), amount in dimensions[
+                "source_project_values"
+            ].items()
+            if (vendor, account_id) in sources
+            and (projects is None or project in projects)
+            and start_date <= usage_date <= end_date
+        ),
+        Decimal(0),
+    )
+
+
+
+def _weekly_cost_project_account_usage(
+    dimensions: Mapping[str, Any],
+    sources: set[tuple[str, str]],
+    projects: set[str] | None,
+    start_date: date,
+    end_date: date,
+    period_budget: Decimal,
+) -> list[dict[str, Any]]:
+    values: dict[tuple[str, str, str], Decimal] = {}
+    daily_values: dict[tuple[str, str, str], dict[date, Decimal]] = {}
+    for (vendor, account_id, usage_date, project), amount in dimensions[
+        "source_project_values"
+    ].items():
+        if (
+            (vendor, account_id) not in sources
+            or (projects is not None and project not in projects)
+            or not start_date <= usage_date <= end_date
+        ):
+            continue
+        key = (project, vendor, account_id)
+        values[key] = values.get(key, Decimal(0)) + amount
+        daily_values.setdefault(key, {})
+        daily_values[key][usage_date] = daily_values[key].get(usage_date, Decimal(0)) + amount
+
+    budget = _money(period_budget)
+    items = []
+    for (project, vendor, account_id), actual in values.items():
+        if not actual:
+            continue
+        cumulative = Decimal(0)
+        daily_list_cost = []
+        for offset in range((end_date - start_date).days + 1):
+            usage_date = start_date + timedelta(days=offset)
+            list_cost = daily_values[(project, vendor, account_id)].get(usage_date, Decimal(0))
+            cumulative += list_cost
+            daily_list_cost.append(
+                {
+                    "date": usage_date.isoformat(),
+                    "list_cost": _money(list_cost),
+                    "cumulative_list_cost": _money(cumulative),
+                }
+            )
+        items.append(
+            {
+                "key": f"project-account:{project}:{vendor}:{account_id}",
+                "project": project,
+                "vendor": vendor,
+                "account_id": account_id,
+                "actual_list_cost": _money(actual),
+                "utilization_pct": _nullable_rate_pct(_money(actual), budget),
+                "daily_list_cost": daily_list_cost,
+            }
+        )
+    return sorted(
+        items,
+        key=lambda item: (
+            -item["actual_list_cost"],
+            item["project"],
+            item["vendor"],
+            item["account_id"],
+        ),
+    )
+
+
+def _weekly_cost_budget_items(
+    actual_values: Mapping[str, Mapping[str, Any]],
+    budgets: Mapping[str, Decimal],
+    budget_names: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    items = []
+    for key in sorted(set(actual_values) | set(budgets)):
+        actual = Decimal(str(actual_values.get(key, {}).get("value", 0)))
+        budget = budgets.get(key)
+        item = {
+            "key": key,
+            "name": str(actual_values.get(key, {}).get("name") or budget_names[key]),
+            "actual_list_cost": _money(actual),
+            "period_budget": _money(budget) if budget is not None else None,
+            "utilization_pct": _nullable_rate_pct(_money(actual), _money(budget))
+            if budget is not None
+            else None,
+        }
+        if usage := actual_values.get(key, {}).get("project_account_usage"):
+            item["project_account_usage"] = usage
+        items.append(item)
+    return sorted(
+        items,
+        key=lambda item: (
+            item["period_budget"] is None,
+            -(item["utilization_pct"] if item["utilization_pct"] is not None else -1),
+            -item["actual_list_cost"],
+            item["name"],
+        ),
+    )
+
+
+def _weekly_cost_share_items(
+    values: Mapping[str, Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], Decimal]:
+    positive_items = [
+        {
+            "key": key,
+            "name": str(item["name"]),
+            "value": Decimal(str(item["value"])),
+            "interactive": False,
+        }
+        for key, item in values.items()
+        if Decimal(str(item["value"])) > 0
+    ]
+    positive_items.sort(key=lambda item: (-item["value"], item["name"]))
+    total = sum((item["value"] for item in positive_items), Decimal(0))
+    visible_items = positive_items
+    if len(positive_items) > WEEKLY_COST_TEAM_SHARE_LIMIT:
+        visible_items = positive_items[: WEEKLY_COST_TEAM_SHARE_LIMIT - 1]
+        visible_items.append(
+            {
+                "key": "others",
+                "name": "Others",
+                "value": total - sum((item["value"] for item in visible_items), Decimal(0)),
+                "interactive": False,
+            }
+        )
+    items = []
+    for item in visible_items:
+        value = _money(item["value"])
+        share_pct = rate_pct(value, _money(total))
+        # The UI renders shares to one decimal place; avoid a visible "0.0%"
+        # legend entry even when a tiny positive allocation rounds down.
+        if share_pct < 0.05:
+            continue
+        items.append({**item, "value": value, "share_pct": share_pct})
+    return items, total
+
+
+def _add_weekly_cost_dimension_value(
+    values: dict[str, dict[str, Any]],
+    descriptor: Mapping[str, str],
+    amount: Decimal,
+) -> None:
+    key = descriptor["key"]
+    current = values.setdefault(key, {"name": descriptor["name"], "value": Decimal(0)})
+    current["value"] += amount
+
+
+def _weekly_cost_budget_amount_for_window(
+    row: Mapping[str, Any],
+    start_date: date,
+    end_date: date,
+) -> Decimal | None:
+    window = _weekly_cost_budget_window(row, start_date, end_date)
+    return window[0] if window else None
+
+
+def _weekly_cost_budget_window(
+    row: Mapping[str, Any],
+    start_date: date,
+    end_date: date,
+) -> tuple[Decimal, date, date] | None:
+    period_start = _parse_date(row["period_start_date"])
+    period_end = _parse_date(row["period_end_date"])
+    if period_start is None or period_end is None or period_start > period_end:
+        return None
+    overlap_start = max(start_date, period_start)
+    overlap_end = min(end_date, period_end)
+    if overlap_start > overlap_end:
+        return None
+    amount = Decimal(
+        str(
+            _budget_amount_for_window(
+                BudgetPeriod(_money(row["budget_amount"]), period_start, period_end),
+                start_date,
+                end_date,
+            )
+        )
+    )
+    return amount, overlap_start, overlap_end
+
+
+def _weekly_cost_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            value = [value]
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return [normalized for item in value if (normalized := str(item).strip())]
+
+
+def _weekly_cost_label_filters(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return {str(key): item for key, item in value.items()}
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if not isinstance(value, str):
+        return {"__unsupported__": value}
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return {"__unsupported__": value}
+    if not isinstance(decoded, Mapping):
+        return {"__unsupported__": decoded}
+    return {str(key): item for key, item in decoded.items()}
+
+
+def _weekly_cost_group_id(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _weekly_cost_owner_name(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return normalized or NO_OWNER_LABEL
+
+
+def _weekly_cost_project_name(value: Any) -> str:
+    normalized = str(value or "").strip()
+    return normalized or WEEKLY_COST_NO_PROJECT_NAME
 
 
 def get_weekly_account_summaries(
@@ -1178,6 +2608,7 @@ def get_weekly_account_summaries(
     }
     if cost_filters.branch:
         params["branch"] = cost_filters.branch
+    net_cost_expr = _usd_cost_expr("c", "c.net_cost")
 
     with engine.begin() as connection:
         rows = connection.execute(
@@ -1189,11 +2620,11 @@ def get_weekly_account_summaries(
                   s.display_name,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :current_start AND :current_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({net_cost_expr}, 0) ELSE 0 END
                   ) AS net_cost,
                   SUM(
                     CASE WHEN c.usage_date BETWEEN :previous_start AND :previous_end
-                      THEN COALESCE(c.net_cost, 0) ELSE 0 END
+                      THEN COALESCE({net_cost_expr}, 0) ELSE 0 END
                   ) AS previous_net_cost
                 FROM cost_sources s
                 LEFT JOIN cost_attribution_daily c
@@ -1283,534 +2714,677 @@ def get_unmatched_resources(
     owner: str | None = None,
     service_name: str | None = None,
     sort_by: str = "list_cost",
-    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
+    page_size: int = RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE,
+    cursor: str | None = None,
+    scope_dimension: str | None = None,
+    scope_value: str | None = None,
 ) -> dict[str, Any]:
-    requested_filters = filters
-    if (
-        filters.start_date is not None
-        and filters.end_date is not None
-        and (filters.end_date - filters.start_date).days + 1 > UNMATCHED_RESOURCE_MAX_WINDOW_DAYS
-    ):
-        filters = replace(
-            filters,
-            start_date=filters.end_date - timedelta(days=UNMATCHED_RESOURCE_MAX_WINDOW_DAYS - 1),
-        )
+    return _get_published_unmatched_resources(
+        engine,
+        filters,
+        owner=owner,
+        service_name=service_name,
+        sort_by=sort_by,
+        page_size=page_size,
+        cursor=cursor,
+        scope_dimension=scope_dimension,
+        scope_value=scope_value,
+    )
 
+
+def _get_published_unmatched_resources(
+    engine: Engine,
+    filters: CommonFilters,
+    *,
+    owner: str | None,
+    service_name: str | None,
+    sort_by: str,
+    page_size: int,
+    cursor: str | None,
+    scope_dimension: str | None,
+    scope_value: str | None,
+) -> dict[str, Any]:
+    """Read only complete resource-serving publications for this request.
+
+    Publication validity is checked before the Top-resource and service reads.
+    A partial native rebuild is consequently a harmless 200/pending
+    response rather than a partial result or the retired raw-ledger join.
+    """
+    requested_filters = filters
     if sort_by not in UNMATCHED_RESOURCE_SORTS:
         sort_by = "list_cost"
-    selected_owner = owner or NO_OWNER_LABEL
-    owner_where_clause = (
-        "NULLIF(c.owner, '') IS NULL"
-        if selected_owner == NO_OWNER_LABEL
-        else "c.owner = :selected_owner"
-    )
+    if not 1 <= page_size <= RESOURCE_BREAKDOWN_MAX_PAGE_SIZE:
+        raise ValueError("page_size must be between 1 and 100")
+    if scope_dimension is not None and scope_dimension not in RESOURCE_BREAKDOWN_SCOPE_DIMENSIONS:
+        raise ValueError("scope_dimension must be team or project")
+    if scope_dimension is not None and not scope_value:
+        raise ValueError("scope_value is required when scope_dimension is set")
+    cursor_values = _decode_resource_cursor(cursor, sort_by=sort_by)
+    basis_key = "native"
+    selected_owner = owner or (scope_value if scope_dimension else NO_OWNER_LABEL)
     service_filter_name = service_name or None
-    order_by = (
-        "u.usage_seconds DESC, u.list_cost DESC, u.resource_name"
-        if sort_by == "duration"
-        else "u.list_cost DESC, u.usage_seconds DESC, u.resource_name"
-    )
+    expected_dates = _resource_serving_dates(filters.start_date, filters.end_date)
 
     with engine.begin() as connection:
-        attr_where_clause, attr_params = _build_cost_where(filters, table_alias="c")
-        basis = _cost_allocation_basis(connection, filters, allocation_basis)
-        # Residual allocation can give a source cost a workload's owner and branch.
-        # Resource detail retains its original billing dimensions, so do not apply
-        # the allocated branch filter directly to that source feed.
-        resource_filters = (
-            _cost_allocation_source_filters(filters)
-            if basis.name == RESIDUAL_ALLOCATED_BASIS
-            else filters
+        source_available_column = (
+            "source_available_from"
+            if _table_has_column(connection, "cost_sources", "source_available_from")
+            else "NULL"
         )
-        resource_where_clause, resource_params = _build_cost_where(
-            resource_filters,
-            table_alias="r",
+        source_filter_clause, source_filter_params = _cost_source_pair_clause(
+            filters.cost_source_pairs,
+            vendor_expr="vendor",
+            account_expr="account_id",
+            bind_prefix="resource_source",
         )
-        attr_index_hint = _cost_attribution_index_hint(connection, filters)
-        resource_index_hint = _cost_unmatched_resource_index_hint(connection, resource_filters)
-        source_org_match = _null_safe_eq(connection, "m.source_org", "r.org")
-        source_repo_match = _null_safe_eq(connection, "m.source_repo", "r.repo")
-        source_author_match = _null_safe_eq(connection, "m.source_author", "r.author")
-        source_branch_match = (
-            "(m.source_target_branch IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_target_branch', 'r.target_branch')})"
+        source_filter_clause = source_filter_clause or "1=1"
+        sources = tuple(
+            connection.execute(
+                text(
+                    f"""
+                    SELECT vendor, account_id, {source_available_column} AS source_available_from
+                    FROM cost_sources
+                    WHERE is_active = 1
+                      AND {source_filter_clause}
+                    ORDER BY vendor, account_id
+                    """
+                ),
+                source_filter_params,
+            ).mappings()
         )
-        source_namespace_match = (
-            "(m.source_namespace IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_namespace', 'r.namespace')})"
-        )
-        source_service_match = (
-            "(m.source_service_name IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_service_name', 'r.service_name')})"
-        )
-        source_sku_match = (
-            "(m.source_sku_name IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_sku_name', 'r.sku_name')})"
-        )
-        source_resource_match = (
-            "(NULLIF(m.source_resource_name, '') IS NULL OR "
-            f"{_null_safe_eq(connection, 'm.source_resource_name', 'r.resource_name')})"
-        )
-        summary_lineage_available = _cost_billing_summary_table_exists(connection)
-        source_export_partition_expr = (
-            "summary.export_partition_date" if summary_lineage_available else "NULL"
-        )
-        summary_lineage_join = (
-            """
-              LEFT JOIN cost_bq_export_summary_daily summary
-                ON summary.vendor = source_cost.vendor
-               AND summary.account_id = source_cost.account_id
-               AND summary.usage_date = source_cost.usage_date
-               AND NULLIF(source_cost.source_summary_row_hash, '') IS NOT NULL
-               AND summary.source_row_hash = source_cost.source_summary_row_hash
-            """
-            if summary_lineage_available
-            else ""
-        )
-        resource_list_cost_expr = _billing_report_list_cost_expr("r")
-        basis_prefix = f"{basis.cte}," if basis.cte else "WITH"
-        group_lineage_available = (
-            basis.name == RESIDUAL_ALLOCATED_BASIS
-            and _cost_kubernetes_allocation_source_table_exists(connection)
-            and _table_has_column(
-                connection,
-                "cost_kubernetes_workload_allocation_daily",
-                "allocation_group_hash",
+        expected_windows = {
+            (str(source["vendor"]), str(source["account_id"]), usage_date)
+            for source in sources
+            for usage_date in expected_dates
+            if (
+                _parse_date(source["source_available_from"]) is None
+                or _parse_date(source["source_available_from"]) <= usage_date
             )
-        )
-        group_row_exclusion = ""
-        group_cost_rows_cte = ""
-        group_cost_rows_union = ""
-        if group_lineage_available:
-            # Grouped GKE allocations do not carry one source row hash. Expand the
-            # selected allocation back through the reconciled group mapping so an
-            # owner can see the original billable resources, at the same ratio used
-            # by the owner donut.
-            group_row_exclusion = """
-                AND NOT (
-                  NULLIF(c.source_summary_row_hash, '') IS NULL
-                  AND EXISTS (
-                    SELECT 1
-                    FROM cost_kubernetes_workload_allocation_daily allocation
-                    WHERE allocation.vendor = c.vendor
-                      AND allocation.account_id = c.account_id
-                      AND allocation.usage_date = c.usage_date
-                      AND allocation.dimension_hash = c.dimension_hash
-                      AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
-                  )
-                )
-            """
-            group_cost_rows_cte = """
-            , selected_owner_group_source_totals AS (
-              SELECT
-                c.usage_date AS allocation_usage_date,
-                c.vendor AS allocation_vendor,
-                c.account_id AS allocation_account_id,
-                c.dimension_hash AS allocation_dimension_hash,
-                SUM(COALESCE(mapping.source_list_cost, 0)) AS source_list_cost
-              FROM selected_owner_basis_rows c
-              JOIN cost_kubernetes_workload_allocation_daily allocation
-                ON allocation.vendor = c.vendor
-               AND allocation.account_id = c.account_id
-               AND allocation.usage_date = c.usage_date
-               AND allocation.dimension_hash = c.dimension_hash
-              JOIN cost_kubernetes_workload_allocation_source_daily mapping
-                ON mapping.vendor = allocation.vendor
-               AND mapping.account_id = allocation.account_id
-               AND mapping.usage_date = allocation.usage_date
-               AND mapping.allocation_group_hash = allocation.allocation_group_hash
-              WHERE NULLIF(c.source_summary_row_hash, '') IS NULL
-                AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
-              GROUP BY c.usage_date, c.vendor, c.account_id, c.dimension_hash
-            ), selected_owner_group_cost_rows AS (
-              SELECT
-                c.dimension_hash AS cost_dimension_hash,
-                source.id AS source_attribution_id,
-                source.usage_date AS usage_date,
-                source.vendor AS vendor,
-                source.account_id AS account_id,
-                source.service_name AS source_service_name,
-                source.sku_name AS source_sku_name,
-                source.org AS source_org,
-                source.repo AS source_repo,
-                source.target_branch AS source_target_branch,
-                source.author AS source_author,
-                source.namespace AS source_namespace,
-                CAST(source.vendor_tags_json AS CHAR) AS source_vendor_tags_json,
-                source.resource_name AS source_resource_name,
-                source.source_summary_row_hash AS source_summary_row_hash,
-                c.owner AS owner_mail,
-                c.attribution_key AS attribution_key,
-                c.attribution_source AS attribution_source,
-                c.attribution_status AS attribution_status,
-                c.usage_seconds AS usage_seconds,
-                c.list_cost * mapping.source_list_cost
-                  / NULLIF(totals.source_list_cost, 0) AS list_cost,
-                source.list_cost AS source_list_cost
-              FROM selected_owner_basis_rows c
-              JOIN cost_kubernetes_workload_allocation_daily allocation
-                ON allocation.vendor = c.vendor
-               AND allocation.account_id = c.account_id
-               AND allocation.usage_date = c.usage_date
-               AND allocation.dimension_hash = c.dimension_hash
-              JOIN selected_owner_group_source_totals totals
-                ON totals.allocation_usage_date = c.usage_date
-               AND totals.allocation_vendor = c.vendor
-               AND totals.allocation_account_id = c.account_id
-               AND totals.allocation_dimension_hash = c.dimension_hash
-              JOIN cost_kubernetes_workload_allocation_source_daily mapping
-                ON mapping.vendor = allocation.vendor
-               AND mapping.account_id = allocation.account_id
-               AND mapping.usage_date = allocation.usage_date
-               AND mapping.allocation_group_hash = allocation.allocation_group_hash
-              JOIN cost_attribution_daily source
-                ON source.vendor = mapping.vendor
-               AND source.account_id = mapping.account_id
-               AND source.usage_date = mapping.usage_date
-               AND source.source_summary_row_hash = mapping.source_summary_row_hash
-              WHERE NULLIF(c.source_summary_row_hash, '') IS NULL
-                AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
-                AND totals.source_list_cost <> 0
-            )
-            """
-            group_cost_rows_union = """
-              UNION ALL
-              SELECT *
-              FROM selected_owner_group_cost_rows
-            """
-        base_cte = f"""
-            {basis_prefix}
-            selected_owner_basis_rows AS (
-              SELECT {attr_index_hint} c.*
-              FROM {basis.from_clause}
-              WHERE {attr_where_clause}
-                AND {owner_where_clause}
-            ), selected_owner_direct_cost_rows AS (
-              SELECT
-                c.dimension_hash AS cost_dimension_hash,
-                COALESCE(source.id, c.id) AS source_attribution_id,
-                c.usage_date AS usage_date,
-                c.vendor AS vendor,
-                c.account_id AS account_id,
-                CASE WHEN source.id IS NULL THEN c.service_name ELSE source.service_name END
-                  AS source_service_name,
-                CASE WHEN source.id IS NULL THEN c.sku_name ELSE source.sku_name END
-                  AS source_sku_name,
-                CASE WHEN source.id IS NULL THEN c.org ELSE source.org END AS source_org,
-                CASE WHEN source.id IS NULL THEN c.repo ELSE source.repo END AS source_repo,
-                CASE WHEN source.id IS NULL THEN c.target_branch ELSE source.target_branch END
-                  AS source_target_branch,
-                CASE WHEN source.id IS NULL THEN c.author ELSE source.author END AS source_author,
-                CASE WHEN source.id IS NULL THEN c.namespace ELSE source.namespace END
-                  AS source_namespace,
-                CAST(
-                  CASE WHEN source.id IS NULL THEN c.vendor_tags_json ELSE source.vendor_tags_json END
-                  AS CHAR
-                ) AS source_vendor_tags_json,
-                CASE WHEN source.id IS NULL THEN c.resource_name ELSE source.resource_name END
-                  AS source_resource_name,
-                CASE WHEN source.id IS NULL THEN c.source_summary_row_hash
-                  ELSE source.source_summary_row_hash END AS source_summary_row_hash,
-                c.owner AS owner_mail,
-                c.attribution_key AS attribution_key,
-                c.attribution_source AS attribution_source,
-                c.attribution_status AS attribution_status,
-                c.usage_seconds AS usage_seconds,
-                c.list_cost AS list_cost,
-                CASE WHEN source.id IS NULL THEN c.list_cost ELSE source.list_cost END
-                  AS source_list_cost
-              FROM selected_owner_basis_rows c
-              LEFT JOIN cost_attribution_daily source
-                ON source.vendor = c.vendor
-               AND source.account_id = c.account_id
-               AND source.usage_date = c.usage_date
-               AND NULLIF(c.source_summary_row_hash, '') IS NOT NULL
-               AND source.source_summary_row_hash = c.source_summary_row_hash
-              WHERE 1 = 1
-                {group_row_exclusion}
-            )
-            {group_cost_rows_cte}, selected_owner_cost_rows AS (
-              SELECT *
-              FROM selected_owner_direct_cost_rows
-              {group_cost_rows_union}
-            ), selected_owner_cost_rows_with_partition AS (
-              SELECT
-                source_cost.*,
-                {source_export_partition_expr} AS source_export_partition_date
-              FROM selected_owner_cost_rows source_cost
-              {summary_lineage_join}
-            ), selected_owner_resource_detail_rows AS (
-              SELECT {resource_index_hint}
-                m.cost_dimension_hash AS cost_dimension_hash,
-                m.source_attribution_id AS source_attribution_id,
-                r.resource_name AS resource_name,
-                COALESCE(NULLIF(r.service_name, ''), '(no service)') AS service_name,
-                r.sku_name AS sku_name,
-                r.org AS org_name,
-                r.repo AS repo_name,
-                r.target_branch AS target_branch,
-                r.author AS author_name,
-                m.owner_mail AS owner_mail,
-                CAST(r.vendor_tags_json AS CHAR) AS vendor_tags_json,
-                r.usage_date AS usage_date,
-                r.namespace AS namespace,
-                CASE
-                  WHEN COALESCE(m.source_list_cost, 0) = 0 THEN 0
-                  ELSE COALESCE(r.usage_seconds, 0) * m.list_cost / m.source_list_cost
-                END AS usage_seconds,
-                CASE
-                  WHEN COALESCE(m.source_list_cost, 0) = 0 THEN 0
-                  ELSE {resource_list_cost_expr} * m.list_cost / m.source_list_cost
-                END AS list_cost,
-                m.attribution_key AS attribution_key,
-                m.attribution_source AS attribution_source,
-                m.attribution_status AS attribution_status
-              FROM cost_unmatched_resource_daily r
-              -- Attribution remains the owner source of truth. Under residual
-              -- allocation, m carries the workload owner while source_* preserves
-              -- the original billing dimensions used to identify r.
-              JOIN selected_owner_cost_rows_with_partition m
-                ON m.usage_date = r.usage_date
-               AND m.vendor = r.vendor
-               AND m.account_id = r.account_id
-               AND {source_org_match}
-               AND {source_repo_match}
-               AND {source_author_match}
-               AND {source_branch_match}
-               AND {source_namespace_match}
-               AND {source_service_match}
-               AND {source_sku_match}
-               AND {source_resource_match}
-               -- Source hashes include the export partition. Resolve that lineage
-               -- before joining resource rows so identical billing dimensions from
-               -- separate export partitions cannot cross-multiply their costs.
-               AND (
-                 NULLIF(m.source_summary_row_hash, '') IS NULL
-                 OR m.source_export_partition_date = r.export_partition_date
-               )
-               -- A labeled attribution row identifies one specific resource slice.
-               -- Older unlabeled rows may still cover all matching resource rows.
-               AND (
-                 m.source_vendor_tags_json IS NULL
-                 OR m.source_vendor_tags_json = CAST(r.vendor_tags_json AS CHAR)
-               )
-              WHERE {resource_where_clause}
-                AND r.resource_name IS NOT NULL
-                AND r.resource_name <> ''
-            ), selected_owner_resource_coverage AS (
-              SELECT
-                cost_dimension_hash,
-                source_attribution_id,
-                SUM(COALESCE(usage_seconds, 0)) AS detailed_usage_seconds,
-                SUM(COALESCE(list_cost, 0)) AS detailed_list_cost
-              FROM selected_owner_resource_detail_rows
-              GROUP BY cost_dimension_hash, source_attribution_id
-            ), selected_owner_resource_rows AS (
-              SELECT
-                resource_name,
-                service_name,
-                sku_name,
-                org_name,
-                repo_name,
-                target_branch,
-                author_name,
-                owner_mail,
-                vendor_tags_json,
-                usage_date,
-                namespace,
-                usage_seconds,
-                list_cost,
-                attribution_key,
-                attribution_source,
-                attribution_status,
-                resource_name AS resource_group_key,
-                'resource_detail' AS resource_row_source
-              FROM selected_owner_resource_detail_rows
-              UNION ALL
-              -- Detail sync is optional and can lag. Retain any source amount not
-              -- yet covered by named resource details.
-              SELECT
-                m.source_resource_name AS resource_name,
-                COALESCE(NULLIF(m.source_service_name, ''), '(no service)') AS service_name,
-                m.source_sku_name AS sku_name,
-                m.source_org AS org_name,
-                m.source_repo AS repo_name,
-                m.source_target_branch AS target_branch,
-                m.source_author AS author_name,
-                m.owner_mail AS owner_mail,
-                m.source_vendor_tags_json AS vendor_tags_json,
-                m.usage_date AS usage_date,
-                m.source_namespace AS namespace,
-                CASE
-                  WHEN COALESCE(m.source_list_cost, 0) = 0 THEN
-                    CASE
-                      WHEN COALESCE(m.usage_seconds, 0)
-                        > COALESCE(coverage.detailed_usage_seconds, 0)
-                      THEN COALESCE(m.usage_seconds, 0)
-                        - COALESCE(coverage.detailed_usage_seconds, 0)
-                      ELSE 0
-                    END
-                  WHEN COALESCE(m.usage_seconds, 0) * m.list_cost / m.source_list_cost
-                    > COALESCE(coverage.detailed_usage_seconds, 0)
-                  THEN COALESCE(m.usage_seconds, 0) * m.list_cost / m.source_list_cost
-                    - COALESCE(coverage.detailed_usage_seconds, 0)
-                  ELSE 0
-                END AS usage_seconds,
-                m.list_cost - COALESCE(coverage.detailed_list_cost, 0) AS list_cost,
-                m.attribution_key AS attribution_key,
-                m.attribution_source AS attribution_source,
-                m.attribution_status AS attribution_status,
-                m.cost_dimension_hash AS resource_group_key,
-                'attribution_fallback' AS resource_row_source
-              FROM selected_owner_cost_rows_with_partition m
-              LEFT JOIN selected_owner_resource_coverage coverage
-                ON coverage.cost_dimension_hash = m.cost_dimension_hash
-               AND coverage.source_attribution_id = m.source_attribution_id
-              WHERE m.list_cost - COALESCE(coverage.detailed_list_cost, 0) > 0.005
-            )
-        """
-        query_params = {
-            **attr_params,
-            **resource_params,
-            "selected_owner": selected_owner,
-            "service_name": service_filter_name,
         }
-        source_counts = connection.execute(
-            text(
-                f"""
-                {base_cte}
-                SELECT
-                  SUM(CASE WHEN resource_row_source = 'resource_detail' THEN 1 ELSE 0 END)
-                    AS resource_detail_rows,
-                  SUM(CASE WHEN resource_row_source = 'attribution_fallback' THEN 1 ELSE 0 END)
-                    AS attribution_fallback_rows
-                FROM selected_owner_resource_rows
-                """
-            ),
-            query_params,
-        ).mappings().one()
-        has_resource_detail_rows = int(source_counts["resource_detail_rows"] or 0) > 0
-        has_attribution_fallback_rows = int(source_counts["attribution_fallback_rows"] or 0) > 0
-        if has_resource_detail_rows and has_attribution_fallback_rows:
-            resource_data_source = "mixed"
-        elif has_resource_detail_rows:
-            resource_data_source = "cost_unmatched_resource_daily"
-        else:
-            resource_data_source = "cost_attribution_daily"
+        has_serving_tables = (
+            _table_exists(connection, "cost_resource_serving_daily")
+            and _table_exists(connection, "cost_resource_serving_publication")
+            and _table_has_column(connection, "cost_resource_serving_daily", "currency")
+        )
+        publication_rows: dict[tuple[str, str, date], Mapping[str, Any]] = {}
+        if has_serving_tables and expected_dates:
+            rows = connection.execute(
+                text(
+                    f"""
+                    WITH scoped_sources AS (
+                      SELECT vendor, account_id
+                      FROM cost_sources
+                      WHERE is_active = 1
+                        AND {source_filter_clause}
+                    )
+                    SELECT p.vendor, p.account_id, p.usage_date, p.source_row_count,
+                      CASE WHEN p.source_row_count = 0 THEN 0
+                        WHEN EXISTS (
+                          SELECT /*+ NO_DECORRELATE() */ 1
+                          FROM cost_resource_serving_daily s
+                          WHERE s.basis_key = p.basis_key AND s.vendor = p.vendor
+                            AND s.account_id = p.account_id AND s.usage_date = p.usage_date
+                            AND s.materialization_version = p.active_materialization_version
+                          LIMIT 1
+                        ) THEN 1 ELSE 0
+                      END AS serving_row_count
+                    FROM cost_resource_serving_publication p
+                    JOIN scoped_sources scope
+                      ON scope.vendor = p.vendor AND scope.account_id = p.account_id
+                    WHERE p.basis_key = :basis_key
+                      AND p.usage_date BETWEEN :start_date AND :end_date
+                    """
+                ),
+                {
+                    "basis_key": basis_key,
+                    "start_date": filters.start_date,
+                    "end_date": filters.end_date,
+                    **source_filter_params,
+                },
+            ).mappings()
+            publication_rows = {
+                (str(row["vendor"]), str(row["account_id"]), _parse_date(row["usage_date"])): row
+                for row in rows
+                if _parse_date(row["usage_date"]) is not None
+            }
+
+        pending_dates = sorted(
+            {
+                usage_date.isoformat()
+                for vendor, account_id, usage_date in expected_windows
+                if not _resource_serving_window_is_valid(
+                    publication_rows.get((vendor, account_id, usage_date)),
+                    basis_key=basis_key,
+                )
+            }
+        )
+        if pending_dates:
+            return _resource_serving_response(
+                items=[],
+                filters=filters,
+                requested_filters=requested_filters,
+                selected_owner=selected_owner,
+                service_name=service_filter_name,
+                sort_by=sort_by,
+                services=[],
+                pending_dates=pending_dates,
+                detail_list_cost=0.0,
+                total_list_cost=0.0,
+                resource_data_source="attribution_fallback",
+                scope_dimension=scope_dimension,
+                scope_value=scope_value,
+                page_size=page_size,
+            )
+        if not has_serving_tables:
+            # This only occurs before migration while no active source/date is
+            # expected. Never use the historical broad CTE as a compatibility path.
+            return _resource_serving_response(
+                items=[], filters=filters, requested_filters=requested_filters,
+                selected_owner=selected_owner, service_name=service_filter_name, sort_by=sort_by,
+                services=[], pending_dates=[],
+                detail_list_cost=0.0, total_list_cost=0.0,
+                resource_data_source="attribution_fallback",
+                scope_dimension=scope_dimension,
+                scope_value=scope_value,
+                page_size=page_size,
+            )
+        if (
+            scope_dimension == "project"
+            or filters.project_include
+            or filters.project_exclude
+        ) and not _table_has_column(connection, "cost_resource_serving_daily", "project"):
+            return _resource_serving_response(
+                items=[], filters=filters, requested_filters=requested_filters,
+                selected_owner=selected_owner, service_name=service_filter_name, sort_by=sort_by,
+                services=[],
+                pending_dates=sorted({usage_date.isoformat() for _, _, usage_date in expected_windows}),
+                detail_list_cost=0.0, total_list_cost=0.0,
+                resource_data_source="attribution_fallback",
+                scope_dimension=scope_dimension,
+                scope_value=scope_value,
+                page_size=page_size,
+            )
+
+        branch_clause = "AND s.target_branch = :branch" if filters.branch else ""
+        source_clause, source_params = _resource_serving_source_clause(sources)
+        scope_clause, scope_params = _resource_serving_scope_clause(
+            connection,
+            filters=filters,
+            owner=owner,
+            scope_dimension=scope_dimension,
+            scope_value=scope_value,
+        )
+        team_filter_join, team_filter_params = _cost_filter_from_clause(
+            connection, filters, "", table_alias="s"
+        )
+        params = {
+            "basis_key": basis_key,
+            "start_date": filters.start_date,
+            "end_date": filters.end_date,
+            "service_name": service_filter_name,
+            **source_params,
+            **scope_params,
+            **team_filter_params,
+        }
+        if filters.branch:
+            params["branch"] = filters.branch
+        validity_clause = "s.basis_key = 'native'"
+        serving_list_cost_usd = _usd_cost_expr("s", "s.list_cost")
+        serving_detail_cost_usd = _usd_cost_expr("s", "s.detail_list_cost")
+        serving_fallback_cost_usd = _usd_cost_expr("s", "s.fallback_list_cost")
         service_rows = connection.execute(
             text(
                 f"""
-                {base_cte}
-                SELECT DISTINCT service_name
-                FROM selected_owner_resource_rows
+                SELECT DISTINCT COALESCE(NULLIF(s.service_name, ''), '(no service)') AS service_name
+                FROM cost_resource_serving_daily s
+                JOIN cost_resource_serving_publication p
+                  ON p.basis_key = s.basis_key AND p.vendor = s.vendor AND p.account_id = s.account_id
+                 AND p.usage_date = s.usage_date
+                 AND p.active_materialization_version = s.materialization_version
+                {team_filter_join}
+                WHERE s.basis_key = :basis_key AND ({scope_clause})
+                  AND s.usage_date BETWEEN :start_date AND :end_date
+                  AND ({source_clause})
+                  AND {validity_clause} {branch_clause}
                 ORDER BY service_name
                 """
             ),
-            query_params,
+            params,
         ).mappings()
         services = [
             {"value": str(row["service_name"]), "label": str(row["service_name"])}
             for row in service_rows
-            if str(row["service_name"] or "").strip()
         ]
-
-        rows = connection.execute(
-            text(
-                f"""
-                {base_cte},
-                filtered_selected_owner_resource_rows AS (
-                  SELECT *
-                  FROM selected_owner_resource_rows
-                  WHERE (:service_name IS NULL OR service_name = :service_name)
+        order_by = (
+            "a.usage_seconds IS NULL ASC, a.usage_seconds DESC, a.list_cost DESC, "
+            "a.resource_group_key ASC"
+            if sort_by == "duration"
+            else "a.list_cost DESC, a.usage_seconds IS NULL ASC, a.usage_seconds DESC, "
+            "a.resource_group_key ASC"
+        )
+        cursor_clause, cursor_params = _resource_cursor_clause(cursor_values, sort_by=sort_by)
+        page_rows = tuple(
+            connection.execute(
+                text(
+                    f"""
+                    WITH filtered AS (
+                      SELECT s.resource_group_key, s.resource_id, s.resource_name, s.service_name,
+                        s.representative_labels_json, s.usage_seconds, s.currency,
+                        s.list_cost AS source_list_cost,
+                        {serving_list_cost_usd} AS list_cost,
+                        {serving_detail_cost_usd} AS detail_list_cost,
+                        {serving_fallback_cost_usd} AS fallback_list_cost,
+                        s.usage_date, s.resource_key, s.target_branch
+                      FROM cost_resource_serving_daily s
+                      JOIN cost_resource_serving_publication p
+                        ON p.basis_key = s.basis_key AND p.vendor = s.vendor
+                       AND p.account_id = s.account_id AND p.usage_date = s.usage_date
+                       AND p.active_materialization_version = s.materialization_version
+                      {team_filter_join}
+                      WHERE s.basis_key = :basis_key AND ({scope_clause})
+                        AND s.usage_date BETWEEN :start_date AND :end_date
+                        AND ({source_clause})
+                        AND (:service_name IS NULL OR s.service_name = :service_name)
+                        AND {validity_clause} {branch_clause}
+                    ),
+                    ranked AS (
+                      SELECT *, ROW_NUMBER() OVER (
+                        PARTITION BY resource_group_key
+                        ORDER BY ABS(list_cost) DESC, usage_date ASC, resource_key ASC,
+                          COALESCE(target_branch, '') ASC,
+                          COALESCE(representative_labels_json, '') ASC
+                      ) AS label_rank
+                      FROM filtered
+                    ),
+                    aggregated AS (
+                      SELECT /*+ STREAM_AGG() */ resource_group_key, MIN(resource_id) AS resource_id,
+                        MIN(resource_name) AS resource_name,
+                        GROUP_CONCAT(DISTINCT service_name ORDER BY service_name) AS service_name,
+                        MAX(CASE WHEN label_rank = 1 THEN representative_labels_json END)
+                          AS representative_labels_json,
+                        SUM(usage_seconds) AS usage_seconds,
+                        MAX(currency) AS source_currency,
+                        SUM(source_list_cost) AS source_list_cost,
+                        SUM(list_cost) AS list_cost,
+                        SUM(detail_list_cost) AS detail_list_cost,
+                        SUM(fallback_list_cost) AS fallback_list_cost,
+                        SUM(SUM(detail_list_cost)) OVER () AS total_detail_list_cost,
+                        SUM(SUM(fallback_list_cost)) OVER () AS total_fallback_list_cost,
+                        SUM(SUM(list_cost)) OVER () AS total_list_cost
+                      FROM ranked
+                      GROUP BY resource_group_key
+                      HAVING SUM(list_cost) <> 0
+                    )
+                    SELECT a.resource_group_key, a.resource_id, a.resource_name,
+                      a.service_name, a.representative_labels_json, a.usage_seconds,
+                      a.source_currency, a.source_list_cost, a.list_cost,
+                      a.detail_list_cost, a.fallback_list_cost,
+                      a.total_detail_list_cost, a.total_fallback_list_cost, a.total_list_cost
+                    FROM aggregated a
+                    WHERE {cursor_clause}
+                    ORDER BY {order_by}
+                    LIMIT :limit
+                    """
                 ),
-                selected_owner_resources AS (
-                  SELECT
-                    resource_name,
-                    GROUP_CONCAT(DISTINCT service_name) AS service_name,
-                    GROUP_CONCAT(DISTINCT sku_name) AS sku_name,
-                    MAX(org_name) AS org_name,
-                    MAX(repo_name) AS repo_name,
-                    MAX(target_branch) AS target_branch,
-                    MAX(author_name) AS author_name,
-                    MAX(owner_mail) AS owner_mail,
-                    MAX(vendor_tags_json) AS vendor_tags_json,
-                    MIN(usage_date) AS first_seen_date,
-                    MAX(usage_date) AS last_seen_date,
-                    GROUP_CONCAT(DISTINCT COALESCE(namespace, '<null>')) AS allocation_buckets,
-                    SUM(COALESCE(usage_seconds, 0)) AS usage_seconds,
-                    SUM(list_cost) AS list_cost,
-                    MAX(attribution_key) AS attribution_key,
-                    MAX(attribution_source) AS attribution_source,
-                    MAX(attribution_status) AS attribution_status
-                  FROM filtered_selected_owner_resource_rows
-                  GROUP BY
-                    resource_name,
-                    service_name,
-                    sku_name,
-                    org_name,
-                    repo_name,
-                    target_branch,
-                    author_name,
-                    owner_mail,
-                    vendor_tags_json,
-                    namespace,
-                    attribution_key,
-                    attribution_source,
-                    attribution_status,
-                    resource_row_source
-                )
-                SELECT
-                  u.resource_name AS resource_name,
-                  u.service_name AS service_name,
-                  u.sku_name AS sku_name,
-                  u.org_name AS org_name,
-                  u.repo_name AS repo_name,
-                  u.target_branch AS target_branch,
-                  u.author_name AS author_name,
-                  u.owner_mail AS owner_mail,
-                  u.vendor_tags_json AS vendor_tags_json,
-                  u.first_seen_date AS first_seen_date,
-                  u.last_seen_date AS last_seen_date,
-                  u.attribution_key AS attribution_key,
-                  u.attribution_source AS attribution_source,
-                  u.attribution_status AS attribution_status,
-                  u.allocation_buckets AS allocation_buckets,
-                  u.usage_seconds AS usage_seconds,
-                  u.list_cost AS list_cost
-                FROM selected_owner_resources u
-                ORDER BY {order_by}
-                LIMIT :limit
-                """
-            ),
-            {
-                **query_params,
-                "limit": UNMATCHED_RESOURCE_LIMIT,
-            },
-        ).mappings()
-        items = [
-            {
-                "resource_name": str(row["resource_name"] or "(no resource name)"),
-                "service_name": str(row["service_name"] or ""),
-                "sku_name": str(row["sku_name"] or ""),
-                "repo_name": str(row["repo_name"] or ""),
-                "labels": _resource_labels(row),
-                "allocation_buckets": str(row["allocation_buckets"] or ""),
-                "first_seen_date": _date_text(row["first_seen_date"]),
-                "last_seen_date": _date_text(row["last_seen_date"]),
-                "observed_days": _observed_days(
-                    row["first_seen_date"],
-                    row["last_seen_date"],
-                    window_start=filters.start_date,
-                    window_end=filters.end_date,
+                {**params, **cursor_params, "limit": page_size + 1},
+            ).mappings()
+        )
+        has_next_page = len(page_rows) > page_size
+        rows = page_rows[:page_size]
+        if rows:
+            detail_list_cost = Decimal(str(to_number(rows[0]["total_detail_list_cost"]) or 0))
+            fallback_list_cost = Decimal(str(to_number(rows[0]["total_fallback_list_cost"]) or 0))
+            total_list_cost = Decimal(str(to_number(rows[0]["total_list_cost"]) or 0))
+        else:
+            coverage = connection.execute(
+                text(
+                    f"""
+                    SELECT
+                      COALESCE(SUM(g.detail_list_cost), 0) AS detail_list_cost,
+                      COALESCE(SUM(g.fallback_list_cost), 0) AS fallback_list_cost,
+                      COALESCE(SUM(g.list_cost), 0) AS total_list_cost
+                    FROM (
+                      SELECT resource_group_key,
+                        SUM({serving_detail_cost_usd}) AS detail_list_cost,
+                        SUM({serving_fallback_cost_usd}) AS fallback_list_cost,
+                        SUM({serving_list_cost_usd}) AS list_cost
+                      FROM cost_resource_serving_daily s
+                      JOIN cost_resource_serving_publication p
+                        ON p.basis_key = s.basis_key AND p.vendor = s.vendor
+                       AND p.account_id = s.account_id AND p.usage_date = s.usage_date
+                       AND p.active_materialization_version = s.materialization_version
+                      {team_filter_join}
+                      WHERE s.basis_key = :basis_key AND ({scope_clause})
+                        AND s.usage_date BETWEEN :start_date AND :end_date
+                        AND ({source_clause})
+                        AND (:service_name IS NULL OR s.service_name = :service_name)
+                        AND {validity_clause} {branch_clause}
+                      GROUP BY s.resource_group_key
+                      HAVING SUM({serving_list_cost_usd}) <> 0
+                    ) g
+                    """
                 ),
-                "attribution_source": str(row["attribution_source"] or ""),
-                "attribution_status": str(row["attribution_status"] or ""),
-                "usage_seconds": round(float(to_number(row["usage_seconds"]) or 0), 2),
-                "list_cost": _money(row["list_cost"]),
-            }
-            for row in rows
-        ]
+                params,
+            ).mappings().one()
+            detail_list_cost = Decimal(str(to_number(coverage["detail_list_cost"]) or 0))
+            fallback_list_cost = Decimal(str(to_number(coverage["fallback_list_cost"]) or 0))
+            total_list_cost = Decimal(str(to_number(coverage["total_list_cost"]) or 0))
+        items = []
+        for row in rows:
+            detail = to_number(row["detail_list_cost"]) or 0
+            fallback = to_number(row["fallback_list_cost"]) or 0
+            usage_seconds = to_number(row["usage_seconds"])
+            items.append(
+                {
+                    "resource_key": str(row["resource_group_key"]),
+                    "resource_id": str(row["resource_id"]) if row["resource_id"] else None,
+                    "resource_name": str(row["resource_name"] or "(no resource name)"),
+                    "service_name": str(row["service_name"] or ""),
+                    "sku_name": "",
+                    "repo_name": "",
+                    "labels": _format_vendor_labels(row["representative_labels_json"]),
+                    "allocation_buckets": "",
+                    "first_seen_date": "",
+                    "last_seen_date": "",
+                    "observed_days": 0,
+                    "attribution_source": "",
+                    "attribution_status": "",
+                    "usage_seconds": None if usage_seconds is None else round(float(usage_seconds), 2),
+                    "list_cost": _money(row["list_cost"]),
+                    "display_currency": "USD",
+                    "source_list_cost": _money(row["source_list_cost"]),
+                    "source_currency": str(row["source_currency"] or "USD"),
+                    "cny_per_usd": (
+                        float(CNY_PER_USD) if row["source_currency"] == "CNY" else None
+                    ),
+                    "resource_data_source": (
+                        "mixed" if detail != 0 and fallback != 0 else
+                        "resource_detail" if detail != 0 else "attribution_fallback"
+                    ),
+                    "resource_detail_cost": _money(detail),
+                }
+            )
+    resource_data_source = "mixed" if detail_list_cost != 0 and fallback_list_cost != 0 else (
+        "resource_detail" if detail_list_cost != 0 else "attribution_fallback"
+    )
+    return _resource_serving_response(
+        items=items, filters=filters, requested_filters=requested_filters,
+        selected_owner=selected_owner, service_name=service_filter_name, sort_by=sort_by,
+        services=services, pending_dates=[],
+        detail_list_cost=float(detail_list_cost), total_list_cost=float(total_list_cost),
+        resource_data_source=resource_data_source,
+        scope_dimension=scope_dimension,
+        scope_value=scope_value,
+        page_size=page_size,
+        next_cursor=(
+            _encode_resource_cursor(rows[-1], sort_by=sort_by) if has_next_page and rows else None
+        ),
+    )
 
+
+def _resource_serving_dates(start_date: date | None, end_date: date | None) -> tuple[date, ...]:
+    if start_date is None or end_date is None:
+        return ()
+    dates = []
+    current = start_date
+    while current <= end_date:
+        dates.append(current)
+        current += timedelta(days=1)
+    return tuple(dates)
+
+
+def _resource_serving_source_clause(
+    sources: Sequence[Mapping[str, Any]],
+) -> tuple[str, dict[str, str]]:
+    """Constrain serving reads with literal source pairs so TiDB uses the owner/date index."""
+    clauses = []
+    params: dict[str, str] = {}
+    for index, source in enumerate(sources):
+        vendor_key = f"resource_vendor_{index}"
+        account_key = f"resource_account_{index}"
+        clauses.append(f"(s.vendor = :{vendor_key} AND s.account_id = :{account_key})")
+        params[vendor_key] = str(source["vendor"])
+        params[account_key] = str(source["account_id"])
+    return " OR ".join(clauses) or "1 = 0", params
+
+
+def _resource_serving_scope_clause(
+    connection: Connection,
+    *,
+    filters: CommonFilters,
+    owner: str | None,
+    scope_dimension: str | None,
+    scope_value: str | None,
+) -> tuple[str, dict[str, Any]]:
+    clauses = []
+    params: dict[str, Any] = {}
+    if scope_dimension is None or owner is not None:
+        owner_value = "" if owner in (None, NO_OWNER_LABEL) else owner
+        clauses.append("s.owner_key = :resource_owner_key")
+        params["resource_owner_key"] = hashlib.sha256(owner_value.encode("utf-8")).hexdigest()
+
+    if scope_dimension == "project":
+        if scope_value == "(no project)":
+            clauses.append("(s.project IS NULL OR s.project = '')")
+        else:
+            clauses.append("s.project = :resource_scope_project")
+            params["resource_scope_project"] = scope_value
+    elif scope_dimension == "team":
+        team_clause, team_params = _resource_serving_team_clause(connection, scope_value or "")
+        clauses.append(team_clause)
+        params.update(team_params)
+
+    owner_clause, owner_params = _cost_dimension_filter_clause(
+        f"COALESCE(NULLIF(s.owner, ''), '{NO_OWNER_LABEL}')",
+        filters.owner_include,
+        filters.owner_exclude,
+        bind_prefix="resource_filter_owner",
+    )
+    project_clause, project_params = _cost_dimension_filter_clause(
+        f"COALESCE(NULLIF(s.project, ''), '{WEEKLY_COST_NO_PROJECT_NAME}')",
+        filters.project_include,
+        filters.project_exclude,
+        bind_prefix="resource_filter_project",
+    )
+    team_clause, team_params = _cost_dimension_filter_clause(
+        _cost_team_filter_expr(),
+        filters.team_include,
+        filters.team_exclude,
+        bind_prefix="resource_filter_team",
+    )
+    for clause, clause_params in (
+        (owner_clause, owner_params),
+        (project_clause, project_params),
+        (team_clause, team_params),
+    ):
+        if clause:
+            clauses.append(clause)
+            params.update(clause_params)
+
+    return " AND ".join(clauses) or "1 = 1", params
+
+
+def _resource_serving_team_clause(
+    connection: Connection,
+    scope_value: str,
+) -> tuple[str, dict[str, int]]:
+    if not _table_exists(connection, "roster_groups"):
+        return "1 = 0", {}
+
+    target_rows = connection.execute(
+        text(
+            """
+            SELECT target_group.path
+            FROM roster_groups root_group
+            JOIN roster_groups target_parent
+              ON target_parent.is_active = 1 AND target_parent.parent_id = root_group.id
+            JOIN roster_groups target_group
+              ON target_group.is_active = 1 AND target_group.parent_id = target_parent.id
+            WHERE root_group.name = :root_group_name AND root_group.is_active = 1
+            """
+            + ("AND target_group.name = :resource_scope_team" if scope_value != "(no team)" else "")
+        ),
+        {
+            "root_group_name": ENGINEERING_GROUP_NAME,
+            **({"resource_scope_team": scope_value} if scope_value != "(no team)" else {}),
+        },
+    ).mappings()
+    target_paths = tuple(str(row["path"]) for row in target_rows if row["path"])
+    if not target_paths:
+        return "1 = 0", {}
+
+    group_rows = connection.execute(
+        text("SELECT id, path FROM roster_groups WHERE path IS NOT NULL")
+    ).mappings()
+    group_ids = tuple(
+        int(row["id"])
+        for row in group_rows
+        if row["id"] is not None and any(str(row["path"]).startswith(path) for path in target_paths)
+    )
+    if scope_value == "(no team)":
+        if not group_ids:
+            return "1 = 1", {}
+        bind_names = [f"resource_scope_group_{index}" for index in range(len(group_ids))]
+        return (
+            "(s.group_id IS NULL OR s.group_id NOT IN (" + ", ".join(f":{name}" for name in bind_names) + "))",
+            dict(zip(bind_names, group_ids, strict=True)),
+        )
+    if not group_ids:
+        return "1 = 0", {}
+    bind_names = [f"resource_scope_group_{index}" for index in range(len(group_ids))]
+    return (
+        "s.group_id IN (" + ", ".join(f":{name}" for name in bind_names) + ")",
+        dict(zip(bind_names, group_ids, strict=True)),
+    )
+
+
+def _encode_resource_cursor(row: Mapping[str, Any], *, sort_by: str) -> str:
+    list_cost = _cursor_decimal_text(row["list_cost"])
+    usage_seconds = (
+        None if row["usage_seconds"] is None else _cursor_decimal_text(row["usage_seconds"])
+    )
+    values = (
+        [list_cost, usage_seconds is None, usage_seconds, str(row["resource_group_key"])]
+        if sort_by == "list_cost"
+        else [usage_seconds is None, usage_seconds, list_cost, str(row["resource_group_key"])]
+    )
+    return base64.urlsafe_b64encode(json.dumps(values, separators=(",", ":")).encode()).decode().rstrip("=")
+
+
+def _decode_resource_cursor(cursor: str | None, *, sort_by: str) -> dict[str, Any] | None:
+    if cursor is None:
+        return None
+    try:
+        encoded = cursor + "=" * (-len(cursor) % 4)
+        values = json.loads(base64.urlsafe_b64decode(encoded.encode()))
+        if not isinstance(values, list) or len(values) != 4:
+            raise ValueError
+        if sort_by == "list_cost":
+            list_cost, usage_is_null, usage_seconds, resource_group_key = values
+        else:
+            usage_is_null, usage_seconds, list_cost, resource_group_key = values
+        if (
+            isinstance(usage_is_null, bool) is False
+            or (usage_is_null and usage_seconds is not None)
+            or not isinstance(resource_group_key, str)
+            or not resource_group_key
+        ):
+            raise ValueError
+        list_cost = _cursor_decimal_text(list_cost)
+        usage_seconds = None if usage_is_null else _cursor_decimal_text(usage_seconds)
+    except (binascii.Error, TypeError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        raise ValueError("invalid resource cursor") from None
+    return {
+        "list_cost": list_cost,
+        "usage_is_null": usage_is_null,
+        "usage_seconds": usage_seconds,
+        "resource_group_key": resource_group_key,
+    }
+
+
+def _cursor_decimal_text(value: Any) -> str:
+    if isinstance(value, bool):
+        raise ValueError
+    decimal_value = Decimal(str(value))
+    if not decimal_value.is_finite():
+        raise ValueError
+    return format(decimal_value.normalize(), "f")
+
+
+def _resource_cursor_clause(
+    cursor: Mapping[str, Any] | None, *, sort_by: str
+) -> tuple[str, dict[str, Any]]:
+    if cursor is None:
+        return "1=1", {}
+    flag = "CASE WHEN a.usage_seconds IS NULL THEN 1 ELSE 0 END"
+    list_cost = "CAST(:cursor_list_cost AS DECIMAL(38,9))"
+    usage_seconds = "CAST(:cursor_usage_seconds AS DECIMAL(38,9))"
+    params = {
+        "cursor_list_cost": cursor["list_cost"],
+        "cursor_usage_is_null": int(cursor["usage_is_null"]),
+        "cursor_usage_seconds": cursor["usage_seconds"],
+        "cursor_resource_group_key": cursor["resource_group_key"],
+    }
+    if sort_by == "duration":
+        return (
+            f"""(
+              {flag} > :cursor_usage_is_null
+              OR ({flag} = :cursor_usage_is_null AND :cursor_usage_is_null = 0
+                  AND a.usage_seconds < {usage_seconds})
+              OR ({flag} = :cursor_usage_is_null
+                  AND (:cursor_usage_is_null = 1 OR a.usage_seconds = {usage_seconds})
+                  AND a.list_cost < {list_cost})
+              OR ({flag} = :cursor_usage_is_null
+                  AND (:cursor_usage_is_null = 1 OR a.usage_seconds = {usage_seconds})
+                  AND a.list_cost = {list_cost}
+                  AND a.resource_group_key > :cursor_resource_group_key)
+            )""",
+            params,
+        )
+    return (
+        f"""(
+          a.list_cost < {list_cost}
+          OR (a.list_cost = {list_cost} AND {flag} > :cursor_usage_is_null)
+          OR (a.list_cost = {list_cost} AND {flag} = :cursor_usage_is_null
+              AND :cursor_usage_is_null = 0 AND a.usage_seconds < {usage_seconds})
+          OR (a.list_cost = {list_cost} AND {flag} = :cursor_usage_is_null
+              AND (:cursor_usage_is_null = 1 OR a.usage_seconds = {usage_seconds})
+              AND a.resource_group_key > :cursor_resource_group_key)
+        )""",
+        params,
+    )
+
+
+def _resource_serving_window_is_valid(
+    row: Mapping[str, Any] | None,
+    *,
+    basis_key: str,
+) -> bool:
+    if row is None:
+        return False
+    if int(row["source_row_count"] or 0) > 0 and int(row["serving_row_count"] or 0) == 0:
+        return False
+    return basis_key == "native"
+
+
+def _resource_serving_response(
+    *,
+    items: list[dict[str, Any]],
+    filters: CommonFilters,
+    requested_filters: CommonFilters,
+    selected_owner: str,
+    service_name: str | None,
+    sort_by: str,
+    services: list[dict[str, str]],
+    pending_dates: list[str],
+    detail_list_cost: float,
+    total_list_cost: float,
+    resource_data_source: str,
+    scope_dimension: str | None = None,
+    scope_value: str | None = None,
+    page_size: int = RESOURCE_BREAKDOWN_DEFAULT_PAGE_SIZE,
+    next_cursor: str | None = None,
+) -> dict[str, Any]:
     return {
         "items": items,
         "meta": {
@@ -1818,151 +3392,41 @@ def get_unmatched_resources(
             "requested_start_date": (
                 requested_filters.start_date.isoformat() if requested_filters.start_date else None
             ),
-            "window_limited": filters.start_date != requested_filters.start_date,
-            "max_window_days": UNMATCHED_RESOURCE_MAX_WINDOW_DAYS,
-            "limit": UNMATCHED_RESOURCE_LIMIT,
+            "window_limited": False,
+            "limit": page_size,
+            "next_cursor": next_cursor,
             "owner": selected_owner,
-            "service_name": service_filter_name,
+            "scope_dimension": scope_dimension,
+            "scope_value": scope_value,
+            "service_name": service_name,
             "sort_by": sort_by,
-            "allocation_basis": basis.name,
+            "allocation_basis": CURRENT_ATTRIBUTION_BASIS,
             "resource_data_source": resource_data_source,
+            "resource_detail_cost": _money(detail_list_cost),
+            "resource_detail_coverage_pct": rate_pct(detail_list_cost, total_list_cost),
+            "materialized": True,
+            "pending_dates": pending_dates,
             "services": services,
-        },
-    }
-
-
-def _engineering_share_by_level(
-    connection: Connection,
-    filters: CommonFilters,
-    root: Any,
-    *,
-    level: int,
-    basis: CostAllocationBasis | None = None,
-) -> dict[str, Any]:
-    basis = basis or CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
-    where_clause, params = _build_cost_where(filters, table_alias="c")
-    like_expr = _like_prefix_expr(connection, "c_group.path", "target_group.path")
-    list_cost_expr = _billing_report_list_cost_expr("c")
-    if level == 1:
-        hierarchy_joins = f"""
-            JOIN roster_groups target_group
-              ON target_group.is_active = 1
-             AND target_group.parent_id = :root_id
-             AND {like_expr}
-        """
-    else:
-        hierarchy_joins = f"""
-            JOIN roster_groups target_parent
-              ON target_parent.is_active = 1
-             AND target_parent.parent_id = :root_id
-            JOIN roster_groups target_group
-              ON target_group.is_active = 1
-             AND target_group.parent_id = target_parent.id
-             AND {like_expr}
-        """
-    rows = connection.execute(
-        text(
-            f"""
-            {basis.cte}
-            SELECT
-              target_group.name AS group_name,
-              SUM({list_cost_expr}) AS list_cost
-            FROM {basis.from_clause}
-            JOIN roster_groups c_group ON c_group.id = c.group_id
-            {hierarchy_joins}
-            WHERE {where_clause}
-              AND c_group.path IS NOT NULL
-              AND c_group.path LIKE :root_path_like
-            GROUP BY target_group.id, target_group.name
-            ORDER BY list_cost DESC, target_group.name
-            """
-        ),
-        {
-            **params,
-            "root_id": root["id"],
-            "root_path_like": f"{root['path']}%",
-        },
-    ).mappings()
-    items = [
-        {
-            "name": str(row["group_name"]),
-            "value": _money(row["list_cost"]),
-        }
-        for row in rows
-    ]
-    total = sum(item["value"] for item in items)
-    for item in items:
-        item["share_pct"] = rate_pct(item["value"], total)
-        item["interactive"] = False
-
-    return {
-        "items": items,
-        "meta": {
-            **filters.meta(),
-            "group_name": ENGINEERING_GROUP_NAME,
-            "level": level,
-            "total_list_cost": round(total, 2),
-            "allocation_basis": basis.name,
-        },
-    }
-
-
-def _engineering_share_by_level_threshold(
-    connection: Connection,
-    filters: CommonFilters,
-    *,
-    level: int,
-    min_share_pct: float,
-) -> dict[str, Any]:
-    root = connection.execute(
-        text(
-            """
-            SELECT id, path
-            FROM roster_groups
-            WHERE name = :group_name
-              AND is_active = 1
-            ORDER BY id
-            LIMIT 1
-            """
-        ),
-        {"group_name": ENGINEERING_GROUP_NAME},
-    ).mappings().first()
-    if root is None:
-        return {
-            "items": [],
-            "meta": {
-                **filters.meta(),
-                "group_name": ENGINEERING_GROUP_NAME,
-                "level": level,
-                "min_share_pct": min_share_pct,
-                "total_list_cost": 0.0,
-            },
-        }
-
-    share = _engineering_share_by_level(connection, filters, root, level=level)
-    return {
-        "items": _share_items_above_threshold_with_others(
-            share["items"],
-            min_share_pct=min_share_pct,
-            total=_number_or_zero(share["meta"].get("total_list_cost")),
-        ),
-        "meta": {
-            **share["meta"],
-            "min_share_pct": min_share_pct,
         },
     }
 
 
 def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, float]:
     where_clause, params = _build_cost_where(filters, table_alias="c")
+    from_clause, team_filter_params = _cost_filter_from_clause(
+        connection, filters, "cost_attribution_daily c"
+    )
+    params.update(team_filter_params)
+    index_hint = _cost_aggregate_read_hint(connection, filters)
     list_cost_expr = _billing_report_list_cost_expr("c")
+    net_cost_expr = _usd_cost_expr("c", "c.net_cost")
     row = connection.execute(
         text(
             f"""
-            SELECT
+            SELECT {index_hint}
               SUM({list_cost_expr}) AS list_cost,
-              SUM(c.net_cost) AS net_cost
-            FROM cost_attribution_daily c
+              SUM({net_cost_expr}) AS net_cost
+            FROM {from_clause}
             WHERE {where_clause}
             """
         ),
@@ -1971,53 +3435,6 @@ def _cost_summary(connection: Connection, filters: CommonFilters) -> dict[str, f
     return {
         "list_cost": _money(row["list_cost"]) if row else 0.0,
         "net_cost": _money(row["net_cost"]) if row else 0.0,
-    }
-
-
-def _service_share_by_threshold(
-    connection: Connection,
-    filters: CommonFilters,
-    *,
-    min_share_pct: float,
-) -> dict[str, Any]:
-    where_clause, params = _build_cost_where(filters, table_alias="c")
-    list_cost_expr = _billing_report_list_cost_expr("c")
-    rows = connection.execute(
-        text(
-            f"""
-            SELECT
-              COALESCE(NULLIF(c.service_name, ''), '(no service)') AS service_name,
-              SUM({list_cost_expr}) AS list_cost
-            FROM cost_attribution_daily c
-            WHERE {where_clause}
-            GROUP BY service_name
-            ORDER BY list_cost DESC, service_name
-            """
-        ),
-        params,
-    ).mappings()
-    all_items = [
-        {
-            "name": str(row["service_name"]),
-            "value": _money(row["list_cost"]),
-        }
-        for row in rows
-    ]
-    total = sum(item["value"] for item in all_items)
-    for item in all_items:
-        item["share_pct"] = rate_pct(item["value"], total)
-        item["interactive"] = False
-    return {
-        "items": _share_items_above_threshold_with_others(
-            all_items,
-            min_share_pct=min_share_pct,
-            total=total,
-        ),
-        "meta": {
-            **filters.meta(),
-            "min_share_pct": min_share_pct,
-            "total_list_cost": round(total, 2),
-        },
     }
 
 
@@ -2101,35 +3518,6 @@ def _budget_health_snapshot(
     }
 
 
-def _share_items_above_threshold_with_others(
-    all_items: list[dict[str, Any]],
-    *,
-    min_share_pct: float,
-    total: float,
-) -> list[dict[str, Any]]:
-    items = [
-        item
-        for item in all_items
-        if _number_or_zero(item.get("share_pct")) > min_share_pct
-    ]
-    if len(items) == len(all_items):
-        return items
-
-    others_value = total - sum(_number_or_zero(item.get("value")) for item in items)
-    if others_value <= 0:
-        return items
-
-    return [
-        *items,
-        {
-            "name": "Others",
-            "value": _money(others_value),
-            "share_pct": rate_pct(others_value, total),
-            "interactive": False,
-        },
-    ]
-
-
 def _share_items_limited_with_others(
     all_items: list[dict[str, Any]],
     *,
@@ -2202,13 +3590,12 @@ def _cost_dimension_meta(
     dimension: str,
     drilldown: dict[str, Any] | None,
     total_list_cost: float | None = None,
-    allocation_basis: str = CURRENT_ATTRIBUTION_BASIS,
 ) -> dict[str, Any]:
     meta: dict[str, Any] = {
         **filters.meta(),
         dimension_key: dimension,
         "limit": limit,
-        "allocation_basis": allocation_basis,
+        "allocation_basis": CURRENT_ATTRIBUTION_BASIS,
     }
     if total_list_cost is not None:
         meta["total_list_cost"] = total_list_cost
@@ -2440,515 +3827,54 @@ def _cost_filters(filters: CommonFilters) -> CommonFilters:
         granularity=granularity,
         cost_vendor=filters.cost_vendor,
         cost_account_id=filters.cost_account_id,
+        cost_sources=filters.cost_sources,
+        owner_include=filters.owner_include,
+        owner_exclude=filters.owner_exclude,
+        team_include=filters.team_include,
+        team_exclude=filters.team_exclude,
+        project_include=filters.project_include,
+        project_exclude=filters.project_exclude,
     )
 
 
-def _cost_allocation_basis(
-    connection: Connection,
-    filters: CommonFilters,
-    requested_basis: str,
-) -> CostAllocationBasis:
-    """Return replacement rows only when Kubernetes source lineage is complete."""
-    if requested_basis not in VALID_COST_ALLOCATION_BASES:
-        requested_basis = CURRENT_ATTRIBUTION_BASIS
-    if requested_basis != RESIDUAL_ALLOCATED_BASIS:
-        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
-    if not _cost_kubernetes_allocation_table_exists(connection):
-        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
-    if not all(
-        _table_has_column(connection, table_name, "source_summary_row_hash")
-        for table_name in (
-            "cost_attribution_daily",
-            "cost_kubernetes_workload_allocation_daily",
-        )
-    ):
-        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
 
-    cte, params = _residual_allocation_basis_cte(connection, filters)
-    has_replacement = connection.execute(
-        text(
-            f"""
-            {cte}
-            SELECT 1
-            FROM fully_allocated_sources
-            LIMIT 1
-            """
-        ),
-        params,
-    ).first()
-    if has_replacement is None and (
-        _cost_kubernetes_allocation_source_table_exists(connection)
-        and _table_has_column(
-            connection,
-            "cost_kubernetes_workload_allocation_daily",
-            "allocation_group_hash",
-        )
-    ):
-        has_replacement = connection.execute(
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def _table_exists(connection: Connection, table_name: str) -> bool:
+    if connection.dialect.name == "sqlite":
+        return connection.execute(
             text(
-                f"""
-                {cte}
-                SELECT 1
-                FROM fully_allocated_groups
-                LIMIT 1
+                """
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = :table_name
                 """
             ),
-            params,
-        ).first()
-    if has_replacement is None:
-        return CostAllocationBasis(CURRENT_ATTRIBUTION_BASIS)
-    return CostAllocationBasis(
-        RESIDUAL_ALLOCATED_BASIS,
-        from_clause="cost_basis c",
-        cte=cte,
-    )
-
-
-def _residual_allocation_basis_cte(
-    connection: Connection,
-    filters: CommonFilters,
-) -> tuple[str, dict[str, Any]]:
-    # Source rows usually have no branch. Apply a branch filter only after a
-    # workload allocation has supplied its workload branch dimension.
-    source_where_clause, params = _build_cost_where(
-        _cost_allocation_source_filters(filters),
-        table_alias="source",
-    )
-    source_match = _allocation_source_match("allocation", "source")
-    group_lineage_available = (
-        _cost_kubernetes_allocation_source_table_exists(connection)
-        and _table_has_column(
-            connection,
-            "cost_kubernetes_workload_allocation_daily",
-            "allocation_group_hash",
-        )
-    )
-    group_ctes = """
-        , fully_allocated_group_sources AS (
-          SELECT NULL AS attribution_id
-          WHERE 1 = 0
-        )
-    """
-    group_source_exclusion = ""
-    group_allocation_rows = ""
-    if group_lineage_available:
-        mapping_where_clause, mapping_params = _build_cost_where(
-            _cost_allocation_source_filters(filters),
-            table_alias="mapping",
-        )
-        params.update(mapping_params)
-        group_ctes = f"""
-        , candidate_group_source_mappings AS (
-          SELECT
-            mapping.id AS mapping_id,
-            mapping.allocation_group_hash,
-            source.id AS attribution_id
-          FROM cost_kubernetes_workload_allocation_source_daily mapping
-          JOIN cost_attribution_daily source
-            ON mapping.vendor = source.vendor
-           AND mapping.account_id = source.account_id
-           AND mapping.usage_date = source.usage_date
-           AND mapping.source_summary_row_hash = source.source_summary_row_hash
-          WHERE NULLIF(mapping.allocation_group_hash, '') IS NOT NULL
-            AND NULLIF(source.source_summary_row_hash, '') IS NOT NULL
-            AND {mapping_where_clause}
-        ), single_source_group_mappings AS (
-          SELECT
-            mapping_id,
-            MAX(allocation_group_hash) AS allocation_group_hash,
-            MAX(attribution_id) AS attribution_id
-          FROM candidate_group_source_mappings
-          GROUP BY mapping_id
-          HAVING COUNT(*) = 1
-        ), group_source_coverage AS (
-          SELECT
-            mapping.allocation_group_hash,
-            COUNT(*) AS source_mapping_count,
-            COUNT(matched.mapping_id) AS matched_mapping_count,
-            SUM(COALESCE(mapping.source_list_cost, 0)) AS mapped_source_list_cost
-          FROM cost_kubernetes_workload_allocation_source_daily mapping
-          LEFT JOIN single_source_group_mappings matched
-            ON matched.mapping_id = mapping.id
-          WHERE NULLIF(mapping.allocation_group_hash, '') IS NOT NULL
-            AND {mapping_where_clause}
-          GROUP BY mapping.allocation_group_hash
-        ), group_source_totals AS (
-          SELECT
-            matched.allocation_group_hash,
-            SUM(COALESCE(source.list_cost, 0)) AS source_list_cost,
-            SUM(COALESCE(source.effective_cost, 0)) AS source_effective_cost,
-            SUM(COALESCE(source.credit_amount, 0)) AS source_credit_amount,
-            SUM(COALESCE(source.net_cost, 0)) AS source_net_cost,
-            SUM(COALESCE(source.source_rows, 0)) AS source_rows
-          FROM single_source_group_mappings matched
-          JOIN cost_attribution_daily source
-            ON source.id = matched.attribution_id
-          GROUP BY matched.allocation_group_hash
-        ), group_allocation_totals AS (
-          SELECT
-            allocation.allocation_group_hash,
-            SUM(COALESCE(allocation.list_cost, 0)) AS allocated_list_cost
-          FROM cost_kubernetes_workload_allocation_daily allocation
-          JOIN group_source_coverage coverage
-            ON coverage.allocation_group_hash = allocation.allocation_group_hash
-          WHERE allocation.vendor = 'gcp'
-            AND allocation.allocation_scope = 'workload_split'
-            AND NULLIF(allocation.allocation_group_hash, '') IS NOT NULL
-          GROUP BY allocation.allocation_group_hash
-        ), fully_allocated_groups AS (
-          SELECT coverage.allocation_group_hash
-          FROM group_source_coverage coverage
-          JOIN group_source_totals source
-            ON source.allocation_group_hash = coverage.allocation_group_hash
-          JOIN group_allocation_totals allocation
-            ON allocation.allocation_group_hash = coverage.allocation_group_hash
-          WHERE coverage.source_mapping_count = coverage.matched_mapping_count
-            AND ABS(source.source_list_cost - coverage.mapped_source_list_cost) <= 0.005
-            AND ABS(allocation.allocated_list_cost - coverage.mapped_source_list_cost) <= 0.005
-        ), fully_allocated_group_sources AS (
-          SELECT matched.attribution_id
-          FROM single_source_group_mappings matched
-          JOIN fully_allocated_groups allocated
-            ON allocated.allocation_group_hash = matched.allocation_group_hash
-        )
-        """
-        group_source_exclusion = """
-            AND id NOT IN (SELECT attribution_id FROM fully_allocated_group_sources)
-        """
-        group_allocation_rows = """
-          UNION ALL
-          SELECT
-            allocation.allocation_fact_id,
-            allocation.usage_date,
-            allocation.vendor,
-            allocation.account_id,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            NULL,
-            COALESCE(NULLIF(allocation.allocation_org, ''), NULL),
-            COALESCE(NULLIF(allocation.allocation_repo, ''), NULL),
-            allocation.allocation_target_branch,
-            allocation.workload_name,
-            NULL,
-            allocation.allocation_scope,
-            allocation.allocation_namespace,
-            COALESCE(
-              NULLIF(allocation.allocation_employee_email, ''),
-              NULLIF(allocation.allocation_employee_github_id, ''),
-              NULLIF(allocation.allocation_author, '')
-            ),
-            COALESCE(
-              NULLIF(allocation.allocation_employee_email, ''),
-              NULLIF(allocation.allocation_employee_github_id, '')
-            ),
-            NULL,
-            NULL,
-            NULL,
-            CASE
-              WHEN allocation.allocation_employee_id IS NULL THEN 'unattributed'
-              ELSE __EMPLOYEE_ATTRIBUTION_KEY__
-            END,
-            CASE
-              WHEN allocation.allocation_employee_id IS NULL THEN 'missing_author'
-              ELSE 'kubernetes_residual_allocation'
-            END,
-            CASE
-              WHEN allocation.allocation_employee_id IS NULL THEN 'unattributed'
-              ELSE 'matched'
-            END,
-            allocation.allocation_method,
-            allocation.allocation_employee_id,
-            allocation.allocation_group_id,
-            allocation.allocation_manager_id,
-            NULL,
-            allocation.allocated_list_cost,
-            source.source_effective_cost * (
-              CASE WHEN source.source_list_cost = 0 THEN 0
-              ELSE allocation.allocated_list_cost / source.source_list_cost END
-            ),
-            source.source_credit_amount * (
-              CASE WHEN source.source_list_cost = 0 THEN 0
-              ELSE allocation.allocated_list_cost / source.source_list_cost END
-            ),
-            source.source_net_cost * (
-              CASE WHEN source.source_list_cost = 0 THEN 0
-              ELSE allocation.allocated_list_cost / source.source_list_cost END
-            ),
-            source.source_rows,
-            allocation.allocation_dimension_hash,
-            NULL
-          FROM ranked_group_allocations allocation
-          JOIN group_source_totals source
-            ON source.allocation_group_hash = allocation.allocation_group_hash
-          WHERE allocation.roster_match_rank = 1
-        """
-    source_columns = """
-        id, usage_date, vendor, account_id, service_name, sku_name, usage_type,
-        cost_driver_key, region, org, repo, target_branch, resource_name,
-        vendor_tags_json, source_allocation_scope, namespace, author, owner,
-        service, project, service_exec_id, attribution_key, attribution_source,
-        attribution_status, allocate_method, employee_id, group_id, manager_id,
-        usage_seconds, list_cost, effective_cost, credit_amount, net_cost,
-        source_rows, dimension_hash, source_summary_row_hash
-    """
-    allocated_cost_ratio = (
-        "CASE WHEN COALESCE(source.list_cost, 0) = 0 THEN 0 "
-        "ELSE allocation.allocated_list_cost / source.list_cost END"
-    )
-    employee_attribution_key = (
-        "'employee:' || allocation.allocation_employee_id"
-        if connection.dialect.name == "sqlite"
-        else "CONCAT('employee:', allocation.allocation_employee_id)"
-    )
-    cte = f"""
-        WITH candidate_allocation_facts AS (
-          SELECT allocation.id AS allocation_fact_id, source.id AS attribution_id
-          FROM cost_kubernetes_workload_allocation_daily allocation
-          JOIN cost_attribution_daily source
-            ON {source_match}
-          WHERE allocation.allocation_scope IN ('workload_split', 'unallocated')
-            AND NULLIF(allocation.source_summary_row_hash, '') IS NOT NULL
-            AND NULLIF(source.source_summary_row_hash, '') IS NOT NULL
-            AND {source_where_clause}
-        ), single_source_facts AS (
-          SELECT allocation_fact_id, MAX(attribution_id) AS attribution_id
-          FROM candidate_allocation_facts
-          GROUP BY allocation_fact_id
-          HAVING COUNT(*) = 1
-        ), matched_allocation_facts AS (
-          SELECT allocation_fact_id, attribution_id
-          FROM single_source_facts
-        ), fully_allocated_sources AS (
-          SELECT matched.attribution_id
-          FROM matched_allocation_facts matched
-          JOIN cost_kubernetes_workload_allocation_daily allocation
-            ON allocation.id = matched.allocation_fact_id
-          JOIN cost_attribution_daily source
-            ON source.id = matched.attribution_id
-          GROUP BY matched.attribution_id
-          HAVING ABS(
-            SUM(COALESCE(allocation.list_cost, 0))
-            - MAX(COALESCE(source.list_cost, 0))
-          ) <= 0.005
-        ){group_ctes}, active_roster_identities AS (
-          SELECT
-            id AS employee_id,
-            email,
-            github_id,
-            group_id,
-            manager_id,
-            LOWER(NULLIF(email, '')) AS identity,
-            0 AS identity_priority
-          FROM roster_employees
-          WHERE is_active = 1
-            AND NULLIF(email, '') IS NOT NULL
-          UNION ALL
-          SELECT
-            id AS employee_id,
-            email,
-            github_id,
-            group_id,
-            manager_id,
-            LOWER(NULLIF(github_id, '')) AS identity,
-            1 AS identity_priority
-          FROM roster_employees
-          WHERE is_active = 1
-            AND NULLIF(github_id, '') IS NOT NULL
-        ), ranked_allocations AS (
-          SELECT
-            allocation.id AS allocation_fact_id,
-            source.id AS attribution_id,
-            allocation.cluster_location,
-            allocation.allocation_scope,
-            allocation.namespace AS allocation_namespace,
-            allocation.workload_name,
-            allocation.author AS allocation_author,
-            allocation.org AS allocation_org,
-            allocation.repo AS allocation_repo,
-            allocation.target_branch AS allocation_target_branch,
-            allocation.list_cost AS allocated_list_cost,
-            allocation.allocation_method,
-            allocation.dimension_hash AS allocation_dimension_hash,
-            roster.employee_id AS allocation_employee_id,
-            roster.email AS allocation_employee_email,
-            roster.github_id AS allocation_employee_github_id,
-            roster.group_id AS allocation_group_id,
-            roster.manager_id AS allocation_manager_id,
-            ROW_NUMBER() OVER (
-              PARTITION BY allocation.id
-              ORDER BY COALESCE(roster.identity_priority, 2), roster.employee_id
-            ) AS roster_match_rank
-          FROM matched_allocation_facts matched
-          JOIN fully_allocated_sources full_source
-            ON full_source.attribution_id = matched.attribution_id
-          JOIN cost_kubernetes_workload_allocation_daily allocation
-            ON allocation.id = matched.allocation_fact_id
-          JOIN cost_attribution_daily source
-            ON source.id = matched.attribution_id
-          LEFT JOIN active_roster_identities roster
-            ON roster.identity = LOWER(NULLIF(allocation.author, ''))
-        ){_ranked_group_allocations_cte(group_lineage_available)}, allocated_rows AS (
-          SELECT {source_columns}
-          FROM cost_attribution_daily source
-          WHERE {source_where_clause}
-            AND id NOT IN (SELECT attribution_id FROM fully_allocated_sources)
-            {group_source_exclusion}
-          UNION ALL
-          SELECT
-            source.id,
-            source.usage_date,
-            source.vendor,
-            source.account_id,
-            source.service_name,
-            source.sku_name,
-            source.usage_type,
-            source.cost_driver_key,
-            COALESCE(NULLIF(allocation.cluster_location, ''), source.region),
-            COALESCE(NULLIF(allocation.allocation_org, ''), source.org),
-            COALESCE(NULLIF(allocation.allocation_repo, ''), source.repo),
-            COALESCE(NULLIF(allocation.allocation_target_branch, ''), source.target_branch),
-            COALESCE(NULLIF(allocation.workload_name, ''), source.resource_name),
-            source.vendor_tags_json,
-            allocation.allocation_scope,
-            COALESCE(NULLIF(allocation.allocation_namespace, ''), source.namespace),
-            COALESCE(
-              NULLIF(allocation.allocation_employee_email, ''),
-              NULLIF(allocation.allocation_employee_github_id, ''),
-              NULLIF(allocation.allocation_author, '')
-            ),
-            COALESCE(
-              NULLIF(allocation.allocation_employee_email, ''),
-              NULLIF(allocation.allocation_employee_github_id, '')
-            ),
-            source.service,
-            source.project,
-            source.service_exec_id,
-            CASE
-              WHEN allocation.allocation_employee_id IS NULL THEN source.attribution_key
-              ELSE {employee_attribution_key}
-            END,
-            CASE
-              WHEN allocation.allocation_employee_id IS NULL THEN source.attribution_source
-              ELSE 'kubernetes_residual_allocation'
-            END,
-            CASE
-              WHEN allocation.allocation_employee_id IS NULL THEN source.attribution_status
-              ELSE 'matched'
-            END,
-            allocation.allocation_method,
-            allocation.allocation_employee_id,
-            allocation.allocation_group_id,
-            allocation.allocation_manager_id,
-            source.usage_seconds,
-            allocation.allocated_list_cost,
-            source.effective_cost * ({allocated_cost_ratio}),
-            source.credit_amount * ({allocated_cost_ratio}),
-            source.net_cost * ({allocated_cost_ratio}),
-            source.source_rows,
-            allocation.allocation_dimension_hash,
-            source.source_summary_row_hash
-          FROM ranked_allocations allocation
-          JOIN cost_attribution_daily source
-            ON source.id = allocation.attribution_id
-          WHERE allocation.roster_match_rank = 1
-          {group_allocation_rows.replace("__EMPLOYEE_ATTRIBUTION_KEY__", employee_attribution_key)}
-        ), cost_basis AS (
-          SELECT {source_columns}
-          FROM allocated_rows
-        )
-    """
-    return cte, params
-
-
-def _ranked_group_allocations_cte(group_lineage_available: bool) -> str:
-    if not group_lineage_available:
-        return ""
-    return """
-        , ranked_group_allocations AS (
-          SELECT
-            allocation.id AS allocation_fact_id,
-            allocation.allocation_group_hash,
-            allocation.usage_date,
-            allocation.vendor,
-            allocation.account_id,
-            allocation.cluster_location,
-            allocation.allocation_scope,
-            allocation.namespace AS allocation_namespace,
-            allocation.workload_name,
-            allocation.author AS allocation_author,
-            allocation.org AS allocation_org,
-            allocation.repo AS allocation_repo,
-            allocation.target_branch AS allocation_target_branch,
-            allocation.list_cost AS allocated_list_cost,
-            allocation.allocation_method,
-            allocation.dimension_hash AS allocation_dimension_hash,
-            roster.employee_id AS allocation_employee_id,
-            roster.email AS allocation_employee_email,
-            roster.github_id AS allocation_employee_github_id,
-            roster.group_id AS allocation_group_id,
-            roster.manager_id AS allocation_manager_id,
-            ROW_NUMBER() OVER (
-              PARTITION BY allocation.id
-              ORDER BY COALESCE(roster.identity_priority, 2), roster.employee_id
-            ) AS roster_match_rank
-          FROM fully_allocated_groups allocated_group
-          JOIN cost_kubernetes_workload_allocation_daily allocation
-            ON allocation.allocation_group_hash = allocated_group.allocation_group_hash
-          LEFT JOIN active_roster_identities roster
-            ON roster.identity = LOWER(NULLIF(allocation.author, ''))
-        )
-    """
-
-
-def _cost_allocation_source_filters(filters: CommonFilters) -> CommonFilters:
-    return CommonFilters(
-        start_date=filters.start_date,
-        end_date=filters.end_date,
-        granularity=filters.granularity,
-        cost_vendor=filters.cost_vendor,
-        cost_account_id=filters.cost_account_id,
-    )
-
-
-def _allocation_source_match(allocation_alias: str, attribution_alias: str) -> str:
-    return f"""
-        {allocation_alias}.vendor = {attribution_alias}.vendor
-        AND {allocation_alias}.account_id = {attribution_alias}.account_id
-        AND {allocation_alias}.usage_date = {attribution_alias}.usage_date
-        AND {allocation_alias}.source_summary_row_hash
-            = {attribution_alias}.source_summary_row_hash
-    """
-
-
-def _cost_basis_from_clause(basis: CostAllocationBasis, from_clause: str) -> str:
-    return from_clause.replace("cost_attribution_daily c", basis.from_clause, 1)
-
-
-def _cost_basis_for_dimension(
-    basis: CostAllocationBasis,
-    dimension: str | None,
-) -> CostAllocationBasis:
-    """Keep billing-source dimensions on their original attribution rows.
-
-    Kubernetes allocation changes who owns a cost, not its provider service,
-    SKU, billing project, execution id, or billing region. Grouped allocation
-    facts intentionally do not carry those source attributes.
-    """
-    if dimension in SOURCE_COST_DIMENSIONS:
-        return CostAllocationBasis(basis.name)
-    return basis
-
-
-def _cost_basis_dimension(
-    basis: CostAllocationBasis,
-    dimension: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        **dimension,
-        "from_clause": _cost_basis_from_clause(basis, dimension["from_clause"]),
-    }
+            {"table_name": table_name},
+        ).first() is not None
+    return connection.execute(
+        text(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = :table_name
+            """
+        ),
+        {"table_name": table_name},
+    ).first() is not None
 
 
 def _table_has_column(connection: Connection, table_name: str, column_name: str) -> bool:
@@ -2985,16 +3911,123 @@ def _build_cost_where(
     if filters.end_date:
         conditions.append(f"{prefix}usage_date <= :usage_date_to")
         params["usage_date_to"] = filters.end_date
-    if filters.cost_vendor:
-        conditions.append(f"{prefix}vendor = :cost_vendor")
-        params["cost_vendor"] = filters.cost_vendor
-    if filters.cost_account_id:
-        conditions.append(f"{prefix}account_id = :cost_account_id")
-        params["cost_account_id"] = filters.cost_account_id
+    source_clause, source_params = _cost_source_pair_clause(
+        filters.cost_source_pairs,
+        vendor_expr=f"{prefix}vendor",
+        account_expr=f"{prefix}account_id",
+        bind_prefix="cost_source",
+    )
+    if source_clause:
+        conditions.append(source_clause)
+        params.update(source_params)
     if filters.branch:
         conditions.append(f"{prefix}target_branch = :branch")
         params["branch"] = filters.branch
+
+    owner_clause, owner_params = _cost_dimension_filter_clause(
+        f"COALESCE(NULLIF({prefix}owner, ''), '{NO_OWNER_LABEL}')",
+        filters.owner_include,
+        filters.owner_exclude,
+        bind_prefix="cost_owner",
+    )
+    project_clause, project_params = _cost_dimension_filter_clause(
+        f"COALESCE(NULLIF({prefix}project, ''), '{WEEKLY_COST_NO_PROJECT_NAME}')",
+        filters.project_include,
+        filters.project_exclude,
+        bind_prefix="cost_project",
+    )
+    team_clause, team_params = _cost_dimension_filter_clause(
+        _cost_team_filter_expr(),
+        filters.team_include,
+        filters.team_exclude,
+        bind_prefix="cost_team",
+    )
+    for clause, clause_params in (
+        (owner_clause, owner_params),
+        (project_clause, project_params),
+        (team_clause, team_params),
+    ):
+        if clause:
+            conditions.append(clause)
+            params.update(clause_params)
     return " AND ".join(conditions), params
+
+
+def _cost_source_pair_clause(
+    pairs: Sequence[tuple[str, str]],
+    *,
+    vendor_expr: str,
+    account_expr: str,
+    bind_prefix: str,
+) -> tuple[str | None, dict[str, str]]:
+    if not pairs:
+        return None, {}
+    clauses = []
+    params: dict[str, str] = {}
+    for index, (vendor, account_id) in enumerate(pairs):
+        vendor_bind = f"{bind_prefix}_vendor_{index}"
+        account_bind = f"{bind_prefix}_account_{index}"
+        clauses.append(f"({vendor_expr} = :{vendor_bind} AND {account_expr} = :{account_bind})")
+        params[vendor_bind] = vendor
+        params[account_bind] = account_id
+    return "(" + " OR ".join(clauses) + ")", params
+
+
+def _cost_dimension_filter_clause(
+    expression: str,
+    include: Sequence[str],
+    exclude: Sequence[str],
+    *,
+    bind_prefix: str,
+) -> tuple[str | None, dict[str, str]]:
+    conditions = []
+    params: dict[str, str] = {}
+    for operator, values, suffix in (("IN", include, "include"), ("NOT IN", exclude, "exclude")):
+        if not values:
+            continue
+        bind_names = []
+        for index, value in enumerate(values):
+            bind_name = f"{bind_prefix}_{suffix}_{index}"
+            bind_names.append(f":{bind_name}")
+            params[bind_name] = value
+        conditions.append(f"{expression} {operator} ({', '.join(bind_names)})")
+    return " AND ".join(conditions) or None, params
+
+
+def _cost_filter_from_clause(
+    connection: Connection,
+    filters: CommonFilters,
+    from_clause: str,
+    *,
+    table_alias: str = "c",
+) -> tuple[str, dict[str, str]]:
+    if not (filters.team_include or filters.team_exclude):
+        return from_clause, {}
+    team_match = _like_prefix_expr(connection, "cost_filter_group.path", "cost_filter_team.path")
+    return (
+        f"""{from_clause}
+                LEFT JOIN roster_groups cost_filter_group
+                  ON cost_filter_group.id = {table_alias}.group_id
+                LEFT JOIN (
+                  SELECT target_group.name, target_group.path
+                  FROM roster_groups root_group
+                  JOIN roster_groups target_parent
+                    ON target_parent.is_active = 1
+                   AND target_parent.parent_id = root_group.id
+                  JOIN roster_groups target_group
+                    ON target_group.is_active = 1
+                   AND target_group.parent_id = target_parent.id
+                  WHERE root_group.name = :cost_filter_team_root_group_name
+                    AND root_group.is_active = 1
+                ) cost_filter_team
+                  ON cost_filter_group.path IS NOT NULL
+                 AND {team_match}""",
+        {"cost_filter_team_root_group_name": ENGINEERING_GROUP_NAME},
+    )
+
+
+def _cost_team_filter_expr() -> str:
+    return f"COALESCE(NULLIF(cost_filter_team.name, ''), '{NO_TEAM_LABEL}')"
 
 
 def _cost_attribution_index_hint(
@@ -3008,6 +4041,30 @@ def _cost_attribution_index_hint(
         table_alias=table_alias,
         index_name=COST_ATTRIBUTION_SOURCE_DATE_INDEX,
     )
+
+
+def _cost_aggregate_read_hint(
+    connection: Connection,
+    filters: CommonFilters,
+    *,
+    table_alias: str = "c",
+) -> str:
+    source_pairs = set(filters.cost_source_pairs)
+    if (
+        connection.dialect.name != "sqlite"
+        and source_pairs
+        and source_pairs <= TIFLASH_COST_SOURCES
+        and filters.start_date
+        and filters.end_date
+    ):
+        return f"/*+ READ_FROM_STORAGE(TIFLASH[{table_alias}]) */"
+    return _cost_attribution_index_hint(connection, filters, table_alias)
+
+
+
+
+
+
 
 
 def _cost_unmatched_resource_index_hint(
@@ -3032,7 +4089,7 @@ def _source_date_index_hint(
 ) -> str:
     if connection.dialect.name == "sqlite":
         return ""
-    if not (filters.cost_vendor and filters.cost_account_id):
+    if not filters.cost_source_pairs:
         return ""
     if not (filters.start_date or filters.end_date):
         return ""
@@ -3041,7 +4098,7 @@ def _source_date_index_hint(
 
 def _billing_report_list_cost_expr(table_alias: str) -> str:
     prefix = f"{table_alias}." if table_alias else ""
-    return (
+    source_amount = (
         "CASE "
         f"WHEN {prefix}vendor = 'gcp' "
         f"AND {prefix}sku_name LIKE 'Compute Flexible Committed Use Discounts%' "
@@ -3049,210 +4106,43 @@ def _billing_report_list_cost_expr(table_alias: str) -> str:
         f"ELSE {prefix}list_cost "
         "END"
     )
+    return _usd_cost_expr(table_alias, source_amount)
 
 
-def _kubernetes_parent_residual_condition(table_alias: str) -> str:
-    return f"""
-        (
-          {table_alias}.source_allocation_scope IN (
-            'kubernetes_parent_residual',
-            'eks_parent_residual',
-            'eks_unallocated',
-            'gke_parent_residual',
-            'tke_parent_residual'
-          )
-          -- Older AWS refreshes emitted residuals as direct rows but retained
-          -- their parent-residual SKU or usage type.
-          OR (
-            {table_alias}.source_allocation_scope = 'direct'
-            AND (
-              LOWER(COALESCE({table_alias}.sku_name, '')) LIKE '%parentresidual'
-              OR LOWER(COALESCE({table_alias}.usage_type, '')) LIKE '%parentresidual'
-            )
-          )
-        )
-    """
+def _usd_cost_expr(table_alias: str, source_amount: str) -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    return (
+        "CASE "
+        f"WHEN {prefix}currency = 'CNY' THEN ({source_amount}) / {CNY_PER_USD} "
+        f"ELSE {source_amount} "
+        "END"
+    )
 
 
-def _kubernetes_service_cost_condition(table_alias: str) -> str:
-    service_name = f"{table_alias}.service_name"
-    return f"""
-        (
-          {service_name} = 'AmazonEKS'
-          OR LOWER(COALESCE({service_name}, '')) LIKE '%kubernetes%'
-          OR LOWER(COALESCE({service_name}, '')) LIKE '%container engine%'
-        )
-    """
 
 
-def _kubernetes_allocation_fact_service_expr(table_alias: str) -> str:
-    return f"""
-        CASE
-          WHEN LOWER(COALESCE({table_alias}.cost_component, '')) = 'control_plane'
-            THEN CASE {table_alias}.vendor
-              WHEN 'aws' THEN 'AmazonEKS'
-              WHEN 'gcp' THEN 'Kubernetes Engine'
-              WHEN 'tencent' THEN 'Tencent Kubernetes Engine'
-              ELSE '(allocation fact)'
-            END
-          ELSE CASE {table_alias}.vendor
-            WHEN 'aws' THEN 'AmazonEC2'
-            WHEN 'gcp' THEN 'Compute Engine'
-            WHEN 'tencent' THEN 'Cloud Virtual Machine'
-            ELSE '(allocation fact)'
-          END
-        END
-    """
 
 
-def _has_valid_legacy_person_attribution(table_alias: str) -> str:
-    return f"""
-        (
-          {table_alias}.employee_id IS NOT NULL
-          AND LOWER(COALESCE({table_alias}.attribution_status, '')) = 'matched'
-        )
-    """
 
 
-def _has_valid_allocation_fact_person_attribution(
-    table_alias: str,
-    active_roster_alias: str | None = None,
-) -> str:
-    if active_roster_alias:
-        return f"{active_roster_alias}.identity IS NOT NULL"
-    return f"""
-        (
-          NULLIF({table_alias}.author, '') IS NOT NULL
-          AND EXISTS (
-            SELECT 1
-            FROM roster_employees employee
-            WHERE employee.is_active = 1
-              AND (
-                LOWER(NULLIF(employee.email, '')) = LOWER(NULLIF({table_alias}.author, ''))
-                OR LOWER(NULLIF(employee.github_id, '')) = LOWER(NULLIF({table_alias}.author, ''))
-              )
-          )
-        )
-    """
 
 
-def _kubernetes_allocation_fact_control_plane_condition(table_alias: str) -> str:
-    return f"""
-        LOWER(COALESCE({table_alias}.cost_component, '')) = 'control_plane'
-    """
 
 
-def _kubernetes_allocation_fact_allocated_condition(
-    table_alias: str,
-    active_roster_alias: str | None = None,
-) -> str:
-    return f"""
-        (
-          {table_alias}.allocation_scope = 'workload_split'
-          OR (
-          {table_alias}.allocation_scope = 'unallocated'
-            AND {_has_valid_allocation_fact_person_attribution(table_alias, active_roster_alias)}
-            AND NOT {_kubernetes_allocation_fact_control_plane_condition(table_alias)}
-          )
-        )
-    """
 
 
-def _kubernetes_allocation_fact_unallocated_condition(
-    table_alias: str,
-    active_roster_alias: str | None = None,
-) -> str:
-    return f"""
-        (
-          {table_alias}.allocation_scope = 'unallocated'
-          AND NOT {_has_valid_allocation_fact_person_attribution(table_alias, active_roster_alias)}
-        )
-    """
 
 
-def _kubernetes_allocation_fact_active_roster_cte() -> str:
-    """Return active roster identities once for joins against allocation facts."""
-    return """
-        active_roster_identities AS (
-          SELECT LOWER(NULLIF(email, '')) AS identity
-          FROM roster_employees
-          WHERE is_active = 1
-            AND NULLIF(email, '') IS NOT NULL
-          UNION
-          SELECT LOWER(NULLIF(github_id, '')) AS identity
-          FROM roster_employees
-          WHERE is_active = 1
-            AND NULLIF(github_id, '') IS NOT NULL
-        )
-    """
 
 
-def _kubernetes_allocation_fact_roster_join(
-    table_alias: str,
-    active_roster_alias: str,
-) -> str:
-    return f"""
-        LEFT JOIN active_roster_identities {active_roster_alias}
-          ON {active_roster_alias}.identity = LOWER(NULLIF({table_alias}.author, ''))
-    """
 
 
-def _kubernetes_unallocated_condition(connection: Connection, table_alias: str) -> str:
-    return f"""
-        (
-          (
-            {_kubernetes_parent_residual_condition(table_alias)}
-            AND NOT {_has_valid_legacy_person_attribution(table_alias)}
-          )
-          OR {_kubernetes_direct_unallocated_condition(connection, table_alias)}
-        )
-    """
 
 
-def _kubernetes_direct_unallocated_condition(connection: Connection, table_alias: str) -> str:
-    cluster_tag = _json_tag_text_expr(connection, f"{table_alias}.vendor_tags_json", "cluster")
-    return f"""
-        (
-          {table_alias}.source_allocation_scope = 'direct'
-          AND NOT {_has_valid_legacy_person_attribution(table_alias)}
-          AND (
-            {_kubernetes_service_cost_condition(table_alias)}
-            -- A user-managed cluster tag is not proof that an AWS resource is
-            -- an EKS node. AWS unsplit nodes need a provider-native identity
-            -- before they can enter this view.
-            OR (
-              COALESCE({table_alias}.vendor, '') <> 'aws'
-              AND NULLIF({cluster_tag}, '') IS NOT NULL
-            )
-          )
-        )
-    """
 
 
-def _cost_kubernetes_allocation_table_exists(connection: Connection) -> bool:
-    if connection.dialect.name == "sqlite":
-        row = connection.execute(
-            text(
-                """
-                SELECT 1
-                FROM sqlite_master
-                WHERE type = 'table'
-                  AND name = 'cost_kubernetes_workload_allocation_daily'
-                """
-            )
-        ).first()
-    else:
-        row = connection.execute(
-            text(
-                """
-                SELECT 1
-                FROM information_schema.tables
-                WHERE table_schema = DATABASE()
-                  AND table_name = 'cost_kubernetes_workload_allocation_daily'
-                """
-            )
-        ).first()
-    return row is not None
+
+
 
 
 def _cost_billing_summary_table_exists(connection: Connection) -> bool:
@@ -3280,50 +4170,6 @@ def _cost_billing_summary_table_exists(connection: Connection) -> bool:
         ).first()
     return row is not None
 
-
-def _cost_kubernetes_allocation_source_table_exists(connection: Connection) -> bool:
-    if not hasattr(connection, "execute"):
-        return False
-    if connection.dialect.name == "sqlite":
-        row = connection.execute(
-            text(
-                """
-                SELECT 1
-                FROM sqlite_master
-                WHERE type = 'table'
-                  AND name = 'cost_kubernetes_workload_allocation_source_daily'
-                LIMIT 1
-                """
-            )
-        ).first()
-        return row is not None
-    row = connection.execute(
-        text(
-            """
-            SELECT 1
-            FROM information_schema.tables
-            WHERE table_schema = DATABASE()
-              AND table_name = 'cost_kubernetes_workload_allocation_source_daily'
-            LIMIT 1
-            """
-        )
-    ).first()
-    return row is not None
-
-
-def _json_tag_text_expr(connection: Connection, column_expr: str, tag_name: str) -> str:
-    json_path = f"$.{tag_name}"
-    if connection.dialect.name == "sqlite":
-        return f"json_extract({column_expr}, '{json_path}')"
-    return f"JSON_UNQUOTE(JSON_EXTRACT({column_expr}, '{json_path}'))"
-
-
-def _json_text_expr(connection: Connection, column_expr: str) -> str:
-    if connection.dialect.name == "sqlite":
-        return f"COALESCE({column_expr}, '')"
-    return f"COALESCE(CAST({column_expr} AS CHAR), '')"
-
-
 def _format_vendor_labels(value: Any) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -3348,12 +4194,6 @@ def _format_vendor_labels(value: Any) -> str:
     return ", ".join(labels)
 
 
-def _user_facing_dimension(value: Any) -> str:
-    """Hide opaque numeric identifiers while preserving recognizable names."""
-    dimension = str(value or "").strip()
-    return "" if not dimension or dimension.isdecimal() else dimension
-
-
 def _like_prefix_expr(connection: Connection, value_expr: str, prefix_expr: str) -> str:
     if connection.dialect.name == "sqlite":
         return f"{value_expr} LIKE {prefix_expr} || '%'"
@@ -3370,6 +4210,13 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
     if group_by not in VALID_COST_STACK_GROUPS:
         group_by = "repo"
 
+    if group_by == "account":
+        return {
+            "expr": _cost_account_expr(connection, "c"),
+            "from_clause": "cost_attribution_daily c",
+            "params": {},
+            "empty_label": "(no account)",
+        }
     if group_by == "author":
         return {
             "expr": "COALESCE(NULLIF(c.author, ''), '(unknown author)')",
@@ -3467,10 +4314,22 @@ def _cost_stack_dimension(connection: Connection, group_by: str) -> dict[str, An
     }
 
 
+def _cost_stack_dimension_key_expr(connection: Connection, dimension_expr: str) -> str:
+    return f"LOWER({dimension_expr})"
+
+
+def _cost_stack_dimension_label_expr(connection: Connection, dimension_expr: str) -> str:
+    if connection.dialect.name == "sqlite":
+        return f"MIN({dimension_expr} COLLATE BINARY)"
+    return f"CONVERT(MIN(BINARY ({dimension_expr})) USING utf8mb4)"
+
+
 def _cost_share_dimension(connection: Connection, dimension: str) -> dict[str, Any]:
     if dimension not in VALID_COST_SHARE_DIMENSIONS:
         dimension = "owner"
 
+    if dimension == "account":
+        return _cost_stack_dimension(connection, "account")
     if dimension == "owner":
         return {
             "expr": "COALESCE(NULLIF(c.owner, ''), '(no owner)')",
@@ -3523,6 +4382,13 @@ def _cost_share_dimension(connection: Connection, dimension: str) -> dict[str, A
     }
 
 
+def _cost_account_expr(connection: Connection, table_alias: str) -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    if connection.dialect.name == "sqlite":
+        return f"{prefix}vendor || ' / ' || {prefix}account_id"
+    return f"CONCAT({prefix}vendor, ' / ', {prefix}account_id)"
+
+
 def _cost_service_share_expr(table_alias: str) -> str:
     prefix = f"{table_alias}." if table_alias else ""
     service = f"{prefix}service_name"
@@ -3547,6 +4413,7 @@ def _cost_sku_share_expr(connection: Connection, table_alias: str) -> str:
     prefix = f"{table_alias}." if table_alias else ""
     usage = f"NULLIF({prefix}usage_type, '')"
     sku = f"NULLIF({prefix}sku_name, '')"
+    service = f"NULLIF({prefix}service_name, '')"
     if connection.dialect.name == "sqlite":
         readable_usage = (
             "CASE "
@@ -3575,7 +4442,13 @@ def _cost_sku_share_expr(connection: Connection, table_alias: str) -> str:
             f"ELSE {usage} "
             "END"
         )
-    return f"COALESCE({readable_usage}, {sku}, '(no SKU)')"
+    # Tencent's console category is the product (`service_name`), not its billing cycle.
+    # Preserve the detailed SKU only when the source omits that product category.
+    return (
+        "COALESCE("
+        f"CASE WHEN {prefix}vendor = 'tencent' THEN {service} ELSE {readable_usage} END, "
+        f"{sku}, '(no SKU)')"
+    )
 
 
 def _cost_driver_share_expr(table_alias: str) -> str:
@@ -3594,6 +4467,8 @@ def _cost_driver_share_expr(table_alias: str) -> str:
 
 
 def _cost_stack_key(group_by: str, dimension_name: str, index: int) -> str:
+    if group_by == "account" and dimension_name == "(no account)":
+        return "account__no_account"
     if group_by == "repo" and dimension_name == "(no repo)":
         return "repo__no_repo"
     if group_by == "author" and dimension_name == "(unknown author)":
@@ -3720,6 +4595,12 @@ def _resource_vendor_tag_pairs(value: Any) -> list[tuple[str, str]]:
 def _money(value: Any) -> float:
     numeric = to_number(value)
     return round(float(numeric or 0), 2)
+
+
+def _nullable_rate_pct(numerator: int | float, denominator: int | float) -> float | None:
+    if not denominator:
+        return None
+    return round(float(numerator) * 100.0 / float(denominator), 2)
 
 
 def _today() -> date:

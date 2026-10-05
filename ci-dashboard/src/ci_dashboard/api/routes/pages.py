@@ -8,20 +8,20 @@ from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT, CommonFilters
 from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS
 from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
-    get_cost_allocation_overview_page,
+    get_cost_budget_pace_page,
     get_cost_engineering_group_share_page,
+    get_cost_filter_values_page,
     get_cost_insight_page,
-    get_cost_kubernetes_unallocated_page,
-    get_cost_kubernetes_unallocated_records_page,
     get_cost_repo_group_stack_page,
     get_cost_share_page,
     get_cost_sources_page,
     get_cost_trend_page,
-    get_cost_unattached_block_volumes_page,
-    get_cost_unattached_ebs_volumes_page,
     get_cost_unmatched_resources_page,
     get_cost_weekly_account_summaries_page,
-    get_cost_weekly_overview_page,
+    get_ci_weekly_cost_report_page,
+    get_weekly_cost_allocation_page,
+    get_weekly_cost_report_page,
+    get_weekly_cost_trend_page,
     get_flaky_page,
     get_overview_page,
     get_runtime_insights_page,
@@ -79,14 +79,19 @@ def cost_sources_page(
     return get_cost_sources_page(engine)
 
 
+@router.get("/cost-filter-values")
+def cost_filter_values_page(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_cost_filter_values_page(engine, filters)
+
+
 @router.get("/cost-trend")
 def cost_trend_page(
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
-    allocation_basis: str = Query(
-        "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
-    ),
+    allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -95,22 +100,18 @@ def cost_trend_page(
         filters,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
-        allocation_basis=allocation_basis,
     )
 
 
 @router.get("/cost-share")
 def cost_share_page(
+    allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
     dimension: str = Query(
         "owner",
-        pattern="^(owner|team|service|sku|cost_driver|project|service_exec_id|region)$",
+        pattern="^(account|owner|team|service|sku|cost_driver|project|service_exec_id|region)$",
     ),
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
-    allocation_basis: str = Query(
-        "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
-    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -121,24 +122,15 @@ def cost_share_page(
         dimension=dimension,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
-        allocation_basis=allocation_basis,
     )
 
 
-@router.get("/cost-weekly-overview")
-def cost_weekly_overview_page(
+@router.get("/cost-budget-pace")
+def cost_budget_pace_page(
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_cost_weekly_overview_page(engine, filters)
-
-
-@router.get("/cost-allocation-overview")
-def cost_allocation_overview_page(
-    filters: CommonFilters = Depends(get_common_filters),
-    engine: Engine = Depends(get_engine),
-) -> dict[str, object]:
-    return get_cost_allocation_overview_page(engine, filters)
+    return get_cost_budget_pace_page(engine, filters)
 
 
 @router.get("/cost-weekly-account-summaries")
@@ -149,18 +141,45 @@ def cost_weekly_account_summaries_page(
     return get_cost_weekly_account_summaries_page(engine, filters)
 
 
+@router.get("/ci-weekly-cost")
+def ci_weekly_cost_report_page(
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_ci_weekly_cost_report_page(engine)
+
+
+@router.get("/weekly-cost")
+def weekly_cost_report_page(
+    include_trend: bool = Query(True),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_weekly_cost_report_page(engine, include_trend=include_trend)
+
+
+@router.get("/weekly-cost/trend")
+def weekly_cost_trend_page(
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_weekly_cost_trend_page(engine)
+
+
+@router.get("/weekly-cost/allocation")
+def weekly_cost_allocation_page(
+    period: str = Query("month", pattern="^(week|month|current_month)$"),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_weekly_cost_allocation_page(engine, period)
+
+
 @router.get("/cost-repo-group-stack")
 def cost_repo_group_stack_page(
+    allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
     group_by: str = Query(
         "repo",
-        pattern="^(repo|author|owner|team|target_branch|service|sku|cost_driver|project|region|service_exec_id)$",
+        pattern="^(repo|author|account|owner|team|target_branch|service|sku|cost_driver|project|region|service_exec_id)$",
     ),
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
-    allocation_basis: str = Query(
-        "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
-    ),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
@@ -171,85 +190,48 @@ def cost_repo_group_stack_page(
         group_by=group_by,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
-        allocation_basis=allocation_basis,
     )
 
 
 @router.get("/cost-engineering-group-share")
 def cost_engineering_group_share_page(
-    allocation_basis: str = Query(
-        "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
-    ),
+    allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_engineering_group_share_page(
         engine,
         filters,
-        allocation_basis=allocation_basis,
     )
 
 
 @router.get("/cost-unmatched-resources")
 def cost_unmatched_resources_page(
+    allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
     owner: str | None = Query(default=None, max_length=255),
     service_name: str | None = None,
     sort_by: str = Query("list_cost", pattern="^(list_cost|duration)$"),
-    allocation_basis: str = Query(
-        "current_attribution",
-        pattern="^(current_attribution|residual_allocated)$",
-    ),
+    page_size: int = Query(50, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=512),
+    scope_dimension: str | None = Query(default=None, pattern="^(team|project)$"),
+    scope_value: str | None = Query(default=None, max_length=255),
     filters: CommonFilters = Depends(get_common_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_cost_unmatched_resources_page(
-        engine,
-        filters,
-        owner=owner,
-        service_name=service_name,
-        sort_by=sort_by,
-        allocation_basis=allocation_basis,
-    )
-
-
-@router.get("/cost-kubernetes-unallocated")
-def cost_kubernetes_unallocated_page(
-    filters: CommonFilters = Depends(get_common_filters),
-    engine: Engine = Depends(get_engine),
-) -> dict[str, object]:
-    return get_cost_kubernetes_unallocated_page(engine, filters)
-
-
-@router.get("/cost-kubernetes-unallocated-records")
-def cost_kubernetes_unallocated_records_page(
-    service_name: str = Query(..., min_length=1, max_length=255),
-    region: str = Query(..., min_length=1, max_length=128),
-    filters: CommonFilters = Depends(get_common_filters),
-    engine: Engine = Depends(get_engine),
-) -> dict[str, object]:
-    return get_cost_kubernetes_unallocated_records_page(
-        engine,
-        filters,
-        service_name=service_name,
-        region=region,
-    )
-
-
-@router.get("/cost-unattached-ebs-volumes")
-def cost_unattached_ebs_volumes_page(
-    filters: CommonFilters = Depends(get_common_filters),
-    engine: Engine = Depends(get_engine),
-) -> dict[str, object]:
-    return get_cost_unattached_ebs_volumes_page(engine, filters)
-
-
-@router.get("/cost-unattached-block-volumes")
-def cost_unattached_block_volumes_page(
-    filters: CommonFilters = Depends(get_common_filters),
-    engine: Engine = Depends(get_engine),
-) -> dict[str, object]:
-    return get_cost_unattached_block_volumes_page(engine, filters)
+    try:
+        return get_cost_unmatched_resources_page(
+            engine,
+            filters,
+            owner=owner,
+            service_name=service_name,
+            sort_by=sort_by,
+            page_size=page_size,
+            cursor=cursor,
+            scope_dimension=scope_dimension,
+            scope_value=scope_value,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 def _validate_cost_drilldown_child(child_group: str, drilldown_group: str | None) -> None:

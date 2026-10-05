@@ -15,6 +15,7 @@ import {
 export default function MigrateStatusPage({ filters }) {
   const page = useApiData("/api/v1/pages/ci-status", filters);
   const cloudPostureAnnotations = buildCloudPostureAnnotations(page.data?.cloud_posture_trend?.series);
+  const bucketLabel = `${filters.granularity[0].toUpperCase()}${filters.granularity.slice(1)}`;
   const fixedWindowComparisonMeta = page.data?.migration_fixed_window_comparison?.meta;
   const fixedWindowComparisonSubtitle = buildFixedWindowComparisonSubtitle(
     fixedWindowComparisonMeta,
@@ -27,13 +28,13 @@ export default function MigrateStatusPage({ filters }) {
     <div className="page-stack">
       <PageIntro
         eyebrow="Migrate Status"
-        title="Track rollout volume and runtime drift as jobs move from IDC to GCP"
-        description="This page isolates the migration view so we can compare weekly rollout posture and same-job runtime changes without mixing it into the broader CI health page."
+        title="Track rollout volume and runtime drift from GCP to Tencent"
+        description="This page isolates the migration view so we can compare rollout posture and same-job runtime changes without mixing it into the broader CI health page."
       />
 
       <Panel
         title="Migration status"
-        subtitle="Weekly build counts on IDC versus GCP. The value shown above each bar is GCP build count % of total builds in that week."
+        subtitle={`${bucketLabel} build counts on GCP and Tencent. The value shown above each bar is Tencent build count % of total builds in that bucket.`}
         loading={page.loading}
         error={page.error}
       >
@@ -55,7 +56,7 @@ export default function MigrateStatusPage({ filters }) {
 
       <Panel
         title="Migration runtime comparison"
-        subtitle="Same-job success run-time comparison. IDC baseline is the 14 days before first GCP success; GCP uses the latest 14 days ending at the selected end date. This panel ignores start date, bucket, and cloud filters."
+        subtitle="Same-job Jenkins success run-time comparison. GCP baseline is the 14 days before first Tencent success; Tencent uses the latest 14 days ending at the selected end date. This panel ignores start date, bucket, and cloud filters."
         loading={page.loading}
         error={page.error}
       >
@@ -68,7 +69,7 @@ export default function MigrateStatusPage({ filters }) {
       </Panel>
 
       <Panel
-        title="Pre-cloud baseline vs recent GCP"
+        title="Matched Jenkins jobs: GCP baseline vs recent Tencent"
         subtitle={fixedWindowComparisonSubtitle}
         loading={page.loading}
         error={page.error}
@@ -94,8 +95,8 @@ function buildFixedWindowComparisonSubtitle(meta) {
     return "Fixed-window comparison for All repos, TiDB, and TiCDC.";
   }
 
-  const recentEndDate = meta.recent_end_date || "latest GCP success date";
-  return `All repos, TiDB, and TiCDC compared side by side. Baseline uses ${meta.baseline_start_date} to ${meta.baseline_end_date} across all clouds; recent uses GCP-only builds from ${meta.recent_start_date} to ${recentEndDate}. Avg duration uses successful builds only, and this panel ignores repo, branch, job, start, bucket, and cloud filters.`;
+  const recentEndDate = meta.recent_end_date || "latest Tencent success date";
+  return `All repos, TiDB, and TiCDC compared side by side. Only Jenkins job names successful in both windows are included. GCP baseline uses ${meta.baseline_start_date} to ${meta.baseline_end_date} and is weighted by each job's Tencent success count; recent Tencent uses ${meta.recent_start_date} to ${recentEndDate}. Avg duration uses successful builds only, and this panel ignores repo, branch, job, start, bucket, and cloud filters.`;
 }
 
 function buildFixedWindowDurationSeries(rows) {
@@ -106,39 +107,40 @@ function buildFixedWindowDurationSeries(rows) {
   return [
     {
       key: "baseline_avg_total_s",
-      label: "Baseline avg duration",
+      label: "Tencent-weighted GCP avg duration",
       type: "bar",
       axis: "left",
       points: rows.map((row) => [row.scope_label, Number(row.baseline?.success_avg_total_s || 0)]),
     },
     {
-      key: "recent_gcp_avg_total_s",
-      label: "Recent GCP avg duration",
+      key: "recent_tencent_avg_total_s",
+      label: "Recent Tencent Jenkins avg duration",
       type: "bar",
       axis: "left",
-      points: rows.map((row) => [row.scope_label, Number(row.recent_gcp?.success_avg_total_s || 0)]),
+      points: rows.map((row) => [row.scope_label, Number(row.recent_tencent?.success_avg_total_s || 0)]),
     },
   ];
 }
 
 function buildCloudPostureAnnotations(series) {
-  const gcpSeries = series?.find((item) => item.key === "gcp_build_count");
-  const idcSeries = series?.find((item) => item.key === "idc_build_count");
-  if (!gcpSeries || !idcSeries) {
+  const tencentSeries = series?.find((item) => item.key === "tencent_build_count");
+  if (!tencentSeries) {
     return [];
   }
 
-  const gcpByLabel = new Map(gcpSeries.points.map(([label, value]) => [label, Number(value || 0)]));
-  const idcByLabel = new Map(idcSeries.points.map(([label, value]) => [label, Number(value || 0)]));
-  return Array.from(new Set([...gcpByLabel.keys(), ...idcByLabel.keys()]))
+  const countsBySeries = series.map((item) => new Map(
+    item.points.map(([label, value]) => [label, Number(value || 0)]),
+  ));
+  return Array.from(new Set(series.flatMap((item) => item.points.map(([label]) => label))))
     .sort()
     .map((label) => {
-      const gcpBuilds = gcpByLabel.get(label) || 0;
-      const idcBuilds = idcByLabel.get(label) || 0;
-      const totalBuilds = gcpBuilds + idcBuilds;
+      const totalBuilds = countsBySeries.reduce((total, counts) => total + (counts.get(label) || 0), 0);
+      const tencentBuilds = Number(
+        tencentSeries.points.find(([pointLabel]) => pointLabel === label)?.[1] || 0,
+      );
       return {
         label,
-        text: formatPercent(totalBuilds ? (gcpBuilds * 100) / totalBuilds : 0),
+        text: formatPercent(totalBuilds ? (tencentBuilds * 100) / totalBuilds : 0),
       };
     });
 }

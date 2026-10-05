@@ -16,28 +16,33 @@ import (
 
 // Client is the "devbuild" service client.
 type Client struct {
-	ListEndpoint   goa.Endpoint
-	CreateEndpoint goa.Endpoint
-	GetEndpoint    goa.Endpoint
-	UpdateEndpoint goa.Endpoint
-	RerunEndpoint  goa.Endpoint
+	ListEndpoint         goa.Endpoint
+	CapabilitiesEndpoint goa.Endpoint
+	CreateEndpoint       goa.Endpoint
+	GetEndpoint          goa.Endpoint
+	UpdateEndpoint       goa.Endpoint
+	RerunEndpoint        goa.Endpoint
 }
 
 // NewClient initializes a "devbuild" service client given the endpoints.
-func NewClient(list, create, get, update, rerun goa.Endpoint) *Client {
+func NewClient(list, capabilities, create, get, update, rerun goa.Endpoint) *Client {
 	return &Client{
-		ListEndpoint:   list,
-		CreateEndpoint: create,
-		GetEndpoint:    get,
-		UpdateEndpoint: update,
-		RerunEndpoint:  rerun,
+		ListEndpoint:         list,
+		CapabilitiesEndpoint: capabilities,
+		CreateEndpoint:       create,
+		GetEndpoint:          get,
+		UpdateEndpoint:       update,
+		RerunEndpoint:        rerun,
 	}
 }
 
 // List calls the "list" endpoint of the "devbuild" service.
 // List may return the following errors:
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *DevBuildBadRequestError): Bad Request
+//   - "Unauthorized" (type *DevBuildUnauthorizedError): Unauthorized
+//   - "Forbidden" (type *DevBuildForbiddenError): Forbidden
+//   - "NotFound" (type *DevBuildNotFoundError): Not Found
+//   - "InternalServerError" (type *DevBuildInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) List(ctx context.Context, p *ListPayload) (res []*DevBuild, err error) {
 	var ires any
@@ -48,10 +53,30 @@ func (c *Client) List(ctx context.Context, p *ListPayload) (res []*DevBuild, err
 	return ires.([]*DevBuild), nil
 }
 
+// Capabilities calls the "capabilities" endpoint of the "devbuild" service.
+// Capabilities may return the following errors:
+//   - "BadRequest" (type *DevBuildBadRequestError): Bad Request
+//   - "Unauthorized" (type *DevBuildUnauthorizedError): Unauthorized
+//   - "Forbidden" (type *DevBuildForbiddenError): Forbidden
+//   - "NotFound" (type *DevBuildNotFoundError): Not Found
+//   - "InternalServerError" (type *DevBuildInternalServerError): Internal Server Error
+//   - error: internal error
+func (c *Client) Capabilities(ctx context.Context) (res *DevBuildCapabilities, err error) {
+	var ires any
+	ires, err = c.CapabilitiesEndpoint(ctx, nil)
+	if err != nil {
+		return
+	}
+	return ires.(*DevBuildCapabilities), nil
+}
+
 // Create calls the "create" endpoint of the "devbuild" service.
 // Create may return the following errors:
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *DevBuildBadRequestError): Bad Request
+//   - "Unauthorized" (type *DevBuildUnauthorizedError): Unauthorized
+//   - "Forbidden" (type *DevBuildForbiddenError): Forbidden
+//   - "NotFound" (type *DevBuildNotFoundError): Not Found
+//   - "InternalServerError" (type *DevBuildInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) Create(ctx context.Context, p *CreatePayload) (res *DevBuild, err error) {
 	var ires any
@@ -64,9 +89,11 @@ func (c *Client) Create(ctx context.Context, p *CreatePayload) (res *DevBuild, e
 
 // Get calls the "get" endpoint of the "devbuild" service.
 // Get may return the following errors:
-//   - "http_error" (type *HTTPError): Bad Request
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *DevBuildBadRequestError): Bad Request
+//   - "Unauthorized" (type *DevBuildUnauthorizedError): Unauthorized
+//   - "Forbidden" (type *DevBuildForbiddenError): Forbidden
+//   - "NotFound" (type *DevBuildNotFoundError): Not Found
+//   - "InternalServerError" (type *DevBuildInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) Get(ctx context.Context, p *GetPayload) (res *DevBuild, err error) {
 	var ires any
@@ -79,8 +106,11 @@ func (c *Client) Get(ctx context.Context, p *GetPayload) (res *DevBuild, err err
 
 // Update calls the "update" endpoint of the "devbuild" service.
 // Update may return the following errors:
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *DevBuildBadRequestError): Bad Request
+//   - "Unauthorized" (type *DevBuildUnauthorizedError): Unauthorized
+//   - "Forbidden" (type *DevBuildForbiddenError): Forbidden
+//   - "NotFound" (type *DevBuildNotFoundError): Not Found
+//   - "InternalServerError" (type *DevBuildInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) Update(ctx context.Context, p *UpdatePayload) (res *DevBuild, err error) {
 	var ires any
@@ -93,8 +123,11 @@ func (c *Client) Update(ctx context.Context, p *UpdatePayload) (res *DevBuild, e
 
 // Rerun calls the "rerun" endpoint of the "devbuild" service.
 // Rerun may return the following errors:
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *DevBuildBadRequestError): Bad Request
+//   - "Unauthorized" (type *DevBuildUnauthorizedError): Unauthorized
+//   - "Forbidden" (type *DevBuildForbiddenError): Forbidden
+//   - "NotFound" (type *DevBuildNotFoundError): Not Found
+//   - "InternalServerError" (type *DevBuildInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) Rerun(ctx context.Context, p *RerunPayload) (res *DevBuild, err error) {
 	var ires any

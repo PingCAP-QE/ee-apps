@@ -67,6 +67,59 @@ def test_load_settings_supports_db_url() -> None:
     assert settings.log_level == "DEBUG"
 
 
+def test_load_settings_configures_database_limits() -> None:
+    settings = load_settings(
+        {
+            "CI_DASHBOARD_DB_URL": "mysql+pymysql://ci:secret@db.example.com/dashboard",
+            "CI_DASHBOARD_DB_POOL_SIZE": "8",
+            "CI_DASHBOARD_DB_MAX_OVERFLOW": "4",
+            "CI_DASHBOARD_DB_POOL_TIMEOUT_SECONDS": "3",
+            "CI_DASHBOARD_DB_CONNECT_TIMEOUT_SECONDS": "2",
+            "CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS": "20",
+            "CI_DASHBOARD_DB_WRITE_TIMEOUT_SECONDS": "20",
+            "CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS": "15",
+        }
+    )
+
+    assert settings.database.pool_size == 8
+    assert settings.database.max_overflow == 4
+    assert settings.database.pool_timeout_seconds == 3
+    assert settings.database.connect_timeout_seconds == 2
+    assert settings.database.read_timeout_seconds == 20
+    assert settings.database.write_timeout_seconds == 20
+    assert settings.database.query_timeout_seconds == 15
+
+
+def test_load_settings_ignores_timeout_relationship_for_sqlite() -> None:
+    settings = load_settings(
+        {
+            "CI_DASHBOARD_DB_URL": "sqlite+pysqlite:///:memory:",
+            "CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS": "60",
+            "CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS": "35",
+        }
+    )
+
+    assert settings.database.query_timeout_seconds == 60
+    assert settings.database.read_timeout_seconds == 35
+
+
+def test_load_settings_rejects_query_timeout_longer_than_read_timeout() -> None:
+    with pytest.raises(
+        ValueError,
+        match=(
+            "CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS must be less than or equal to "
+            "CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS"
+        ),
+    ):
+        load_settings(
+            {
+                "CI_DASHBOARD_DB_URL": "mysql+pymysql://ci:secret@db.example.com/dashboard",
+                "CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS": "60",
+                "CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS": "30",
+            }
+        )
+
+
 def test_load_settings_requires_tidb_fields_without_db_url() -> None:
     with pytest.raises(ValueError, match="TIDB_HOST"):
         load_settings({"CI_DASHBOARD_BATCH_SIZE": "10"})
@@ -196,7 +249,13 @@ def test_build_connect_args_supports_optional_ssl_ca() -> None:
             "TIDB_SSL_CA": "/etc/certs/ca.pem",
         }
     )
-    assert _build_connect_args(with_ssl.database) == {"ssl": {"ca": "/etc/certs/ca.pem"}}
+    assert _build_connect_args(with_ssl.database) == {
+        "connect_timeout": 5,
+        "read_timeout": 35,
+        "write_timeout": 30,
+        "init_command": "SET SESSION MAX_EXECUTION_TIME=30000",
+        "ssl": {"ca": "/etc/certs/ca.pem"},
+    }
 
 
 def test_install_sqlite_functions_is_noop_for_non_sqlite_engine() -> None:
@@ -233,10 +292,16 @@ def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.
     assert captured["kwargs"] == {
         "pool_pre_ping": True,
         "future": True,
-        "pool_size": 40,
-        "max_overflow": 40,
-        "pool_timeout": 60,
-        "connect_args": {"ssl": {"ca": "/etc/certs/ca.pem"}},
+        "pool_size": 10,
+        "max_overflow": 10,
+        "pool_timeout": 5,
+        "connect_args": {
+            "connect_timeout": 5,
+            "read_timeout": 35,
+            "write_timeout": 30,
+            "init_command": "SET SESSION MAX_EXECUTION_TIME=30000",
+            "ssl": {"ca": "/etc/certs/ca.pem"},
+        },
     }
     assert install_calls == [engine]
 

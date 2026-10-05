@@ -1,0 +1,17 @@
+apiVersion: tibuild.pingcap.net/v1alpha1
+kind: MacBuild
+metadata:
+  labels:
+    app.kubernetes.io/name: mac-builder-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: macbuild-sample
+spec:
+  source:
+    gitRepository: https://github.com/pingcap/tidb.git
+    gitRef: main
+  build:
+    component: tidb
+    version: nightly
+    profile: release
+  artifacts:
+    push: false

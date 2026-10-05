@@ -1,9 +1,81 @@
 package handler
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestDevbuildHelpOmitsRemovedOptions(t *testing.T) {
+	if strings.Contains(devBuildHelpText, "poll") {
+		t.Error("devbuild help should not mention poll")
+	}
+	if strings.Contains(devBuildHelpText, "pushGCR") {
+		t.Error("devbuild help should not mention pushGCR")
+	}
+}
+
+func TestRunCommandDevbuildTriggerUsesV2RequestAndIgnoresPushGCR(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/v2/devbuilds" {
+			t.Errorf("expected v2 devbuild path, got %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("dryrun") != "false" {
+			t.Errorf("expected dryrun=false, got %s", r.URL.RawQuery)
+		}
+
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["createdBy"] != "user@example.com" {
+			t.Errorf("unexpected createdBy: %#v", body["createdBy"])
+		}
+		if _, ok := body["meta"]; ok {
+			t.Error("v2 request should not contain meta")
+		}
+		if _, ok := body["spec"]; ok {
+			t.Error("v2 request should not contain spec")
+		}
+
+		request, ok := body["request"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected request object, got %#v", body["request"])
+		}
+		if request["product"] != "tidb" || request["version"] != "v8.5.0" || request["gitRef"] != "branch/master" {
+			t.Errorf("unexpected required request fields: %#v", request)
+		}
+		if _, ok := request["isPushGCR"]; ok {
+			t.Error("pushGCR should not be forwarded to the v2 API")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int{"id": 123})
+	}))
+	defer server.Close()
+
+	ctx := context.WithValue(context.Background(), cfgKeyDevBuildURL, server.URL+"/api/v2/devbuilds")
+	ctx = context.WithValue(ctx, ctxKeyLarkSenderEmail, "user@example.com")
+	message, err := runCommandDevbuildTrigger(ctx, []string{
+		"--product", "tidb",
+		"--version", "v8.5.0",
+		"--gitRef", "branch/master",
+		"--pushGCR",
+	})
+	if err != nil {
+		t.Fatalf("runCommandDevbuildTrigger() error = %v", err)
+	}
+	if message != "build id is 123" {
+		t.Errorf("runCommandDevbuildTrigger() = %q, want %q", message, "build id is 123")
+	}
+}
 
 func TestParseCommandDevbuildTrigger(t *testing.T) {
 	tests := []struct {

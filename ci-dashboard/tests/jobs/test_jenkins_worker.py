@@ -148,6 +148,21 @@ def test_parse_jenkins_finished_event_extracts_canonical_fields() -> None:
     assert parsed.completion_time == datetime(2026, 4, 24, 10, 20, 0)
 
 
+def test_parse_jenkins_finished_event_classifies_tencent_staging_url() -> None:
+    payload = _finished_event_payload()
+    payload["subject"] = (
+        "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
+    )
+
+    parsed = parse_jenkins_finished_event(payload, _settings())
+
+    assert parsed.normalized_build_url == (
+        "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
+    )
+    assert parsed.cloud_phase == "TENCENT"
+    assert parsed.build_system == "JENKINS"
+
+
 def test_parse_jenkins_finished_event_supports_real_plugin_payload() -> None:
     parsed = parse_jenkins_finished_event(_real_jenkins_plugin_finished_event_payload(), _settings())
 
@@ -290,7 +305,7 @@ def test_process_jenkins_event_message_inserts_real_plugin_payload(sqlite_engine
     assert audit["result"] == "SUCCESS"
 
 
-def test_process_jenkins_event_message_enriches_existing_prow_row_without_clearing_it(sqlite_engine) -> None:
+def test_process_jenkins_event_message_reclassifies_legacy_idc_rows_from_event_url(sqlite_engine) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
             text(
@@ -303,16 +318,18 @@ def test_process_jenkins_event_message_enriches_existing_prow_row_without_cleari
                 ) VALUES (
                   301, 'prow-job-301', 'prow', 'ghpr_unit_test', 'presubmit', 'failure',
                   0, 1, 'pingcap', 'tidb', 'pingcap/tidb', 'master', 301, 1,
-                  'unit', 'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/display/redirect',
-                  'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/',
+                  'unit', 'https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/display/redirect',
+                  'https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/',
                   'alice', '2026-04-24 10:00:00', '2026-04-24 10:20:00',
-                  1200, '0123456789abcdef0123456789abcdef01234567', 'master', 'GCP', 'JENKINS'
+                  1200, '0123456789abcdef0123456789abcdef01234567', 'master', 'IDC', 'JENKINS'
                 )
                 """
             )
         )
 
-    result = process_jenkins_event_message(sqlite_engine, _settings(), _finished_event_payload())
+    payload = _finished_event_payload()
+    payload["subject"] = "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/"
+    result = process_jenkins_event_message(sqlite_engine, _settings(), payload)
 
     assert result == "processed"
 
@@ -322,7 +339,7 @@ def test_process_jenkins_event_message_enriches_existing_prow_row_without_cleari
                 text(
                     """
                     SELECT source_prow_row_id, source_prow_job_id, namespace, job_name, job_type,
-                           repo_full_name, state
+                           repo_full_name, state, cloud_phase
                     FROM ci_l1_builds
                     """
                 )
@@ -338,6 +355,7 @@ def test_process_jenkins_event_message_enriches_existing_prow_row_without_cleari
     assert row["job_type"] == "presubmit"
     assert row["repo_full_name"] == "pingcap/tidb"
     assert row["state"] == "failure"
+    assert row["cloud_phase"] == "TENCENT"
 
 
 def test_process_jenkins_event_message_uses_prow_job_id_to_resolve_duplicate_build_urls(sqlite_engine) -> None:
@@ -365,7 +383,7 @@ def test_process_jenkins_event_message_uses_prow_job_id_to_resolve_duplicate_bui
                   'unit', 'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/display/redirect',
                   'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/',
                   'terry1purcell', '2026-04-27 13:00:00', NULL,
-                  NULL, 'e6030436c2093b30da167ca295887b8df8eaeb07', 'master', 'IDC', 'UNKNOWN'
+                  NULL, 'e6030436c2093b30da167ca295887b8df8eaeb07', 'master', 'TENCENT', 'UNKNOWN'
                 )
                 """
             )

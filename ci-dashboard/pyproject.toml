@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ci-dashboard"
-version = "0.6.1"
+version = "0.7.1"
 description = "CI dashboard jobs and API scaffold"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,7 @@ dependencies = [
 dev = [
   "coverage>=7.0.0",
   "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
   "ruff>=0.4.0",
 ]
 

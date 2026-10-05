@@ -335,7 +335,11 @@ export function formatCostSourceLabel(value) {
   if (!value || value === ALL_COST_SOURCES) {
     return "All sources";
   }
-  const [vendor, accountId] = String(value || "").split(":");
+  const sources = String(value).split(",").map((item) => item.trim()).filter(Boolean);
+  if (sources.length > 1) {
+    return `${sources.length} accounts`;
+  }
+  const [vendor, accountId] = (sources[0] || "").split(":");
   if (!vendor || !accountId) {
     return "Selected source";
   }

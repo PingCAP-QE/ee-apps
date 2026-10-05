@@ -34,7 +34,7 @@ ask:
 devbuild:
   audit:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-  api_url: "https://tibuild.pingcap.net/api/devbuilds"
+  api_url: "https://tibuild.pingcap.net/api/v2/devbuilds"
 
 # Cloud image query configuration
 registry_image:

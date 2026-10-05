@@ -17,7 +17,6 @@ def test_load_settings_uses_cost_database_url() -> None:
         {
             "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost_insight",
             "COST_INSIGHT_GCP_ACCOUNT_ID": "custom-project",
-            "COST_INSIGHT_SYNC_OVERLAP_DAYS": "5",
             "COST_INSIGHT_SYNC_LAG_DAYS": "7",
             "COST_INSIGHT_EXPORT_OVERLAP_DAYS": "1",
             "COST_INSIGHT_SYNC_INITIAL_LOOKBACK_DAYS": "30",
@@ -28,7 +27,6 @@ def test_load_settings_uses_cost_database_url() -> None:
 
     assert settings.database.url == "mysql+pymysql://user:pass@127.0.0.1:4000/cost_insight"
     assert settings.gcp_billing.account_id == "custom-project"
-    assert settings.gcp_billing.sync_overlap_days == 5
     assert settings.gcp_billing.sync_lag_days == 7
     assert settings.gcp_billing.export_overlap_days == 1
     assert settings.gcp_billing.sync_initial_lookback_days == 30
@@ -96,6 +94,42 @@ def test_load_settings_reads_aws_billing_settings() -> None:
     assert settings.aws_billing.sync_initial_lookback_months == 6
     assert settings.aws_billing.page_size == 1000
 
+
+def test_load_settings_reads_tencent_billing_settings() -> None:
+    settings = load_settings(
+        {
+            "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost_insight",
+            "COST_INSIGHT_TENCENT_ACCOUNT_ID": "100000000001",
+            "COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY": "2026-09-01",
+            "COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS": "4",
+            "COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS": "6",
+            "COST_INSIGHT_TENCENT_PAGE_SIZE": "50",
+        }
+    ).tencent_billing
+
+    assert settings.account_id == "100000000001"
+    assert settings.earliest_bill_day == date(2026, 9, 1)
+    assert settings.import_lag_days == 4
+    assert settings.verify_lag_days == 6
+    assert settings.page_size == 50
+
+
+def test_load_settings_rejects_invalid_tencent_settings() -> None:
+    with pytest.raises(ValueError, match="must be between 1 and 100"):
+        load_settings(
+            {
+                "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@host/db",
+                "COST_INSIGHT_TENCENT_PAGE_SIZE": "101",
+            }
+        )
+    with pytest.raises(ValueError, match="VERIFY_LAG_DAYS"):
+        load_settings(
+            {
+                "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@host/db",
+                "COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS": "5",
+                "COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS": "3",
+            }
+        )
 
 def test_load_settings_reads_tcms_allocation_settings() -> None:
     settings = load_settings(
@@ -209,16 +243,6 @@ def test_load_settings_rejects_invalid_gcs_cache_positive_int() -> None:
             {
                 "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost",
                 "COST_INSIGHT_GCS_CACHE_AC_REFERENCE_MAX_INDEX_STALENESS_HOURS": "0",
-            }
-        )
-
-
-def test_load_settings_rejects_invalid_int() -> None:
-    with pytest.raises(ValueError, match="COST_INSIGHT_SYNC_OVERLAP_DAYS must be an integer"):
-        load_settings(
-            {
-                "COST_INSIGHT_DB_URL": "mysql+pymysql://user:pass@127.0.0.1:4000/cost",
-                "COST_INSIGHT_SYNC_OVERLAP_DAYS": "abc",
             }
         )
 

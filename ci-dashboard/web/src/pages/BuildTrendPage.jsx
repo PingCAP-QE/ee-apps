@@ -63,8 +63,8 @@ export default function BuildTrendPage({ filters }) {
   const gcpRepoShare = limitRepoShareItems(
     cloudRepoShare.find((cloud) => cloud.cloud_phase === "GCP"),
   );
-  const idcRepoShare = limitRepoShareItems(
-    cloudRepoShare.find((cloud) => cloud.cloud_phase === "IDC"),
+  const tencentRepoShare = limitRepoShareItems(
+    cloudRepoShare.find((cloud) => cloud.cloud_phase === "TENCENT"),
   );
   const errorCatalogShare = page.data?.error_catalog_share || {};
   const errorCatalogItems = errorCatalogShare.items || [];
@@ -319,7 +319,7 @@ export default function BuildTrendPage({ filters }) {
 
       <Panel
         title="Build Count Rate grouped by Repo"
-        subtitle="Compare repo build-count share on GCP and IDC. Each chart merges repos below 1% into Others, then keeps the top 10 slices, ignores repo and cloud filters, and lets you drill into repo branch mix."
+        subtitle="Compare repo build-count share on GCP and Tencent. Each chart merges repos below 1% into Others, then keeps the top 10 slices, ignores repo and cloud filters, and lets you drill into repo branch mix."
         loading={page.loading}
         error={page.error}
       >
@@ -338,17 +338,17 @@ export default function BuildTrendPage({ filters }) {
             emptyMessage="No GCP repo-share data for the current filters."
           />
           <DonutShareChart
-            title="IDC repo share"
-            subtitle="Build count split by repo on IDC."
-            items={idcRepoShare?.items}
+            title="Tencent repo share"
+            subtitle="Build count split by repo on Tencent."
+            items={tencentRepoShare?.items}
             onItemSelect={(item) =>
               setSelectedRepoSlice({
-                cloudPhase: "IDC",
-                totalBuilds: idcRepoShare?.total_builds || 0,
+                cloudPhase: "TENCENT",
+                totalBuilds: tencentRepoShare?.total_builds || 0,
                 ...item,
               })
             }
-            emptyMessage="No IDC repo-share data for the current filters."
+            emptyMessage="No Tencent repo-share data for the current filters."
           />
         </div>
       </Panel>

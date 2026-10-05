@@ -40,7 +40,7 @@ import (
 
 const (
 	// MacBuild identifiers referenced by the CustomRun customRef.
-	macBuildAPIVersion = "build.tibuild.pingcap.net/v1alpha1"
+	macBuildAPIVersion = "tibuild.pingcap.net/v1alpha1"
 	macBuildKind       = "MacBuild"
 
 	// Labels linking a MacBuild back to its CustomRun.
@@ -67,8 +67,8 @@ type MacBuildCustomRunReconciler struct {
 
 // +kubebuilder:rbac:groups=tekton.dev,resources=customruns,verbs=get;list;watch
 // +kubebuilder:rbac:groups=tekton.dev,resources=customruns/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=build.tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=build.tibuild.pingcap.net,resources=macbuilds/status,verbs=get;list;watch
+// +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds/status,verbs=get;list;watch
 
 // Reconcile implements the MacBuild-backed CustomRun contract.
 func (r *MacBuildCustomRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

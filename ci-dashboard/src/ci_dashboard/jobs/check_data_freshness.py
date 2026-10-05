@@ -1,8 +1,8 @@
-"""Daily data freshness check for ci-dashboard and cost-insight core tables.
+"""Daily data freshness check for ci-dashboard and Cost Insight core tables.
 
-Runs a battery of SQL queries against the ci-dashboard and cost-insight
-databases, compares each table's latest timestamp against a configured
-lag threshold, and sends a Lark incoming-webhook alert for any violations.
+Runs a battery of SQL queries against their shared TiDB database, compares each
+table's latest timestamp against a configured lag threshold, and sends a Lark
+alert for any violations.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from ci_dashboard.common.config import Settings
-from ci_dashboard.common.db import build_engine, install_sqlite_functions
+from ci_dashboard.common.db import build_engine
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class Check:
     threshold_description: str  # e.g. "4 hours"
     # SQL that returns ONE ROW with a single column: the latest timestamp (or count).
     sql: str
-    # Which DB engine to use: "ci" | "cost"
+    # Owning domain: "ci" | "cost". Both use the shared TiDB database.
     db: str = "ci"
     # If True, the SQL returns a COUNT rather than a timestamp — check value > 0 → fail.
     is_count_check: bool = False
@@ -254,7 +254,6 @@ class CheckResult:
     value: Any  # raw DB result
     lag_description: str  # human-readable lag, e.g. "6h 30m" or "—"
     error: str | None = None
-    skipped: bool = False  # True when the check was not executed (e.g. no DB)
 
 
 @dataclass
@@ -264,55 +263,11 @@ class Report:
 
     @property
     def failed(self) -> list[CheckResult]:
-        return [r for r in self.results if not r.passed and not r.skipped]
+        return [r for r in self.results if not r.passed]
 
     @property
     def passed_all(self) -> bool:
         return not self.failed
-
-
-# ---------------------------------------------------------------------------
-# Engine helpers
-# ---------------------------------------------------------------------------
-
-
-def _build_engine_for_db(db: str, settings: Settings) -> Engine | None:
-    """Build a SQLAlchemy engine for the named database ('ci' or 'cost').
-
-    Returns None when *db=='cost'* and no cost-specific connection is
-    configured, so callers can skip cost checks gracefully instead of
-    accidentally querying the CI database.
-    """
-    if db == "cost":
-        url = os.getenv("COST_INSIGHT_DB_URL")
-        if url:
-            from sqlalchemy import create_engine as _ce
-
-            engine = _ce(url, pool_pre_ping=True, future=True)
-            install_sqlite_functions(engine)
-            return engine
-
-        # Require explicit cost-insight env vars; do NOT fall back to CI DB.
-        cost_user = os.getenv("COST_INSIGHT_TIDB_USER")
-        if not cost_user:
-            return None
-
-        from sqlalchemy.engine import URL as _URL
-        from sqlalchemy import create_engine as _ce
-
-        url_obj = _URL.create(
-            drivername="mysql+pymysql",
-            username=cost_user,
-            password=os.environ["COST_INSIGHT_TIDB_PASSWORD"],
-            host=os.environ.get("COST_INSIGHT_TIDB_HOST", os.environ.get("TIDB_HOST", "")),
-            port=int(os.environ.get("COST_INSIGHT_TIDB_PORT", os.environ.get("TIDB_PORT", "4000"))),
-            database=os.environ.get("COST_INSIGHT_TIDB_DB", os.environ.get("TIDB_DB", "")),
-            query={"charset": "utf8mb4"},
-        )
-        engine = _ce(url_obj, pool_pre_ping=True, pool_size=5, max_overflow=5, pool_timeout=30, future=True)
-        install_sqlite_functions(engine)
-        return engine
-    return build_engine(settings)
 
 
 # ---------------------------------------------------------------------------
@@ -403,37 +358,12 @@ def run_check(connection: Connection, check: Check) -> CheckResult:
     )
 
 
-def run_all_checks(ci_engine: Engine, cost_engine: Engine | None) -> Report:
-    """Run all freshness checks and return a Report."""
-    results: list[CheckResult] = []
+def run_all_checks(engine: Engine) -> Report:
+    """Run all freshness checks against the shared CI and Cost Insight database."""
+    with engine.begin() as connection:
+        results = [run_check(connection, check) for check in CHECKS]
 
-    with ci_engine.begin() as ci_conn:
-        if cost_engine:
-            with cost_engine.begin() as cost_conn:
-                for check in CHECKS:
-                    conn = cost_conn if check.db == "cost" else ci_conn
-                    result = run_check(conn, check)
-                    results.append(result)
-        else:
-            for check in CHECKS:
-                if check.db == "cost":
-                    results.append(
-                        CheckResult(
-                            check=check,
-                            passed=True,
-                            value=None,
-                            lag_description="skipped — no cost db configured",
-                            skipped=True,
-                        )
-                    )
-                    continue
-                result = run_check(ci_conn, check)
-                results.append(result)
-
-    return Report(
-        timestamp=datetime.now(timezone.utc),
-        results=results,
-    )
+    return Report(timestamp=datetime.now(timezone.utc), results=results)
 
 
 # ---------------------------------------------------------------------------
@@ -449,8 +379,7 @@ def _format_lark_message(report: Report) -> str:
     # report.timestamp is UTC; convert to CST for display.
     cst = report.timestamp + timedelta(hours=8)
     date_str = cst.strftime("%Y-%m-%d %H:%M CST")
-    passed = [r for r in report.results if r.passed and not r.skipped]
-    skipped = [r for r in report.results if r.skipped]
+    passed = [r for r in report.results if r.passed]
     failed = report.failed
 
     failed_by_level: dict[str, list[CheckResult]] = {}
@@ -462,8 +391,6 @@ def _format_lark_message(report: Report) -> str:
     # Summary line (always first).
     parts = [f"📊 Daily Freshness — {date_str}"]
     parts.append(f"{len(failed)} failed, {len(passed)} passed")
-    if skipped:
-        parts.append(f"{len(skipped)} skipped")
     lines.append(" | ".join(parts))
 
     if not failed:
@@ -484,9 +411,6 @@ def _format_lark_message(report: Report) -> str:
                 f" (threshold: {r.check.threshold_description})"
             )
 
-    if skipped:
-        skipped_names = [r.check.name for r in skipped]
-        lines.append(f"\n⏭️ Skipped: {', '.join(skipped_names)}")
 
     return "\n".join(lines)
 
@@ -584,19 +508,11 @@ def run_check_data_freshness(settings: Settings) -> Report:
 
     Builds engines, runs all checks, and sends a Lark alert if configured.
     """
-    ci_engine = build_engine(settings)
-    cost_engine = _build_engine_for_db("cost", settings)
-    if cost_engine is None:
-        logger.warning(
-            "Cost-Insight database not configured — cost checks will be skipped."
-        )
-
+    engine = build_engine(settings)
     try:
-        report = run_all_checks(ci_engine, cost_engine)
+        report = run_all_checks(engine)
     finally:
-        ci_engine.dispose()
-        if cost_engine:
-            cost_engine.dispose()
+        engine.dispose()
 
     dry_run = os.getenv("FRESHNESS_DRY_RUN", "false").lower() == "true"
 

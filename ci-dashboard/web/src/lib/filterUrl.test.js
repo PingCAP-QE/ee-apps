@@ -7,6 +7,8 @@ import {
   buildNavSearchByPath,
   readFiltersFromSearch,
   sameFilters,
+  MIGRATE_STATUS_PATH,
+  WEEKLY_COST_PATH,
 } from "./filterUrl.js";
 
 const defaultRange = {
@@ -28,7 +30,26 @@ test("reads shareable filters from the current URL search", () => {
   assert.equal(filters.issue_status, "closed");
   assert.equal(filters.start_date, "2026-05-25");
   assert.equal(filters.end_date, "2026-06-01");
-  assert.equal(filters.granularity, "week");
+  assert.equal(filters.granularity, "month");
+});
+
+test("keeps the selected bucket on the CI Status page", () => {
+  assert.equal(
+    readFiltersFromSearch(defaultRange, "/ci-status", "?granularity=day").granularity,
+    "day",
+  );
+  assert.equal(
+    readFiltersFromSearch(defaultRange, "/ci-status", "?granularity=month").granularity,
+    "month",
+  );
+});
+
+test("allows day buckets on the Tencent Migration page", () => {
+  assert.equal(buildDefaultFilters(defaultRange, MIGRATE_STATUS_PATH).granularity, "day");
+  assert.equal(
+    readFiltersFromSearch(defaultRange, MIGRATE_STATUS_PATH, "?granularity=day").granularity,
+    "day",
+  );
 });
 
 test("serializes non-empty filters into request-compatible URL parameters", () => {
@@ -61,6 +82,51 @@ test("weekly summary never serializes filters into the root URL", () => {
   );
 
   assert.equal(search, "");
+});
+
+test("QA Cost Weekly never serializes filters into its fixed-report URL", () => {
+  assert.equal(WEEKLY_COST_PATH, "/qa-cost-weekly");
+
+  const search = buildFilterSearch(
+    {
+      ...buildDefaultFilters(defaultRange, WEEKLY_COST_PATH),
+      repo: "pingcap/tidb",
+      start_date: "2026-05-01",
+      end_date: "2026-06-01",
+    },
+    WEEKLY_COST_PATH,
+  );
+
+  assert.equal(search, "");
+});
+
+test("defaults the cost tab to data available four days ago", () => {
+  assert.deepEqual(buildDefaultFilters(defaultRange, "/cost"), {
+    repo: "",
+    branch: "",
+    job_name: "",
+    cloud_phase: "",
+    issue_status: "",
+    cost_source: "gcp:pingcap-testing-account",
+    owner_include: "",
+    owner_exclude: "",
+    team_include: "",
+    team_exclude: "",
+    project_include: "",
+    project_exclude: "",
+    granularity: "week",
+    start_date: "2026-05-01",
+    end_date: "2026-05-28",
+  });
+
+  const navSearchByPath = buildNavSearchByPath(
+    {},
+    defaultRange,
+    buildDefaultFilters(defaultRange, "/ci-status"),
+  );
+  const costParams = new URLSearchParams(navSearchByPath["/cost"]);
+  assert.equal(costParams.get("start_date"), "2026-05-01");
+  assert.equal(costParams.get("end_date"), "2026-05-28");
 });
 
 test("keeps cost dashboard month buckets but normalizes invalid values", () => {
@@ -115,6 +181,23 @@ test("serializes cost source for cost links", () => {
   assert.equal(params.get("granularity"), "month");
 });
 
+test("keeps shareable cost dimension include and exclude filters", () => {
+  const filters = readFiltersFromSearch(
+    defaultRange,
+    "/cost",
+    "?cost_source=aws%3Aqa%2Cgcp%3Aci&owner_include=alice%2Cbob&team_exclude=TiKV&project_include=alpha",
+  );
+
+  assert.equal(filters.cost_source, "aws:qa,gcp:ci");
+  assert.equal(filters.owner_include, "alice,bob");
+  assert.equal(filters.team_exclude, "TiKV");
+  assert.equal(filters.project_include, "alpha");
+  const params = new URLSearchParams(buildFilterSearch(filters, "/cost"));
+  assert.equal(params.get("owner_include"), "alice,bob");
+  assert.equal(params.get("team_exclude"), "TiKV");
+  assert.equal(params.get("project_include"), "alpha");
+});
+
 test("compares filter values without being sensitive to object identity", () => {
   assert.equal(
     sameFilters(
@@ -159,5 +242,5 @@ test("keeps the active date range when building links to other tabs", () => {
   assert.equal(flakyParams.get("issue_status"), "closed");
   assert.equal(migrateParams.get("start_date"), "2026-05-25");
   assert.equal(migrateParams.get("end_date"), "2026-06-01");
-  assert.equal(migrateParams.get("granularity"), "week");
+  assert.equal(migrateParams.get("granularity"), "day");
 });

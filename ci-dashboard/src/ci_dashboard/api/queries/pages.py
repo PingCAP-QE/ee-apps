@@ -26,20 +26,21 @@ from ci_dashboard.api.queries.cost import (
     _cost_filters as _normalize_cost_filters,
 )
 from ci_dashboard.api.queries.cost import (
-    get_cost_allocation_overview,
+    get_budget_pace,
     get_cost_page,
     get_cost_share,
     get_cost_trend,
     get_engineering_group_share,
-    get_kubernetes_unallocated_costs,
-    get_kubernetes_unallocated_records,
+    get_cost_filter_values,
     get_repo_group_cost_stack,
     get_unmatched_resources,
     get_weekly_account_summaries,
-    get_weekly_overview,
+    get_ci_weekly_cost_report,
+    get_weekly_cost_allocation,
+    get_weekly_cost_report,
+    get_weekly_cost_trend,
     list_cost_sources,
 )
-from ci_dashboard.api.queries.ebs import get_unattached_block_volumes
 from ci_dashboard.api.queries.failures import (
     get_failure_category_share,
     get_failure_category_trend,
@@ -245,6 +246,10 @@ def get_cost_sources_page(engine: Engine) -> dict[str, Any]:
     return list_cost_sources(engine)
 
 
+def get_cost_filter_values_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    return get_cost_filter_values(engine, _normalize_cost_filters(filters))
+
+
 def get_cost_unmatched_resources_page(
     engine: Engine,
     filters: CommonFilters,
@@ -252,7 +257,10 @@ def get_cost_unmatched_resources_page(
     owner: str | None = None,
     service_name: str | None = None,
     sort_by: str = "list_cost",
-    allocation_basis: str = "current_attribution",
+    page_size: int = 50,
+    cursor: str | None = None,
+    scope_dimension: str | None = None,
+    scope_value: str | None = None,
 ) -> dict[str, Any]:
     return get_unmatched_resources(
         engine,
@@ -260,44 +268,11 @@ def get_cost_unmatched_resources_page(
         owner=owner,
         service_name=service_name,
         sort_by=sort_by,
-        allocation_basis=allocation_basis,
+        page_size=page_size,
+        cursor=cursor,
+        scope_dimension=scope_dimension,
+        scope_value=scope_value,
     )
-
-
-def get_cost_kubernetes_unallocated_page(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any]:
-    return get_kubernetes_unallocated_costs(engine, _normalize_cost_filters(filters))
-
-
-def get_cost_kubernetes_unallocated_records_page(
-    engine: Engine,
-    filters: CommonFilters,
-    *,
-    service_name: str,
-    region: str,
-) -> dict[str, Any]:
-    return get_kubernetes_unallocated_records(
-        engine,
-        _normalize_cost_filters(filters),
-        service_name=service_name,
-        region=region,
-    )
-
-
-def get_cost_unattached_block_volumes_page(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any]:
-    return get_unattached_block_volumes(engine, _normalize_cost_filters(filters))
-
-
-def get_cost_unattached_ebs_volumes_page(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any]:
-    return get_cost_unattached_block_volumes_page(engine, filters)
 
 
 def get_cost_trend_page(
@@ -306,14 +281,12 @@ def get_cost_trend_page(
     *,
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
-    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
     return get_cost_trend(
         engine,
         _normalize_cost_filters(filters),
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
-        allocation_basis=allocation_basis,
     )
 
 
@@ -324,7 +297,6 @@ def get_cost_share_page(
     dimension: str = "owner",
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
-    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
     return get_cost_share(
         engine,
@@ -332,22 +304,14 @@ def get_cost_share_page(
         dimension=dimension,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
-        allocation_basis=allocation_basis,
     )
 
 
-def get_cost_weekly_overview_page(
+def get_cost_budget_pace_page(
     engine: Engine,
     filters: CommonFilters,
 ) -> dict[str, Any]:
-    return get_weekly_overview(engine, _normalize_cost_filters(filters))
-
-
-def get_cost_allocation_overview_page(
-    engine: Engine,
-    filters: CommonFilters,
-) -> dict[str, Any]:
-    return get_cost_allocation_overview(engine, _normalize_cost_filters(filters))
+    return get_budget_pace(engine, _normalize_cost_filters(filters))
 
 
 def get_cost_weekly_account_summaries_page(
@@ -357,6 +321,22 @@ def get_cost_weekly_account_summaries_page(
     return get_weekly_account_summaries(engine, _normalize_cost_filters(filters))
 
 
+def get_weekly_cost_report_page(engine: Engine, *, include_trend: bool = True) -> dict[str, Any]:
+    return get_weekly_cost_report(engine, include_trend=include_trend)
+
+
+def get_ci_weekly_cost_report_page(engine: Engine) -> dict[str, Any]:
+    return get_ci_weekly_cost_report(engine)
+
+
+def get_weekly_cost_trend_page(engine: Engine) -> dict[str, Any]:
+    return get_weekly_cost_trend(engine)
+
+
+def get_weekly_cost_allocation_page(engine: Engine, period: str) -> dict[str, Any]:
+    return get_weekly_cost_allocation(engine, period)
+
+
 def get_cost_repo_group_stack_page(
     engine: Engine,
     filters: CommonFilters,
@@ -364,7 +344,6 @@ def get_cost_repo_group_stack_page(
     group_by: str = "repo",
     drilldown_group: str | None = None,
     drilldown_value: str | None = None,
-    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
     return get_repo_group_cost_stack(
         engine,
@@ -372,20 +351,16 @@ def get_cost_repo_group_stack_page(
         group_by=group_by,
         drilldown_group=drilldown_group,
         drilldown_value=drilldown_value,
-        allocation_basis=allocation_basis,
     )
 
 
 def get_cost_engineering_group_share_page(
     engine: Engine,
     filters: CommonFilters,
-    *,
-    allocation_basis: str = "current_attribution",
 ) -> dict[str, Any]:
     return get_engineering_group_share(
         engine,
         _normalize_cost_filters(filters),
-        allocation_basis=allocation_basis,
     )
 
 

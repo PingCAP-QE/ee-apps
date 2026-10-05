@@ -658,8 +658,14 @@ def _refresh_problem_case_run_derived_columns(
                   AND (
                     normalized_build_key IS NULL
                     OR normalized_build_key = ''
-                    OR cloud_phase IS NULL
-                    OR cloud_phase = ''
+                    OR (
+                      COALESCE(build_url, '') LIKE 'https://prow.tidb.net/%'
+                      AND UPPER(COALESCE(cloud_phase, '')) <> 'GCP'
+                    )
+                    OR (
+                      COALESCE(build_url, '') NOT LIKE 'https://prow.tidb.net/%'
+                      AND UPPER(COALESCE(cloud_phase, '')) <> 'TENCENT'
+                    )
                   )
                 ORDER BY id
                 LIMIT :batch_size

@@ -62,9 +62,16 @@ def test_build_aws_billing_summary_query_contains_expected_filters() -> None:
     assert "NULLIF(tag_cluster, '') AS `cluster`" in query
     assert "NULLIF(line_item_usage_type, '') AS usage_type" in query
     assert "MIN(usage_type) AS usage_type" in query
-    assert "TO_JSON_STRING(STRUCT(`cluster` AS cluster, shared_pool AS shared_pool))" in query
+    assert "r'^([a-z]{2}(?:-gov)?-[a-z]+-[0-9]+)'" in query
+    assert "TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(" in query
+    assert "'usedby', author" in query
+    assert "'shared_pool', shared_pool" in query
     assert "END AS vendor_tags_json" in query
     assert "ROUND(SUM(net_cost - effective_cost), 2) AS credit_amount" in query
+    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
+    assert "SavingsPlanNegation" not in query
+    assert "SUM(list_cost) AS list_cost" in query
+    assert "ROUND(SUM(list_cost), 2) AS list_cost" not in query
     assert "LIMIT 20" in query
 
 
@@ -75,13 +82,23 @@ def test_build_aws_unmatched_resource_query_contains_usage_seconds_logic() -> No
     )
 
     assert "WHEN COUNTIF(pricing_unit = 'hour') = COUNT(*)" in query
-    assert "resource_name IS NOT NULL" in query
+    assert "COALESCE(resource_id, resource_tag_name, billing_description) IS NOT NULL" in query
+    assert "AS resource_id" in query
+    assert "summary_vendor_tags_json" in query
+    assert "WHERE LOWER(kv.key) = 'name'" in query
     assert "NULLIF(tag_project, '') AS repo" in query
+    assert "r'^([a-z]{2}(?:-gov)?-[a-z]+-[0-9]+)'" in query
     assert "tag_icost_project" not in query
     assert "WHERE kv.key = 'user_shared_pool'" in query
     assert "NULLIF(tag_cluster, '') AS `cluster`" in query
-    assert "END AS vendor_tags_json" in query
-    assert "ROUND(SUM(net_cost), 2) AS net_cost" in query
+    assert "'usedby', author" in query
+    assert "END AS summary_vendor_tags_json" in query
+    assert "TO_JSON_STRING(\n      JSON_OBJECT(" in query
+    assert "ROUND(SUM(net_cost), 9) AS net_cost" in query
+    assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in query
+    assert "SavingsPlanNegation" not in query
+    assert "ROUND(SUM(list_cost), 9) AS list_cost" in query
+    assert "ROUND(SUM(list_cost), 2) AS list_cost" not in query
     assert "LIMIT 10" in query
 
 
@@ -107,7 +124,8 @@ def test_fetch_aws_billing_rows_use_bigquery_client(monkeypatch) -> None:
             account_id="946646677266",
             export_partition_start=date(2026, 5, 1),
             export_partition_end=date(2026, 5, 1),
-            earliest_usage_date=date(2026, 1, 1),
+            earliest_usage_date=date(2026, 5, 1),
+            usage_end_date=date(2026, 5, 5),
             page_size=50,
         )
     )
@@ -126,12 +144,14 @@ def test_fetch_aws_billing_rows_use_bigquery_client(monkeypatch) -> None:
     assert summary_rows == [{"account_id": "946646677266", "usage_date": "2026-05-01"}]
     assert unmatched_rows == [{"account_id": "946646677266", "resource_name": "i-123"}]
     assert "line_item_usage_account_id = @account_id" in summary_client.query_text
+    assert "DATE(line_item_usage_start_date) <= @usage_end_date" in summary_client.query_text
     assert summary_client.page_size == 50
     assert [param.name for param in summary_client.job_config.query_parameters] == [
         "account_id",
         "export_partition_start",
         "export_partition_end",
         "earliest_usage_date",
+        "usage_end_date",
     ]
     assert "DATE(line_item_usage_start_date) BETWEEN @usage_start_date AND @usage_end_date" in unmatched_client.query_text
     assert unmatched_client.page_size == 25

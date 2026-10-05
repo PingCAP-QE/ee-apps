@@ -26,6 +26,13 @@ class CommonFilters:
     granularity: str = "day"
     cost_vendor: str | None = None
     cost_account_id: str | None = None
+    cost_sources: tuple[tuple[str, str], ...] = ()
+    owner_include: tuple[str, ...] = ()
+    owner_exclude: tuple[str, ...] = ()
+    team_include: tuple[str, ...] = ()
+    team_exclude: tuple[str, ...] = ()
+    project_include: tuple[str, ...] = ()
+    project_exclude: tuple[str, ...] = ()
 
     def meta(self) -> dict[str, Any]:
         return {
@@ -40,12 +47,21 @@ class CommonFilters:
             "granularity": self.granularity,
             "cost_vendor": self.cost_vendor,
             "cost_account_id": self.cost_account_id,
-            "cost_source": (
-                f"{self.cost_vendor}:{self.cost_account_id}"
-                if self.cost_vendor and self.cost_account_id
-                else None
-            ),
+            "cost_source": self.cost_source,
         }
+
+    @property
+    def cost_source_pairs(self) -> tuple[tuple[str, str], ...]:
+        if self.cost_sources:
+            return self.cost_sources
+        if self.cost_vendor and self.cost_account_id:
+            return ((self.cost_vendor, self.cost_account_id),)
+        return ()
+
+    @property
+    def cost_source(self) -> str | None:
+        pairs = self.cost_source_pairs
+        return ",".join(f"{vendor}:{account_id}" for vendor, account_id in pairs) or None
 
     @property
     def job_names(self) -> tuple[str, ...]:

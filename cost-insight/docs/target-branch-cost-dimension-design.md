@@ -1,5 +1,9 @@
 # Target Branch Cost Dimension Design
 
+> Historical migration design. References to `cost_raw_details` and its
+> collector describe the pre-retirement pipeline; current ingestion and
+> attribution use `cost_bq_export_summary_daily`.
+
 ## Context
 
 Cost Insight currently attributes CI cost by source account, service, SKU,

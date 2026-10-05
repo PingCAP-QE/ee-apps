@@ -17,7 +17,7 @@ The system consists of two main components:
    - Responsibilities: Monitors completed tasks (Succeeded or Failed) and automatically deletes the CRD resources based on a TTL strategy to free up Etcd storage.
 
 ## 3. API Definition (CRD)
-- Group: build.tibuild.pingcap.net
+- Group: tibuild.pingcap.net
 - Version: v1alpha1
 - Kind: MacBuild
 

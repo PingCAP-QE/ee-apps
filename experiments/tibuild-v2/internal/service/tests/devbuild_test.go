@@ -89,10 +89,11 @@ func TestDevBuildCRUD(t *testing.T) {
 	t.Run("Create", func(t *testing.T) {
 		// Test create with dry run
 		createPayload := &devbuild.CreatePayload{
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product: "pd",
 				Edition: "community",
-				Version: "v6.1.0",
+				Version: stringPtr("v6.1.0"),
 				GitRef:  "branch/master",
 			},
 			Dryrun: true,
@@ -103,15 +104,17 @@ func TestDevBuildCRUD(t *testing.T) {
 		assert.NotNil(t, build)
 		assert.Equal(t, "pd", build.Spec.Product)
 		assert.Equal(t, "community", build.Spec.Edition)
-		assert.Equal(t, "v6.1.0", build.Spec.Version)
+		require.NotNil(t, build.Spec.Version)
+		assert.Equal(t, "v6.1.0", *build.Spec.Version)
 	})
 
 	t.Run("Create normalizes legacy next-gen edition", func(t *testing.T) {
 		createPayload := &devbuild.CreatePayload{
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product: "pd",
 				Edition: "next-gen",
-				Version: "v26.3.1",
+				Version: stringPtr("v26.3.1"),
 				GitRef:  "branch/master",
 			},
 			Dryrun: true,
@@ -139,11 +142,12 @@ func TestDevBuildCRUD(t *testing.T) {
 	t.Run("Get", func(t *testing.T) {
 		// First create a build
 		createPayload := &devbuild.CreatePayload{
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product: "pd",
 				Edition: "community",
-				Version: "v6.1.0",
-				GitRef:  "master",
+				Version: stringPtr("v6.1.0"),
+				GitRef:  "branch/master",
 			},
 			Dryrun: true,
 		}
@@ -164,11 +168,12 @@ func TestDevBuildCRUD(t *testing.T) {
 	t.Run("Update", func(t *testing.T) {
 		// First create a build
 		createPayload := &devbuild.CreatePayload{
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product: "pd",
 				Edition: "community",
-				Version: "v6.1.0",
-				GitRef:  "master",
+				Version: stringPtr("v6.1.0"),
+				GitRef:  "branch/master",
 			},
 			Dryrun: true,
 		}
@@ -208,11 +213,11 @@ func TestTriggerBuild(t *testing.T) {
 		ctx := context.Background()
 		engine := "tekton"
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product:        "pd",
 				Edition:        "community",
-				Version:        "v6.1.0",
+				Version:        stringPtr("v6.1.0"),
 				GitRef:         "branch/master",
 				PipelineEngine: &engine, // Explicitly use tekton engine
 			},
@@ -244,11 +249,11 @@ func TestTriggerBuild(t *testing.T) {
 		ctx := context.Background()
 		engine := "jenkins"
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product:        "pd",
 				Edition:        "community",
-				Version:        "v6.1.0",
+				Version:        stringPtr("v6.1.0"),
 				GitRef:         "branch/master",
 				PipelineEngine: &engine, // Explicitly use jenkins engine
 			},
@@ -284,11 +289,11 @@ func TestTriggerBuild(t *testing.T) {
 
 		ctx := context.Background()
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product: "pd",
 				Edition: "community",
-				Version: "v6.1.0",
+				Version: stringPtr("v6.1.0"),
 				GitRef:  "branch/master",
 				// No engine specified, should use default
 			},
@@ -328,11 +333,11 @@ func TestTriggerBuild(t *testing.T) {
 		ctx := context.Background()
 		engine := "unknown"
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product:        "pd",
 				Edition:        "community",
-				Version:        "v6.1.0",
+				Version:        stringPtr("v6.1.0"),
 				GitRef:         "branch/master",
 				PipelineEngine: &engine,
 			},
@@ -367,11 +372,11 @@ func TestDevBuildRerun(t *testing.T) {
 
 		// First create a build
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product:        "pd",
 				Edition:        "community",
-				Version:        "v6.1.0",
+				Version:        stringPtr("v6.1.0"),
 				GitRef:         "branch/master",
 				PipelineEngine: &engine,
 			},
@@ -379,6 +384,12 @@ func TestDevBuildRerun(t *testing.T) {
 		}
 
 		created, err := env.service.Create(ctx, createPayload)
+		require.NoError(t, err)
+		terminal := devbuild.BuildStatus("SUCCESS")
+		_, err = env.service.Update(ctx, &devbuild.UpdatePayload{
+			ID:     created.ID,
+			Status: &devbuild.DevBuildStatus{Status: terminal},
+		})
 		require.NoError(t, err)
 
 		// Then rerun it
@@ -409,11 +420,11 @@ func TestDevBuildRerun(t *testing.T) {
 
 		// First create a build
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
 				Product:        "pd",
 				Edition:        "community",
-				Version:        "v6.1.0",
+				Version:        stringPtr("v6.1.0"),
 				GitRef:         "branch/master",
 				PipelineEngine: &engine,
 			},
@@ -421,6 +432,12 @@ func TestDevBuildRerun(t *testing.T) {
 		}
 
 		created, err := env.service.Create(ctx, createPayload)
+		require.NoError(t, err)
+		terminal := devbuild.BuildStatus("SUCCESS")
+		_, err = env.service.Update(ctx, &devbuild.UpdatePayload{
+			ID:     created.ID,
+			Status: &devbuild.DevBuildStatus{Status: terminal},
+		})
 		require.NoError(t, err)
 
 		// Then rerun it

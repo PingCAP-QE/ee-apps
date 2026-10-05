@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import packageInfo from "../../package.json";
 
-import { COST_PATH } from "../lib/filterUrl";
+import CostFilterControls from "./CostFilterControls";
+import { CI_WEEKLY_COST_PATH, COST_PATH, WEEKLY_COST_PATH } from "../lib/filterUrl";
 
 export function DashboardLayout({
   filters,
@@ -10,9 +10,11 @@ export function DashboardLayout({
   filterOptions,
   navSearchByPath = {},
   showFilters = true,
+  costBreakdownGroupBy = "owner",
+  onCostBreakdownGroupByChange,
   children,
 }) {
-  const currentVersion = packageInfo.version;
+  const currentVersion = getDashboardVersion();
 
   return (
     <div className="app-shell">
@@ -44,8 +46,20 @@ export function DashboardLayout({
           <NavItem
             to="/migrate-status"
             search={navSearchByPath["/migrate-status"]}
-            label="GCP Migration"
-            caption="GCP rollout and runtime drift"
+            label="Tencent Migration"
+            caption="Tencent rollout and runtime drift"
+          />
+          <NavItem
+            to={WEEKLY_COST_PATH}
+            search={navSearchByPath[WEEKLY_COST_PATH]}
+            label="QA Cost Weekly"
+            caption="QA accounts, complete calendar periods"
+          />
+          <NavItem
+            to={CI_WEEKLY_COST_PATH}
+            search={navSearchByPath[CI_WEEKLY_COST_PATH]}
+            label="CI Cost Weekly"
+            caption="GCP and Tencent CI budget pace"
           />
           <NavItem
             to="/cost"
@@ -76,12 +90,22 @@ export function DashboardLayout({
             filters={filters}
             onFilterChange={onFilterChange}
             filterOptions={filterOptions}
+            costBreakdownGroupBy={costBreakdownGroupBy}
+            onCostBreakdownGroupByChange={onCostBreakdownGroupByChange}
           />
         ) : null}
         <main className="page-content">{children}</main>
       </div>
     </div>
   );
+}
+
+export function getDashboardVersion() {
+  const value = globalThis.document
+    ?.querySelector('meta[name="ci-dashboard-version"]')
+    ?.getAttribute("content")
+    ?.trim();
+  return value && value !== "__CI_DASHBOARD_VERSION__" ? value : "local";
 }
 
 function NavItem({ to, search = "", label, caption }) {
@@ -99,7 +123,13 @@ function NavItem({ to, search = "", label, caption }) {
   );
 }
 
-function FilterBar({ filters, onFilterChange, filterOptions }) {
+function FilterBar({
+  filters,
+  onFilterChange,
+  filterOptions,
+  costBreakdownGroupBy,
+  onCostBreakdownGroupByChange,
+}) {
   const [isCompact, setIsCompact] = useState(false);
   const location = useLocation();
   const isCostPage = location.pathname === COST_PATH;
@@ -144,6 +174,19 @@ function FilterBar({ filters, onFilterChange, filterOptions }) {
       window.removeEventListener("scroll", handleScroll);
     };
   }, []);
+
+  if (isCostPage) {
+    return (
+      <CostFilterControls
+        filters={filters}
+        onFilterChange={onFilterChange}
+        costSources={filterOptions.costSources}
+        filterValues={filterOptions.costFilterValues}
+        costBreakdownGroupBy={costBreakdownGroupBy}
+        onCostBreakdownGroupByChange={onCostBreakdownGroupByChange}
+      />
+    );
+  }
 
   return (
     <section className={isCompact ? "filter-bar filter-bar--compact" : "filter-bar"}>

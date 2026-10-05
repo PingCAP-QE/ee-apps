@@ -1,5 +1,9 @@
 # BigQuery Cost Optimization Design
 
+> Historical migration design. The raw compatibility pipeline described here
+> was retired by [Cost Schema Retirement Design](cost-schema-retirement-design.md).
+> Current operations use the billing summary pipeline documented in the README.
+
 ## Context
 
 The first Cost Insight collector imports GCP billing details from:

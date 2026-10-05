@@ -10,10 +10,12 @@ DEFAULT_GCP_BILLING_TABLE = (
     "gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6"
 )
 DEFAULT_GCP_ACCOUNT_ID = "pingcap-testing-account"
-DEFAULT_GCP_GKE_USAGE_TABLE = (
-    "pingcap-testing-account.pingcap_ee_data.gke_cluster_resource_usage"
-)
 DEFAULT_AWS_BILLING_TABLE = "gcp-digital-bi.stg_cloud_billing.stg_aws_billing"
+DEFAULT_AZURE_BILLING_TABLE = "gcp-digital-bi.azure_billing.azure_billing_cost_*"
+DEFAULT_ALIBABA_BILLING_TABLE = "gcp-digital-bi.alibaba_cloud.daily_en_*"
+DEFAULT_ALIBABA_ACCOUNT_ID = "5028760335873601"
+DEFAULT_TENCENT_ACCOUNT_ID = "100050658403"
+TENCENT_CI_SOURCE = ("tencent", DEFAULT_TENCENT_ACCOUNT_ID)
 DEFAULT_EARLIEST_USAGE_DATE = date(2026, 1, 1)
 DEFAULT_GCS_CACHE_BUCKET = "pingcap-ci-bazel-remote-cache-us-central1"
 DEFAULT_GCS_CACHE_DATASET = "ci_bazel_cache_logs"
@@ -45,10 +47,8 @@ class DatabaseSettings:
 @dataclass(frozen=True)
 class GcpBillingSettings:
     billing_table: str = DEFAULT_GCP_BILLING_TABLE
-    gke_usage_table: str = DEFAULT_GCP_GKE_USAGE_TABLE
     account_id: str = DEFAULT_GCP_ACCOUNT_ID
     earliest_usage_date: date = DEFAULT_EARLIEST_USAGE_DATE
-    sync_overlap_days: int = 3
     sync_lag_days: int = 5
     export_overlap_days: int = 0
     sync_initial_lookback_days: int | None = None
@@ -65,6 +65,46 @@ class AwsBillingSettings:
     sync_initial_lookback_months: int | None = 2
     page_size: int = 5000
 
+
+@dataclass(frozen=True)
+class AzureBillingSettings:
+    billing_table: str = DEFAULT_AZURE_BILLING_TABLE
+    earliest_usage_date: date = DEFAULT_EARLIEST_USAGE_DATE
+    sync_lag_days: int = 5
+    export_overlap_days: int = 0
+    sync_initial_lookback_days: int | None = None
+    page_size: int = 5000
+
+
+@dataclass(frozen=True)
+class AlibabaBillingSettings:
+    billing_table: str = DEFAULT_ALIBABA_BILLING_TABLE
+    account_id: str = DEFAULT_ALIBABA_ACCOUNT_ID
+    earliest_usage_date: date = DEFAULT_EARLIEST_USAGE_DATE
+    sync_lag_days: int = 5
+    export_overlap_days: int = 0
+    sync_initial_lookback_days: int | None = None
+    page_size: int = 5000
+
+
+@dataclass(frozen=True)
+class TencentBillingSettings:
+    account_id: str = DEFAULT_TENCENT_ACCOUNT_ID
+    earliest_bill_day: date | None = None
+    import_lag_days: int = 3
+    verify_lag_days: int = 5
+    page_size: int = 100
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.page_size <= 100:
+            raise ValueError(
+                f"COST_INSIGHT_TENCENT_PAGE_SIZE must be between 1 and 100, got {self.page_size!r}"
+            )
+        if self.verify_lag_days < self.import_lag_days:
+            raise ValueError(
+                "COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS must be greater than or equal to "
+                "COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS"
+            )
 
 @dataclass(frozen=True)
 class GcsCacheSettings:
@@ -119,6 +159,9 @@ class Settings:
     database: DatabaseSettings
     gcp_billing: GcpBillingSettings = GcpBillingSettings()
     aws_billing: AwsBillingSettings = AwsBillingSettings()
+    azure_billing: AzureBillingSettings = AzureBillingSettings()
+    alibaba_billing: AlibabaBillingSettings = AlibabaBillingSettings()
+    tencent_billing: TencentBillingSettings = TencentBillingSettings()
     gcs_cache: GcsCacheSettings = GcsCacheSettings()
     tcms_allocation: TcmsAllocationSettings = TcmsAllocationSettings()
     log_level: str = "INFO"
@@ -140,12 +183,6 @@ def load_settings(
                 "COST_INSIGHT_GCP_BILLING_TABLE",
                 "COST_GCP_BILLING_TABLE",
             ),
-            gke_usage_table=_read_any(
-                env,
-                DEFAULT_GCP_GKE_USAGE_TABLE,
-                "COST_INSIGHT_GCP_GKE_USAGE_TABLE",
-                "COST_GCP_GKE_USAGE_TABLE",
-            ),
             account_id=_read_any(
                 env,
                 DEFAULT_GCP_ACCOUNT_ID,
@@ -156,11 +193,6 @@ def load_settings(
                 env,
                 ("COST_INSIGHT_EARLIEST_USAGE_DATE", "COST_EARLIEST_USAGE_DATE"),
                 DEFAULT_EARLIEST_USAGE_DATE,
-            ),
-            sync_overlap_days=_read_int_any(
-                env,
-                ("COST_INSIGHT_SYNC_OVERLAP_DAYS", "COST_SYNC_OVERLAP_DAYS"),
-                3,
             ),
             sync_lag_days=_read_int_any(
                 env,
@@ -229,6 +261,114 @@ def load_settings(
                 env,
                 ("COST_INSIGHT_AWS_SYNC_PAGE_SIZE", "COST_AWS_SYNC_PAGE_SIZE"),
                 5000,
+            ),
+        ),
+        azure_billing=AzureBillingSettings(
+            billing_table=_read_any(
+                env,
+                DEFAULT_AZURE_BILLING_TABLE,
+                "COST_INSIGHT_AZURE_BILLING_TABLE",
+                "COST_AZURE_BILLING_TABLE",
+            ),
+            earliest_usage_date=_read_date_any(
+                env,
+                ("COST_INSIGHT_AZURE_EARLIEST_USAGE_DATE", "COST_AZURE_EARLIEST_USAGE_DATE"),
+                DEFAULT_EARLIEST_USAGE_DATE,
+            ),
+            sync_lag_days=_read_int_any(
+                env,
+                ("COST_INSIGHT_AZURE_SYNC_LAG_DAYS", "COST_AZURE_SYNC_LAG_DAYS"),
+                5,
+            ),
+            export_overlap_days=_read_non_negative_int_any(
+                env,
+                (
+                    "COST_INSIGHT_AZURE_EXPORT_OVERLAP_DAYS",
+                    "COST_AZURE_EXPORT_OVERLAP_DAYS",
+                ),
+                0,
+            ),
+            sync_initial_lookback_days=_read_optional_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_AZURE_SYNC_INITIAL_LOOKBACK_DAYS",
+                    "COST_AZURE_SYNC_INITIAL_LOOKBACK_DAYS",
+                ),
+            ),
+            page_size=_read_int_any(
+                env,
+                ("COST_INSIGHT_AZURE_SYNC_PAGE_SIZE", "COST_AZURE_SYNC_PAGE_SIZE"),
+                5000,
+            ),
+        ),
+        alibaba_billing=AlibabaBillingSettings(
+            billing_table=_read_any(
+                env,
+                DEFAULT_ALIBABA_BILLING_TABLE,
+                "COST_INSIGHT_ALIBABA_BILLING_TABLE",
+                "COST_ALIBABA_BILLING_TABLE",
+            ),
+            account_id=_read_any(
+                env,
+                DEFAULT_ALIBABA_ACCOUNT_ID,
+                "COST_INSIGHT_ALIBABA_ACCOUNT_ID",
+                "COST_ALIBABA_ACCOUNT_ID",
+            ),
+            earliest_usage_date=_read_date_any(
+                env,
+                ("COST_INSIGHT_ALIBABA_EARLIEST_USAGE_DATE", "COST_ALIBABA_EARLIEST_USAGE_DATE"),
+                DEFAULT_EARLIEST_USAGE_DATE,
+            ),
+            sync_lag_days=_read_int_any(
+                env,
+                ("COST_INSIGHT_ALIBABA_SYNC_LAG_DAYS", "COST_ALIBABA_SYNC_LAG_DAYS"),
+                5,
+            ),
+            export_overlap_days=_read_non_negative_int_any(
+                env,
+                (
+                    "COST_INSIGHT_ALIBABA_EXPORT_OVERLAP_DAYS",
+                    "COST_ALIBABA_EXPORT_OVERLAP_DAYS",
+                ),
+                0,
+            ),
+            sync_initial_lookback_days=_read_optional_positive_int_any(
+                env,
+                (
+                    "COST_INSIGHT_ALIBABA_SYNC_INITIAL_LOOKBACK_DAYS",
+                    "COST_ALIBABA_SYNC_INITIAL_LOOKBACK_DAYS",
+                ),
+            ),
+            page_size=_read_int_any(
+                env,
+                ("COST_INSIGHT_ALIBABA_SYNC_PAGE_SIZE", "COST_ALIBABA_SYNC_PAGE_SIZE"),
+                5000,
+            ),
+        ),
+        tencent_billing=TencentBillingSettings(
+            account_id=_read_any(
+                env,
+                DEFAULT_TENCENT_ACCOUNT_ID,
+                "COST_INSIGHT_TENCENT_ACCOUNT_ID",
+            ),
+            earliest_bill_day=_read_optional_date_any(
+                env,
+                ("COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY",),
+            ),
+            import_lag_days=_read_non_negative_int_any(
+                env,
+                ("COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS",),
+                3,
+            ),
+            verify_lag_days=_read_non_negative_int_any(
+                env,
+                ("COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS",),
+                5,
+            ),
+            page_size=_read_int_any(
+                env,
+                ("COST_INSIGHT_TENCENT_PAGE_SIZE",),
+                100,
             ),
         ),
         gcs_cache=GcsCacheSettings(
@@ -656,6 +796,13 @@ def _read_date_any(
     keys: tuple[str, ...],
     default: date,
 ) -> date:
+    return _read_optional_date_any(environ, keys) or default
+
+
+def _read_optional_date_any(
+    environ: Mapping[str, str],
+    keys: tuple[str, ...],
+) -> date | None:
     for key in keys:
         raw = environ.get(key)
         if raw is None or raw.strip() == "":
@@ -664,4 +811,4 @@ def _read_date_any(
             return date.fromisoformat(raw)
         except ValueError as exc:
             raise ValueError(f"{key} must be an ISO date, got {raw!r}") from exc
-    return default
+    return None

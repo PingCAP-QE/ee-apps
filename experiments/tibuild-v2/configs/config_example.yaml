@@ -12,6 +12,13 @@ store:
 github:
   token: ""
 
+# Identity headers asserted by the trusted Envoy Gateway. These values are
+# optional; the service defaults to X-User-Id, X-User-Email and X-User-Name.
+identity_headers:
+  user_id: "X-User-Id"
+  user_email: "X-User-Email"
+  user_name: "X-User-Name"
+
 jenkins:
   url: "https://<jenkins-url>"
   username: "your-jenkins-account"

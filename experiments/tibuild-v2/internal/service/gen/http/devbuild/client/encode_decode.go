@@ -53,6 +53,16 @@ func EncodeListRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.R
 		if p.CreatedBy != nil {
 			values.Add("createdBy", *p.CreatedBy)
 		}
+		values.Add("scope", p.Scope)
+		if p.Status != nil {
+			values.Add("status", string(*p.Status))
+		}
+		if p.Product != nil {
+			values.Add("product", *p.Product)
+		}
+		if p.Q != nil {
+			values.Add("q", *p.Q)
+		}
 		req.URL.RawQuery = values.Encode()
 		return nil
 	}
@@ -62,7 +72,9 @@ func EncodeListRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.R
 // list endpoint. restoreBody controls whether the response body should be
 // restored after having been read.
 // DecodeListResponse may return the following errors:
-//   - "BadRequest" (type *devbuild.HTTPError): http.StatusBadRequest
+//   - "BadRequest" (type *devbuild.DevBuildBadRequestError): http.StatusBadRequest
+//   - "InternalServerError" (type *devbuild.DevBuildInternalServerError): http.StatusInternalServerError
+//   - "Unauthorized" (type *devbuild.DevBuildUnauthorizedError): http.StatusUnauthorized
 //   - error: internal error
 func DecodeListResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -114,9 +126,92 @@ func DecodeListResponse(decoder func(*http.Response) goahttp.Decoder, restoreBod
 				return nil, goahttp.ErrValidationError("devbuild", "list", err)
 			}
 			return nil, NewListBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body ListInternalServerErrorResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "list", err)
+			}
+			err = ValidateListInternalServerErrorResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "list", err)
+			}
+			return nil, NewListInternalServerError(&body)
+		case http.StatusUnauthorized:
+			var (
+				body ListUnauthorizedResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "list", err)
+			}
+			err = ValidateListUnauthorizedResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "list", err)
+			}
+			return nil, NewListUnauthorized(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("devbuild", "list", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// BuildCapabilitiesRequest instantiates a HTTP request object with method and
+// path set to call the "devbuild" service "capabilities" endpoint
+func (c *Client) BuildCapabilitiesRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: CapabilitiesDevbuildPath()}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("devbuild", "capabilities", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// DecodeCapabilitiesResponse returns a decoder for responses returned by the
+// devbuild capabilities endpoint. restoreBody controls whether the response
+// body should be restored after having been read.
+func DecodeCapabilitiesResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body CapabilitiesResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "capabilities", err)
+			}
+			err = ValidateCapabilitiesResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "capabilities", err)
+			}
+			res := NewCapabilitiesDevBuildCapabilitiesOK(&body)
+			return res, nil
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("devbuild", "capabilities", resp.StatusCode, string(body))
 		}
 	}
 }
@@ -159,8 +254,9 @@ func EncodeCreateRequest(encoder func(*http.Request) goahttp.Encoder) func(*http
 // devbuild create endpoint. restoreBody controls whether the response body
 // should be restored after having been read.
 // DecodeCreateResponse may return the following errors:
-//   - "BadRequest" (type *devbuild.HTTPError): http.StatusBadRequest
-//   - "InternalServerError" (type *devbuild.HTTPError): http.StatusInternalServerError
+//   - "BadRequest" (type *devbuild.DevBuildBadRequestError): http.StatusBadRequest
+//   - "InternalServerError" (type *devbuild.DevBuildInternalServerError): http.StatusInternalServerError
+//   - "Unauthorized" (type *devbuild.DevBuildUnauthorizedError): http.StatusUnauthorized
 //   - error: internal error
 func DecodeCreateResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -220,6 +316,20 @@ func DecodeCreateResponse(decoder func(*http.Response) goahttp.Decoder, restoreB
 				return nil, goahttp.ErrValidationError("devbuild", "create", err)
 			}
 			return nil, NewCreateInternalServerError(&body)
+		case http.StatusUnauthorized:
+			var (
+				body CreateUnauthorizedResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "create", err)
+			}
+			err = ValidateCreateUnauthorizedResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "create", err)
+			}
+			return nil, NewCreateUnauthorized(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("devbuild", "create", resp.StatusCode, string(body))
@@ -256,8 +366,8 @@ func (c *Client) BuildGetRequest(ctx context.Context, v any) (*http.Request, err
 // get endpoint. restoreBody controls whether the response body should be
 // restored after having been read.
 // DecodeGetResponse may return the following errors:
-//   - "BadRequest" (type *devbuild.HTTPError): http.StatusBadRequest
-//   - "InternalServerError" (type *devbuild.HTTPError): http.StatusInternalServerError
+//   - "InternalServerError" (type *devbuild.DevBuildInternalServerError): http.StatusInternalServerError
+//   - "NotFound" (type *devbuild.DevBuildNotFoundError): http.StatusNotFound
 //   - error: internal error
 func DecodeGetResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -289,20 +399,6 @@ func DecodeGetResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody
 			}
 			res := NewGetDevBuildOK(&body)
 			return res, nil
-		case http.StatusBadRequest:
-			var (
-				body GetBadRequestResponseBody
-				err  error
-			)
-			err = decoder(resp).Decode(&body)
-			if err != nil {
-				return nil, goahttp.ErrDecodingError("devbuild", "get", err)
-			}
-			err = ValidateGetBadRequestResponseBody(&body)
-			if err != nil {
-				return nil, goahttp.ErrValidationError("devbuild", "get", err)
-			}
-			return nil, NewGetBadRequest(&body)
 		case http.StatusInternalServerError:
 			var (
 				body GetInternalServerErrorResponseBody
@@ -317,6 +413,20 @@ func DecodeGetResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody
 				return nil, goahttp.ErrValidationError("devbuild", "get", err)
 			}
 			return nil, NewGetInternalServerError(&body)
+		case http.StatusNotFound:
+			var (
+				body GetNotFoundResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "get", err)
+			}
+			err = ValidateGetNotFoundResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "get", err)
+			}
+			return nil, NewGetNotFound(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("devbuild", "get", resp.StatusCode, string(body))
@@ -372,8 +482,8 @@ func EncodeUpdateRequest(encoder func(*http.Request) goahttp.Encoder) func(*http
 // devbuild update endpoint. restoreBody controls whether the response body
 // should be restored after having been read.
 // DecodeUpdateResponse may return the following errors:
-//   - "BadRequest" (type *devbuild.HTTPError): http.StatusBadRequest
-//   - "InternalServerError" (type *devbuild.HTTPError): http.StatusInternalServerError
+//   - "InternalServerError" (type *devbuild.DevBuildInternalServerError): http.StatusInternalServerError
+//   - "NotFound" (type *devbuild.DevBuildNotFoundError): http.StatusNotFound
 //   - error: internal error
 func DecodeUpdateResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -405,20 +515,6 @@ func DecodeUpdateResponse(decoder func(*http.Response) goahttp.Decoder, restoreB
 			}
 			res := NewUpdateDevBuildOK(&body)
 			return res, nil
-		case http.StatusBadRequest:
-			var (
-				body UpdateBadRequestResponseBody
-				err  error
-			)
-			err = decoder(resp).Decode(&body)
-			if err != nil {
-				return nil, goahttp.ErrDecodingError("devbuild", "update", err)
-			}
-			err = ValidateUpdateBadRequestResponseBody(&body)
-			if err != nil {
-				return nil, goahttp.ErrValidationError("devbuild", "update", err)
-			}
-			return nil, NewUpdateBadRequest(&body)
 		case http.StatusInternalServerError:
 			var (
 				body UpdateInternalServerErrorResponseBody
@@ -433,6 +529,20 @@ func DecodeUpdateResponse(decoder func(*http.Response) goahttp.Decoder, restoreB
 				return nil, goahttp.ErrValidationError("devbuild", "update", err)
 			}
 			return nil, NewUpdateInternalServerError(&body)
+		case http.StatusNotFound:
+			var (
+				body UpdateNotFoundResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "update", err)
+			}
+			err = ValidateUpdateNotFoundResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "update", err)
+			}
+			return nil, NewUpdateNotFound(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("devbuild", "update", resp.StatusCode, string(body))
@@ -484,8 +594,10 @@ func EncodeRerunRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.
 // rerun endpoint. restoreBody controls whether the response body should be
 // restored after having been read.
 // DecodeRerunResponse may return the following errors:
-//   - "BadRequest" (type *devbuild.HTTPError): http.StatusBadRequest
-//   - "InternalServerError" (type *devbuild.HTTPError): http.StatusInternalServerError
+//   - "Forbidden" (type *devbuild.DevBuildForbiddenError): http.StatusForbidden
+//   - "InternalServerError" (type *devbuild.DevBuildInternalServerError): http.StatusInternalServerError
+//   - "NotFound" (type *devbuild.DevBuildNotFoundError): http.StatusNotFound
+//   - "Unauthorized" (type *devbuild.DevBuildUnauthorizedError): http.StatusUnauthorized
 //   - error: internal error
 func DecodeRerunResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -517,20 +629,20 @@ func DecodeRerunResponse(decoder func(*http.Response) goahttp.Decoder, restoreBo
 			}
 			res := NewRerunDevBuildOK(&body)
 			return res, nil
-		case http.StatusBadRequest:
+		case http.StatusForbidden:
 			var (
-				body RerunBadRequestResponseBody
+				body RerunForbiddenResponseBody
 				err  error
 			)
 			err = decoder(resp).Decode(&body)
 			if err != nil {
 				return nil, goahttp.ErrDecodingError("devbuild", "rerun", err)
 			}
-			err = ValidateRerunBadRequestResponseBody(&body)
+			err = ValidateRerunForbiddenResponseBody(&body)
 			if err != nil {
 				return nil, goahttp.ErrValidationError("devbuild", "rerun", err)
 			}
-			return nil, NewRerunBadRequest(&body)
+			return nil, NewRerunForbidden(&body)
 		case http.StatusInternalServerError:
 			var (
 				body RerunInternalServerErrorResponseBody
@@ -545,6 +657,34 @@ func DecodeRerunResponse(decoder func(*http.Response) goahttp.Decoder, restoreBo
 				return nil, goahttp.ErrValidationError("devbuild", "rerun", err)
 			}
 			return nil, NewRerunInternalServerError(&body)
+		case http.StatusNotFound:
+			var (
+				body RerunNotFoundResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "rerun", err)
+			}
+			err = ValidateRerunNotFoundResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "rerun", err)
+			}
+			return nil, NewRerunNotFound(&body)
+		case http.StatusUnauthorized:
+			var (
+				body RerunUnauthorizedResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "rerun", err)
+			}
+			err = ValidateRerunUnauthorizedResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "rerun", err)
+			}
+			return nil, NewRerunUnauthorized(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("devbuild", "rerun", resp.StatusCode, string(body))
@@ -561,6 +701,9 @@ func unmarshalDevBuildResponseToDevbuildDevBuild(v *DevBuildResponse) *devbuild.
 	res.Meta = unmarshalDevBuildMetaResponseToDevbuildDevBuildMeta(v.Meta)
 	res.Spec = unmarshalDevBuildSpecResponseToDevbuildDevBuildSpec(v.Spec)
 	res.Status = unmarshalDevBuildStatusResponseToDevbuildDevBuildStatus(v.Status)
+	if v.Permissions != nil {
+		res.Permissions = unmarshalDevBuildPermissionsResponseToDevbuildDevBuildPermissions(v.Permissions)
+	}
 
 	return res
 }
@@ -596,7 +739,7 @@ func unmarshalDevBuildSpecResponseToDevbuildDevBuildSpec(v *DevBuildSpecResponse
 		ProductBaseImg:    v.ProductBaseImg,
 		ProductDockerfile: v.ProductDockerfile,
 		TargetImg:         v.TargetImg,
-		Version:           *v.Version,
+		Version:           v.Version,
 	}
 	if v.Platform != nil {
 		res.Platform = *v.Platform
@@ -801,6 +944,42 @@ func unmarshalOciArtifactResponseToDevbuildOciArtifact(v *OciArtifactResponse) *
 	return res
 }
 
+// unmarshalDevBuildPermissionsResponseToDevbuildDevBuildPermissions builds a
+// value of type *devbuild.DevBuildPermissions from a value of type
+// *DevBuildPermissionsResponse.
+func unmarshalDevBuildPermissionsResponseToDevbuildDevBuildPermissions(v *DevBuildPermissionsResponse) *devbuild.DevBuildPermissions {
+	if v == nil {
+		return nil
+	}
+	res := &devbuild.DevBuildPermissions{
+		CanRerun: *v.CanRerun,
+	}
+
+	return res
+}
+
+// unmarshalDevBuildProductCapabilityResponseBodyToDevbuildDevBuildProductCapability
+// builds a value of type *devbuild.DevBuildProductCapability from a value of
+// type *DevBuildProductCapabilityResponseBody.
+func unmarshalDevBuildProductCapabilityResponseBodyToDevbuildDevBuildProductCapability(v *DevBuildProductCapabilityResponseBody) *devbuild.DevBuildProductCapability {
+	res := &devbuild.DevBuildProductCapability{
+		ID:              *v.ID,
+		Label:           *v.Label,
+		DefaultEdition:  *v.DefaultEdition,
+		DefaultPlatform: *v.DefaultPlatform,
+	}
+	res.Editions = make([]string, len(v.Editions))
+	for i, val := range v.Editions {
+		res.Editions[i] = val
+	}
+	res.Platforms = make([]string, len(v.Platforms))
+	for i, val := range v.Platforms {
+		res.Platforms[i] = val
+	}
+
+	return res
+}
+
 // marshalDevbuildDevBuildSpecToDevBuildSpecRequestBody builds a value of type
 // *DevBuildSpecRequestBody from a value of type *devbuild.DevBuildSpec.
 func marshalDevbuildDevBuildSpecToDevBuildSpecRequestBody(v *devbuild.DevBuildSpec) *DevBuildSpecRequestBody {
@@ -896,7 +1075,7 @@ func unmarshalDevBuildSpecResponseBodyToDevbuildDevBuildSpec(v *DevBuildSpecResp
 		ProductBaseImg:    v.ProductBaseImg,
 		ProductDockerfile: v.ProductDockerfile,
 		TargetImg:         v.TargetImg,
-		Version:           *v.Version,
+		Version:           v.Version,
 	}
 	if v.Platform != nil {
 		res.Platform = *v.Platform
@@ -1098,6 +1277,20 @@ func unmarshalOciArtifactResponseBodyToDevbuildOciArtifact(v *OciArtifactRespons
 	res.Files = make([]string, len(v.Files))
 	for i, val := range v.Files {
 		res.Files[i] = val
+	}
+
+	return res
+}
+
+// unmarshalDevBuildPermissionsResponseBodyToDevbuildDevBuildPermissions builds
+// a value of type *devbuild.DevBuildPermissions from a value of type
+// *DevBuildPermissionsResponseBody.
+func unmarshalDevBuildPermissionsResponseBodyToDevbuildDevBuildPermissions(v *DevBuildPermissionsResponseBody) *devbuild.DevBuildPermissions {
+	if v == nil {
+		return nil
+	}
+	res := &devbuild.DevBuildPermissions{
+		CanRerun: *v.CanRerun,
 	}
 
 	return res

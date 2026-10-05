@@ -14,10 +14,6 @@ from urllib import request as urllib_request
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
-from ci_dashboard.api.queries.ebs import (
-    UNATTACHED_BLOCK_VOLUME_SYNC_JOB,
-    UNATTACHED_EBS_SYNC_JOB,
-)
 from ci_dashboard.common.config import Settings
 from ci_dashboard.jobs.state_store import mark_job_failed, mark_job_started, mark_job_succeeded
 
@@ -30,6 +26,8 @@ METADATA_TOKEN_URL = (
 API_RETRY_ATTEMPTS = 3
 API_RETRY_BASE_DELAY_SECONDS = 0.5
 RETRYABLE_HTTP_STATUS_CODES = {429, 500, 502, 503, 504}
+UNATTACHED_BLOCK_VOLUME_SYNC_JOB = "sync-unattached-block-volumes"
+UNATTACHED_EBS_SYNC_JOB = "sync-unattached-ebs-volumes"
 UNATTACHED_BLOCK_VOLUME_RETENTION_DAYS = 370
 UNATTACHED_BLOCK_VOLUME_DELETE_BATCH_SIZE = 1000
 

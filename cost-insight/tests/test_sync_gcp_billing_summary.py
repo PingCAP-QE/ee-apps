@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, text
 
 from cost_insight.common.config import GcpBillingSettings
 from cost_insight.common.row_utils import hash_value
-from cost_insight.jobs import state_store
+from cost_insight.jobs import state_store, sync_gcp_billing_summary
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.sync_gcp_billing_summary import (
     JOB_NAME,
@@ -15,8 +15,10 @@ from cost_insight.jobs.sync_gcp_billing_summary import (
     _select_billing_account_id,
     _start_partition_from_state,
     build_summary_row_hash,
+    replace_summary_partition_usage_dates,
     replace_summary_usage_dates,
     run_sync_gcp_billing_summary,
+    write_summary_rows,
 )
 
 
@@ -81,6 +83,11 @@ def _sqlite_engine():
                   author TEXT,
                   source_schema_version TEXT,
                   source_allocation_scope TEXT NOT NULL DEFAULT 'direct',
+                  cluster_name TEXT,
+                  cluster_location TEXT,
+                  kubernetes_cost_class TEXT,
+                  kubernetes_residual_type TEXT,
+                  kubernetes_cost_component TEXT,
                   namespace TEXT,
                   workload_name TEXT,
                   workload_type TEXT,
@@ -92,6 +99,7 @@ def _sqlite_engine():
                   effective_cost REAL,
                   credit_amount REAL,
                   net_cost REAL,
+                  currency TEXT NOT NULL DEFAULT 'USD',
                   source_export_time TEXT,
                   source_row_hash TEXT NOT NULL,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -189,6 +197,194 @@ def _insert_summary_row(connection, row: dict[str, object]) -> None:
         ),
         _sqlite_summary_row(row),
     )
+
+
+def test_replace_summary_partition_usage_dates_preserves_other_usage_dates() -> None:
+    engine = _sqlite_engine()
+    export_partition_date = date(2026, 7, 1)
+    before_scope = _normalize_summary_row(
+        {
+            **_summary_row("2026-06-30"),
+            "export_partition_date": "2026-07-01",
+            "resource_name": "before-scope",
+        }
+    )
+    old_in_scope = _normalize_summary_row(
+        {
+            **_summary_row("2026-07-01"),
+            "export_partition_date": "2026-07-01",
+            "resource_name": "old-in-scope",
+        }
+    )
+    after_scope = _normalize_summary_row(
+        {
+            **_summary_row("2026-08-25"),
+            "export_partition_date": "2026-07-01",
+            "resource_name": "after-scope",
+        }
+    )
+    replacement = _normalize_summary_row(
+        {
+            **_summary_row("2026-07-01"),
+            "export_partition_date": "2026-07-01",
+            "resource_name": "replacement",
+        }
+    )
+
+    try:
+        with engine.begin() as connection:
+            for row in (before_scope, old_in_scope, after_scope):
+                _insert_summary_row(connection, row)
+
+        rows_written = replace_summary_partition_usage_dates(
+            engine,
+            [replacement],
+            vendor="gcp",
+            account_id="pingcap-testing-account",
+            export_partition_date=export_partition_date,
+            usage_start_date=date(2026, 7, 1),
+            usage_end_date=date(2026, 8, 24),
+            dry_run=False,
+            batch_size=1,
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date, resource_name
+                    FROM cost_bq_export_summary_daily
+                    ORDER BY usage_date, resource_name
+                    """
+                )
+            ).all()
+        assert rows_written == 1
+        assert rows == [
+            ("2026-06-30", "before-scope"),
+            ("2026-07-01", "replacement"),
+            ("2026-08-25", "after-scope"),
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_scoped_replacement_preserves_other_usage_dates() -> None:
+    engine = _sqlite_engine()
+    before_scope = {
+        **_summary_row("2026-06-30"),
+        "billing_account_id": "billing-before-scope",
+        "export_partition_date": "2026-07-01",
+        "resource_name": "before-scope",
+    }
+    old_in_scope = {
+        **_summary_row("2026-07-02"),
+        "export_partition_date": "2026-07-01",
+        "resource_name": "old-in-scope",
+    }
+    after_scope = {
+        **_summary_row("2026-08-25"),
+        "billing_account_id": "billing-after-scope",
+        "export_partition_date": "2026-07-01",
+        "resource_name": "after-scope",
+    }
+    replacement = {
+        **_summary_row("2026-07-01"),
+        "export_partition_date": "2026-07-01",
+        "resource_name": "replacement",
+    }
+
+    try:
+        with engine.begin() as connection:
+            for row in (before_scope, old_in_scope, after_scope):
+                _insert_summary_row(connection, _normalize_summary_row(row))
+
+        result = run_sync_gcp_billing_summary(
+            engine,
+            settings=GcpBillingSettings(account_id="pingcap-testing-account"),
+            export_partition_start=date(2026, 7, 1),
+            export_partition_end=date(2026, 7, 1),
+            earliest_usage_date=date(2026, 6, 1),
+            replace_existing_partitions=True,
+            replacement_usage_start_date=date(2026, 7, 1),
+            replacement_usage_end_date=date(2026, 7, 2),
+            fetch_rows=lambda **_kwargs: [before_scope, replacement, after_scope],
+        )
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT usage_date, resource_name
+                    FROM cost_bq_export_summary_daily
+                    ORDER BY usage_date, resource_name
+                    """
+                )
+            ).all()
+            billing_account_id = connection.execute(
+                text("SELECT billing_account_id FROM cost_sources")
+            ).scalar_one()
+        assert result.rows_seen == 3
+        assert result.rows_written == 1
+        assert result.touched_usage_dates == (date(2026, 7, 1), date(2026, 7, 2))
+        assert billing_account_id == "billing-1"
+        assert rows == [
+            ("2026-06-30", "before-scope"),
+            ("2026-07-01", "replacement"),
+            ("2026-08-25", "after-scope"),
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_rejects_invalid_scoped_replacement() -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    try:
+        with pytest.raises(ValueError, match="must be set together"):
+            run_sync_gcp_billing_summary(
+                engine,
+                settings=settings,
+                replacement_usage_start_date=date(2026, 7, 1),
+            )
+        with pytest.raises(ValueError, match="requires replace_existing_partitions"):
+            run_sync_gcp_billing_summary(
+                engine,
+                settings=settings,
+                replacement_usage_start_date=date(2026, 7, 1),
+                replacement_usage_end_date=date(2026, 7, 1),
+            )
+        with pytest.raises(ValueError, match="requires one export partition"):
+            run_sync_gcp_billing_summary(
+                engine,
+                settings=settings,
+                export_partition_start=date(2026, 7, 1),
+                export_partition_end=date(2026, 7, 2),
+                replace_existing_partitions=True,
+                replacement_usage_start_date=date(2026, 7, 1),
+                replacement_usage_end_date=date(2026, 7, 1),
+            )
+    finally:
+        engine.dispose()
+
+
+def test_normalize_summary_row_rejects_missing_preserved_identity() -> None:
+    with pytest.raises(ValueError, match="Missing source_row_hash"):
+        _normalize_summary_row(_summary_row(), preserve_source_row_hash=True)
+
+
+def test_normalize_summary_row_can_preserve_source_specific_identity() -> None:
+    normalized = _normalize_summary_row(
+        {**_summary_row(), "source_row_hash": "tencent-stable-hash"},
+        preserve_source_row_hash=True,
+    )
+
+    assert normalized["source_row_hash"] == "tencent-stable-hash"
+
+
+@pytest.mark.parametrize("currency", ["EUR", "US"])
+def test_normalize_summary_row_rejects_unsupported_currency(currency: str) -> None:
+    with pytest.raises(ValueError, match="Unsupported billing currency"):
+        _normalize_summary_row({**_summary_row(), "currency": currency})
 
 
 def test_replace_summary_usage_dates_keeps_existing_rows_for_empty_source() -> None:
@@ -391,6 +587,106 @@ def test_run_sync_gcp_billing_summary_removes_superseded_unlabeled_row() -> None
         engine.dispose()
 
 
+def test_run_sync_gcp_billing_summary_replaces_prior_tags_when_usedby_is_added() -> None:
+    engine = _sqlite_engine()
+    old_tags = {
+        "shared_pool": "2076551309477019648",
+        "cluster": "10149878793099322221",
+    }
+    new_tags = {**old_tags, "usedby": "test-infra"}
+
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": old_tags,
+        }
+    )
+    new_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": new_tags,
+        }
+    )
+
+    try:
+        # TiDB JSON text representation does not preserve this input key order.
+        # Cleanup must select the predecessor by source_row_hash, not JSON text.
+        with engine.begin() as connection:
+            _insert_summary_row(
+                connection,
+                {
+                    **old_row,
+                    "vendor_tags_json": (
+                        '{"shared_pool":"2076551309477019648",'
+                        '"cluster":"10149878793099322221"}'
+                    ),
+                },
+            )
+        write_summary_rows(engine, [new_row], dry_run=False)
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT vendor_tags_json, ROUND(SUM(net_cost), 2) AS net_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY vendor_tags_json
+                    """
+                )
+            ).all()
+        assert rows == [
+            (
+                '{"cluster":"10149878793099322221",'
+                '"shared_pool":"2076551309477019648","usedby":"test-infra"}',
+                7.0,
+            )
+        ]
+    finally:
+        engine.dispose()
+
+
+def test_run_sync_gcp_billing_summary_removes_null_tag_predecessor_when_usedby_is_added() -> None:
+    engine = _sqlite_engine()
+    old_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": None,
+        }
+    )
+    new_row = _normalize_summary_row(
+        {
+            **_summary_row("2026-05-18"),
+            "vendor": "aws",
+            "account_id": "946646677266",
+            "vendor_tags_json": {"cluster": "cluster-1", "usedby": "test-infra"},
+        }
+    )
+
+    try:
+        write_summary_rows(engine, [old_row], dry_run=False)
+        write_summary_rows(engine, [new_row], dry_run=False)
+
+        with engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT vendor_tags_json, ROUND(SUM(net_cost), 2) AS net_cost
+                    FROM cost_bq_export_summary_daily
+                    GROUP BY vendor_tags_json
+                    """
+                )
+            ).all()
+        assert rows == [('{"cluster":"cluster-1","usedby":"test-infra"}', 7.0)]
+    finally:
+        engine.dispose()
+
+
 def test_run_sync_gcp_billing_summary_can_replace_existing_partitions() -> None:
     engine = _sqlite_engine()
     settings = GcpBillingSettings(account_id="pingcap-testing-account")
@@ -476,6 +772,32 @@ def test_run_sync_gcp_billing_summary_can_replace_existing_partitions() -> None:
         assert rows == [("master", 10.0)]
     finally:
         engine.dispose()
+
+
+def test_replace_dry_run_counts_rows_without_spooling_them(monkeypatch) -> None:
+    engine = _sqlite_engine()
+    settings = GcpBillingSettings(account_id="pingcap-testing-account")
+    monkeypatch.setattr(
+        sync_gcp_billing_summary,
+        "_dump_spooled_row",
+        lambda *_args: pytest.fail("dry-run must not spool rows"),
+    )
+
+    try:
+        result = run_sync_gcp_billing_summary(
+            engine,
+            settings=settings,
+            export_partition_start=date(2026, 5, 18),
+            export_partition_end=date(2026, 5, 18),
+            dry_run=True,
+            replace_existing_partitions=True,
+            fetch_rows=lambda **_kwargs: [_summary_row(), _summary_row()],
+        )
+    finally:
+        engine.dispose()
+
+    assert result.rows_seen == 2
+    assert result.rows_written == 0
 
 
 def test_run_sync_gcp_billing_summary_replace_keeps_old_rows_when_fetch_fails() -> None:

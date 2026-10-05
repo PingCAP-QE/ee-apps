@@ -4,10 +4,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
+from sqlalchemy.engine import Engine
+
 from cost_insight.common.bigquery import BigQueryParameter, BigQueryQueryResult, execute_query
 from cost_insight.common.config import GcsCacheSettings
+from cost_insight.jobs import state_store
 
 QueryExecutor = Callable[[str, list[BigQueryParameter]], BigQueryQueryResult]
+JOB_NAME = "sync-gcs-cache-last-seen"
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,51 @@ def run_sync_gcs_cache_last_seen(
         dry_run=dry_run,
         bytes_processed=result.total_bytes_processed,
     )
+
+
+def run_tracked_sync_gcs_cache_last_seen(
+    engine: Engine,
+    *,
+    settings: GcsCacheSettings,
+    run_date: date | None = None,
+    dry_run: bool = False,
+    execute: QueryExecutor = execute_query,
+) -> SyncGcsCacheLastSeenResult:
+    """Run the BigQuery sync and persist non-dry-run outcomes in ``cost_job_state``."""
+    if dry_run:
+        return run_sync_gcs_cache_last_seen(
+            settings=settings,
+            run_date=run_date,
+            dry_run=True,
+            execute=execute,
+        )
+
+    requested_watermark = {
+        "run_date": run_date.isoformat() if run_date else None,
+    }
+    with engine.begin() as connection:
+        state_store.mark_job_started(connection, JOB_NAME, requested_watermark)
+
+    try:
+        summary = run_sync_gcs_cache_last_seen(
+            settings=settings,
+            run_date=run_date,
+            dry_run=dry_run,
+            execute=execute,
+        )
+    except Exception as exc:
+        with engine.begin() as connection:
+            state_store.mark_job_failed(connection, JOB_NAME, requested_watermark, repr(exc))
+        raise
+
+    watermark = {
+        "run_date": summary.run_date.isoformat(),
+        "source_rows_seen": summary.source_rows_seen,
+        "distinct_objects": summary.distinct_objects,
+    }
+    with engine.begin() as connection:
+        state_store.mark_job_succeeded(connection, JOB_NAME, watermark)
+    return summary
 
 
 def build_sync_gcs_cache_last_seen_dry_run_query(settings: GcsCacheSettings) -> str:

@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS ci_l1_builds (
   total_seconds INT NULL,
   head_sha CHAR(40) NULL,
   target_branch VARCHAR(255) NULL,
-  cloud_phase VARCHAR(16) NOT NULL DEFAULT 'IDC',
+  cloud_phase VARCHAR(16) NOT NULL DEFAULT 'TENCENT',
   build_system VARCHAR(16) NOT NULL DEFAULT 'UNKNOWN',
   is_flaky TINYINT(1) NOT NULL DEFAULT 0,
   is_retry_loop TINYINT(1) NOT NULL DEFAULT 0,

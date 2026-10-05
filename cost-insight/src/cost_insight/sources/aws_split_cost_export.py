@@ -6,6 +6,34 @@ from datetime import date
 from typing import Any
 
 _BIGQUERY_TABLE_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$")
+_AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
+_AWS_SPLIT_COST_TAG_COLUMNS = (
+    ("application", "resource_tags_user_application"),
+    ("aws_apn_id", "resource_tags_user_aws_apn_id"),
+    ("aws_application", "resource_tags_user_aws_application"),
+    ("aws_eks_deployment", "resource_tags_aws_eks_deployment"),
+    ("aws_eks_namespace", "resource_tags_aws_eks_namespace"),
+    ("aws_eks_node", "resource_tags_aws_eks_node"),
+    ("aws_eks_workload_name", "resource_tags_aws_eks_workload_name"),
+    ("aws_eks_workload_type", "resource_tags_aws_eks_workload_type"),
+    ("cluster", "resource_tags_user_cluster"),
+    ("component", "resource_tags_user_component"),
+    ("department", "resource_tags_user_department"),
+    ("env", "resource_tags_user_env"),
+    ("environment", "resource_tags_user_environment"),
+    ("icost_owner_email", "resource_tags_user_icost_owner_email"),
+    ("icost_project", "resource_tags_user_icost_project"),
+    ("icost_service", "resource_tags_user_icost_service"),
+    ("icost_service_exec_id", "resource_tags_user_icost_service_exec_id"),
+    ("kubernetes_io_service_name", "resource_tags_user_kubernetes_io_service_name"),
+    ("name", "resource_tags_user_name"),
+    ("owner", "resource_tags_user_owner"),
+    ("project", "resource_tags_user_project"),
+    ("servicetype", "resource_tags_user_servicetype"),
+    ("shared_pool", "resource_tags_user_shared_pool"),
+    ("tenant", "resource_tags_user_tenant"),
+    ("usedby", "resource_tags_user_usedby"),
+)
 
 
 def fetch_aws_split_cost_summary_rows(
@@ -212,9 +240,17 @@ WITH raw AS (
     DATE(line_item_usage_start_date) AS usage_date,
     NULLIF(line_item_resource_id, '') AS resource_name,
     NULLIF(split_line_item_parent_resource_id, '') AS parent_resource_name,
-    COALESCE(pricing_public_on_demand_cost, 0) AS direct_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(line_item_unblended_cost, 0)
+      ELSE 0
+    END AS direct_list_cost,
     COALESCE(line_item_unblended_cost, 0) AS direct_effective_cost,
-    COALESCE(split_line_item_public_on_demand_split_cost, 0) AS split_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(split_line_item_split_cost, 0)
+      ELSE 0
+    END AS split_list_cost,
     COALESCE(split_line_item_split_cost, 0) AS split_effective_cost
   FROM {table}
   WHERE line_item_usage_account_id = @account_id
@@ -298,8 +334,16 @@ WITH raw AS (
     NULLIF(TRIM(resource_tags_user_icost_service), '') AS service,
     NULLIF(TRIM(COALESCE(resource_tags_user_icost_project, resource_tags_user_project)), '') AS project,
     NULLIF(TRIM(resource_tags_user_icost_service_exec_id), '') AS service_exec_id,
-    COALESCE(pricing_public_on_demand_cost, 0) AS direct_list_cost,
-    COALESCE(split_line_item_public_on_demand_split_cost, 0) AS split_list_cost
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(line_item_unblended_cost, 0)
+      ELSE 0
+    END AS direct_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(split_line_item_split_cost, 0)
+      ELSE 0
+    END AS split_list_cost
   FROM {table}
   WHERE line_item_usage_account_id = @account_id
     AND DATE(bill_billing_period_start_date) BETWEEN @export_partition_start AND @export_partition_end
@@ -420,6 +464,7 @@ def _build_split_cost_query(
     usage_end_filter = "\n    AND DATE(line_item_usage_start_date) <= @usage_end_date" if include_usage_end_date else ""
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     resource_columns = """
+  resource_id,
   resource_name,
   parent_resource_name,
   CASE
@@ -431,6 +476,7 @@ def _build_split_cost_query(
     ELSE NULL
   END AS usage_seconds,"""
     resource_grouping = """,
+  resource_id,
   resource_name,
   parent_resource_name"""
     resource_ordering = ", resource_name"
@@ -440,6 +486,8 @@ def _build_split_cost_query(
         resource_grouping = ""
         resource_ordering = ""
         resource_name_filter = ""
+    vendor_tags_grouping = ",\n  vendor_tags_json" if resource_level else ""
+    vendor_tags_json = _flattened_vendor_tags_json_sql()
 
     return f"""
 WITH raw AS (
@@ -448,8 +496,10 @@ WITH raw AS (
     NULLIF(bill_payer_account_id, '') AS billing_account_id,
     DATE(bill_billing_period_start_date) AS export_partition_date,
     DATE(line_item_usage_start_date) AS usage_date,
+    NULLIF(line_item_resource_id, '') AS resource_id,
     COALESCE(
       NULLIF(line_item_resource_id, ''),
+      NULLIF(TRIM(resource_tags_user_name), ''),
       NULLIF(line_item_line_item_description, '')
     ) AS resource_name,
     NULLIF(split_line_item_parent_resource_id, '') AS parent_resource_name,
@@ -478,12 +528,21 @@ WITH raw AS (
     NULLIF(TRIM(resource_tags_aws_eks_namespace), '') AS namespace,
     NULLIF(TRIM(resource_tags_aws_eks_workload_name), '') AS workload_name,
     NULLIF(TRIM(resource_tags_aws_eks_workload_type), '') AS workload_type,
+    {vendor_tags_json} AS vendor_tags_json,
     LOWER(NULLIF(pricing_unit, '')) AS pricing_unit,
     COALESCE(line_item_usage_amount, 0) AS usage_amount,
     COALESCE(split_line_item_split_usage, 0) AS split_usage_amount,
-    COALESCE(pricing_public_on_demand_cost, 0) AS direct_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(line_item_unblended_cost, 0)
+      ELSE 0
+    END AS direct_list_cost,
     COALESCE(line_item_unblended_cost, 0) AS direct_effective_cost,
-    COALESCE(split_line_item_public_on_demand_split_cost, 0) AS split_list_cost,
+    CASE
+      WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
+        THEN COALESCE(split_line_item_split_cost, 0)
+      ELSE 0
+    END AS split_list_cost,
     COALESCE(split_line_item_split_cost, 0) AS split_effective_cost,
     line_item_usage_end_date AS source_export_time
   FROM {table}
@@ -513,21 +572,26 @@ parent_direct AS (
     raw.account_id,
     raw.usage_date,
     raw.resource_name AS parent_resource_name,
-    ANY_VALUE(raw.billing_account_id) AS billing_account_id,
-    ANY_VALUE(raw.export_partition_date) AS export_partition_date,
-    ANY_VALUE(raw.service_name) AS service_name,
-    ANY_VALUE(raw.sku_name) AS sku_name,
-    ANY_VALUE(raw.usage_type) AS usage_type,
-    ANY_VALUE(raw.region) AS region,
-    ANY_VALUE(raw.owner) AS owner,
-    ANY_VALUE(raw.service) AS service,
-    ANY_VALUE(raw.project) AS project,
-    ANY_VALUE(raw.service_exec_id) AS service_exec_id,
-    ANY_VALUE(raw.author_fallback) AS author_fallback,
-    ANY_VALUE(raw.org) AS org,
-    ANY_VALUE(raw.cluster) AS cluster,
-    ANY_VALUE(raw.shared_pool) AS shared_pool,
-    ANY_VALUE(raw.pricing_unit) AS pricing_unit,
+    MIN(raw.resource_id) AS resource_id,
+    -- This CTE feeds both summary and resource queries. Keep every inherited
+    -- parent identity deterministic so separate BigQuery executions produce
+    -- the same source_summary_row_hash for EKS children and residuals.
+    MIN(raw.billing_account_id) AS billing_account_id,
+    MIN(raw.export_partition_date) AS export_partition_date,
+    MIN(raw.service_name) AS service_name,
+    MIN(raw.sku_name) AS sku_name,
+    MIN(raw.usage_type) AS usage_type,
+    MIN(raw.region) AS region,
+    MIN(raw.owner) AS owner,
+    MIN(raw.service) AS service,
+    MIN(raw.project) AS project,
+    MIN(raw.service_exec_id) AS service_exec_id,
+    MIN(raw.author_fallback) AS author_fallback,
+    MIN(raw.org) AS org,
+    MIN(raw.cluster) AS cluster,
+    MIN(raw.shared_pool) AS shared_pool,
+    MIN(raw.vendor_tags_json) AS vendor_tags_json,
+    MIN(raw.pricing_unit) AS pricing_unit,
     SUM(raw.usage_amount) AS usage_amount,
     SUM(raw.direct_list_cost) AS direct_list_cost,
     SUM(raw.direct_effective_cost) AS direct_effective_cost,
@@ -545,6 +609,7 @@ child_split AS (
     raw.account_id,
     raw.usage_date,
     raw.parent_resource_name,
+    raw.resource_id,
     raw.resource_name,
     raw.owner,
     raw.service,
@@ -554,6 +619,7 @@ child_split AS (
     raw.org,
     raw.cluster,
     raw.shared_pool,
+    raw.vendor_tags_json,
     raw.namespace,
     raw.workload_name,
     raw.workload_type,
@@ -567,6 +633,7 @@ child_split AS (
     raw.account_id,
     raw.usage_date,
     raw.parent_resource_name,
+    raw.resource_id,
     raw.resource_name,
     raw.owner,
     raw.service,
@@ -576,6 +643,7 @@ child_split AS (
     raw.org,
     raw.cluster,
     raw.shared_pool,
+    raw.vendor_tags_json,
     raw.namespace,
     raw.workload_name,
     raw.workload_type
@@ -590,6 +658,7 @@ branch_rows AS (
     raw.sku_name,
     raw.usage_type,
     raw.region,
+    raw.resource_id,
     raw.resource_name,
     CAST(NULL AS STRING) AS parent_resource_name,
     CAST(NULL AS STRING) AS namespace,
@@ -599,12 +668,14 @@ branch_rows AS (
     raw.service,
     raw.project,
     raw.service_exec_id,
+    raw.author_fallback AS usedby,
     COALESCE(raw.owner, raw.author_fallback) AS author,
     raw.org,
     raw.pricing_unit,
     raw.usage_amount AS usage_amount,
     raw.cluster,
     raw.shared_pool,
+    raw.vendor_tags_json,
     CASE
       -- EBS volumes are the billing representation of EKS PVCs. Only retain
       -- volumes with an explicit cluster/shared-pool signal as Kubernetes;
@@ -646,6 +717,7 @@ branch_rows AS (
     'EKS:ParentResidual' AS sku_name,
     'EKS:ParentResidual' AS usage_type,
     parent.region,
+    parent.resource_id,
     parent.parent_resource_name AS resource_name,
     CAST(NULL AS STRING) AS parent_resource_name,
     CAST(NULL AS STRING) AS namespace,
@@ -655,12 +727,14 @@ branch_rows AS (
     parent.service,
     parent.project,
     parent.service_exec_id,
+    parent.author_fallback AS usedby,
     COALESCE(parent.owner, parent.author_fallback) AS author,
     parent.org,
     parent.pricing_unit,
     parent.usage_amount AS usage_amount,
     parent.cluster,
     parent.shared_pool,
+    parent.vendor_tags_json,
     'eks_parent_residual' AS source_allocation_scope,
     CASE
       WHEN parent.direct_list_cost - COALESCE(SUM(child.split_list_cost), 0) BETWEEN -0.01 AND 0
@@ -693,6 +767,7 @@ branch_rows AS (
     parent.usage_date,
     parent.service_name,
     parent.region,
+    parent.resource_id,
     parent.parent_resource_name,
     parent.owner,
     parent.service,
@@ -704,6 +779,7 @@ branch_rows AS (
     parent.usage_amount,
     parent.cluster,
     parent.shared_pool,
+    parent.vendor_tags_json,
     parent.direct_list_cost,
     parent.direct_effective_cost,
     parent.source_export_time
@@ -719,6 +795,7 @@ branch_rows AS (
     parent.sku_name,
     parent.usage_type,
     parent.region,
+    child.resource_id,
     child.resource_name,
     child.parent_resource_name,
     child.namespace,
@@ -728,12 +805,16 @@ branch_rows AS (
     child.service,
     child.project,
     child.service_exec_id,
+    COALESCE(child.author_fallback, parent.author_fallback) AS usedby,
     COALESCE(child.owner, child.author_fallback) AS author,
     child.org,
     parent.pricing_unit,
     child.split_usage_amount AS usage_amount,
-    child.cluster,
-    child.shared_pool,
+    -- AWS split children can omit either routing tag; retain their own value
+    -- and inherit only the missing tag from the matched parent for TCMS routing.
+    COALESCE(child.cluster, parent.cluster) AS cluster,
+    COALESCE(child.shared_pool, parent.shared_pool) AS shared_pool,
+    child.vendor_tags_json,
     CASE
       -- Some split-cost exports identify a workload through the EKS namespace
       -- allocation tag rather than a pod ARN. Both are direct EKS evidence.
@@ -762,6 +843,7 @@ SELECT
   sku_name,
   MIN(usage_type) AS usage_type,
   region,
+  'aws_split_cost_v1' AS source_schema_version,
   source_allocation_scope,
   namespace,
   workload_name,
@@ -774,14 +856,20 @@ SELECT
   org,
   project AS repo,
   CASE
-    WHEN shared_pool IS NULL AND cluster IS NULL THEN NULL
-    ELSE TO_JSON_STRING(STRUCT(cluster AS cluster, shared_pool AS shared_pool))
-  END AS vendor_tags_json,
+    WHEN usedby IS NULL AND shared_pool IS NULL AND cluster IS NULL THEN NULL
+    ELSE TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+      'usedby', usedby,
+      'cluster', cluster,
+      'shared_pool', shared_pool
+    )))
+  END AS {"summary_vendor_tags_json" if resource_level else "vendor_tags_json"},
+  {"vendor_tags_json," if resource_level else ""}
   {resource_columns}
-  SUM(list_cost) AS list_cost,
-  SUM(effective_cost) AS effective_cost,
+  {"CAST(NULL AS STRING) AS summary_resource_name," if resource_level else ""}
+  ROUND(SUM(list_cost), 9) AS list_cost,
+  ROUND(SUM(effective_cost), 9) AS effective_cost,
   CAST(0 AS NUMERIC) AS credit_amount,
-  SUM(net_cost) AS net_cost,
+  ROUND(SUM(net_cost), 9) AS net_cost,
   MAX(source_export_time) AS source_export_time
 FROM branch_rows
 WHERE (list_cost != 0 OR effective_cost != 0 OR net_cost != 0){resource_name_filter}
@@ -801,12 +889,23 @@ GROUP BY
   service,
   project,
   service_exec_id,
+  usedby,
   author,
   org,
   cluster,
-  shared_pool{resource_grouping}
+  shared_pool{vendor_tags_grouping}{resource_grouping}
 ORDER BY usage_date, service_name, sku_name, source_allocation_scope{resource_ordering}{limit_clause}
 """.strip()
+
+
+def _flattened_vendor_tags_json_sql() -> str:
+    fields = ",\n        ".join(
+        f"'{label}', NULLIF(TRIM({column}), '')"
+        for label, column in _AWS_SPLIT_COST_TAG_COLUMNS
+    )
+    return f"""TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
+        {fields}
+      )))"""
 
 
 def _quote_bigquery_table(table: str) -> str:

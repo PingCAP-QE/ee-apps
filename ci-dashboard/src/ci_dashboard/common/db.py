@@ -8,13 +8,19 @@ from ci_dashboard.jobs.build_url_matcher import normalize_build_url, normalized_
 
 
 def _build_connect_args(database: DatabaseSettings) -> dict[str, object]:
-    if not database.ssl_ca:
+    if database.url and database.url.startswith("sqlite"):
         return {}
-    return {
-        "ssl": {
-            "ca": database.ssl_ca,
-        }
+    connect_args: dict[str, object] = {
+        "connect_timeout": database.connect_timeout_seconds,
+        "read_timeout": database.read_timeout_seconds,
+        "write_timeout": database.write_timeout_seconds,
+        "init_command": (
+            f"SET SESSION MAX_EXECUTION_TIME={database.query_timeout_seconds * 1000}"
+        ),
     }
+    if database.ssl_ca:
+        connect_args["ssl"] = {"ca": database.ssl_ca}
+    return connect_args
 
 
 def _build_engine_kwargs(database: DatabaseSettings) -> dict[str, object]:
@@ -27,9 +33,9 @@ def _build_engine_kwargs(database: DatabaseSettings) -> dict[str, object]:
         return engine_kwargs
     return {
         **engine_kwargs,
-        "pool_size": 40,
-        "max_overflow": 40,
-        "pool_timeout": 60,
+        "pool_size": database.pool_size,
+        "max_overflow": database.max_overflow,
+        "pool_timeout": database.pool_timeout_seconds,
     }
 
 

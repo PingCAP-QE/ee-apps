@@ -24,6 +24,9 @@ const DONUT_COLORS = [
   "#8d5a97",
   "#4f772d",
 ];
+const LABELED_DONUT_MIN_LABEL_Y = 36;
+const LABELED_DONUT_BOTTOM_PADDING = 28;
+const LABELED_DONUT_LABEL_GAP = 8;
 
 const SERIES_COLORS = {
   total_count: "#315772",
@@ -31,9 +34,9 @@ const SERIES_COLORS = {
   failure_count: "#d1495b",
   success_rate_pct: "#f4a261",
   baseline_avg_total_s: "#7d8597",
-  recent_gcp_avg_total_s: "#2a9d8f",
+  recent_tencent_avg_total_s: "#2a9d8f",
   gcp_build_count: "#315772",
-  idc_build_count: "#bc6c25",
+  tencent_build_count: "#2a9d8f",
   queue_avg_s: "#7f5539",
   run_avg_s: "#2a9d8f",
   total_avg_s: "#315772",
@@ -94,8 +97,8 @@ export function PageIntro({ eyebrow, title, description, kicker }) {
     <header className="page-intro">
       <div>
         <span className="page-intro__eyebrow">{eyebrow}</span>
-        <h2>{title}</h2>
-        <p>{description}</p>
+        {title ? <h2>{title}</h2> : null}
+        {description ? <p>{description}</p> : null}
       </div>
       {kicker ? <div className="page-intro__kicker">{kicker}</div> : null}
     </header>
@@ -196,6 +199,8 @@ export function TrendChart({
   rightYTickMode = "default",
   axisLabelSize = 11,
   bottomLabelSize = 11,
+  rotateBottomLabels = false,
+  showAllBottomLabels = false,
   annotationLabelSize = 10,
   barGroupWidthFactor = 0.66,
   barMaxWidth = 46,
@@ -204,7 +209,10 @@ export function TrendChart({
   onBucketSelect = null,
   preserveLabelOrder = false,
   xLabelFormatter = formatBottomAxisLabel,
+  tooltipLabelFormatter = xLabelFormatter,
   showTooltipSum = false,
+  showLegend = true,
+  ariaLabel = "Trend chart",
 }) {
   const [hoveredBucketIndex, setHoveredBucketIndex] = useState(null);
   const [tooltipVisible, setTooltipVisible] = useState(false);
@@ -248,6 +256,8 @@ export function TrendChart({
   const rightSeries = series.filter((item) => item.axis === "right");
   const leftLineSeries = leftSeries.filter((item) => item.type !== "bar");
   const leftBarSeries = leftSeries.filter((item) => item.type === "bar");
+  const barStackGroup = (item) => item.stackGroup ?? "__default";
+  const leftStackGroups = Array.from(new Set(leftBarSeries.map(barStackGroup)));
   const leftAxisIsPercent = yFormatter === formatPercent;
   const rightAxisIsPercent = rightYFormatter === formatPercent;
   const leftLineValues = leftLineSeries.flatMap((item) =>
@@ -256,10 +266,11 @@ export function TrendChart({
       .filter((value) => value != null),
   );
   const leftBarValues = stackBars
-    ? labels.map((label) =>
-        leftBarSeries.reduce(
-          (sum, item) => sum + (pointMaps.get(item.key)?.get(label) ?? 0),
-          0,
+    ? labels.flatMap((label) =>
+        leftStackGroups.map((stackGroup) =>
+          leftBarSeries
+            .filter((item) => barStackGroup(item) === stackGroup)
+            .reduce((sum, item) => sum + (pointMaps.get(item.key)?.get(label) ?? 0), 0),
         ),
       )
     : leftBarSeries.flatMap((item) =>
@@ -307,7 +318,7 @@ export function TrendChart({
   const padding = {
     top: annotationMap.size ? 54 : compactY ? 6 : 20,
     right: hasRightAxis ? 58 : 20,
-    bottom: compactY ? 22 : 42,
+    bottom: rotateBottomLabels ? 70 : compactY ? 22 : 42,
     left: leftPadding,
   };
   const plotWidth = width - padding.left - padding.right;
@@ -324,8 +335,11 @@ export function TrendChart({
   const xForIndex = (index) =>
     labels.length > 1 ? padding.left + xInset + index * xStep : padding.left + plotWidth / 2;
   const displayLabels = labels.map((label) => String(xLabelFormatter(label)));
+  const effectiveBottomLabelSize = rotateBottomLabels
+    ? Math.min(bottomLabelSize, 9)
+    : bottomLabelSize;
   const longestDisplayLabelLength = Math.max(...displayLabels.map((label) => label.length), 1);
-  const estimatedBottomLabelWidth = longestDisplayLabelLength * (bottomLabelSize * 0.62) + 14;
+  const estimatedBottomLabelWidth = longestDisplayLabelLength * (effectiveBottomLabelSize * 0.62) + 14;
   const maxBottomLabels = Math.max(2, Math.floor(plotWidth / estimatedBottomLabelWidth));
   const bottomLabelStep =
     labels.length > maxBottomLabels
@@ -335,11 +349,13 @@ export function TrendChart({
     1,
     Math.ceil(estimatedBottomLabelWidth / Math.max(xStep, 1)),
   );
-  const visibleBottomLabelIndices = buildVisibleBottomLabelIndices(
-    labels.length,
-    bottomLabelStep,
-    minBottomLabelIndexGap,
-  );
+  const visibleBottomLabelIndices = showAllBottomLabels
+    ? new Set(labels.map((_label, index) => index))
+    : buildVisibleBottomLabelIndices(
+        labels.length,
+        bottomLabelStep,
+        minBottomLabelIndexGap,
+      );
   const interactiveBuckets = typeof onBucketSelect === "function";
   const selectedBucketIndex = selectedBucketLabel ? labels.indexOf(selectedBucketLabel) : -1;
   const getBucketArea = (index) => {
@@ -366,7 +382,7 @@ export function TrendChart({
           height,
           padding,
           showSum: showTooltipSum,
-          labelFormatter: xLabelFormatter,
+          labelFormatter: tooltipLabelFormatter,
         });
   const handleBucketHoverStart = (index) => {
     if (hoverTimerRef.current) {
@@ -389,7 +405,7 @@ export function TrendChart({
 
   return (
     <div className="trend-chart">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Trend chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={ariaLabel}>
         {leftTickValues.map((value, index) => {
           const ratio =
             leftTickValues.length > 1 ? index / (leftTickValues.length - 1) : 0;
@@ -443,18 +459,32 @@ export function TrendChart({
             const value = pointMaps.get(item.key)?.get(label) ?? 0;
             const groupWidth = Math.min(barMaxWidth, xStep * barGroupWidthFactor || barMaxWidth);
             const stackedSeries = stackBars
-              ? barSeries.filter((candidate) => (candidate.axis || "left") === (item.axis || "left"))
+              ? barSeries.filter(
+                  (candidate) =>
+                    (candidate.axis || "left") === (item.axis || "left")
+                    && barStackGroup(candidate) === barStackGroup(item),
+                )
+              : [];
+            const stackedGroups = stackBars
+              ? Array.from(
+                  new Set(
+                    barSeries
+                      .filter((candidate) => (candidate.axis || "left") === (item.axis || "left"))
+                      .map(barStackGroup),
+                  ),
+                )
               : [];
             const axisSeriesIndex = stackBars
               ? stackedSeries.findIndex((candidate) => candidate.key === item.key)
               : seriesIndex;
+            const stackGroupIndex = stackBars ? stackedGroups.indexOf(barStackGroup(item)) : -1;
             const barWidth = stackBars
-              ? Math.max(groupWidth - 4, 10)
+              ? Math.max(groupWidth / Math.max(stackedGroups.length, 1) - 6, 10)
               : Math.max(groupWidth / Math.max(barSeries.length, 1) - 6, 10);
             const centerX = xForIndex(index);
             const groupStart = centerX - groupWidth / 2;
             const x = stackBars
-              ? centerX - barWidth / 2
+              ? groupStart + stackGroupIndex * (barWidth + 6)
               : groupStart + seriesIndex * (barWidth + 6);
             const axisRange =
               item.axis === "right"
@@ -483,7 +513,7 @@ export function TrendChart({
                 width={barWidth}
                 height={barHeight}
                 rx={stackBars ? 2 : 6}
-                fill={seriesColor(item.key)}
+                fill={seriesColor(item.key, item.color)}
                 opacity="0.78"
               />
             );
@@ -530,7 +560,7 @@ export function TrendChart({
                   key={`${item.key}-segment-${index}`}
                   points={segment.map((point) => `${point.x},${point.y}`).join(" ")}
                   fill="none"
-                  stroke={seriesColor(item.key)}
+                  stroke={seriesColor(item.key, item.color)}
                   strokeWidth="3"
                   strokeDasharray={item.dash ? "7 6" : undefined}
                   strokeLinejoin="round"
@@ -546,7 +576,7 @@ export function TrendChart({
                         cx={point.x}
                         cy={point.y}
                         r={selectedBucketLabel === point.label ? "5.5" : "4.5"}
-                        fill={seriesColor(item.key)}
+                        fill={seriesColor(item.key, item.color)}
                         stroke="#fcf7ef"
                         strokeWidth={selectedBucketLabel === point.label ? "3" : "2"}
                         style={interactiveBuckets ? { cursor: "pointer" } : undefined}
@@ -588,6 +618,7 @@ export function TrendChart({
               key={`${label}-annotation`}
               x={x}
               y={annotationY}
+              textAnchor={index === labels.length - 1 ? "end" : index === 0 ? "start" : "middle"}
               className="chart-axis-label chart-axis-label--annotation"
               style={{ fontSize: `${annotationLabelSize}px` }}
             >
@@ -611,15 +642,23 @@ export function TrendChart({
           const isFirstLabel = index === 0;
           const isLastLabel = index === labels.length - 1;
           const x = xForIndex(index);
-          const textAnchor = isLastLabel ? "end" : isFirstLabel ? "start" : "middle";
+          const y = height - 14;
+          const textAnchor = rotateBottomLabels
+            ? "end"
+            : isLastLabel
+              ? "end"
+              : isFirstLabel
+                ? "start"
+                : "middle";
           return (
             <text
               key={label}
               x={x}
-              y={height - 14}
+              y={y}
               textAnchor={textAnchor}
+              transform={rotateBottomLabels ? `rotate(45 ${x} ${y})` : undefined}
               className="chart-axis-label chart-axis-label--bottom"
-              style={{ fontSize: `${bottomLabelSize}px` }}
+              style={{ fontSize: `${effectiveBottomLabelSize}px` }}
             >
               {displayLabels[index]}
             </text>
@@ -639,7 +678,7 @@ export function TrendChart({
             </text>
             {hoveredBucket.rows.map((row, index) => (
               <g key={`${hoveredBucket.label}-${row.key}`} transform={`translate(0, ${34 + index * 18})`}>
-                <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key)} />
+                <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key, row.color)} />
                 <text x="25" y="0" className="chart-tooltip__text">
                   {row.label}: {row.value}
                 </text>
@@ -669,7 +708,7 @@ export function TrendChart({
                       key={`${hoveredBucket.label}-${row.key}`}
                       transform={`translate(0, ${12 + index * 18})`}
                     >
-                      <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key)} />
+                      <circle cx="14" cy="-4" r="4" fill={seriesColor(row.key, row.color)} />
                       <text x="25" y="0" className="chart-tooltip__text">
                         {row.label}: {row.value}
                       </text>
@@ -705,17 +744,19 @@ export function TrendChart({
         })}
       </svg>
 
-      <div className="chart-legend">
-        {series.map((item) => (
-          <div key={item.key} className="chart-legend__item">
-            <span
-              className="chart-legend__swatch"
-              style={{ backgroundColor: seriesColor(item.key) }}
-            />
-            <span>{item.label || formatSeriesLabel(item.key)}</span>
-          </div>
-        ))}
-      </div>
+      {showLegend ? (
+        <div className="chart-legend">
+          {series.map((item) => (
+            <div key={item.key} className="chart-legend__item">
+              <span
+                className="chart-legend__swatch"
+                style={{ backgroundColor: seriesColor(item.key, item.color) }}
+              />
+              <span>{item.label || formatSeriesLabel(item.key)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -911,7 +952,7 @@ export function RuntimeComparisonBoard({
 
   const allItems = [...(improved || []), ...(regressed || [])];
   const maxRunSeconds = Math.max(
-    ...allItems.flatMap((item) => [item.idc_baseline_avg_run_s, item.gcp_recent_avg_run_s]),
+    ...allItems.flatMap((item) => [item.gcp_baseline_avg_run_s, item.tencent_recent_avg_run_s]),
     1,
   );
 
@@ -919,7 +960,7 @@ export function RuntimeComparisonBoard({
     <div className="runtime-compare-grid">
       <RuntimeChangeList
         title="Top 10 improved jobs"
-        subtitle={`${windowDays}d IDC baseline before first GCP success vs latest ${windowDays}d GCP. Min ${minSuccessRuns} success runs each side.`}
+        subtitle={`${windowDays}d GCP Jenkins baseline before first Tencent Jenkins success vs latest ${windowDays}d Tencent Jenkins. Min ${minSuccessRuns} success runs each side.`}
         tone="improved"
         items={improved}
         maxRunSeconds={maxRunSeconds}
@@ -927,7 +968,7 @@ export function RuntimeComparisonBoard({
       />
       <RuntimeChangeList
         title="Top 10 regressed jobs"
-        subtitle={`${windowDays}d IDC baseline before first GCP success vs latest ${windowDays}d GCP. Min ${minSuccessRuns} success runs each side.`}
+        subtitle={`${windowDays}d GCP Jenkins baseline before first Tencent Jenkins success vs latest ${windowDays}d Tencent Jenkins. Min ${minSuccessRuns} success runs each side.`}
         tone="regressed"
         items={regressed}
         maxRunSeconds={maxRunSeconds}
@@ -948,24 +989,26 @@ export function MigrationFixedWindowComparisonTable({ rows }) {
         <thead>
           <tr>
             <th>Scope</th>
-            <th>Baseline avg duration</th>
-            <th>Baseline success count</th>
-            <th>Baseline success rate</th>
-            <th>Recent GCP avg duration</th>
-            <th>Recent GCP success count</th>
-            <th>Recent GCP success rate</th>
+            <th>Matched jobs</th>
+            <th>GCP avg duration (Tencent-weighted)</th>
+            <th>GCP source success count</th>
+            <th>GCP source success rate</th>
+            <th>Recent Tencent avg duration</th>
+            <th>Tencent success count</th>
+            <th>Tencent success rate</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.scope_key}>
               <th scope="row">{row.scope_label}</th>
+              <td>{formatNumber(row.matched_job_count)}</td>
               <td>{formatSeconds(row.baseline?.success_avg_total_s)}</td>
               <td>{formatNumber(row.baseline?.success_count)}</td>
               <td>{formatPercent(row.baseline?.success_rate_pct)}</td>
-              <td>{formatSeconds(row.recent_gcp?.success_avg_total_s)}</td>
-              <td>{formatNumber(row.recent_gcp?.success_count)}</td>
-              <td>{formatPercent(row.recent_gcp?.success_rate_pct)}</td>
+              <td>{formatSeconds(row.recent_tencent?.success_avg_total_s)}</td>
+              <td>{formatNumber(row.recent_tencent?.success_count)}</td>
+              <td>{formatPercent(row.recent_tencent?.success_rate_pct)}</td>
             </tr>
           ))}
         </tbody>
@@ -980,6 +1023,8 @@ export function DonutShareChart({
   items,
   totalValue = null,
   totalLabel = "builds",
+  centerValue = null,
+  centerLabel = null,
   emptyMessage = "No share data for the current filters.",
   onItemSelect,
   headerAction,
@@ -1047,7 +1092,6 @@ export function DonutShareChart({
               const segmentClassName = [
                 "donut-chart__segment",
                 interactive ? "donut-chart__segment--interactive" : "",
-                item.highlight ? "donut-chart__segment--highlight" : "",
               ].filter(Boolean).join(" ");
               const element = (
                 <path
@@ -1080,10 +1124,10 @@ export function DonutShareChart({
             })}
             <circle cx={center} cy={center} r={innerRadius - 3} fill="#fcf7ef" />
             <text x={center} y={center - 6} textAnchor="middle" className="donut-chart__center-value">
-              {formatCompact(total)}
+              {centerValue ?? formatCompact(total)}
             </text>
             <text x={center} y={center + 16} textAnchor="middle" className="donut-chart__center-label">
-              {totalLabel}
+              {centerLabel || totalLabel}
             </text>
             {hoveredSegment ? (
               <g className="donut-tooltip" transform={`translate(${center - 84}, ${center - 35})`}>
@@ -1108,7 +1152,6 @@ export function DonutShareChart({
             const legendClassName = [
               "donut-legend__item",
               interactive ? "" : "donut-legend__item--static",
-              item.highlight ? "donut-legend__item--highlight" : "",
             ].filter(Boolean).join(" ");
             if (interactive) {
               return (
@@ -1150,9 +1193,13 @@ export function LabeledDonutShareChart({
   items,
   totalValue,
   totalLabel = "builds",
+  centerValue,
+  centerLabel,
+  metricValueFormatter = formatCompact,
   emptyMessage = "No share data for the current filters.",
   onItemSelect,
   headerAction,
+  className = "",
 }) {
   if (!items?.length) {
     return <EmptyState message={emptyMessage} compact />;
@@ -1165,9 +1212,7 @@ export function LabeledDonutShareChart({
   }
 
   const width = 640;
-  const height = 390;
   const centerX = width / 2;
-  const centerY = 205;
   const radius = 106;
   const innerRadius = 64;
   const labelRadius = 128;
@@ -1181,6 +1226,7 @@ export function LabeledDonutShareChart({
     const angle = (value / chartTotal) * Math.PI * 2;
     const endAngle = startAngle + angle;
     const midAngle = startAngle + angle / 2;
+    const nameLines = wrapLabel(item.name, 20);
     const segment = {
       item,
       index,
@@ -1190,11 +1236,28 @@ export function LabeledDonutShareChart({
       endAngle,
       midAngle,
       fill: donutColor(item.name, index),
-      nameLines: wrapLabel(item.name, 20),
+      nameLines,
+      labelHeight: nameLines.length * 15 + 18,
     };
     startAngle = endAngle;
     return segment;
   });
+  const maximumLabelStackHeight = Math.max(
+    ...["left", "right"].map((side) => {
+      const sideSegments = segments.filter(
+        (segment) => (Math.cos(segment.midAngle) >= 0 ? "right" : "left") === side,
+      );
+      return (
+        sideSegments.reduce((sum, segment) => sum + segment.labelHeight, 0) +
+        Math.max(sideSegments.length - 1, 0) * LABELED_DONUT_LABEL_GAP
+      );
+    }),
+  );
+  const height = Math.max(
+    390,
+    LABELED_DONUT_MIN_LABEL_Y + maximumLabelStackHeight + LABELED_DONUT_BOTTOM_PADDING,
+  );
+  const centerY = Math.max(205, height / 2);
 
   const labels = arrangeDonutLabels(
     segments.map((segment) => {
@@ -1203,14 +1266,14 @@ export function LabeledDonutShareChart({
         ...segment,
         side,
         rawY: centerY + Math.sin(segment.midAngle) * labelRadius,
-        height: segment.nameLines.length * 15 + 18,
+        height: segment.labelHeight,
       };
     }),
     height,
   );
 
   return (
-    <article className="donut-card donut-card--labeled">
+    <article className={["donut-card", "donut-card--labeled", className].filter(Boolean).join(" ")}>
       <header className="donut-card__header">
         <div>
           <strong>{title}</strong>
@@ -1265,10 +1328,10 @@ export function LabeledDonutShareChart({
         })}
         <circle cx={centerX} cy={centerY} r={innerRadius - 4} fill="#fcf7ef" />
         <text x={centerX} y={centerY - 7} textAnchor="middle" className="donut-chart__center-value">
-          {formatCompact(chartTotal)}
+          {centerValue ?? formatCompact(chartTotal)}
         </text>
         <text x={centerX} y={centerY + 17} textAnchor="middle" className="donut-chart__center-label">
-          {totalLabel}
+          {centerLabel ?? totalLabel}
         </text>
 
         {labels.map((label) => {
@@ -1279,7 +1342,7 @@ export function LabeledDonutShareChart({
           const anchorX = label.side === "right" ? labelX : labelX + labelWidth;
           const endX = label.side === "right" ? labelX - 8 : labelX + labelWidth + 8;
           const textAnchor = label.side === "right" ? "start" : "end";
-          const metric = `${formatCompact(label.value)} · ${formatPercent(label.percent)}`;
+          const metric = `${metricValueFormatter(label.value)} · ${formatPercent(label.percent)}`;
 
           return (
             <g
@@ -1563,12 +1626,25 @@ export function DistinctCaseCountTable({ weeks, rows, scrollClassName = "" }) {
 }
 
 export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
+  const [sort, setSort] = useState({ column: null, direction: "desc" });
+
   if (!rows?.length) {
     return <EmptyState message="No flaky issues matched the current repo, branch, and date window." />;
   }
 
   const highlightStartIndex = Math.max(weeks.length - 2, 0);
-  const tableWidthPx = 360 + weeks.length * 170;
+  const rowsWithTotals = rows.map((row) => ({
+    ...row,
+    total: buildIssueTotalMetric(row.metrics),
+  }));
+  const sortedRows = sortIssueWeeklyRows(rowsWithTotals, sort);
+  const tableWidthPx = 360 + (weeks.length + 1) * 170;
+  const handleSort = (column) => {
+    setSort((current) => ({
+      column,
+      direction: current.column === column && current.direction === "desc" ? "asc" : "desc",
+    }));
+  };
 
   return (
     <div className={`table-scroll ${scrollClassName}`.trim()}>
@@ -1578,55 +1654,159 @@ export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
       >
         <colgroup>
           <col className="issue-weekly-case-col" />
+          <col className="issue-weekly-week-col" />
           {weeks.map((week) => (
             <col className="issue-weekly-week-col" key={week} />
           ))}
         </colgroup>
         <thead>
           <tr>
-            <th>Case name</th>
+            <IssueWeeklyRateSortHeader
+              column="case_name"
+              label="Case name"
+              sort={sort}
+              onSort={handleSort}
+              caseColumn
+            />
+            <IssueWeeklyRateSortHeader
+              column="total"
+              label="Total"
+              sort={sort}
+              onSort={handleSort}
+            />
             {weeks.map((week) => (
-              <th key={week}>{week}</th>
+              <IssueWeeklyRateSortHeader
+                key={week}
+                column={`week:${week}`}
+                label={week}
+                sort={sort}
+                onSort={handleSort}
+              />
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {sortedRows.map((row) => {
             const closeTimeLabel = row.issue_closed_at ? formatUtcCloseTime(row.issue_closed_at) : null;
             return (
-            <tr key={`${row.issue_number}-${row.case_name}`}>
-              <th scope="row">
-                <div className="issue-cell">
-                  <a href={row.issue_url} target="_blank" rel="noreferrer" title={row.display_name}>
-                    {row.display_name}
-                  </a>
-                  <div className="issue-cell__meta">
-                    <span className={`status-pill status-pill--${String(row.issue_status).toLowerCase()}`}>
-                      {row.issue_status}
-                    </span>
-                    {row.issue_branch ? <span>{row.issue_branch}</span> : null}
-                    {closeTimeLabel ? <span>{closeTimeLabel}</span> : null}
+              <tr key={`${row.issue_number}-${row.case_name}`}>
+                <th scope="row">
+                  <div className="issue-cell">
+                    <a href={row.issue_url} target="_blank" rel="noreferrer" title={row.display_name}>
+                      {row.issue_number ? `[#${row.issue_number}] ` : ""}{row.case_name}
+                    </a>
+                    <div className="issue-cell__meta">
+                      <span className={`status-pill status-pill--${String(row.issue_status).toLowerCase()}`}>
+                        {row.issue_status}
+                      </span>
+                      {row.issue_branch ? <span>{row.issue_branch}</span> : null}
+                      {closeTimeLabel ? <span>{closeTimeLabel}</span> : null}
+                    </div>
                   </div>
-                </div>
-              </th>
-              {row.metrics.map((metric, index) => {
-                const isRecentWeek = index >= highlightStartIndex;
-                const recentTone = metric.flaky_rate_pct > 0 ? "hot" : "cool";
-                return (
-                  <td
-                    key={`${row.issue_number}-${weeks[index]}`}
-                    className={isRecentWeek ? `metric-cell metric-cell--${recentTone}` : undefined}
-                  >
-                    {metric.cell}
-                  </td>
-                );
-              })}
-            </tr>
-          )})}
+                </th>
+                <td>{row.total.cell}</td>
+                {row.metrics.map((metric, index) => {
+                  const isRecentWeek = index >= highlightStartIndex;
+                  const recentTone = metric.flaky_rate_pct > 0 ? "hot" : "cool";
+                  return (
+                    <td
+                      key={`${row.issue_number}-${weeks[index]}`}
+                      className={isRecentWeek ? `metric-cell metric-cell--${recentTone}` : undefined}
+                    >
+                      {metric.cell}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
+}
+
+function IssueWeeklyRateSortHeader({ column, label, sort, onSort, caseColumn = false }) {
+  const isActive = sort.column === column;
+  const direction = isActive ? sort.direction : null;
+  const nextDirection = direction === "desc" ? "ascending" : "descending";
+
+  return (
+    <th
+      scope="col"
+      className="issue-weekly__sortable-header"
+      aria-sort={direction === "desc" ? "descending" : direction === "asc" ? "ascending" : "none"}
+    >
+      <button
+        type="button"
+        className={`issue-weekly__sort-button${caseColumn ? " issue-weekly__sort-button--case" : ""}`}
+        aria-label={`Sort ${label} ${nextDirection}`}
+        aria-pressed={isActive}
+        onClick={() => onSort(column)}
+      >
+        <span>{label}</span>
+        <span className="issue-weekly__sort-indicator" aria-hidden="true">
+          {direction === "desc" ? "↓" : direction === "asc" ? "↑" : "↕"}
+        </span>
+      </button>
+    </th>
+  );
+}
+
+function buildIssueTotalMetric(metrics) {
+  const totals = (metrics || []).reduce(
+    (sum, metric) => ({
+      flakyRuns: sum.flakyRuns + Number(metric.flaky_runs || 0),
+      totalRunsEst: sum.totalRunsEst + Number(metric.total_runs_est || 0),
+    }),
+    { flakyRuns: 0, totalRunsEst: 0 },
+  );
+  const flakyRatePct = totals.totalRunsEst
+    ? (totals.flakyRuns * 100) / totals.totalRunsEst
+    : 0;
+
+  return {
+    flaky_runs: totals.flakyRuns,
+    total_runs_est: totals.totalRunsEst,
+    flaky_rate_pct: flakyRatePct,
+    cell: `${flakyRatePct.toFixed(2)}% (${totals.flakyRuns}/${totals.totalRunsEst})`,
+  };
+}
+
+function sortIssueWeeklyRows(rows, sort) {
+  if (!sort.column) {
+    return rows;
+  }
+
+  const direction = sort.direction === "asc" ? 1 : -1;
+  return [...rows].sort((left, right) => {
+    if (sort.column === "case_name") {
+      return (
+        String(left.case_name || "").localeCompare(
+          String(right.case_name || ""),
+        ) * direction
+      );
+    }
+
+    const leftMetric = issueMetricForColumn(left, sort.column);
+    const rightMetric = issueMetricForColumn(right, sort.column);
+    const difference =
+      Number(leftMetric.flaky_rate_pct || 0) - Number(rightMetric.flaky_rate_pct || 0);
+    if (difference) {
+      return difference * direction;
+    }
+    return String(left.case_name || "").localeCompare(
+      String(right.case_name || ""),
+    );
+  });
+}
+
+function issueMetricForColumn(row, column) {
+  if (column === "total") {
+    return row.total;
+  }
+  const week = column.slice("week:".length);
+  return row.metrics.find((metric) => metric.week_start === week) || {};
 }
 
 export function BucketFlakyRateTable({
@@ -1681,35 +1861,42 @@ export function BucketFlakyRateTable({
   );
 }
 
-export function UnmatchedResourceTable({ items }) {
+export function ResourceBreakdownTable({ items }) {
   if (!items?.length) {
     return <EmptyState message="No resource rows for the selected owner and filters." />;
   }
 
   return (
     <div className="table-scroll table-scroll--compact-y">
-      <table className="data-table data-table--compact">
+      <table className="data-table data-table--compact data-table--resource-breakdown">
+        <colgroup>
+          <col className="resource-breakdown__id-column" />
+          <col className="resource-breakdown__name-column" />
+          <col className="resource-breakdown__service-column" />
+          <col className="resource-breakdown__cost-column" />
+          <col className="resource-breakdown__duration-column" />
+          <col className="resource-breakdown__labels-column" />
+        </colgroup>
         <thead>
           <tr>
-            <th>Resource ID or name</th>
+            <th>Resource ID</th>
+            <th>Name</th>
+            <th>Service</th>
             <th>List cost</th>
             <th>Duration</th>
-            <th>Service</th>
             <th>Labels</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item, index) => (
-            <tr key={`${item.resource_name}:${item.service_name}:${item.sku_name}:${index}`}>
-              <th scope="row">
-                <div className="resource-table__name">{item.resource_name}</div>
-                {item.repo_name ? (
-                  <div className="resource-table__meta">repo: {item.repo_name}</div>
-                ) : null}
-              </th>
-              <td>{formatCurrency(item.list_cost)}</td>
-              <td>{formatResourceDuration(item.usage_seconds)}</td>
+          {items.map((item) => (
+            <tr key={item.resource_key}>
+              <th scope="row">{item.resource_id || "--"}</th>
+              <td>
+                <div className="resource-table__name">{item.resource_name || "--"}</div>
+              </td>
               <td>{item.service_name || "--"}</td>
+              <td>{formatCurrency(item.list_cost)}</td>
+              <td>{item.usage_seconds == null ? "--" : formatResourceDuration(item.usage_seconds)}</td>
               <td className="resource-table__labels">{item.labels || "--"}</td>
             </tr>
           ))}
@@ -1718,57 +1905,6 @@ export function UnmatchedResourceTable({ items }) {
     </div>
   );
 }
-
-export function UnattachedBlockVolumeTable({ items }) {
-  if (!items?.length) {
-    return <EmptyState message="No scanned unattached block volumes." />;
-  }
-
-  return (
-    <div className="table-scroll table-scroll--compact-y">
-      <table className="data-table data-table--compact">
-        <thead>
-          <tr>
-            <th>Vendor</th>
-            <th>Volume ID</th>
-            <th>Tags / labels</th>
-            <th>Owner</th>
-            <th>Owner status</th>
-            <th>Team</th>
-            <th>Manager</th>
-            <th>Size</th>
-            <th title="Actual billed cost in the selected date range when billing can be matched by volume id.">Cost</th>
-            <th title="Days since provider creation time. Actual unattached duration is lower-bound by the first scan that observed it unattached.">Age</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={`${item.vendor || "unknown"}:${item.volume_id}`}>
-              <td>{formatVendor(item.vendor)}</td>
-              <th scope="row">
-                <div className="resource-table__name">{item.volume_id}</div>
-              </th>
-              <td className="resource-table__labels">{item.tags || "--"}</td>
-              <td>{item.owner || "--"}</td>
-              <td>
-                <span className={`owner-status owner-status--${item.owner_status || "missing"}`}>
-                  {item.owner_status || "missing"}
-                </span>
-              </td>
-              <td>{item.team || "--"}</td>
-              <td>{item.manager || "--"}</td>
-              <td>{formatGib(item.size_gib)}</td>
-              <td>{item.cost == null ? "--" : formatCurrency(item.cost)}</td>
-              <td>{formatDaysDuration(item.age ?? item.duration)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-export const UnattachedEbsVolumeTable = UnattachedBlockVolumeTable;
 
 export function EmptyState({ message, compact = false }) {
   return <div className={compact ? "empty-state empty-state--compact" : "empty-state"}>{message}</div>;
@@ -1840,6 +1976,7 @@ function buildBucketTooltip({
         value: formatter(rawValue),
         rawValue: Number(rawValue || 0),
         type: item.type,
+        color: item.color,
       };
     })
     .filter(Boolean);
@@ -1884,14 +2021,17 @@ function buildBucketTooltip({
   };
 }
 
-function seriesColor(key) {
+function seriesColor(key, color) {
+  if (color) {
+    return color;
+  }
   if (SERIES_COLORS[key]) {
     return SERIES_COLORS[key];
   }
   return DONUT_COLORS[Math.abs(hashString(String(key || ""))) % DONUT_COLORS.length];
 }
 
-function donutColor(name, index) {
+export function donutColor(name, index) {
   if (name && SERIES_COLORS[name]) {
     return SERIES_COLORS[name];
   }
@@ -1965,6 +2105,17 @@ function formatUtcCloseTime(isoValue) {
 }
 
 function describeDonutArc(cx, cy, innerRadius, outerRadius, startAngle, endAngle) {
+  if (endAngle - startAngle >= Math.PI * 2 - 0.000001) {
+    return [
+      `M ${cx} ${cy - outerRadius}`,
+      `A ${outerRadius} ${outerRadius} 0 1 1 ${cx} ${cy + outerRadius}`,
+      `A ${outerRadius} ${outerRadius} 0 1 1 ${cx} ${cy - outerRadius}`,
+      `M ${cx} ${cy - innerRadius}`,
+      `A ${innerRadius} ${innerRadius} 0 1 0 ${cx} ${cy + innerRadius}`,
+      `A ${innerRadius} ${innerRadius} 0 1 0 ${cx} ${cy - innerRadius}`,
+      "Z",
+    ].join(" ");
+  }
   const outerStart = polarToCartesian(cx, cy, outerRadius, endAngle);
   const outerEnd = polarToCartesian(cx, cy, outerRadius, startAngle);
   const innerStart = polarToCartesian(cx, cy, innerRadius, startAngle);
@@ -2023,9 +2174,9 @@ function wrapLabel(value, maxLength) {
 }
 
 function arrangeDonutLabels(labels, height) {
-  const minY = 36;
-  const maxY = height - 28;
-  const minGap = 48;
+  const minY = LABELED_DONUT_MIN_LABEL_Y;
+  const maxY = height - LABELED_DONUT_BOTTOM_PADDING;
+  const minGap = LABELED_DONUT_LABEL_GAP;
 
   return ["left", "right"].flatMap((side) => {
     const sideLabels = labels
@@ -2037,13 +2188,17 @@ function arrangeDonutLabels(labels, height) {
       }));
 
     for (let index = 1; index < sideLabels.length; index += 1) {
-      sideLabels[index].y = Math.max(sideLabels[index].y, sideLabels[index - 1].y + minGap);
+      const previous = sideLabels[index - 1];
+      const requiredGap = (previous.height + sideLabels[index].height) / 2 + minGap;
+      sideLabels[index].y = Math.max(sideLabels[index].y, previous.y + requiredGap);
     }
     for (let index = sideLabels.length - 2; index >= 0; index -= 1) {
-      if (sideLabels[index + 1].y > maxY) {
-        sideLabels[index + 1].y = maxY;
+      const next = sideLabels[index + 1];
+      const requiredGap = (sideLabels[index].height + next.height) / 2 + minGap;
+      if (next.y > maxY) {
+        next.y = maxY;
       }
-      sideLabels[index].y = Math.min(sideLabels[index].y, sideLabels[index + 1].y - minGap);
+      sideLabels[index].y = Math.min(sideLabels[index].y, next.y - requiredGap);
     }
     return sideLabels.map((label) => ({
       ...label,
@@ -2083,11 +2238,11 @@ function RuntimeChangeList({
       <div className="runtime-compare-legend">
         <span className="runtime-compare-legend__item">
           <span className="runtime-compare-track__dot runtime-compare-track__dot--baseline runtime-compare-legend__dot" />
-          IDC baseline
+          GCP baseline
         </span>
         <span className="runtime-compare-legend__item">
           <span className={`runtime-compare-track__dot runtime-compare-track__dot--${tone} runtime-compare-legend__dot`} />
-          GCP recent
+          Tencent recent
         </span>
         <span className={`runtime-compare-legend__swatch runtime-compare-legend__swatch--${tone}`} />
         <span className="runtime-compare-legend__caption">
@@ -2125,24 +2280,24 @@ function RuntimeChangeList({
                 />
                 <span
                   className="runtime-compare-track__dot runtime-compare-track__dot--baseline"
-                  style={{ left: `${ratioPct(item.idc_baseline_avg_run_s, maxRunSeconds)}%` }}
-                  title={`IDC baseline ${formatSeconds(item.idc_baseline_avg_run_s)}`}
+                  style={{ left: `${ratioPct(item.gcp_baseline_avg_run_s, maxRunSeconds)}%` }}
+                  title={`GCP baseline ${formatSeconds(item.gcp_baseline_avg_run_s)}`}
                 />
                 <span
                   className={`runtime-compare-track__dot runtime-compare-track__dot--${tone}`}
-                  style={{ left: `${ratioPct(item.gcp_recent_avg_run_s, maxRunSeconds)}%` }}
-                  title={`GCP recent ${formatSeconds(item.gcp_recent_avg_run_s)}`}
+                  style={{ left: `${ratioPct(item.tencent_recent_avg_run_s, maxRunSeconds)}%` }}
+                  title={`Tencent recent ${formatSeconds(item.tencent_recent_avg_run_s)}`}
                 />
               </div>
 
               <div className="runtime-compare-item__meta">
                 <span>
-                  IDC {formatSeconds(item.idc_baseline_avg_run_s)} ({item.idc_success_count})
+                  GCP {formatSeconds(item.gcp_baseline_avg_run_s)} ({item.gcp_success_count})
                 </span>
                 <span>
-                  GCP {formatSeconds(item.gcp_recent_avg_run_s)} ({item.gcp_success_count})
+                  Tencent {formatSeconds(item.tencent_recent_avg_run_s)} ({item.tencent_success_count})
                 </span>
-                <span>First GCP {formatShortDate(item.first_gcp_success_at)}</span>
+                <span>First Tencent {formatShortDate(item.first_tencent_success_at)}</span>
               </div>
             </article>
           ))}
@@ -2160,8 +2315,8 @@ function ratioPct(value, maxValue) {
 }
 
 function buildConnectorStyle(item, maxRunSeconds) {
-  const start = ratioPct(item.idc_baseline_avg_run_s, maxRunSeconds);
-  const end = ratioPct(item.gcp_recent_avg_run_s, maxRunSeconds);
+  const start = ratioPct(item.gcp_baseline_avg_run_s, maxRunSeconds);
+  const end = ratioPct(item.tencent_recent_avg_run_s, maxRunSeconds);
   return {
     left: `${Math.min(start, end)}%`,
     width: `${Math.max(Math.abs(end - start), 0.8)}%`,
@@ -2200,30 +2355,6 @@ function formatResourceDuration(value) {
     return `${(seconds / 86400).toFixed(1)}d`;
   }
   return formatSeconds(seconds);
-}
-
-function formatVendor(value) {
-  const text = String(value || "").trim();
-  if (!text) {
-    return "--";
-  }
-  return text.toUpperCase();
-}
-
-function formatGib(value) {
-  const numeric = Number(value || 0);
-  if (numeric <= 0) {
-    return "--";
-  }
-  return `${Number.isInteger(numeric) ? numeric.toFixed(0) : numeric.toFixed(1)} GiB`;
-}
-
-function formatDaysDuration(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return "--";
-  }
-  return `${numeric.toFixed(0)}d`;
 }
 
 function getAnnotationY({

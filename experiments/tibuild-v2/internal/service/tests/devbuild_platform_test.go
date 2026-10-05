@@ -19,12 +19,12 @@ func TestDevBuildPlatformField(t *testing.T) {
 	t.Run("Create with platform field should persist platform", func(t *testing.T) {
 		platform := "linux/amd64"
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
-				Product: "pd",
-				Edition: "community",
-				Version: "v9.0.0-test2",
-				GitRef:  "branch/master",
+				Product:  "pd",
+				Edition:  "community",
+				Version:  stringPtr("v9.0.0-test2"),
+				GitRef:   "branch/master",
 				Platform: platform,
 			},
 			Dryrun: true,
@@ -38,12 +38,12 @@ func TestDevBuildPlatformField(t *testing.T) {
 
 	t.Run("Create with empty platform should persist empty", func(t *testing.T) {
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
-				Product: "pd",
-				Edition: "community",
-				Version: "v9.0.0-test2",
-				GitRef:  "branch/master",
+				Product:  "pd",
+				Edition:  "community",
+				Version:  stringPtr("v9.0.0-test2"),
+				GitRef:   "branch/master",
 				Platform: "",
 			},
 			Dryrun: true,
@@ -58,12 +58,12 @@ func TestDevBuildPlatformField(t *testing.T) {
 	t.Run("Create with linux/arm64 platform should persist correctly", func(t *testing.T) {
 		platform := "linux/arm64"
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
-				Product: "pd",
-				Edition: "community",
-				Version: "v9.0.0-test2",
-				GitRef:  "branch/master",
+				Product:  "pd",
+				Edition:  "community",
+				Version:  stringPtr("v9.0.0-test2"),
+				GitRef:   "branch/master",
 				Platform: platform,
 			},
 			Dryrun: true,
@@ -78,12 +78,12 @@ func TestDevBuildPlatformField(t *testing.T) {
 	t.Run("Create and Get should return same platform", func(t *testing.T) {
 		platform := "linux/amd64"
 		createPayload := &devbuild.CreatePayload{
-			CreatedBy: "test-user",
+			CreatedBy: stringPtr("test-user"),
 			Request: &devbuild.DevBuildSpec{
-				Product: "pd",
-				Edition: "community",
-				Version: "v9.0.0-test2",
-				GitRef:  "branch/master",
+				Product:  "pd",
+				Edition:  "community",
+				Version:  stringPtr("v9.0.0-test2"),
+				GitRef:   "branch/master",
 				Platform: platform,
 			},
 			Dryrun: true,

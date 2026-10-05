@@ -131,7 +131,30 @@ def test_map_build_row_allows_missing_optional_status_fields() -> None:
     assert build.normalized_build_url == "https://do.pingcap.net/jenkins/job/abc/"
     assert build.build_id is None
     assert build.pod_name is None
-    assert build.cloud_phase == "IDC"
+    assert build.cloud_phase == "TENCENT"
+    assert build.build_system == "JENKINS"
+
+
+def test_map_build_row_classifies_tencent_staging_jobs() -> None:
+    row = {
+        "id": 202,
+        "prowJobId": "job-202",
+        "namespace": "prow",
+        "jobName": "pull-check-deps",
+        "type": "presubmit",
+        "state": "success",
+        "org": "pingcap",
+        "repo": "tidb",
+        "url": "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/pull-check-deps/2046433013478199296",
+        "startTime": "2026-04-13T10:00:00Z",
+        "status": {},
+        "spec": {},
+    }
+
+    build = map_build_row(row)
+
+    assert build.normalized_build_url == "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/pull-check-deps/2046433013478199296/"
+    assert build.cloud_phase == "TENCENT"
     assert build.build_system == "JENKINS"
 
 
@@ -308,7 +331,7 @@ def test_sync_builds_end_to_end_with_sqlite(sqlite_engine) -> None:
     assert rows[0]["is_pr_build"] == 1
     assert rows[0]["cloud_phase"] == "GCP"
     assert rows[0]["build_system"] == "JENKINS"
-    assert rows[1]["cloud_phase"] == "IDC"
+    assert rows[1]["cloud_phase"] == "TENCENT"
     assert rows[1]["build_system"] == "JENKINS"
     assert rows[1]["normalized_build_url"] == "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/nightly/2/"
     assert state is not None
@@ -534,6 +557,141 @@ def test_sync_builds_marks_failure_state_on_fetch_error(sqlite_engine, monkeypat
     assert state is not None
     assert state.last_status == "failed"
     assert "boom" in (state.last_error or "")
+
+
+def test_sync_builds_reconciles_recent_pending_source_rows(sqlite_engine) -> None:
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO prow_jobs (
+                  id, prowJobId, namespace, jobName, type, state, optional, report,
+                  org, repo, base_ref, pull, context, url, author, retest, event_guid,
+                  startTime, completionTime, spec, status
+                ) VALUES
+                  (
+                    1, 'pending-job', 'prow', 'unit', 'presubmit', 'pending', 0, 1,
+                    'pingcap', 'tidb', 'master', 123, 'unit',
+                    'https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/unit/1/',
+                    'alice', 0, 'guid-1', '2026-04-13T10:00:00Z', NULL, '{}', '{}'
+                  ),
+                  (
+                    2, 'pending-job-2', 'prow', 'unit', 'presubmit', 'pending', 0, 1,
+                    'pingcap', 'tidb', 'master', 124, 'unit',
+                    'https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/unit/2/',
+                    'alice', 0, 'guid-2', '2026-04-13T10:00:00Z', NULL, '{}', '{}'
+                  )
+                """
+            )
+        )
+
+    settings = Settings(
+        database=DatabaseSettings(
+            url="sqlite+pysqlite:///:memory:",
+            host=None,
+            port=None,
+            user=None,
+            password=None,
+            database=None,
+            ssl_ca=None,
+        ),
+        jobs=JobSettings(batch_size=1),
+        log_level="INFO",
+    )
+    initial_summary = run_sync_builds(
+        sqlite_engine,
+        settings,
+        now=datetime(2026, 4, 13, 10, 5, 0),
+    )
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE ci_l1_builds
+                SET target_branch = 'release-8.5',
+                    is_flaky = 1,
+                    is_retry_loop = 1,
+                    has_flaky_case_match = 1,
+                    failure_category = 'FLAKY_TEST',
+                    failure_subcategory = 'UNIT_TEST'
+                WHERE source_prow_job_id = 'pending-job'
+                """
+            )
+        )
+
+    pending_summary = run_sync_builds(
+        sqlite_engine,
+        settings,
+        now=datetime(2026, 4, 13, 10, 6, 0),
+    )
+
+    with sqlite_engine.begin() as connection:
+        pending_row = connection.execute(
+            text(
+                """
+                SELECT state, completion_time, target_branch, is_flaky, is_retry_loop,
+                       has_flaky_case_match, failure_category, failure_subcategory
+                FROM ci_l1_builds
+                WHERE source_prow_job_id = 'pending-job'
+                """
+            )
+        ).mappings().one()
+        connection.execute(
+            text(
+                """
+                UPDATE prow_jobs
+                SET state = 'success', completionTime = '2026-04-13T10:10:00Z',
+                    status = '{"completionTime":"2026-04-13T10:10:00Z"}'
+                WHERE id IN (1, 2)
+                """
+            )
+        )
+
+    summary = run_sync_builds(sqlite_engine, settings, now=datetime(2026, 4, 13, 10, 15, 0))
+
+    with sqlite_engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT source_prow_job_id, state, completion_time, total_seconds, target_branch,
+                       is_flaky, is_retry_loop, has_flaky_case_match, failure_category,
+                       failure_subcategory
+                FROM ci_l1_builds
+                ORDER BY source_prow_row_id
+                """
+            )
+        ).mappings().all()
+
+    first_row, second_row = rows
+    assert initial_summary.reconciled_rows == 0
+    assert pending_summary.source_rows_scanned == 0
+    assert pending_summary.rows_written == 0
+    assert pending_summary.reconciled_rows == 0
+    assert dict(pending_row) == {
+        "state": "pending",
+        "completion_time": None,
+        "target_branch": "release-8.5",
+        "is_flaky": 1,
+        "is_retry_loop": 1,
+        "has_flaky_case_match": 1,
+        "failure_category": "FLAKY_TEST",
+        "failure_subcategory": "UNIT_TEST",
+    }
+    assert summary.source_rows_scanned == 0
+    assert summary.rows_written == 0
+    assert summary.reconciled_rows == 2
+    assert first_row["state"] == "success"
+    assert str(first_row["completion_time"]).startswith("2026-04-13 10:10:00")
+    assert first_row["total_seconds"] == 600
+    assert first_row["target_branch"] == "release-8.5"
+    assert first_row["is_flaky"] == 1
+    assert first_row["is_retry_loop"] == 1
+    assert first_row["has_flaky_case_match"] == 1
+    assert first_row["failure_category"] == "FLAKY_TEST"
+    assert first_row["failure_subcategory"] == "UNIT_TEST"
+    assert second_row["source_prow_job_id"] == "pending-job-2"
+    assert second_row["state"] == "success"
 
 
 def test_sync_builds_time_window_is_repeatable(sqlite_engine) -> None:

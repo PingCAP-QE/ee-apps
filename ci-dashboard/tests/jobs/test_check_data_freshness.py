@@ -14,7 +14,6 @@ from ci_dashboard.jobs.check_data_freshness import (
     Check,
     CheckResult,
     Report,
-    _build_engine_for_db,
     _format_lark_message,
     _send_lark_dm,
     _threshold_timedelta,
@@ -333,18 +332,9 @@ class TestRunCheckCount:
 
 
 class TestRunAllChecks:
-    def test_skips_cost_checks_when_engine_is_none(self, fresh_engine: Engine) -> None:
-        report = run_all_checks(fresh_engine, None)
-        for r in report.results:
-            if r.check.db == "cost":
-                assert r.skipped is True
-                assert "skipped" in r.lag_description
-
-    def test_runs_all_checks_with_cost_engine(self, fresh_engine: Engine) -> None:
-        report = run_all_checks(fresh_engine, fresh_engine)
+    def test_runs_cost_checks_from_shared_engine(self, fresh_engine: Engine) -> None:
+        report = run_all_checks(fresh_engine)
         assert len(report.results) == len(CHECKS)
-        for r in report.results:
-            assert "skipped" not in r.lag_description
 
 
 # ---------------------------------------------------------------------------
@@ -372,15 +362,6 @@ class TestReport:
         assert len(report.failed) == 1
         assert report.failed[0].check.name == "ci_l1_pod_lifecycle"
 
-    def test_skipped_not_counted_as_failed(self) -> None:
-        report = Report(timestamp=_utcnow(), results=[
-            CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=_utcnow(), lag_description="0h 0m"),
-            CheckResult(check=CHECKS_BY_NAME["cost_attribution_daily"], passed=True,
-                        value=None, lag_description="skipped", skipped=True),
-        ])
-        assert report.passed_all is True
-        assert report.failed == []
 
 
 # ---------------------------------------------------------------------------
@@ -429,71 +410,6 @@ class TestFormatLarkMessage:
         assert "⚪" in msg
         assert "LOW" in msg
 
-    def test_all_clear_with_skipped(self) -> None:
-        results = [
-            CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=True,
-                        value=_utcnow(), lag_description="0h 0m"),
-            CheckResult(check=CHECKS_BY_NAME["cost_attribution_daily"], passed=True,
-                        value=None, lag_description="skipped", skipped=True),
-        ]
-        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
-        msg = _format_lark_message(report)
-        assert "0 failed" in msg
-        assert "1 passed" in msg
-        assert "1 skipped" in msg
-
-    def test_failure_report_shows_skipped(self) -> None:
-        results = [
-            CheckResult(check=CHECKS_BY_NAME["ci_l1_builds"], passed=False,
-                        value=datetime(2026, 6, 25, 2, 0), lag_description="5h 0m"),
-            CheckResult(check=CHECKS_BY_NAME["cost_attribution_daily"], passed=True,
-                        value=None, lag_description="skipped", skipped=True),
-        ]
-        report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
-        msg = _format_lark_message(report)
-        assert "⏭️" in msg
-        assert "cost_attribution_daily" in msg
-
-
-# ---------------------------------------------------------------------------
-# _build_engine_for_db
-# ---------------------------------------------------------------------------
-
-
-class TestBuildEngineForDb:
-    def test_returns_ci_engine(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("CI_DASHBOARD_DB_URL", "sqlite:///:memory:")
-        from ci_dashboard.common.config import get_settings, load_settings
-        get_settings.cache_clear()
-        engine = _build_engine_for_db("ci", load_settings())
-        assert engine is not None
-
-    def test_returns_none_when_cost_not_configured(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("COST_INSIGHT_DB_URL", raising=False)
-        monkeypatch.delenv("COST_INSIGHT_TIDB_USER", raising=False)
-        monkeypatch.setenv("CI_DASHBOARD_DB_URL", "sqlite:///:memory:")
-        from ci_dashboard.common.config import get_settings, load_settings
-        get_settings.cache_clear()
-        engine = _build_engine_for_db("cost", load_settings())
-        assert engine is None
-
-    def test_does_not_fallback_to_ci_db_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("COST_INSIGHT_DB_URL", raising=False)
-        monkeypatch.delenv("COST_INSIGHT_TIDB_USER", raising=False)
-        monkeypatch.setenv("CI_DASHBOARD_DB_URL", "sqlite:///:memory:")
-        from ci_dashboard.common.config import get_settings, load_settings
-        get_settings.cache_clear()
-        engine = _build_engine_for_db("cost", load_settings())
-        assert engine is None
-
-    def test_cost_db_with_url_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("CI_DASHBOARD_DB_URL", "sqlite:///:memory:")
-        monkeypatch.setenv("COST_INSIGHT_DB_URL", "sqlite:///:memory:")
-        from ci_dashboard.common.config import get_settings, load_settings
-        get_settings.cache_clear()
-        engine = _build_engine_for_db("cost", load_settings())
-        assert engine is not None
-        engine.dispose()
 
 
 # ---------------------------------------------------------------------------
@@ -562,7 +478,6 @@ class TestRunCheckDataFreshness:
         monkeypatch.setenv("LARK_APP_ID", "app-1")
         monkeypatch.setenv("LARK_APP_SECRET", "secret-1")
         monkeypatch.setenv("FRESHNESS_NOTIFY_OPEN_ID", "ou_test")
-        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
         from ci_dashboard.common.config import get_settings, load_settings
 
         _seed_all_checks(fresh_engine)
@@ -581,7 +496,6 @@ class TestRunCheckDataFreshness:
         monkeypatch.setenv("LARK_APP_ID", "app-1")
         monkeypatch.setenv("LARK_APP_SECRET", "secret-1")
         monkeypatch.setenv("FRESHNESS_NOTIFY_OPEN_ID", "ou_test")
-        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
         from ci_dashboard.common.config import get_settings, load_settings
 
         # Seed only checks that work in SQLite (skip archive_error_logs).
@@ -639,7 +553,6 @@ class TestRunCheckDataFreshness:
         monkeypatch.setenv("LARK_APP_ID", "app-1")
         monkeypatch.setenv("LARK_APP_SECRET", "secret-1")
         monkeypatch.setenv("FRESHNESS_NOTIFY_OPEN_ID", "ou_test")
-        monkeypatch.setenv("COST_INSIGHT_DB_URL", str(fresh_engine.url))
         monkeypatch.setenv("FRESHNESS_DRY_RUN", "true")
         from ci_dashboard.common.config import get_settings, load_settings
 
@@ -651,8 +564,11 @@ class TestRunCheckDataFreshness:
         mock_send.assert_not_called()
         assert report is not None
 
-    def test_skips_cost_gracefully_when_not_configured(self, fresh_engine: Engine,
-                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_runs_cost_checks_without_cost_specific_configuration(
+        self,
+        fresh_engine: Engine,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         monkeypatch.setenv("CI_DASHBOARD_DB_URL", str(fresh_engine.url))
         monkeypatch.delenv("COST_INSIGHT_DB_URL", raising=False)
         monkeypatch.delenv("COST_INSIGHT_TIDB_USER", raising=False)
@@ -660,16 +576,10 @@ class TestRunCheckDataFreshness:
 
         _seed_all_checks(fresh_engine)
         get_settings.cache_clear()
-        settings = load_settings()
-        report = run_check_data_freshness(settings)
-        cost_results = [r for r in report.results if r.check.db == "cost"]
-        assert len(cost_results) > 0
-        for r in cost_results:
-            assert r.skipped is True
-        ci_failures = [r for r in report.results
-                       if r.check.db == "ci" and not r.passed and not r.skipped
-                       and r.check.name != "archive_error_logs"]
-        assert ci_failures == [], f"Unexpected CI failures: {ci_failures}"
+        report = run_check_data_freshness(load_settings())
+        cost_results = [result for result in report.results if result.check.db == "cost"]
+        assert cost_results
+        assert all(result.passed for result in cost_results)
 
 
 # ---------------------------------------------------------------------------

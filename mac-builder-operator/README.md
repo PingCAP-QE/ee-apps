@@ -27,7 +27,7 @@ Supported worker/build architectures are `amd64` and `arm64`.
 Example `MacBuild`:
 
 ```yaml
-apiVersion: build.tibuild.pingcap.net/v1alpha1
+apiVersion: tibuild.pingcap.net/v1alpha1
 kind: MacBuild
 metadata:
   name: macbuild-sample

@@ -2,8 +2,11 @@ export const CI_STATUS_PATH = "/ci-status";
 export const MIGRATE_STATUS_PATH = "/migrate-status";
 export const RUNTIME_INSIGHTS_PATH = "/runtime-insights";
 export const COST_PATH = "/cost";
+export const WEEKLY_COST_PATH = "/qa-cost-weekly";
+export const CI_WEEKLY_COST_PATH = "/ci-cost-weekly";
 export const ALL_COST_SOURCES = "all";
 export const DEFAULT_COST_SOURCE = "gcp:pingcap-testing-account";
+export const COST_DEFAULT_LAG_DAYS = 4;
 export const FILTER_QUERY_KEYS = [
   "start_date",
   "end_date",
@@ -13,11 +16,15 @@ export const FILTER_QUERY_KEYS = [
   "cloud_phase",
   "issue_status",
   "cost_source",
+  "owner_include",
+  "owner_exclude",
+  "team_include",
+  "team_exclude",
+  "project_include",
+  "project_exclude",
   "granularity",
 ];
 export const WEEK_GRANULARITY_PATHS = new Set([
-  CI_STATUS_PATH,
-  MIGRATE_STATUS_PATH,
   RUNTIME_INSIGHTS_PATH,
   COST_PATH,
 ]);
@@ -27,17 +34,13 @@ export const NAV_PATHS = [
   "/flaky",
   MIGRATE_STATUS_PATH,
   COST_PATH,
+  WEEKLY_COST_PATH,
+  CI_WEEKLY_COST_PATH,
   RUNTIME_INSIGHTS_PATH,
 ];
 
 export function buildDefaultFilters(defaultRange, pathname) {
-  const costRange =
-    pathname === COST_PATH
-      ? {
-          start_date: defaultRange.end_date.slice(0, 8) + "01",
-          end_date: defaultRange.end_date,
-        }
-      : defaultRange;
+  const costRange = pathname === COST_PATH ? getLaggedCostDefaultRange(defaultRange) : defaultRange;
   const baseFilters = {
     repo: "",
     branch: "",
@@ -45,6 +48,12 @@ export function buildDefaultFilters(defaultRange, pathname) {
     cloud_phase: "",
     issue_status: "",
     cost_source: pathname === COST_PATH ? DEFAULT_COST_SOURCE : "",
+    owner_include: "",
+    owner_exclude: "",
+    team_include: "",
+    team_exclude: "",
+    project_include: "",
+    project_exclude: "",
     granularity: WEEK_GRANULARITY_PATHS.has(pathname) ? "week" : "day",
     start_date: costRange.start_date,
     end_date: costRange.end_date,
@@ -82,6 +91,12 @@ export function normalizeFiltersForPath(pathname, filters) {
     next.cost_source = next.cost_source || DEFAULT_COST_SOURCE;
   } else {
     next.cost_source = "";
+    next.owner_include = "";
+    next.owner_exclude = "";
+    next.team_include = "";
+    next.team_exclude = "";
+    next.project_include = "";
+    next.project_exclude = "";
   }
   return next;
 }
@@ -98,7 +113,7 @@ export function readFiltersFromSearch(defaultRange, pathname, search) {
 }
 
 export function buildFilterSearch(filters, pathname) {
-  if (pathname === "/") {
+  if (pathname === "/" || pathname === WEEKLY_COST_PATH || pathname === CI_WEEKLY_COST_PATH) {
     return "";
   }
   const normalized = normalizeFiltersForPath(pathname, filters);
@@ -118,18 +133,40 @@ export function sameFilters(left, right) {
 }
 
 export function buildNavSearchByPath(filtersByPath, defaultRange, currentFilters) {
+  const activeRangeIsDefault =
+    currentFilters.start_date === defaultRange.start_date && currentFilters.end_date === defaultRange.end_date;
+
   return NAV_PATHS.reduce((accumulator, pathname) => {
+    const hasRouteFilters = Boolean(filtersByPath[pathname]);
     const routeFilters = filtersByPath[pathname] || buildDefaultFilters(defaultRange, pathname);
+    const useLaggedCostDefault = pathname === COST_PATH && !hasRouteFilters && activeRangeIsDefault;
     return {
       ...accumulator,
       [pathname]: buildFilterSearch(
         {
           ...routeFilters,
-          start_date: currentFilters.start_date,
-          end_date: currentFilters.end_date,
+          start_date: useLaggedCostDefault ? routeFilters.start_date : currentFilters.start_date,
+          end_date: useLaggedCostDefault ? routeFilters.end_date : currentFilters.end_date,
         },
         pathname,
       ),
     };
   }, {});
+}
+
+function getLaggedCostDefaultRange(defaultRange) {
+  const end = new Date(`${defaultRange.end_date}T00:00:00`);
+  end.setDate(end.getDate() - COST_DEFAULT_LAG_DAYS);
+  const endDate = formatDate(end);
+  return {
+    start_date: `${endDate.slice(0, 8)}01`,
+    end_date: endDate,
+  };
+}
+
+function formatDate(value) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

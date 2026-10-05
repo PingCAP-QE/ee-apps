@@ -9,14 +9,25 @@ The current implementation supports multiple active sources through
 - GCP project `pingcap-testing-account`
 - GCP project `qa-infra-dev`
 - AWS account `946646677266` (`qa-infra-dev`)
+- AWS account `131464424160` (`qa-infra-prod`, Essential V2 canary-release PRD)
+- Azure subscription `aaa5414d-7537-4e24-99bd-a7a841221810` (`azure-testing-infra-dev`)
+- Azure subscription `abd27163-b965-4217-8cba-2a4c799579fe` (`azure-testing-infra-prod-dataplane`)
+- Alibaba Cloud owner account `5028760335873601` (`alicloud-testing-infra-dev`)
+- Tencent Cloud organization account `100050658403` (disabled until validated)
 
 Current design:
 
 - [System design](docs/system-design.md)
 - [BigQuery cost optimization design](docs/bigquery-cost-optimization-design.md)
 - [AWS split-cost source adaptation design](docs/aws-split-cost-schema-migration.md)
+- [Alibaba billing import design](docs/alibaba-billing-import-design.md)
+- [Tencent billing import design](docs/tencent-billing-import-design.md)
+- [Tencent CI shared-cost allocation](docs/tencent-ci-native-shared-cost-allocation-design.md)
 - [Target branch cost dimension design](docs/target-branch-cost-dimension-design.md)
 - [GCS Bazel cache cleanup design](docs/gcs-bazel-cache-cleanup-design.md)
+- [Cost schema retirement design](docs/cost-schema-retirement-design.md)
+- [Unified cost allocation design](docs/cost-allocation-unification-design.md)
+- [Resource serving materialization design (proposed)](docs/resource-serving-materialization-design.md)
 
 ## Local Setup
 
@@ -34,15 +45,58 @@ Useful GCP settings:
 | Env | Default |
 | --- | --- |
 | `COST_INSIGHT_GCP_BILLING_TABLE` | `gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6` |
-| `COST_INSIGHT_GCP_GKE_USAGE_TABLE` | `pingcap-testing-account.pingcap_ee_data.gke_cluster_resource_usage` |
 | `COST_INSIGHT_GCP_ACCOUNT_ID` | `pingcap-testing-account` |
 | `COST_INSIGHT_EARLIEST_USAGE_DATE` | `2026-01-01` |
-| `COST_INSIGHT_SYNC_OVERLAP_DAYS` | `3` |
 | `COST_INSIGHT_SYNC_LAG_DAYS` | `5` |
 | `COST_INSIGHT_EXPORT_OVERLAP_DAYS` | `0` |
 | `COST_INSIGHT_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
 | `COST_INSIGHT_UNMATCHED_RESOURCE_LAG_DAYS` | `5` |
 | `COST_INSIGHT_SYNC_PAGE_SIZE` | `5000` |
+
+Useful Azure settings:
+
+| Env | Default |
+| --- | --- |
+| `COST_INSIGHT_AZURE_BILLING_TABLE` | `gcp-digital-bi.azure_billing.azure_billing_cost_*` |
+| `COST_INSIGHT_AZURE_EARLIEST_USAGE_DATE` | `2026-01-01` |
+| `COST_INSIGHT_AZURE_SYNC_LAG_DAYS` | `5` |
+| `COST_INSIGHT_AZURE_EXPORT_OVERLAP_DAYS` | `0` |
+| `COST_INSIGHT_AZURE_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
+| `COST_INSIGHT_AZURE_SYNC_PAGE_SIZE` | `5000` |
+
+Azure billing exports are monthly tables with `YYYYMMDD` suffixes. The sync
+normalizes requested dates to month starts, accepts at most a five-day CLI
+request window, and filters out non-numeric wildcard suffixes. A non-empty Azure
+`tenant` resource tag is projected to summary `org` for attribution matching,
+while the normalized tag object remains in `vendor_tags_json` for lineage.
+
+Useful Alibaba Cloud settings:
+
+| Env | Default |
+| --- | --- |
+| `COST_INSIGHT_ALIBABA_BILLING_TABLE` | `gcp-digital-bi.alibaba_cloud.daily_en_*` |
+| `COST_INSIGHT_ALIBABA_ACCOUNT_ID` | `5028760335873601` |
+| `COST_INSIGHT_ALIBABA_EARLIEST_USAGE_DATE` | `2026-01-01` |
+| `COST_INSIGHT_ALIBABA_SYNC_LAG_DAYS` | `5` |
+| `COST_INSIGHT_ALIBABA_EXPORT_OVERLAP_DAYS` | `0` |
+| `COST_INSIGHT_ALIBABA_SYNC_INITIAL_LOOKBACK_DAYS` | unset |
+| `COST_INSIGHT_ALIBABA_SYNC_PAGE_SIZE` | `5000` |
+
+Useful Tencent Cloud settings:
+
+| Env | Default |
+| --- | --- |
+| `COST_INSIGHT_TENCENT_ACCOUNT_ID` | `100050658403` |
+| `COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY` | required for the first scheduled run |
+| `COST_INSIGHT_TENCENT_IMPORT_LAG_DAYS` | `3` |
+| `COST_INSIGHT_TENCENT_VERIFY_LAG_DAYS` | `5` |
+| `COST_INSIGHT_TENCENT_PAGE_SIZE` | `100` |
+
+Tencent credentials use the SDK environment variables `TENCENTCLOUD_SECRET_ID` and
+`TENCENTCLOUD_SECRET_KEY`. The source seeded by `sql/025_add_tencent_billing_cost_source.sql`
+starts disabled; enable it only after an authenticated dry run and currency migration validation.
+Set its `source_available_from` migration value to the same date as
+`COST_INSIGHT_TENCENT_EARLIEST_BILL_DAY`.
 
 Useful AWS settings:
 
@@ -65,54 +119,23 @@ gcloud auth application-default set-quota-project pingcap-testing-account
 
 ## Seed Active Sources
 
-After `sql/001_create_cost_tables.sql` is applied:
+After `sql/001_create_cost_tables.sql` is applied, apply the forward source-profile
+and source-purpose migrations before the seed:
 
 ```bash
+mysql < sql/010_add_aws_split_cost_dimensions.sql
+mysql < sql/019_add_cost_source_purpose.sql
 mysql < sql/002_seed_initial_cost_sources.sql
+mysql < sql/027_add_cost_source_category.sql
+mysql < sql/024_add_cost_currency.sql
+mysql < sql/025_add_tencent_billing_cost_source.sql
 ```
 
 All recurring summary, unmatched-resource, and attribution jobs discover active
 sources from `cost_sources`. The env account IDs are now fallback values for
 local validation when the registry table is empty.
 
-## GCP Raw Backfill
-
-```bash
-cost-insight sync-gcp-billing-export --start-date 2026-01-01 --end-date 2026-05-17 --split-by-day
-```
-
-For a small validation run:
-
-```bash
-cost-insight sync-gcp-billing-export --start-date 2026-05-17 --end-date 2026-05-17 --limit 100 --dry-run
-```
-
-`--dry-run` reads BigQuery and normalizes rows but does not write
-`cost_raw_details` or advance `cost_job_state`.
-
-## Attribution Refresh
-
-After raw details are imported, rebuild the daily attribution table for the
-affected date range:
-
-```bash
-cost-insight refresh-cost-attribution-daily --start-date 2026-05-09 --end-date 2026-05-17 --split-by-day
-```
-
-For a safe validation first:
-
-```bash
-cost-insight refresh-cost-attribution-daily --start-date 2026-05-09 --end-date 2026-05-17 --split-by-day --dry-run
-```
-
-This job reads `cost_raw_details`, joins current `roster_employees` and
-`roster_groups`, then rebuilds `cost_attribution_daily` for the requested
-`vendor/account/date` range. It is intentionally rerunnable so late billing
-corrections and roster fixes can be reflected by refreshing the same dates.
-Use `--split-by-day` for multi-day ranges to stay under TiDB single-query
-memory limits.
-
-## BigQuery Cost-Optimized Pipeline
+## Billing Summary Pipeline
 
 The refined pipeline avoids scanning resource-level billing export columns for
 regular dashboard summaries:
@@ -121,6 +144,59 @@ regular dashboard summaries:
 cost-insight sync-gcp-billing-summary \
   --export-partition-start 2026-05-17 \
   --export-partition-end 2026-05-23
+```
+
+Azure summary import uses the same `cost_bq_export_summary_daily` table:
+
+```bash
+cost-insight sync-azure-billing-summary \
+  --account-id aaa5414d-7537-4e24-99bd-a7a841221810 \
+  --export-partition-start 2026-04-01 \
+  --export-partition-end 2026-04-05
+```
+
+Use `--account-id` to import one subscription; omitting it imports both registered
+subscriptions. `--replace-existing-partitions` requires explicit partition bounds,
+and scoped replacement additionally requires `--replace-usage-start-date`,
+`--replace-usage-end-date`, and a single export partition. Each explicit request
+may span at most five calendar days.
+
+Alibaba Cloud summary import uses the same `cost_bq_export_summary_daily` table:
+
+```bash
+cost-insight sync-alibaba-billing-summary \
+  --account-id 5028760335873601 \
+  --export-partition-start 2026-08-01 \
+  --export-partition-end 2026-08-31 \
+  --earliest-usage-date 2026-08-01
+```
+
+The importer selects `owner_account_id`, preserves `partition_date` as the export
+partition independently from `DATE(usage_start_time)`, and maps the Alibaba gross
+amount to `list_cost`. See [Alibaba billing import design](docs/alibaba-billing-import-design.md)
+for all dimensions and amount mappings.
+
+Tencent organization billing import uses page checkpoints and preserves invoice CNY:
+
+```bash
+cost-insight sync-tencent-billing-summary \
+  --bill-day-start 2026-09-13 \
+  --bill-day-end 2026-09-13 \
+  --dry-run
+```
+
+The scheduled command imports the next D+3 `BillDay`; explicit ranges are for dry-run,
+backfill, or repair. See [Tencent billing import design](docs/tencent-billing-import-design.md)
+for the D+5 verification and month-close reconciliation behavior.
+
+Allocate the CI account separately after import. Historical rows need reimporting first so
+`vendor_tags_json` contains the stable ProductCode metadata and `project` is populated from
+the billing-time `project` label or, when absent, `service`. Allocation preserves each cloud
+service and Project, and resource serving projects the daily build weights back onto the
+original Tencent resource IDs and labels.
+
+```bash
+cost-insight allocate-tencent-ci-cost --start-date 2026-09-13 --end-date 2026-09-13
 ```
 
 AWS summary import uses the same `cost_bq_export_summary_daily` table:
@@ -140,6 +216,29 @@ cost-insight refresh-cost-attribution-from-summary \
   --split-by-day
 ```
 
+### AWS reconciliation canary
+
+`validate-aws-reconciliation` is a read-only check: it only issues AWS Cost
+Explorer, BigQuery, and TiDB `SELECT` requests. It neither runs imports nor
+updates job state. It compares the CE `UnblendedCost` stream (Usage and
+SavingsPlanCoveredUsage) with the AWS raw export, summary, and attribution
+facts after independently rounding each amount to cents.
+
+```bash
+cost-insight validate-aws-reconciliation \
+  --start-date 2026-08-10 \
+  --end-date 2026-08-11 \
+  --account-id 296171618728 \
+  --tenant 1372813089209272198
+```
+
+The caller must use AWS credentials for the payer/management account and have
+read access to Cost Explorer; the source table and schema version are read from
+`cost_sources` when registered. Cost Explorer uses `us-east-1` by default; pass
+`--aws-region` when your AWS setup requires another region. Set
+`--tenant-tag-key` if Cost Explorer uses a cost-allocation tag name other than
+`tenant`.
+
 Resource-level investigation data is imported separately for a stable usage
 week:
 
@@ -149,12 +248,14 @@ cost-insight sync-gcp-unmatched-resources \
   --usage-end-date 2026-05-23
 ```
 
-For the Kubernetes cost card, synchronize the GKE node-cost allocation fact
-after the detailed billing export has settled. It recognizes only Compute
-Engine resources carrying a GKE cluster label and a `gke-*` instance name.
-Core and RAM node costs are distributed within the same cluster/day by GKE
-metering CPU and memory usage; all other recognized node cost and missing
-metering balances remain unallocated.
+At first native GKE cutover, re-import each affected export partition with
+`sync-gcp-billing-summary --replace-existing-partitions`; Kubernetes dimensions
+change GKE source hashes, so ordinary upsert is not sufficient. After the
+detailed billing export has settled, synchronize native GKE Cost Allocation
+residuals. Provider-assigned workload costs pass through unchanged;
+idle and system-overhead residuals use direct workload list-cost shares within
+the same day, project, cluster, SKU, and component. Unsupported or unknown
+residuals remain visible and unallocated.
 
 ```bash
 cost-insight sync-gcp-kubernetes-workload-allocations \
@@ -162,28 +263,39 @@ cost-insight sync-gcp-kubernetes-workload-allocations \
   --usage-end-date 2026-05-23
 ```
 
-AWS unmatched resources use the same investigation table:
+For a usage-date-bounded historical repair, replace one GCP export partition at
+one time. The scoped replacement preserves rows in that partition outside the
+requested usage range. BigQuery export partitions may contain late rows for
+older usage dates, so the usage range is intentionally independent from the
+export partition date:
+
+```bash
+cost-insight sync-gcp-billing-summary \
+  --account-id pingcap-testing-account \
+  --export-partition-start 2026-08-25 \
+  --export-partition-end 2026-08-25 \
+  --earliest-usage-date 2026-07-01 \
+  --replace-existing-partitions \
+  --replace-usage-start-date 2026-07-01 \
+  --replace-usage-end-date 2026-08-24
+```
+
+The derived Kubernetes/EQ allocation perspectives are retired. Dashboard cost
+queries use native attribution, and resource drilldown uses only the native
+resource-serving projection. After removing the old writer schedule and
+deploying a binary without its CLI, apply
+`sql/026_retire_materialized_cost_allocations.sql` to drop the unused
+`cost_allocation_daily` and `cost_allocation_publication` tables.
+
+AWS unmatched resources use the same investigation table. Successful resource imports and
+attribution refreshes automatically republish their affected source/date resource-serving
+windows; `materialize-resource-serving` remains available for standalone repair/backfill.
 
 ```bash
 cost-insight sync-aws-unmatched-resources \
   --usage-start-date 2026-05-17 \
   --usage-end-date 2026-05-23
 ```
-
-To avoid a BigQuery backfill during migration, seed the new tables from the
-existing `cost_raw_details` table:
-
-```bash
-cost-insight backfill-gcp-cost-refine-from-raw \
-  --start-date 2026-01-01 \
-  --end-date 2026-05-20 \
-  --mark-summary-watermark
-```
-
-The backfill synthesizes `export_partition_date` from
-`DATE(source_export_time)`, falling back to `usage_date` when
-`source_export_time` is missing. `--mark-summary-watermark` prevents the new
-summary importer from scanning already-backfilled historical export partitions.
 
 See [docs/bigquery-cost-optimization-design.md](docs/bigquery-cost-optimization-design.md)
 for the detailed table design, query shapes, and cost estimates.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import pickle
 import re
@@ -12,7 +13,7 @@ from typing import Any, BinaryIO
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
-from cost_insight.common.config import GcpBillingSettings
+from cost_insight.common.config import AlibabaBillingSettings, GcpBillingSettings
 from cost_insight.common.cost_drivers import classify_cost_driver
 from cost_insight.common.gcp_summary_identity import build_gcp_summary_row_hash
 from cost_insight.common.row_utils import (
@@ -36,6 +37,7 @@ LOG = logging.getLogger(__name__)
 JOB_NAME = "sync_gcp_billing_summary"
 OWNER_OVERRIDE_DELETE_CHUNK_SIZE = 1000
 SUMMARY_TABLE = "cost_bq_export_summary_daily"
+SUPPORTED_CURRENCIES = frozenset({"USD", "CNY"})
 _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 # usage_type and cost_driver_key are derived display fields, not source row identity.
 
@@ -53,44 +55,64 @@ class SyncGcpBillingSummaryResult:
     touched_usage_dates: tuple[date, ...] = ()
 
 
-def run_sync_gcp_billing_summary(
+def run_sync_billing_summary(
     engine: Engine,
     *,
-    settings: GcpBillingSettings,
+    settings: GcpBillingSettings | AlibabaBillingSettings,
+    vendor: str,
+    job_name: str,
+    display_name: str | None = None,
     export_partition_start: date | None = None,
     export_partition_end: date | None = None,
     earliest_usage_date: date | None = None,
     dry_run: bool = False,
     limit: int | None = None,
     replace_existing_partitions: bool = False,
+    replacement_usage_start_date: date | None = None,
+    replacement_usage_end_date: date | None = None,
     fetch_rows: RowFetcher = fetch_gcp_billing_summary_rows,
 ) -> SyncGcpBillingSummaryResult:
+    if (replacement_usage_start_date is None) != (replacement_usage_end_date is None):
+        raise ValueError(
+            "replacement_usage_start_date and replacement_usage_end_date must be set together"
+        )
+    if replacement_usage_start_date and replacement_usage_start_date > replacement_usage_end_date:
+        raise ValueError("replacement usage start date must be before or equal to end date")
+    if replacement_usage_start_date and not replace_existing_partitions:
+        raise ValueError("scoped usage-date replacement requires replace_existing_partitions")
+    if not vendor:
+        raise ValueError("vendor must not be empty")
+    if not job_name:
+        raise ValueError("job_name must not be empty")
+
     resolved_end = export_partition_end or (
         datetime.now(UTC).date() - timedelta(days=settings.sync_lag_days)
     )
-    job_name = source_job_name(JOB_NAME, vendor="gcp", account_id=settings.account_id)
+    state_job_name = source_job_name(job_name, vendor=vendor, account_id=settings.account_id)
     with engine.begin() as connection:
         ensure_cost_source_enabled(
             connection,
-            vendor="gcp",
+            vendor=vendor,
             account_id=settings.account_id,
             dry_run=dry_run,
-            display_name=settings.account_id,
+            display_name=display_name or settings.account_id,
         )
-        state = state_store.get_job_state(connection, job_name)
+        state = state_store.get_job_state(connection, state_job_name)
         resolved_start = export_partition_start or _start_partition_from_state(
             state.watermark if state else {},
             end_date=resolved_end,
             overlap_days=settings.export_overlap_days,
             initial_lookback_days=settings.sync_initial_lookback_days,
         )
+        if replacement_usage_start_date and resolved_start != resolved_end:
+            raise ValueError("scoped usage-date replacement requires one export partition")
         watermark = _watermark(
             account_id=settings.account_id,
             export_partition_start=resolved_start,
             export_partition_end=resolved_end,
         )
         if not dry_run:
-            state_store.mark_job_started(connection, job_name, watermark)
+            state_store.mark_job_started(connection, state_job_name, watermark)
 
     try:
         rows_seen = 0
@@ -110,20 +132,44 @@ def run_sync_gcp_billing_summary(
                 ):
                     rows_seen += 1
                     normalized = _normalize_summary_row(source_row)
+                    if normalized["vendor"] != vendor:
+                        raise ValueError(
+                            f"Billing summary row vendor {normalized['vendor']!r} does not match {vendor!r}"
+                        )
+                    if replacement_usage_start_date and not (
+                        replacement_usage_start_date
+                        <= normalized["usage_date"]
+                        <= replacement_usage_end_date
+                    ):
+                        continue
                     if normalized["billing_account_id"]:
                         source_billing_account_ids.add(normalized["billing_account_id"])
-                    _dump_spooled_row(row_spool, normalized)
-                rows_written += replace_summary_partitions(
-                    engine,
-                    _iter_spooled_rows(row_spool),
-                    row_count=rows_seen,
-                    vendor="gcp",
-                    account_id=settings.account_id,
-                    export_partition_start=resolved_start,
-                    export_partition_end=resolved_end,
-                    dry_run=dry_run,
-                    batch_size=settings.page_size,
-                )
+                    if not dry_run:
+                        _dump_spooled_row(row_spool, normalized)
+                if replacement_usage_start_date:
+                    rows_written += replace_summary_partition_usage_dates(
+                        engine,
+                        _iter_spooled_rows(row_spool),
+                        vendor=vendor,
+                        account_id=settings.account_id,
+                        export_partition_date=resolved_start,
+                        usage_start_date=replacement_usage_start_date,
+                        usage_end_date=replacement_usage_end_date,
+                        dry_run=dry_run,
+                        batch_size=settings.page_size,
+                    )
+                else:
+                    rows_written += replace_summary_partitions(
+                        engine,
+                        _iter_spooled_rows(row_spool),
+                        row_count=rows_seen,
+                        vendor=vendor,
+                        account_id=settings.account_id,
+                        export_partition_start=resolved_start,
+                        export_partition_end=resolved_end,
+                        dry_run=dry_run,
+                        batch_size=settings.page_size,
+                    )
         else:
             for source_row in fetch_rows(
                 billing_table=settings.billing_table,
@@ -136,6 +182,10 @@ def run_sync_gcp_billing_summary(
             ):
                 rows_seen += 1
                 normalized = _normalize_summary_row(source_row)
+                if normalized["vendor"] != vendor:
+                    raise ValueError(
+                        f"Billing summary row vendor {normalized['vendor']!r} does not match {vendor!r}"
+                    )
                 if normalized["billing_account_id"]:
                     source_billing_account_ids.add(normalized["billing_account_id"])
                 batch.append(normalized)
@@ -151,18 +201,28 @@ def run_sync_gcp_billing_summary(
                 if source_billing_account_id:
                     upsert_cost_source(
                         connection,
-                        vendor="gcp",
+                        vendor=vendor,
                         account_id=settings.account_id,
                         billing_account_id=source_billing_account_id,
-                        display_name=settings.account_id,
+                        display_name=display_name or settings.account_id,
                     )
-                touched_usage_dates = _get_touched_usage_dates(
-                    connection,
-                    account_id=settings.account_id,
-                    export_partition_start=resolved_start,
-                    export_partition_end=resolved_end,
+                touched_usage_dates = (
+                    tuple(
+                        replacement_usage_start_date + timedelta(days=offset)
+                        for offset in range(
+                            (replacement_usage_end_date - replacement_usage_start_date).days + 1
+                        )
+                    )
+                    if replacement_usage_start_date
+                    else _get_touched_usage_dates(
+                        connection,
+                        vendor=vendor,
+                        account_id=settings.account_id,
+                        export_partition_start=resolved_start,
+                        export_partition_end=resolved_end,
+                    )
                 )
-                state_store.mark_job_succeeded(connection, job_name, watermark)
+                state_store.mark_job_succeeded(connection, state_job_name, watermark)
 
         return SyncGcpBillingSummaryResult(
             account_id=settings.account_id,
@@ -174,11 +234,43 @@ def run_sync_gcp_billing_summary(
             touched_usage_dates=touched_usage_dates,
         )
     except Exception as exc:
-        LOG.exception("sync_gcp_billing_summary failed")
+        LOG.exception("sync_billing_summary failed")
         if not dry_run:
             with engine.begin() as connection:
-                state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
+                state_store.mark_job_failed(connection, state_job_name, watermark, repr(exc))
         raise
+
+
+def run_sync_gcp_billing_summary(
+    engine: Engine,
+    *,
+    settings: GcpBillingSettings,
+    export_partition_start: date | None = None,
+    export_partition_end: date | None = None,
+    earliest_usage_date: date | None = None,
+    dry_run: bool = False,
+    limit: int | None = None,
+    replace_existing_partitions: bool = False,
+    replacement_usage_start_date: date | None = None,
+    replacement_usage_end_date: date | None = None,
+    fetch_rows: RowFetcher = fetch_gcp_billing_summary_rows,
+) -> SyncGcpBillingSummaryResult:
+    return run_sync_billing_summary(
+        engine,
+        settings=settings,
+        vendor="gcp",
+        job_name=JOB_NAME,
+        display_name=settings.account_id,
+        export_partition_start=export_partition_start,
+        export_partition_end=export_partition_end,
+        earliest_usage_date=earliest_usage_date,
+        dry_run=dry_run,
+        limit=limit,
+        replace_existing_partitions=replace_existing_partitions,
+        replacement_usage_start_date=replacement_usage_start_date,
+        replacement_usage_end_date=replacement_usage_end_date,
+        fetch_rows=fetch_rows,
+    )
 
 
 def _start_partition_from_state(
@@ -221,8 +313,14 @@ def _select_billing_account_id(billing_account_ids: set[str]) -> str | None:
     return min(billing_account_ids)
 
 
-def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
-    is_split_source = "source_allocation_scope" in row
+def _normalize_summary_row(
+    row: dict[str, Any],
+    *,
+    preserve_source_row_hash: bool = False,
+) -> dict[str, Any]:
+    is_split_source = bool(row.get("source_schema_version")) or row.get(
+        "source_allocation_scope"
+    ) not in {None, "direct"}
     normalized = {
         "vendor": nullable_text(row.get("vendor")) or "gcp",
         "account_id": nullable_text(row.get("account_id")),
@@ -241,6 +339,11 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "vendor_tags_json": normalize_vendor_tags_json(row.get("vendor_tags_json")),
         "source_schema_version": nullable_text(row.get("source_schema_version")),
         "source_allocation_scope": nullable_text(row.get("source_allocation_scope")) or "direct",
+        "cluster_name": nullable_text(row.get("cluster_name")),
+        "cluster_location": nullable_text(row.get("cluster_location")),
+        "kubernetes_cost_class": nullable_text(row.get("kubernetes_cost_class")),
+        "kubernetes_residual_type": nullable_text(row.get("kubernetes_residual_type")),
+        "kubernetes_cost_component": nullable_text(row.get("kubernetes_cost_component")),
         "namespace": nullable_text(row.get("namespace")),
         "workload_name": nullable_text(row.get("workload_name")),
         "workload_type": nullable_text(row.get("workload_type")),
@@ -248,6 +351,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "service": nullable_text(row.get("service")),
         "project": nullable_text(row.get("project")),
         "service_exec_id": nullable_text(row.get("service_exec_id")),
+        "currency": (nullable_text(row.get("currency")) or "USD").upper(),
         "list_cost": decimal_or_none(row.get("list_cost")),
         "effective_cost": decimal_or_none(row.get("effective_cost")),
         "credit_amount": decimal_or_none(row.get("credit_amount")),
@@ -255,6 +359,8 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
         "source_export_time": coerce_datetime(row.get("source_export_time")),
     }
     normalized["cost_driver_key"] = classify_cost_driver(normalized)
+    if normalized["currency"] not in SUPPORTED_CURRENCIES:
+        raise ValueError(f"Unsupported billing currency: {normalized['currency']!r}")
     if normalized["account_id"] is None:
         raise ValueError(f"Missing account_id in billing summary row: {row!r}")
     if normalized["export_partition_date"] is None:
@@ -262,7 +368,12 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
     if normalized["usage_date"] is None:
         raise ValueError(f"Missing usage_date in billing summary row: {row!r}")
     normalized["is_split_source"] = is_split_source
-    normalized["source_row_hash"] = build_summary_row_hash(normalized)
+    source_row_hash = str(row.get("source_row_hash") or "")
+    if preserve_source_row_hash and not source_row_hash:
+        raise ValueError(f"Missing source_row_hash in billing summary row: {row!r}")
+    normalized["source_row_hash"] = (
+        source_row_hash if preserve_source_row_hash else build_summary_row_hash(normalized)
+    )
     return normalized
 
 
@@ -357,12 +468,85 @@ def _write_summary_rows(
         return
     if cleanup_superseded and target_table == SUMMARY_TABLE:
         _delete_legacy_summary_rows(connection, rows)
-        _delete_superseded_unlabeled_summary_rows(connection, rows)
+        _delete_superseded_summary_rows(connection, rows)
         _delete_superseded_owner_override_rows(connection, rows)
     connection.execute(
         _build_upsert_statement(connection, target_table=target_table),
         _bind_rows(connection, rows),
     )
+
+
+def replace_summary_partition_usage_dates(
+    engine: Engine,
+    rows: Iterable[dict[str, Any]],
+    *,
+    vendor: str,
+    account_id: str,
+    export_partition_date: date,
+    usage_start_date: date,
+    usage_end_date: date,
+    dry_run: bool,
+    batch_size: int,
+    target_table: str = SUMMARY_TABLE,
+) -> int:
+    """Replace one export partition within a bounded usage-date scope.
+
+    An empty source is authoritative and removes stale summary rows in the scope,
+    so callers must refresh every requested usage date downstream.
+    """
+    if usage_start_date > usage_end_date:
+        raise ValueError("usage_start_date must be before or equal to usage_end_date")
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    if dry_run:
+        return 0
+
+    rows_written = 0
+    batch: list[dict[str, Any]] = []
+    with engine.begin() as connection:
+        connection.execute(
+            _delete_summary_partition_usage_dates_statement(target_table),
+            {
+                "vendor": vendor,
+                "account_id": account_id,
+                "export_partition_date": export_partition_date,
+                "usage_start_date": usage_start_date,
+                "usage_end_date": usage_end_date,
+            },
+        )
+        for row in rows:
+            row_export_partition_date = coerce_date(row.get("export_partition_date"))
+            row_usage_date = coerce_date(row.get("usage_date"))
+            if (
+                row.get("vendor") != vendor
+                or row.get("account_id") != account_id
+                or row_export_partition_date != export_partition_date
+                or row_usage_date is None
+                or not usage_start_date <= row_usage_date <= usage_end_date
+            ):
+                raise ValueError(
+                    "summary row is outside the partition usage-date replacement scope: "
+                    f"{row.get('source_row_hash')}"
+                )
+            batch.append(row)
+            if len(batch) >= batch_size:
+                _write_summary_rows(
+                    connection,
+                    batch,
+                    cleanup_superseded=False,
+                    target_table=target_table,
+                )
+                rows_written += len(batch)
+                batch.clear()
+        if batch:
+            _write_summary_rows(
+                connection,
+                batch,
+                cleanup_superseded=False,
+                target_table=target_table,
+            )
+            rows_written += len(batch)
+    return rows_written
 
 
 def replace_summary_usage_dates(
@@ -497,34 +681,49 @@ def _delete_superseded_owner_override_rows(
             connection.execute(_DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS, params)
 
 
-def _delete_superseded_unlabeled_summary_rows(
+def _superseded_summary_row_hash(row: dict[str, Any]) -> str | None:
+    if row.get("vendor") != "aws" or row.get("vendor_tags_json") is None:
+        return None
+    tags = json.loads(row["vendor_tags_json"])
+    if "usedby" not in tags:
+        return None
+    tags.pop("usedby")
+    return build_summary_row_hash(
+        {**row, "vendor_tags_json": normalize_vendor_tags_json(tags)}
+    )
+
+
+def _delete_superseded_summary_rows(
     connection: Connection,
     rows: Sequence[dict[str, Any]],
 ) -> None:
-    # Label backfills change the hash shape; remove the old legacy unlabeled row first.
-    # The reverse direction is handled by partition replacement to avoid deleting
-    # legitimate labeled rows when labeled and unlabeled groups coexist.
-    params = [
-        {
-            "vendor": row.get("vendor") or "",
-            "account_id": row.get("account_id") or "",
-            "billing_account_id": row.get("billing_account_id") or "",
-            "export_partition_date": row["export_partition_date"],
-            "usage_date": row["usage_date"],
-            "service_name": row.get("service_name") or "",
-            "sku_name": row.get("sku_name") or "",
-            "region": row.get("region") or "",
-            "author": row.get("author") or "",
-            "org": row.get("org") or "",
-            "repo": row.get("repo") or "",
-            "target_branch": row.get("target_branch") or "",
-            "resource_name": row.get("resource_name") or "",
-        }
-        for row in rows
-        if row.get("vendor_tags_json") is not None
-    ]
+    # Label backfills change the hash shape. For usedby, match the deterministic
+    # predecessor hash instead of comparing a TiDB JSON column as text.
+    params = []
+    for row in rows:
+        superseded_source_row_hash = _superseded_summary_row_hash(row)
+        if row.get("vendor_tags_json") is None and superseded_source_row_hash is None:
+            continue
+        params.append(
+            {
+                "vendor": row.get("vendor") or "",
+                "account_id": row.get("account_id") or "",
+                "billing_account_id": row.get("billing_account_id") or "",
+                "export_partition_date": row["export_partition_date"],
+                "usage_date": row["usage_date"],
+                "service_name": row.get("service_name") or "",
+                "sku_name": row.get("sku_name") or "",
+                "region": row.get("region") or "",
+                "author": row.get("author") or "",
+                "org": row.get("org") or "",
+                "repo": row.get("repo") or "",
+                "target_branch": row.get("target_branch") or "",
+                "resource_name": row.get("resource_name") or "",
+                "superseded_source_row_hash": superseded_source_row_hash,
+            }
+        )
     if params:
-        connection.execute(_DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS, params)
+        connection.execute(_DELETE_SUPERSEDED_SUMMARY_ROWS, params)
 
 
 def _is_owner_override_row(row: dict[str, Any]) -> bool:
@@ -540,6 +739,7 @@ def _is_owner_override_row(row: dict[str, Any]) -> bool:
 def _get_touched_usage_dates(
     connection: Connection,
     *,
+    vendor: str = "gcp",
     account_id: str,
     export_partition_start: date,
     export_partition_end: date,
@@ -547,7 +747,7 @@ def _get_touched_usage_dates(
     rows = connection.execute(
         _SELECT_TOUCHED_USAGE_DATES,
         {
-            "vendor": "gcp",
+            "vendor": vendor,
             "account_id": account_id,
             "export_partition_start": export_partition_start,
             "export_partition_end": export_partition_end,
@@ -605,6 +805,11 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
               author,
               source_schema_version,
               source_allocation_scope,
+              cluster_name,
+              cluster_location,
+              kubernetes_cost_class,
+              kubernetes_residual_type,
+              kubernetes_cost_component,
               namespace,
               workload_name,
               workload_type,
@@ -616,6 +821,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
               effective_cost,
               credit_amount,
               net_cost,
+              currency,
               source_export_time,
               source_row_hash
             ) VALUES (
@@ -637,6 +843,11 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
               :author,
               :source_schema_version,
               :source_allocation_scope,
+              :cluster_name,
+              :cluster_location,
+              :kubernetes_cost_class,
+              :kubernetes_residual_type,
+              :kubernetes_cost_component,
               :namespace,
               :workload_name,
               :workload_type,
@@ -648,6 +859,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
               :effective_cost,
               :credit_amount,
               :net_cost,
+              :currency,
               :source_export_time,
               :source_row_hash
             )
@@ -663,9 +875,19 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           usage_type = excluded.usage_type,
           cost_driver_key = excluded.cost_driver_key,
           region = excluded.region,
+          author = excluded.author,
+          org = excluded.org,
+          repo = excluded.repo,
+          target_branch = excluded.target_branch,
           resource_name = excluded.resource_name,
+          vendor_tags_json = excluded.vendor_tags_json,
           source_schema_version = excluded.source_schema_version,
           source_allocation_scope = excluded.source_allocation_scope,
+          cluster_name = excluded.cluster_name,
+          cluster_location = excluded.cluster_location,
+          kubernetes_cost_class = excluded.kubernetes_cost_class,
+          kubernetes_residual_type = excluded.kubernetes_residual_type,
+          kubernetes_cost_component = excluded.kubernetes_cost_component,
           namespace = excluded.namespace,
           workload_name = excluded.workload_name,
           workload_type = excluded.workload_type,
@@ -673,6 +895,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           service = excluded.service,
           project = excluded.project,
           service_exec_id = excluded.service_exec_id,
+          currency = excluded.currency,
           source_export_time = excluded.source_export_time,
           updated_at = CURRENT_TIMESTAMP
         """
@@ -698,6 +921,11 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           author,
           source_schema_version,
           source_allocation_scope,
+          cluster_name,
+          cluster_location,
+          kubernetes_cost_class,
+          kubernetes_residual_type,
+          kubernetes_cost_component,
           namespace,
           workload_name,
           workload_type,
@@ -709,6 +937,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           effective_cost,
           credit_amount,
           net_cost,
+          currency,
           source_export_time,
           source_row_hash
         ) VALUES (
@@ -730,6 +959,11 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           :author,
           :source_schema_version,
           :source_allocation_scope,
+          :cluster_name,
+          :cluster_location,
+          :kubernetes_cost_class,
+          :kubernetes_residual_type,
+          :kubernetes_cost_component,
           :namespace,
           :workload_name,
           :workload_type,
@@ -741,6 +975,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           :effective_cost,
           :credit_amount,
           :net_cost,
+          :currency,
           :source_export_time,
           :source_row_hash
         )
@@ -756,9 +991,19 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           usage_type = VALUES(usage_type),
           cost_driver_key = VALUES(cost_driver_key),
           region = VALUES(region),
+          author = VALUES(author),
+          org = VALUES(org),
+          repo = VALUES(repo),
+          target_branch = VALUES(target_branch),
           resource_name = VALUES(resource_name),
+          vendor_tags_json = VALUES(vendor_tags_json),
           source_schema_version = VALUES(source_schema_version),
           source_allocation_scope = VALUES(source_allocation_scope),
+          cluster_name = VALUES(cluster_name),
+          cluster_location = VALUES(cluster_location),
+          kubernetes_cost_class = VALUES(kubernetes_cost_class),
+          kubernetes_residual_type = VALUES(kubernetes_residual_type),
+          kubernetes_cost_component = VALUES(kubernetes_cost_component),
           namespace = VALUES(namespace),
           workload_name = VALUES(workload_name),
           workload_type = VALUES(workload_type),
@@ -766,6 +1011,7 @@ def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMA
           service = VALUES(service),
           project = VALUES(project),
           service_exec_id = VALUES(service_exec_id),
+          currency = VALUES(currency),
           source_export_time = VALUES(source_export_time),
           updated_at = CURRENT_TIMESTAMP
         """
@@ -776,6 +1022,18 @@ def _quote_sql_table(table: str) -> str:
     if not _SQL_TABLE_RE.fullmatch(table):
         raise ValueError(f"Invalid SQL table identifier: {table!r}")
     return f"`{table}`"
+
+
+def _delete_summary_partition_usage_dates_statement(target_table: str):
+    return text(
+        f"""
+        DELETE FROM {_quote_sql_table(target_table)}
+        WHERE vendor = :vendor
+          AND account_id = :account_id
+          AND export_partition_date = :export_partition_date
+          AND usage_date BETWEEN :usage_start_date AND :usage_end_date
+        """
+    )
 
 
 def _delete_summary_usage_dates_statement(target_table: str):
@@ -854,7 +1112,7 @@ _DELETE_SUPERSEDED_OWNER_OVERRIDE_ROWS = text(
 )
 
 
-_DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS = text(
+_DELETE_SUPERSEDED_SUMMARY_ROWS = text(
     """
     DELETE FROM cost_bq_export_summary_daily
     WHERE vendor = :vendor
@@ -870,7 +1128,10 @@ _DELETE_SUPERSEDED_UNLABELED_SUMMARY_ROWS = text(
       AND COALESCE(repo, '') = :repo
       AND COALESCE(target_branch, '') = :target_branch
       AND COALESCE(resource_name, '') = :resource_name
-      AND vendor_tags_json IS NULL
+      AND (
+        vendor_tags_json IS NULL
+        OR source_row_hash = :superseded_source_row_hash
+      )
     """
 )
 

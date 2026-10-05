@@ -25,7 +25,7 @@ Key fields:
 | `total_seconds` | `completion_time - start_time` |
 | `head_sha` | head SHA from `spec.refs.pulls[0].sha` |
 | `target_branch` | best-effort PR base branch backfilled later; may remain null |
-| `cloud_phase` | `GCP` or `IDC` classification |
+| `cloud_phase` | `GCP` or `TENCENT` classification |
 | `is_flaky` | build-level flaky flag |
 | `is_retry_loop` | build-level retry-loop flag |
 | `has_flaky_case_match` | stricter case-level evidence flag |

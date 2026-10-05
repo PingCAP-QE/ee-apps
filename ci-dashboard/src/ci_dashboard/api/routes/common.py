@@ -4,7 +4,7 @@ from datetime import date
 
 from fastapi import HTTPException, Query
 
-from ci_dashboard.api.queries.base import CommonFilters, SUPPORTED_GRANULARITIES
+from ci_dashboard.api.queries.base import CommonFilters, SUPPORTED_GRANULARITIES, split_filter_values
 
 
 def get_common_filters(
@@ -17,11 +17,18 @@ def get_common_filters(
     end_date: date | None = None,
     granularity: str = Query(default="day"),
     cost_source: str | None = None,
+    owner_include: str | None = None,
+    owner_exclude: str | None = None,
+    team_include: str | None = None,
+    team_exclude: str | None = None,
+    project_include: str | None = None,
+    project_exclude: str | None = None,
 ) -> CommonFilters:
     validate_granularity(granularity)
     validate_date_range(start_date, end_date)
     validate_issue_status(issue_status)
-    cost_vendor, cost_account_id = parse_cost_source(cost_source)
+    cost_sources = parse_cost_sources(cost_source)
+    cost_vendor, cost_account_id = cost_sources[0] if len(cost_sources) == 1 else (None, None)
     return CommonFilters(
         repo=repo,
         branch=branch,
@@ -33,6 +40,13 @@ def get_common_filters(
         granularity=granularity,
         cost_vendor=cost_vendor,
         cost_account_id=cost_account_id,
+        cost_sources=cost_sources,
+        owner_include=split_filter_values(owner_include),
+        owner_exclude=split_filter_values(owner_exclude),
+        team_include=split_filter_values(team_include),
+        team_exclude=split_filter_values(team_exclude),
+        project_include=split_filter_values(project_include),
+        project_exclude=split_filter_values(project_exclude),
     )
 
 
@@ -53,14 +67,25 @@ def validate_issue_status(issue_status: str | None) -> None:
         raise HTTPException(status_code=400, detail="issue_status must be one of: open, closed")
 
 
-def parse_cost_source(cost_source: str | None) -> tuple[str | None, str | None]:
-    if cost_source is None or cost_source == "" or cost_source == "all":
-        return None, None
+def parse_cost_sources(cost_source: str | None) -> tuple[tuple[str, str], ...]:
+    if cost_source is None or not cost_source.strip() or cost_source.strip() == "all":
+        return ()
 
-    vendor, separator, account_id = cost_source.partition(":")
-    if not separator or not vendor or not account_id:
-        raise HTTPException(
-            status_code=400,
-            detail="cost_source must be 'all' or formatted as '<vendor>:<account_id>'",
-        )
-    return vendor, account_id
+    sources: list[tuple[str, str]] = []
+    for value in cost_source.split(","):
+        item = value.strip()
+        if not item or item == "all":
+            raise HTTPException(
+                status_code=400,
+                detail="cost_source must be 'all' or comma-separated '<vendor>:<account_id>' values",
+            )
+        vendor, separator, account_id = item.partition(":")
+        if not separator or not vendor or not account_id:
+            raise HTTPException(
+                status_code=400,
+                detail="cost_source must be 'all' or comma-separated '<vendor>:<account_id>' values",
+            )
+        source = (vendor, account_id)
+        if source not in sources:
+            sources.append(source)
+    return tuple(sources)

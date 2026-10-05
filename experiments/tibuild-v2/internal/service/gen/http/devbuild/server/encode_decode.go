@@ -44,6 +44,10 @@ func DecodeListRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.De
 			sort      string
 			direction string
 			createdBy *string
+			scope     string
+			status    *string
+			product   *string
+			q         *string
 			err       error
 		)
 		qp := r.URL.Query()
@@ -103,10 +107,36 @@ func DecodeListRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.De
 		if createdByRaw != "" {
 			createdBy = &createdByRaw
 		}
+		scopeRaw := qp.Get("scope")
+		if scopeRaw != "" {
+			scope = scopeRaw
+		} else {
+			scope = "all"
+		}
+		if !(scope == "all" || scope == "mine") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("scope", scope, []any{"all", "mine"}))
+		}
+		statusRaw := qp.Get("status")
+		if statusRaw != "" {
+			status = &statusRaw
+		}
+		if status != nil {
+			if !(*status == "PENDING" || *status == "PROCESSING" || *status == "ABORTED" || *status == "SUCCESS" || *status == "FAILURE" || *status == "ERROR") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("status", *status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
+			}
+		}
+		productRaw := qp.Get("product")
+		if productRaw != "" {
+			product = &productRaw
+		}
+		qRaw := qp.Get("q")
+		if qRaw != "" {
+			q = &qRaw
+		}
 		if err != nil {
 			return payload, err
 		}
-		payload = NewListPayload(page, pageSize, hotfix, sort, direction, createdBy)
+		payload = NewListPayload(page, pageSize, hotfix, sort, direction, createdBy, scope, status, product, q)
 
 		return payload, nil
 	}
@@ -123,7 +153,7 @@ func EncodeListError(encoder func(context.Context, http.ResponseWriter) goahttp.
 		}
 		switch en.GoaErrorName() {
 		case "BadRequest":
-			var res *devbuild.HTTPError
+			var res *devbuild.DevBuildBadRequestError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -135,9 +165,47 @@ func EncodeListError(encoder func(context.Context, http.ResponseWriter) goahttp.
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusBadRequest)
 			return enc.Encode(body)
+		case "InternalServerError":
+			var res *devbuild.DevBuildInternalServerError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewListInternalServerErrorResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "Unauthorized":
+			var res *devbuild.DevBuildUnauthorizedError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewListUnauthorizedResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusUnauthorized)
+			return enc.Encode(body)
 		default:
 			return encodeError(ctx, w, v)
 		}
+	}
+}
+
+// EncodeCapabilitiesResponse returns an encoder for responses returned by the
+// devbuild capabilities endpoint.
+func EncodeCapabilitiesResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(*devbuild.DevBuildCapabilities)
+		enc := encoder(ctx, w)
+		body := NewCapabilitiesResponseBody(res)
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
 	}
 }
 
@@ -211,7 +279,7 @@ func EncodeCreateError(encoder func(context.Context, http.ResponseWriter) goahtt
 		}
 		switch en.GoaErrorName() {
 		case "BadRequest":
-			var res *devbuild.HTTPError
+			var res *devbuild.DevBuildBadRequestError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -224,7 +292,7 @@ func EncodeCreateError(encoder func(context.Context, http.ResponseWriter) goahtt
 			w.WriteHeader(http.StatusBadRequest)
 			return enc.Encode(body)
 		case "InternalServerError":
-			var res *devbuild.HTTPError
+			var res *devbuild.DevBuildInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -235,6 +303,19 @@ func EncodeCreateError(encoder func(context.Context, http.ResponseWriter) goahtt
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "Unauthorized":
+			var res *devbuild.DevBuildUnauthorizedError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewCreateUnauthorizedResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusUnauthorized)
 			return enc.Encode(body)
 		default:
 			return encodeError(ctx, w, v)
@@ -292,21 +373,8 @@ func EncodeGetError(encoder func(context.Context, http.ResponseWriter) goahttp.E
 			return encodeError(ctx, w, v)
 		}
 		switch en.GoaErrorName() {
-		case "BadRequest":
-			var res *devbuild.HTTPError
-			errors.As(v, &res)
-			enc := encoder(ctx, w)
-			var body any
-			if formatter != nil {
-				body = formatter(ctx, res)
-			} else {
-				body = NewGetBadRequestResponseBody(res)
-			}
-			w.Header().Set("goa-error", res.GoaErrorName())
-			w.WriteHeader(http.StatusBadRequest)
-			return enc.Encode(body)
 		case "InternalServerError":
-			var res *devbuild.HTTPError
+			var res *devbuild.DevBuildInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -317,6 +385,19 @@ func EncodeGetError(encoder func(context.Context, http.ResponseWriter) goahttp.E
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "NotFound":
+			var res *devbuild.DevBuildNotFoundError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewGetNotFoundResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusNotFound)
 			return enc.Encode(body)
 		default:
 			return encodeError(ctx, w, v)
@@ -404,21 +485,8 @@ func EncodeUpdateError(encoder func(context.Context, http.ResponseWriter) goahtt
 			return encodeError(ctx, w, v)
 		}
 		switch en.GoaErrorName() {
-		case "BadRequest":
-			var res *devbuild.HTTPError
-			errors.As(v, &res)
-			enc := encoder(ctx, w)
-			var body any
-			if formatter != nil {
-				body = formatter(ctx, res)
-			} else {
-				body = NewUpdateBadRequestResponseBody(res)
-			}
-			w.Header().Set("goa-error", res.GoaErrorName())
-			w.WriteHeader(http.StatusBadRequest)
-			return enc.Encode(body)
 		case "InternalServerError":
-			var res *devbuild.HTTPError
+			var res *devbuild.DevBuildInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -429,6 +497,19 @@ func EncodeUpdateError(encoder func(context.Context, http.ResponseWriter) goahtt
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "NotFound":
+			var res *devbuild.DevBuildNotFoundError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewUpdateNotFoundResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusNotFound)
 			return enc.Encode(body)
 		default:
 			return encodeError(ctx, w, v)
@@ -497,21 +578,21 @@ func EncodeRerunError(encoder func(context.Context, http.ResponseWriter) goahttp
 			return encodeError(ctx, w, v)
 		}
 		switch en.GoaErrorName() {
-		case "BadRequest":
-			var res *devbuild.HTTPError
+		case "Forbidden":
+			var res *devbuild.DevBuildForbiddenError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
 			if formatter != nil {
 				body = formatter(ctx, res)
 			} else {
-				body = NewRerunBadRequestResponseBody(res)
+				body = NewRerunForbiddenResponseBody(res)
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusForbidden)
 			return enc.Encode(body)
 		case "InternalServerError":
-			var res *devbuild.HTTPError
+			var res *devbuild.DevBuildInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -522,6 +603,32 @@ func EncodeRerunError(encoder func(context.Context, http.ResponseWriter) goahttp
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "NotFound":
+			var res *devbuild.DevBuildNotFoundError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewRerunNotFoundResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusNotFound)
+			return enc.Encode(body)
+		case "Unauthorized":
+			var res *devbuild.DevBuildUnauthorizedError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewRerunUnauthorizedResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusUnauthorized)
 			return enc.Encode(body)
 		default:
 			return encodeError(ctx, w, v)
@@ -543,6 +650,9 @@ func marshalDevbuildDevBuildToDevBuildResponse(v *devbuild.DevBuild) *DevBuildRe
 	}
 	if v.Status != nil {
 		res.Status = marshalDevbuildDevBuildStatusToDevBuildStatusResponse(v.Status)
+	}
+	if v.Permissions != nil {
+		res.Permissions = marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponse(v.Permissions)
 	}
 
 	return res
@@ -793,6 +903,50 @@ func marshalDevbuildOciArtifactToOciArtifactResponse(v *devbuild.OciArtifact) *O
 	return res
 }
 
+// marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponse builds a
+// value of type *DevBuildPermissionsResponse from a value of type
+// *devbuild.DevBuildPermissions.
+func marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponse(v *devbuild.DevBuildPermissions) *DevBuildPermissionsResponse {
+	if v == nil {
+		return nil
+	}
+	res := &DevBuildPermissionsResponse{
+		CanRerun: v.CanRerun,
+	}
+
+	return res
+}
+
+// marshalDevbuildDevBuildProductCapabilityToDevBuildProductCapabilityResponseBody
+// builds a value of type *DevBuildProductCapabilityResponseBody from a value
+// of type *devbuild.DevBuildProductCapability.
+func marshalDevbuildDevBuildProductCapabilityToDevBuildProductCapabilityResponseBody(v *devbuild.DevBuildProductCapability) *DevBuildProductCapabilityResponseBody {
+	res := &DevBuildProductCapabilityResponseBody{
+		ID:              v.ID,
+		Label:           v.Label,
+		DefaultEdition:  v.DefaultEdition,
+		DefaultPlatform: v.DefaultPlatform,
+	}
+	if v.Editions != nil {
+		res.Editions = make([]string, len(v.Editions))
+		for i, val := range v.Editions {
+			res.Editions[i] = val
+		}
+	} else {
+		res.Editions = []string{}
+	}
+	if v.Platforms != nil {
+		res.Platforms = make([]string, len(v.Platforms))
+		for i, val := range v.Platforms {
+			res.Platforms[i] = val
+		}
+	} else {
+		res.Platforms = []string{}
+	}
+
+	return res
+}
+
 // unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec builds a value of
 // type *devbuild.DevBuildSpec from a value of type *DevBuildSpecRequestBody.
 func unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecRequestBody) *devbuild.DevBuildSpec {
@@ -812,7 +966,7 @@ func unmarshalDevBuildSpecRequestBodyToDevbuildDevBuildSpec(v *DevBuildSpecReque
 		ProductBaseImg:    v.ProductBaseImg,
 		ProductDockerfile: v.ProductDockerfile,
 		TargetImg:         v.TargetImg,
-		Version:           *v.Version,
+		Version:           v.Version,
 	}
 	if v.Platform != nil {
 		res.Platform = *v.Platform
@@ -1066,6 +1220,20 @@ func marshalDevbuildOciArtifactToOciArtifactResponseBody(v *devbuild.OciArtifact
 		}
 	} else {
 		res.Files = []string{}
+	}
+
+	return res
+}
+
+// marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponseBody builds a
+// value of type *DevBuildPermissionsResponseBody from a value of type
+// *devbuild.DevBuildPermissions.
+func marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponseBody(v *devbuild.DevBuildPermissions) *DevBuildPermissionsResponseBody {
+	if v == nil {
+		return nil
+	}
+	res := &DevBuildPermissionsResponseBody{
+		CanRerun: v.CanRerun,
 	}
 
 	return res

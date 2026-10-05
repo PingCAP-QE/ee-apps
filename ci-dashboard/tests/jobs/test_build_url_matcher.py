@@ -19,6 +19,11 @@ def test_normalize_build_url_preserves_public_host() -> None:
     assert normalize_build_url(raw) == "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/299/"
 
 
+def test_normalize_build_url_preserves_tencent_staging_path() -> None:
+    raw = "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/ghpr_unit_test/299/display/redirect"
+    assert normalize_build_url(raw) == "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/ghpr_unit_test/299/"
+
+
 def test_normalize_build_url_handles_none_and_blank() -> None:
     assert normalize_build_url(None) is None
     assert normalize_build_url("   ") is None
@@ -41,7 +46,8 @@ def test_normalize_build_url_supports_relative_paths_and_internal_jenkins_host()
 def test_classify_cloud_phase_uses_host_prefix() -> None:
     assert classify_cloud_phase("https://prow.tidb.net/jenkins/job/example") == "GCP"
     assert classify_cloud_phase("https://prow.tidb.net/view/gs/prow-tidb-logs/job/example") == "GCP"
-    assert classify_cloud_phase("https://do.pingcap.net/job/example") == "IDC"
+    assert classify_cloud_phase("https://do.pingcap.net/jenkins-staging/job/example") == "TENCENT"
+    assert classify_cloud_phase("https://do.pingcap.net/job/example") == "TENCENT"
 
 
 def test_classify_build_system_distinguishes_jenkins_and_prow_native() -> None:
@@ -57,7 +63,7 @@ def test_build_job_url_uses_cloud_phase_host() -> None:
         == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test"
     )
     assert (
-        build_job_url("/jenkins/job/pingcap/job/tidb/job/nightly", "IDC")
+        build_job_url("/jenkins/job/pingcap/job/tidb/job/nightly", "TENCENT")
         == "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/nightly"
     )
     assert build_job_url("https://prow.tidb.net/jenkins/job/example", "GCP") == "https://prow.tidb.net/jenkins/job/example/"

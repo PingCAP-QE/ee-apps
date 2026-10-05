@@ -8,13 +8,16 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from cost_insight.common.config import TENCENT_CI_SOURCE
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
+from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 
 LOG = logging.getLogger(__name__)
 
-JOB_NAME = "refresh_cost_attribution_daily"
 SUMMARY_JOB_NAME = "refresh_cost_attribution_from_summary"
+_TENCENT_CI_SOURCE = TENCENT_CI_SOURCE
+_TCMS_ALLOCATION_VENDORS = frozenset({"aws", "azure"})
 
 
 @dataclass(frozen=True)
@@ -32,67 +35,7 @@ class RefreshAttributionSummary:
     rows_deleted: int
     rows_inserted: int
     dry_run: bool
-    raw_rows: int | None = None
     summary_rows: int | None = None
-
-
-def run_refresh_cost_attribution_daily(
-    engine: Engine,
-    *,
-    source: CostAttributionSource,
-    start_date: date,
-    end_date: date,
-    dry_run: bool = False,
-) -> RefreshAttributionSummary:
-    if start_date > end_date:
-        raise ValueError("start_date must be before or equal to end_date")
-
-    params = {
-        "vendor": source.vendor,
-        "account_id": source.account_id,
-        "start_date": start_date,
-        "end_date": end_date,
-    }
-    watermark = _watermark(vendor=source.vendor, account_id=source.account_id, start_date=start_date, end_date=end_date)
-    job_name = source_job_name(JOB_NAME, vendor=source.vendor, account_id=source.account_id)
-
-    if dry_run:
-        with engine.begin() as connection:
-            raw_rows = connection.execute(_COUNT_RAW_DETAILS, params).scalar_one()
-        return RefreshAttributionSummary(
-            vendor=source.vendor,
-            account_id=source.account_id,
-            start_date=start_date,
-            end_date=end_date,
-            rows_deleted=0,
-            rows_inserted=0,
-            dry_run=True,
-            raw_rows=int(raw_rows),
-        )
-
-    try:
-        with engine.begin() as connection:
-            state_store.mark_job_started(connection, job_name, watermark)
-
-        with engine.begin() as connection:
-            delete_result = connection.execute(_DELETE_ATTRIBUTION_DAILY, params)
-            insert_result = connection.execute(_INSERT_ATTRIBUTION_DAILY, params)
-            state_store.mark_job_succeeded(connection, job_name, watermark)
-
-        return RefreshAttributionSummary(
-            vendor=source.vendor,
-            account_id=source.account_id,
-            start_date=start_date,
-            end_date=end_date,
-            rows_deleted=_positive_rowcount(delete_result.rowcount),
-            rows_inserted=_positive_rowcount(insert_result.rowcount),
-            dry_run=False,
-        )
-    except Exception as exc:
-        LOG.exception("refresh_cost_attribution_daily failed")
-        with engine.begin() as connection:
-            state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
-        raise
 
 
 def run_refresh_cost_attribution_from_summary(
@@ -106,6 +49,14 @@ def run_refresh_cost_attribution_from_summary(
 ) -> RefreshAttributionSummary:
     if start_date > end_date:
         raise ValueError("start_date must be before or equal to end_date")
+    if (source.vendor, source.account_id) == _TENCENT_CI_SOURCE:
+        raise ValueError("Tencent CI requires allocate-tencent-ci-cost")
+    if source.vendor in _TCMS_ALLOCATION_VENDORS and not dry_run:
+        if not tcms_allocation_table:
+            raise ValueError(
+                f"tcms_allocation_table is required for {source.vendor} attribution refresh"
+            )
+        _validate_tcms_allocation_table(engine, tcms_allocation_table)
 
     params = {
         "vendor": source.vendor,
@@ -143,8 +94,16 @@ def run_refresh_cost_attribution_from_summary(
             ):
                 insert_result = connection.execute(insert_statement, params)
                 rows_inserted += _positive_rowcount(insert_result.rowcount)
+            _invalidate_resource_serving_publications(connection, params)
             state_store.mark_job_succeeded(connection, job_name, watermark)
 
+        run_materialize_resource_serving(
+            engine,
+            start_date=start_date,
+            end_date=end_date,
+            vendor=source.vendor,
+            account_id=source.account_id,
+        )
         return RefreshAttributionSummary(
             vendor=source.vendor,
             account_id=source.account_id,
@@ -170,6 +129,38 @@ def _watermark(*, vendor: str, account_id: str, start_date: date, end_date: date
     }
 
 
+def _invalidate_resource_serving_publications(connection, params: dict[str, Any]) -> None:
+    if _table_exists(connection, "cost_resource_serving_publication"):
+        connection.execute(_INVALIDATE_NATIVE_RESOURCE_SERVING_PUBLICATIONS, params)
+
+
+def _table_exists(connection, table_name: str) -> bool:
+    # Publication tables are optional during rolling schema upgrades; if absent,
+    # there is no published data to invalidate.
+    if connection.dialect.name == "sqlite":
+        statement = text(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type = 'table' AND name = :table_name
+            """
+        )
+    else:
+        statement = text(
+            """
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = :table_name
+            LIMIT 1
+            """
+        )
+    return connection.execute(statement, {"table_name": table_name}).first() is not None
+
+
+def _validate_tcms_allocation_table(engine: Engine, table_name: str) -> None:
+    quoted_table = _quote_table_identifier(table_name)
+    with engine.begin() as connection:
+        connection.execute(text(f"SELECT 1 FROM {quoted_table} LIMIT 1")).first()
+
+
 def _positive_rowcount(rowcount: int | None) -> int:
     if rowcount is None or rowcount < 0:
         return 0
@@ -181,13 +172,10 @@ def _summary_insert_statements(
     source: CostAttributionSource,
     tcms_allocation_table: str | None,
 ):
-    if source.vendor != "aws" or not tcms_allocation_table:
+    if source.vendor not in _TCMS_ALLOCATION_VENDORS or not tcms_allocation_table:
         return (_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,)
     quoted_tcms_table = _quote_table_identifier(tcms_allocation_table)
-    return (
-        _build_insert_attribution_daily_from_summary_with_tcms(quoted_tcms_table),
-        _build_insert_shared_attribution_daily_from_summary(quoted_tcms_table),
-    )
+    return (_build_insert_attribution_daily_from_summary_with_tcms(quoted_tcms_table),)
 
 
 def _quote_table_identifier(table_name: str) -> str:
@@ -218,17 +206,6 @@ def source_owner_email_sql(expression: str) -> str:
     return f"REPLACE({expression}, '_at_', '@')"
 
 
-_COUNT_RAW_DETAILS = text(
-    """
-    SELECT COUNT(*)
-    FROM cost_raw_details
-    WHERE usage_date BETWEEN :start_date AND :end_date
-      AND vendor = :vendor
-      AND account_id = :account_id
-    """
-)
-
-
 _COUNT_SUMMARY_DETAILS = text(
     """
     SELECT COUNT(*)
@@ -240,6 +217,14 @@ _COUNT_SUMMARY_DETAILS = text(
 )
 
 
+_INVALIDATE_NATIVE_RESOURCE_SERVING_PUBLICATIONS = text(
+    """
+    DELETE FROM cost_resource_serving_publication
+    WHERE basis_key = 'native'
+      AND vendor = :vendor AND account_id = :account_id
+      AND usage_date BETWEEN :start_date AND :end_date
+    """
+)
 _DELETE_ATTRIBUTION_DAILY = text(
     """
     DELETE FROM cost_attribution_daily
@@ -250,22 +235,78 @@ _DELETE_ATTRIBUTION_DAILY = text(
 )
 
 
-_NORMALIZED_RAW_AUTHOR = normalized_identity_sql("raw.author")
-_NORMALIZED_SUMMARY_AUTHOR = normalized_identity_sql("summary.author")
-_NORMALIZED_GITHUB_ID = normalized_identity_sql("normalized_employee.github_id")
-_NORMALIZED_EMAIL_LOCAL = normalized_identity_sql(
-    "SUBSTRING_INDEX(normalized_employee.email, '@', 1)"
+_SUMMARY_SOURCE_OWNER = source_owner_email_sql("summary.owner")
+_SUMMARY_OWNER_IDENTITY = "NULLIF(TRIM(summary.owner), '')"
+_PVC_MAPPING_AUTHOR_IDENTITY = "NULLIF(TRIM(pvc_mapping.author), '')"
+_SUMMARY_AUTHOR_IDENTITY = (
+    "COALESCE(NULLIF(TRIM(summary.author), ''), "
+    f"{_PVC_MAPPING_AUTHOR_IDENTITY})"
 )
-_NORMALIZED_EN_NAME = normalized_identity_sql("normalized_employee.en_name")
-_RAW_AUTHOR_OVERRIDE_EMAIL = """
-CASE LOWER(raw.author)
-  WHEN 'flaky-claw' THEN 'yinsu@pingcap.com'
-  WHEN 'ti-chi-bot' THEN 'wei.zheng@pingcap.com'
-  ELSE NULL
-END
+_SUMMARY_AUTHOR_FROM_PVC = (
+    f"NULLIF(TRIM(summary.author), '') IS NULL AND {_PVC_MAPPING_AUTHOR_IDENTITY} IS NOT NULL"
+)
+_SUMMARY_MATCH_IDENTITY = (
+    "COALESCE(NULLIF(TRIM(summary.author), ''), "
+    f"{_PVC_MAPPING_AUTHOR_IDENTITY}, {_SUMMARY_OWNER_IDENTITY})"
+)
+_SUMMARY_IDENTITY_IS_OWNER = (
+    f"{_SUMMARY_AUTHOR_IDENTITY} IS NULL AND {_SUMMARY_OWNER_IDENTITY} IS NOT NULL"
+)
+_NORMALIZED_SUMMARY_IDENTITY = normalized_identity_sql(_SUMMARY_MATCH_IDENTITY)
+
+
+def _roster_email_match_sql(employee: str, identity: str) -> str:
+    return f"""
+(
+  LOWER({employee}.email) = LOWER({identity})
+  OR LOWER(SUBSTRING_INDEX({employee}.email, '@', 1)) = LOWER({identity})
+)
 """.strip()
-_SUMMARY_AUTHOR_OVERRIDE_EMAIL = """
-CASE LOWER(summary.author)
+
+
+def _roster_normalized_match_sql(employee: str, identity: str) -> str:
+    return f"""
+(
+  {identity} = {normalized_identity_sql(f'{employee}.github_id')}
+  OR {identity} = {normalized_identity_sql(f"SUBSTRING_INDEX({employee}.email, '@', 1)")}
+  OR {identity} = {normalized_identity_sql(f'{employee}.en_name')}
+)
+""".strip()
+
+
+# TiDB does not allow subqueries in ON conditions. Materialize this roster-only
+# lookup once, then join it by normalized match identity.
+_UNIQUE_FALLBACK_EMPLOYEE = f"""
+(
+  SELECT candidates.match_identity, MIN(candidates.employee_id) AS employee_id
+  FROM (
+    SELECT {normalized_identity_sql('github_id')} AS match_identity, id AS employee_id
+    FROM roster_employees
+    UNION ALL
+    SELECT {normalized_identity_sql("SUBSTRING_INDEX(email, '@', 1)")} AS match_identity, id AS employee_id
+    FROM roster_employees
+    UNION ALL
+    SELECT {normalized_identity_sql('en_name')} AS match_identity, id AS employee_id
+    FROM roster_employees
+  ) candidates
+  WHERE candidates.match_identity <> ''
+  GROUP BY candidates.match_identity
+  HAVING COUNT(DISTINCT candidates.employee_id) = 1
+)
+""".strip()
+_SUMMARY_EMAIL_EMPLOYEE_MATCH = _roster_email_match_sql(
+    "email_employee", _SUMMARY_MATCH_IDENTITY
+)
+_SUMMARY_NORMALIZED_EMPLOYEE_MATCH = _roster_normalized_match_sql(
+    "normalized_employee", _NORMALIZED_SUMMARY_IDENTITY
+)
+_NORMALIZED_BASE_IDENTITY = normalized_identity_sql("base.match_identity")
+_BASE_EMAIL_EMPLOYEE_MATCH = _roster_email_match_sql("email_employee", "base.match_identity")
+_BASE_NORMALIZED_EMPLOYEE_MATCH = _roster_normalized_match_sql(
+    "normalized_employee", _NORMALIZED_BASE_IDENTITY
+)
+_SUMMARY_AUTHOR_OVERRIDE_EMAIL = f"""
+CASE LOWER({_SUMMARY_AUTHOR_IDENTITY})
   WHEN 'flaky-claw' THEN 'yinsu@pingcap.com'
   WHEN 'ti-chi-bot' THEN 'wei.zheng@pingcap.com'
   ELSE NULL
@@ -278,8 +319,6 @@ CASE LOWER(base.match_identity)
   ELSE NULL
 END
 """.strip()
-_NORMALIZED_BASE_IDENTITY = normalized_identity_sql("base.match_identity")
-_SUMMARY_SOURCE_OWNER = source_owner_email_sql("summary.owner")
 
 
 def _json_tag_value_sql(expression: str, key: str) -> str:
@@ -292,16 +331,26 @@ def _json_tag_is_json_null_sql(expression: str, key: str) -> str:
 
 def _allocation_tags_for_match_sql(expression: str) -> str:
     cluster_is_null = _json_tag_is_json_null_sql(expression, "cluster")
-    shared_pool_is_null = _json_tag_is_json_null_sql(expression, "shared_pool")
+    canonical_shared_pool = f"""
+COALESCE(
+  NULLIF(JSON_UNQUOTE(JSON_EXTRACT({expression}, '$.shared_pool')), 'null'),
+  NULLIF(JSON_UNQUOTE(JSON_EXTRACT({expression}, '$.\"shared-pool\"')), 'null')
+)
+""".strip()
+    tags_with_canonical_shared_pool = f"""
+CASE
+  WHEN {canonical_shared_pool} IS NULL
+    THEN JSON_REMOVE({expression}, '$.tenant', '$.shared_pool', '$.\"shared-pool\"')
+  ELSE JSON_SET(
+    JSON_REMOVE({expression}, '$.tenant', '$.shared_pool', '$.\"shared-pool\"'),
+    '$.shared_pool', {canonical_shared_pool}
+  )
+END
+""".strip()
     return f"""
 CASE
-  WHEN {cluster_is_null} AND {shared_pool_is_null}
-    THEN JSON_REMOVE({expression}, '$.cluster', '$.shared_pool')
-  WHEN {cluster_is_null}
-    THEN JSON_REMOVE({expression}, '$.cluster')
-  WHEN {shared_pool_is_null}
-    THEN JSON_REMOVE({expression}, '$.shared_pool')
-  ELSE {expression}
+  WHEN {cluster_is_null} THEN JSON_REMOVE(({tags_with_canonical_shared_pool}), '$.cluster')
+  ELSE ({tags_with_canonical_shared_pool})
 END
 """.strip()
 
@@ -309,12 +358,40 @@ END
 _SUMMARY_SHARED_POOL = _json_tag_value_sql("summary.vendor_tags_json", "shared_pool")
 _SUMMARY_CLUSTER = _json_tag_value_sql("summary.vendor_tags_json", "cluster")
 _SUMMARY_IS_SPLIT_SOURCE = "summary.source_schema_version = 'aws_split_cost_v1'"
+
+
+def _summary_tags_for_match_sql(
+    tags_expression: str = "summary.vendor_tags_json",
+    author_expression: str = "summary.author",
+    schema_expression: str = "summary.source_schema_version",
+    owner_expression: str = "summary.owner",
+) -> str:
+    author = f"NULLIF(TRIM({author_expression}), '')"
+    return f"""
+CASE
+  WHEN {author} IS NULL
+    OR ({schema_expression} = 'aws_split_cost_v1' AND {owner_expression} IS NOT NULL)
+    OR JSON_EXTRACT({tags_expression}, '$.usedby') IS NOT NULL
+    THEN {tags_expression}
+  ELSE JSON_SET(COALESCE({tags_expression}, JSON_OBJECT()), '$.usedby', {author})
+END
+""".strip()
+
+
+_SUMMARY_MATCH_TAGS_JSON = _summary_tags_for_match_sql()
 _ALLOCATION_MATCH_CLUSTER = _json_tag_value_sql(
     "allocation.match_tags_json", "cluster"
 )
 _ALLOCATION_MATCH_TAGS_JSON = _allocation_tags_for_match_sql(
     "allocation_raw.vendor_tags_json"
 )
+# AWS billing adapters normalize the vendor tenant tag into summary.org.
+_ALLOCATION_MATCH_TENANT = f"""
+CASE
+  WHEN {_json_tag_is_json_null_sql('allocation_raw.vendor_tags_json', 'tenant')} THEN NULL
+  ELSE {_json_tag_value_sql('allocation_raw.vendor_tags_json', 'tenant')}
+END
+""".strip()
 _ALLOCATION_SOURCE_COLUMNS = """
 allocation_raw.id,
 allocation_raw.vendor,
@@ -322,7 +399,7 @@ allocation_raw.account_id,
 allocation_raw.vendor_tags_json,
 allocation_raw.icost_owner_email AS owner_email,
 allocation_raw.icost_service AS service,
-allocation_raw.icost_project AS project,
+NULLIF(TRIM(allocation_raw.icost_project), '') AS project,
 allocation_raw.icost_service_exec_id AS service_exec_id,
 allocation_raw.valid_from,
 allocation_raw.valid_to
@@ -345,225 +422,6 @@ CASE
   ELSE {_MATCHED_OWNER}
 END
 """.strip()
-
-
-_INSERT_ATTRIBUTION_DAILY = text(
-    f"""
-    INSERT INTO cost_attribution_daily (
-      usage_date,
-      vendor,
-      account_id,
-      service_name,
-      sku_name,
-      region,
-      org,
-      repo,
-      target_branch,
-      resource_name,
-      author,
-      owner,
-      attribution_key,
-      attribution_source,
-      attribution_status,
-      employee_id,
-      group_id,
-      manager_id,
-      usage_seconds,
-      list_cost,
-      effective_cost,
-      credit_amount,
-      net_cost,
-      source_rows,
-      dimension_hash
-    )
-    SELECT
-      attributed.usage_date,
-      attributed.vendor,
-      attributed.account_id,
-      attributed.service_name,
-      attributed.sku_name,
-      attributed.region,
-      attributed.org,
-      attributed.repo,
-      attributed.target_branch,
-      attributed.resource_name,
-      attributed.author,
-      attributed.owner,
-      attributed.attribution_key,
-      attributed.attribution_source,
-      attributed.attribution_status,
-      attributed.employee_id,
-      attributed.group_id,
-      attributed.manager_id,
-      SUM(attributed.usage_seconds) AS usage_seconds,
-      SUM(attributed.list_cost) AS list_cost,
-      SUM(attributed.effective_cost) AS effective_cost,
-      SUM(attributed.credit_amount) AS credit_amount,
-      SUM(attributed.net_cost) AS net_cost,
-      COUNT(*) AS source_rows,
-      SHA2(
-        CONCAT_WS(
-          '|',
-          DATE_FORMAT(attributed.usage_date, '%Y-%m-%d'),
-          COALESCE(attributed.vendor, ''),
-          COALESCE(attributed.account_id, ''),
-          COALESCE(attributed.service_name, ''),
-          COALESCE(attributed.sku_name, ''),
-          COALESCE(attributed.region, ''),
-          COALESCE(attributed.org, ''),
-          COALESCE(attributed.repo, ''),
-          COALESCE(attributed.target_branch, ''),
-          COALESCE(attributed.resource_name, ''),
-          COALESCE(attributed.author, ''),
-          COALESCE(attributed.owner, ''),
-          COALESCE(attributed.attribution_key, ''),
-          COALESCE(attributed.attribution_source, ''),
-          COALESCE(attributed.attribution_status, ''),
-          COALESCE(CAST(attributed.employee_id AS CHAR), ''),
-          COALESCE(CAST(attributed.group_id AS CHAR), ''),
-          COALESCE(CAST(attributed.manager_id AS CHAR), '')
-        ),
-        256
-      ) AS dimension_hash
-    FROM (
-      SELECT
-        raw.usage_date,
-        raw.vendor,
-        raw.account_id,
-        raw.service_name,
-        raw.sku_name,
-        raw.region,
-        raw.org,
-        raw.repo,
-        raw.target_branch,
-        raw.resource_name,
-        raw.author,
-        {_MATCHED_OWNER} AS owner,
-        CASE
-          WHEN COALESCE(
-            override_employee.id,
-            github_employee.id,
-            email_employee.id,
-            normalized_employee.id
-          ) IS NOT NULL THEN CONCAT(
-            'employee:',
-            CAST(COALESCE(
-              override_employee.id,
-              github_employee.id,
-              email_employee.id,
-              normalized_employee.id
-            ) AS CHAR)
-          )
-          WHEN raw.author IS NOT NULL THEN CONCAT('author:', LOWER(raw.author))
-          ELSE 'unattributed'
-        END AS attribution_key,
-        CASE
-          WHEN override_employee.id IS NOT NULL THEN 'author_override'
-          WHEN github_employee.id IS NOT NULL THEN 'author_github'
-          WHEN email_employee.id IS NOT NULL THEN 'author_email'
-          WHEN normalized_employee.id IS NOT NULL THEN 'author_normalized'
-          WHEN raw.author IS NOT NULL THEN 'author_label'
-          ELSE 'missing_author'
-        END AS attribution_source,
-        CASE
-          WHEN COALESCE(
-            override_employee.id,
-            github_employee.id,
-            email_employee.id,
-            normalized_employee.id
-          ) IS NOT NULL THEN 'matched'
-          WHEN raw.author IS NOT NULL THEN 'unmatched'
-          ELSE 'unattributed'
-        END AS attribution_status,
-        COALESCE(
-          override_employee.id,
-          github_employee.id,
-          email_employee.id,
-          normalized_employee.id
-        ) AS employee_id,
-        COALESCE(
-          override_employee.group_id,
-          github_employee.group_id,
-          email_employee.group_id,
-          normalized_employee.group_id
-        ) AS group_id,
-        COALESCE(
-          override_employee.manager_id,
-          github_employee.manager_id,
-          email_employee.manager_id,
-          normalized_employee.manager_id,
-          matched_group.manager_id
-        ) AS manager_id,
-        raw.usage_seconds,
-        raw.list_cost,
-        raw.effective_cost,
-        raw.credit_amount,
-        raw.net_cost
-      FROM cost_raw_details raw
-      LEFT JOIN roster_employees override_employee
-        ON raw.author IS NOT NULL
-       AND override_employee.email IS NOT NULL
-       AND LOWER(override_employee.email) = LOWER({_RAW_AUTHOR_OVERRIDE_EMAIL})
-      LEFT JOIN roster_employees github_employee
-        ON override_employee.id IS NULL
-       AND raw.author IS NOT NULL
-       AND github_employee.github_id IS NOT NULL
-       AND LOWER(github_employee.github_id) = LOWER(raw.author)
-      LEFT JOIN roster_employees email_employee
-        ON github_employee.id IS NULL
-       AND raw.author IS NOT NULL
-       AND email_employee.email IS NOT NULL
-       AND (
-         LOWER(email_employee.email) = LOWER(raw.author)
-         OR LOWER(SUBSTRING_INDEX(email_employee.email, '@', 1)) = LOWER(raw.author)
-       )
-      LEFT JOIN roster_employees normalized_employee
-        ON github_employee.id IS NULL
-       AND email_employee.id IS NULL
-       AND raw.author IS NOT NULL
-       AND (
-         normalized_employee.github_id IS NOT NULL
-         OR normalized_employee.email IS NOT NULL
-         OR normalized_employee.en_name IS NOT NULL
-       )
-       AND (
-         {_NORMALIZED_RAW_AUTHOR} = {_NORMALIZED_GITHUB_ID}
-         OR {_NORMALIZED_RAW_AUTHOR} = {_NORMALIZED_EMAIL_LOCAL}
-         OR {_NORMALIZED_RAW_AUTHOR} = {_NORMALIZED_EN_NAME}
-       )
-      LEFT JOIN roster_groups matched_group
-        ON matched_group.is_active = 1
-       AND matched_group.id = COALESCE(
-         override_employee.group_id,
-         github_employee.group_id,
-         email_employee.group_id,
-         normalized_employee.group_id
-       )
-      WHERE raw.usage_date BETWEEN :start_date AND :end_date
-        AND raw.vendor = :vendor
-        AND raw.account_id = :account_id
-    ) attributed
-    GROUP BY
-      attributed.usage_date,
-      attributed.vendor,
-      attributed.account_id,
-      attributed.service_name,
-      attributed.sku_name,
-      attributed.region,
-      attributed.org,
-      attributed.repo,
-      attributed.target_branch,
-      attributed.resource_name,
-      attributed.author,
-      attributed.owner,
-      attributed.attribution_key,
-      attributed.attribution_source,
-      attributed.attribution_status,
-      attributed.employee_id,
-      attributed.group_id,
-      attributed.manager_id
-    """
-)
 
 
 _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
@@ -602,6 +460,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       effective_cost,
       credit_amount,
       net_cost,
+      currency,
       source_rows,
       dimension_hash,
       source_summary_row_hash
@@ -640,6 +499,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       SUM(attributed.effective_cost) AS effective_cost,
       SUM(attributed.credit_amount) AS credit_amount,
       SUM(attributed.net_cost) AS net_cost,
+      attributed.currency AS currency,
       COUNT(*) AS source_rows,
       SHA2(
         CONCAT_WS(
@@ -666,6 +526,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
           COALESCE(attributed.service, ''),
           COALESCE(attributed.project, ''),
           COALESCE(attributed.service_exec_id, ''),
+          COALESCE(attributed.currency, 'USD'),
           COALESCE(attributed.attribution_key, ''),
           COALESCE(attributed.attribution_source, ''),
           COALESCE(attributed.attribution_status, ''),
@@ -696,7 +557,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.namespace,
         summary.workload_name,
         summary.workload_type,
-        COALESCE(summary.author, pvc_mapping.author) AS author,
+        {_SUMMARY_AUTHOR_IDENTITY} AS author,
         {_MATCHED_OWNER} AS owner,
         summary.service,
         summary.project,
@@ -717,21 +578,27 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
               normalized_employee.id
             ) AS CHAR)
           )
-          WHEN COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
-            THEN CONCAT('author:', LOWER(COALESCE(summary.author, pvc_mapping.author)))
+          WHEN {_SUMMARY_MATCH_IDENTITY} IS NOT NULL THEN CONCAT(
+            CASE WHEN {_SUMMARY_IDENTITY_IS_OWNER} THEN 'owner:' ELSE 'author:' END,
+            LOWER({_SUMMARY_MATCH_IDENTITY})
+          )
           ELSE 'unattributed'
         END AS attribution_key,
         CASE
-          WHEN override_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_override'
-          WHEN github_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_github'
-          WHEN email_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_email'
-          WHEN normalized_employee.id IS NOT NULL AND pvc_mapping.author IS NOT NULL THEN 'pvc_pod_normalized'
+          WHEN {_SUMMARY_IDENTITY_IS_OWNER} AND github_employee.id IS NOT NULL THEN 'owner_github'
+          WHEN {_SUMMARY_IDENTITY_IS_OWNER} AND email_employee.id IS NOT NULL THEN 'owner_email'
+          WHEN {_SUMMARY_IDENTITY_IS_OWNER} AND normalized_employee.id IS NOT NULL THEN 'owner_normalized'
+          WHEN {_SUMMARY_IDENTITY_IS_OWNER} THEN 'owner_label'
+          WHEN override_employee.id IS NOT NULL AND {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_override'
+          WHEN github_employee.id IS NOT NULL AND {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_github'
+          WHEN email_employee.id IS NOT NULL AND {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_email'
+          WHEN normalized_employee.id IS NOT NULL AND {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_normalized'
           WHEN override_employee.id IS NOT NULL THEN 'author_override'
           WHEN github_employee.id IS NOT NULL THEN 'author_github'
           WHEN email_employee.id IS NOT NULL THEN 'author_email'
           WHEN normalized_employee.id IS NOT NULL THEN 'author_normalized'
-          WHEN summary.author IS NOT NULL THEN 'author_label'
-          WHEN pvc_mapping.author IS NOT NULL THEN 'pvc_pod_author'
+          WHEN {_SUMMARY_AUTHOR_FROM_PVC} THEN 'pvc_pod_author'
+          WHEN {_SUMMARY_AUTHOR_IDENTITY} IS NOT NULL THEN 'author_label'
           ELSE 'missing_author'
         END AS attribution_source,
         CASE
@@ -741,7 +608,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
             email_employee.id,
             normalized_employee.id
           ) IS NOT NULL THEN 'matched'
-          WHEN COALESCE(summary.author, pvc_mapping.author) IS NOT NULL THEN 'unmatched'
+          WHEN {_SUMMARY_MATCH_IDENTITY} IS NOT NULL THEN 'unmatched'
           ELSE 'unattributed'
         END AS attribution_status,
         COALESCE(
@@ -766,7 +633,8 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
         summary.list_cost,
         summary.effective_cost,
         summary.credit_amount,
-        summary.net_cost
+        summary.net_cost,
+        summary.currency
       FROM cost_bq_export_summary_daily summary
       LEFT JOIN (
         SELECT
@@ -783,43 +651,39 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
            AND MAX(author) <> ''
       ) pvc_mapping
         ON summary.vendor = 'gcp'
-       AND summary.author IS NULL
+       AND NULLIF(TRIM(summary.author), '') IS NULL
        AND summary.resource_name IS NOT NULL
        AND LOWER(summary.resource_name) LIKE 'pvc-%'
        AND pvc_mapping.vendor = summary.vendor
        AND pvc_mapping.account_id = summary.account_id
        AND pvc_mapping.persistent_volume_name = summary.resource_name
       LEFT JOIN roster_employees override_employee
-        ON COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+        ON {_SUMMARY_AUTHOR_IDENTITY} IS NOT NULL
        AND override_employee.email IS NOT NULL
        AND LOWER(override_employee.email) = LOWER({_SUMMARY_AUTHOR_OVERRIDE_EMAIL})
       LEFT JOIN roster_employees github_employee
         ON override_employee.id IS NULL
-       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+       AND {_SUMMARY_MATCH_IDENTITY} IS NOT NULL
        AND github_employee.github_id IS NOT NULL
-       AND LOWER(github_employee.github_id) = LOWER(COALESCE(summary.author, pvc_mapping.author))
+       AND LOWER(github_employee.github_id) = LOWER({_SUMMARY_MATCH_IDENTITY})
+      LEFT JOIN ({_UNIQUE_FALLBACK_EMPLOYEE}) unique_fallback_employee
+        ON github_employee.id IS NULL
+       AND {_SUMMARY_MATCH_IDENTITY} IS NOT NULL
+       AND {_NORMALIZED_SUMMARY_IDENTITY} <> ''
+       AND unique_fallback_employee.match_identity = {_NORMALIZED_SUMMARY_IDENTITY}
       LEFT JOIN roster_employees email_employee
-        ON github_employee.id IS NULL
-       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+        ON unique_fallback_employee.employee_id = email_employee.id
        AND email_employee.email IS NOT NULL
-       AND (
-         LOWER(email_employee.email) = LOWER(COALESCE(summary.author, pvc_mapping.author))
-         OR LOWER(SUBSTRING_INDEX(email_employee.email, '@', 1)) = LOWER(COALESCE(summary.author, pvc_mapping.author))
-       )
+       AND {_SUMMARY_EMAIL_EMPLOYEE_MATCH}
       LEFT JOIN roster_employees normalized_employee
-        ON github_employee.id IS NULL
-       AND email_employee.id IS NULL
-       AND COALESCE(summary.author, pvc_mapping.author) IS NOT NULL
+        ON email_employee.id IS NULL
+       AND unique_fallback_employee.employee_id = normalized_employee.id
        AND (
          normalized_employee.github_id IS NOT NULL
          OR normalized_employee.email IS NOT NULL
          OR normalized_employee.en_name IS NOT NULL
        )
-       AND (
-         {_NORMALIZED_SUMMARY_AUTHOR} = {_NORMALIZED_GITHUB_ID}
-         OR {_NORMALIZED_SUMMARY_AUTHOR} = {_NORMALIZED_EMAIL_LOCAL}
-         OR {_NORMALIZED_SUMMARY_AUTHOR} = {_NORMALIZED_EN_NAME}
-       )
+       AND {_SUMMARY_NORMALIZED_EMPLOYEE_MATCH}
       LEFT JOIN roster_groups matched_group
         ON matched_group.is_active = 1
        AND matched_group.id = COALESCE(
@@ -855,6 +719,7 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
       attributed.service,
       attributed.project,
       attributed.service_exec_id,
+      attributed.currency,
       attributed.attribution_key,
       attributed.attribution_source,
       attributed.attribution_status,
@@ -904,8 +769,10 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           effective_cost,
           credit_amount,
           net_cost,
+          currency,
           source_rows,
-          dimension_hash
+          dimension_hash,
+          source_summary_row_hash
         )
         SELECT
           attributed.usage_date,
@@ -919,7 +786,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.org,
           attributed.repo,
           attributed.target_branch,
-          NULL AS resource_name,
+          attributed.resource_name,
           attributed.vendor_tags_json,
           attributed.source_allocation_scope,
           attributed.namespace,
@@ -942,6 +809,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           SUM(attributed.effective_cost) AS effective_cost,
           SUM(attributed.credit_amount) AS credit_amount,
           SUM(attributed.net_cost) AS net_cost,
+          attributed.currency AS currency,
           COUNT(*) AS source_rows,
           CASE
             WHEN attributed.source_allocation_scope <> 'direct'
@@ -961,7 +829,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.org, ''),
               COALESCE(attributed.repo, ''),
               COALESCE(attributed.target_branch, ''),
-              '',
+              COALESCE(attributed.resource_name, ''),
               COALESCE(attributed.vendor_tags_json, ''),
               COALESCE(attributed.source_allocation_scope, 'direct'),
               COALESCE(attributed.namespace, ''),
@@ -972,13 +840,15 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.service, ''),
               COALESCE(attributed.project, ''),
               COALESCE(attributed.service_exec_id, ''),
+              COALESCE(attributed.currency, 'USD'),
               COALESCE(attributed.attribution_key, ''),
               COALESCE(attributed.attribution_source, ''),
               COALESCE(attributed.attribution_status, ''),
               COALESCE(attributed.allocate_method, ''),
               COALESCE(CAST(attributed.employee_id AS CHAR), ''),
               COALESCE(CAST(attributed.group_id AS CHAR), ''),
-              COALESCE(CAST(attributed.manager_id AS CHAR), '')
+              COALESCE(CAST(attributed.manager_id AS CHAR), ''),
+              COALESCE(attributed.source_summary_row_hash, '')
             ), 256)
             ELSE SHA2(CONCAT_WS(
               '|',
@@ -993,22 +863,25 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               COALESCE(attributed.org, ''),
               COALESCE(attributed.repo, ''),
               COALESCE(attributed.target_branch, ''),
-              '',
+              COALESCE(attributed.resource_name, ''),
               COALESCE(attributed.vendor_tags_json, ''),
               COALESCE(attributed.author, ''),
               COALESCE(attributed.owner, ''),
               COALESCE(attributed.service, ''),
               COALESCE(attributed.project, ''),
               COALESCE(attributed.service_exec_id, ''),
+              COALESCE(attributed.currency, 'USD'),
               COALESCE(attributed.attribution_key, ''),
               COALESCE(attributed.attribution_source, ''),
               COALESCE(attributed.attribution_status, ''),
               COALESCE(attributed.allocate_method, ''),
               COALESCE(CAST(attributed.employee_id AS CHAR), ''),
               COALESCE(CAST(attributed.group_id AS CHAR), ''),
-              COALESCE(CAST(attributed.manager_id AS CHAR), '')
+              COALESCE(CAST(attributed.manager_id AS CHAR), ''),
+              COALESCE(attributed.source_summary_row_hash, '')
             ), 256)
-          END AS dimension_hash
+          END AS dimension_hash,
+          attributed.source_summary_row_hash
         FROM (
           SELECT
             base.usage_date,
@@ -1022,6 +895,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             base.org,
             base.repo,
             base.target_branch,
+            base.resource_name,
             base.vendor_tags_json,
             base.source_allocation_scope,
             base.namespace,
@@ -1032,6 +906,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             base.service,
             base.project,
             base.service_exec_id,
+            base.source_summary_row_hash,
             CASE
               WHEN COALESCE(
                 owner_email_employee.id,
@@ -1104,7 +979,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             base.list_cost,
             base.effective_cost,
             base.credit_amount,
-            base.net_cost
+            base.net_cost,
+            base.currency
           FROM (
             SELECT
               summary.usage_date,
@@ -1118,6 +994,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               summary.org,
               summary.repo,
               summary.target_branch,
+              summary.resource_name,
+              summary.source_row_hash AS source_summary_row_hash,
               COALESCE(summary.source_allocation_scope, 'direct') AS source_allocation_scope,
               summary.namespace,
               summary.workload_name,
@@ -1154,8 +1032,9 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                 ELSE allocation.service
               END AS service,
               CASE
-                WHEN {_SUMMARY_IS_SPLIT_SOURCE} THEN COALESCE(summary.project, allocation.project)
-                ELSE allocation.project
+                WHEN {_SUMMARY_IS_SPLIT_SOURCE}
+                  THEN COALESCE(summary.project, allocation.project, allocation.tenant_project)
+                ELSE COALESCE(allocation.project, allocation.tenant_project)
               END AS project,
               CASE
                 WHEN {_SUMMARY_IS_SPLIT_SOURCE} THEN COALESCE(summary.service_exec_id, allocation.service_exec_id)
@@ -1170,7 +1049,8 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               summary.list_cost,
               summary.effective_cost,
               summary.credit_amount,
-              summary.net_cost
+              summary.net_cost,
+              summary.currency
             FROM cost_bq_export_summary_daily summary
             LEFT JOIN (
               SELECT *
@@ -1183,10 +1063,31 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                   allocation.project,
                   allocation.service_exec_id,
                   allocation.match_tags_json,
+                  FIRST_VALUE(
+                    CASE
+                      WHEN JSON_LENGTH(allocation.match_tags_json) = 0
+                        AND allocation.match_tenant IS NOT NULL
+                        THEN allocation.project
+                      ELSE NULL
+                    END
+                  ) OVER (
+                    PARTITION BY summary.id
+                    ORDER BY
+                      CASE
+                        WHEN JSON_LENGTH(allocation.match_tags_json) = 0
+                          AND allocation.match_tenant IS NOT NULL
+                          THEN 0
+                        ELSE 1
+                      END,
+                      CASE WHEN allocation.account_id = summary.account_id THEN 0 ELSE 1 END,
+                      COALESCE(allocation.valid_from, '1900-01-01') DESC,
+                      allocation.id DESC
+                  ) AS tenant_project,
                   ROW_NUMBER() OVER (
                     PARTITION BY summary.id
                     ORDER BY
                       JSON_LENGTH(allocation.match_tags_json) DESC,
+                      CASE WHEN allocation.match_tenant IS NULL THEN 0 ELSE 1 END DESC,
                       CASE WHEN allocation.account_id = summary.account_id THEN 0 ELSE 1 END,
                       COALESCE(allocation.valid_from, '1900-01-01') DESC,
                       allocation.id DESC
@@ -1195,15 +1096,28 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                 JOIN (
                   SELECT
                     {_ALLOCATION_SOURCE_COLUMNS},
-                    {_ALLOCATION_MATCH_TAGS_JSON} AS match_tags_json
+                    {_ALLOCATION_MATCH_TAGS_JSON} AS match_tags_json,
+                    {_ALLOCATION_MATCH_TENANT} AS match_tenant
                   FROM {tcms_table} allocation_raw
                 ) allocation
-                  ON summary.vendor_tags_json IS NOT NULL
-                 AND allocation.vendor = summary.vendor
+                  ON allocation.vendor = summary.vendor
                  AND (allocation.account_id IS NULL OR allocation.account_id = summary.account_id)
                  AND allocation.match_tags_json IS NOT NULL
-                 AND JSON_LENGTH(allocation.match_tags_json) > 0
-                 AND JSON_CONTAINS(summary.vendor_tags_json, allocation.match_tags_json)
+                 AND (
+                   allocation.match_tenant IS NOT NULL
+                   OR JSON_LENGTH(allocation.match_tags_json) > 0
+                 )
+                 AND (allocation.match_tenant IS NULL OR allocation.match_tenant = summary.org)
+                 AND (
+                   JSON_LENGTH(allocation.match_tags_json) = 0
+                   OR (
+                     ({_SUMMARY_MATCH_TAGS_JSON}) IS NOT NULL
+                     AND JSON_CONTAINS(
+                       ({_SUMMARY_MATCH_TAGS_JSON}),
+                       allocation.match_tags_json
+                     )
+                   )
+                 )
                  AND summary.usage_date >= COALESCE(allocation.valid_from, '1900-01-01')
                  AND summary.usage_date <= COALESCE(allocation.valid_to, '9999-12-31')
                 WHERE summary.usage_date BETWEEN :start_date AND :end_date
@@ -1230,12 +1144,6 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
             WHERE summary.usage_date BETWEEN :start_date AND :end_date
               AND summary.vendor = :vendor
               AND summary.account_id = :account_id
-              AND NOT (
-                summary.author IS NULL
-                AND {_SUMMARY_CLUSTER} IS NULL
-                AND {_SUMMARY_SHARED_POOL} IS NOT NULL
-                AND allocation.id IS NULL
-              )
           ) base
           LEFT JOIN roster_employees owner_email_employee
             ON base.identity_kind IN ('owner_email', 'source_label')
@@ -1253,30 +1161,25 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
            AND base.match_identity IS NOT NULL
            AND github_employee.github_id IS NOT NULL
            AND LOWER(github_employee.github_id) = LOWER(base.match_identity)
+          LEFT JOIN ({_UNIQUE_FALLBACK_EMPLOYEE}) unique_fallback_employee
+            ON github_employee.id IS NULL
+           AND base.identity_kind = 'author'
+           AND base.match_identity IS NOT NULL
+           AND {_NORMALIZED_BASE_IDENTITY} <> ''
+           AND unique_fallback_employee.match_identity = {_NORMALIZED_BASE_IDENTITY}
           LEFT JOIN roster_employees email_employee
-            ON github_employee.id IS NULL
-           AND base.identity_kind = 'author'
-           AND base.match_identity IS NOT NULL
+            ON unique_fallback_employee.employee_id = email_employee.id
            AND email_employee.email IS NOT NULL
-           AND (
-             LOWER(email_employee.email) = LOWER(base.match_identity)
-             OR LOWER(SUBSTRING_INDEX(email_employee.email, '@', 1)) = LOWER(base.match_identity)
-           )
+           AND {_BASE_EMAIL_EMPLOYEE_MATCH}
           LEFT JOIN roster_employees normalized_employee
-            ON github_employee.id IS NULL
-           AND email_employee.id IS NULL
-           AND base.identity_kind = 'author'
-           AND base.match_identity IS NOT NULL
+            ON email_employee.id IS NULL
+           AND unique_fallback_employee.employee_id = normalized_employee.id
            AND (
              normalized_employee.github_id IS NOT NULL
              OR normalized_employee.email IS NOT NULL
              OR normalized_employee.en_name IS NOT NULL
            )
-           AND (
-             {_NORMALIZED_BASE_IDENTITY} = {_NORMALIZED_GITHUB_ID}
-             OR {_NORMALIZED_BASE_IDENTITY} = {_NORMALIZED_EMAIL_LOCAL}
-             OR {_NORMALIZED_BASE_IDENTITY} = {_NORMALIZED_EN_NAME}
-           )
+           AND {_BASE_NORMALIZED_EMPLOYEE_MATCH}
           LEFT JOIN roster_groups matched_group
             ON matched_group.is_active = 1
            AND matched_group.id = COALESCE(
@@ -1299,6 +1202,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.org,
           attributed.repo,
           attributed.target_branch,
+          attributed.resource_name,
           attributed.vendor_tags_json,
           attributed.source_allocation_scope,
           attributed.namespace,
@@ -1309,359 +1213,14 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.service,
           attributed.project,
           attributed.service_exec_id,
+          attributed.currency,
           attributed.attribution_key,
           attributed.attribution_source,
           attributed.attribution_status,
           attributed.allocate_method,
           attributed.employee_id,
           attributed.group_id,
-          attributed.manager_id
-        """
-    )
-
-
-def _build_insert_shared_attribution_daily_from_summary(tcms_table: str):
-    return text(
-        f"""
-        INSERT INTO cost_attribution_daily (
-          usage_date,
-          vendor,
-          account_id,
-          service_name,
-          sku_name,
-          usage_type,
-          cost_driver_key,
-          region,
-          org,
-          repo,
-          target_branch,
-          resource_name,
-          vendor_tags_json,
-          source_allocation_scope,
-          namespace,
-          workload_name,
-          workload_type,
-          author,
-          owner,
-          service,
-          project,
-          service_exec_id,
-          attribution_key,
-          attribution_source,
-          attribution_status,
-          allocate_method,
-          employee_id,
-          group_id,
-          manager_id,
-          usage_seconds,
-          list_cost,
-          effective_cost,
-          credit_amount,
-          net_cost,
-          source_rows,
-          dimension_hash
-        )
-        WITH allocation_match AS (
-          SELECT *
-          FROM (
-            SELECT
-              summary.id AS summary_id,
-              allocation.id,
-              allocation.service,
-              allocation.project,
-              allocation.match_tags_json,
-              ROW_NUMBER() OVER (
-                PARTITION BY summary.id
-                ORDER BY
-                  JSON_LENGTH(allocation.match_tags_json) DESC,
-                  CASE WHEN allocation.account_id = summary.account_id THEN 0 ELSE 1 END,
-                  COALESCE(allocation.valid_from, '1900-01-01') DESC,
-                  allocation.id DESC
-              ) AS match_rank
-            FROM cost_bq_export_summary_daily summary
-            JOIN (
-              SELECT
-                {_ALLOCATION_SOURCE_COLUMNS},
-                {_ALLOCATION_MATCH_TAGS_JSON} AS match_tags_json
-              FROM {tcms_table} allocation_raw
-            ) allocation
-              ON summary.vendor_tags_json IS NOT NULL
-             AND allocation.vendor = summary.vendor
-             AND (allocation.account_id IS NULL OR allocation.account_id = summary.account_id)
-             AND allocation.match_tags_json IS NOT NULL
-             AND JSON_LENGTH(allocation.match_tags_json) > 0
-             AND JSON_CONTAINS(summary.vendor_tags_json, allocation.match_tags_json)
-             AND summary.usage_date >= COALESCE(allocation.valid_from, '1900-01-01')
-             AND summary.usage_date <= COALESCE(allocation.valid_to, '9999-12-31')
-            WHERE summary.usage_date BETWEEN :start_date AND :end_date
-              AND summary.vendor = :vendor
-              AND summary.account_id = :account_id
-          ) ranked_allocation
-          WHERE match_rank = 1
-        ),
-        logical AS (
-          SELECT
-            summary.usage_date,
-            summary.vendor,
-            summary.account_id,
-            {_SUMMARY_SHARED_POOL} AS shared_pool,
-            allocation.service,
-            allocation.project,
-            SUM(summary.net_cost) AS project_logical_cost
-          FROM cost_bq_export_summary_daily summary
-          JOIN allocation_match allocation
-            ON allocation.summary_id = summary.id
-          WHERE summary.usage_date BETWEEN :start_date AND :end_date
-            AND summary.vendor = :vendor
-            AND summary.account_id = :account_id
-            AND {_SUMMARY_CLUSTER} IS NOT NULL
-          GROUP BY
-            summary.usage_date,
-            summary.vendor,
-            summary.account_id,
-            shared_pool,
-            allocation.service,
-            allocation.project
-        ),
-        pool_total AS (
-          SELECT
-            usage_date,
-            vendor,
-            account_id,
-            shared_pool,
-            SUM(project_logical_cost) AS pool_logical_cost,
-            COUNT(*) AS allocation_count
-          FROM logical
-          GROUP BY usage_date, vendor, account_id, shared_pool
-        ),
-        shared_cost AS (
-          SELECT
-            summary.usage_date,
-            summary.vendor,
-            summary.account_id,
-            summary.service_name,
-            summary.sku_name,
-            summary.usage_type,
-            summary.cost_driver_key,
-            summary.region,
-            summary.vendor_tags_json,
-            COALESCE(summary.source_allocation_scope, 'direct') AS source_allocation_scope,
-            summary.namespace,
-            summary.workload_name,
-            summary.workload_type,
-            {_SUMMARY_SHARED_POOL} AS shared_pool,
-            SUM(summary.list_cost) AS list_cost,
-            SUM(summary.effective_cost) AS effective_cost,
-            SUM(summary.credit_amount) AS credit_amount,
-            SUM(summary.net_cost) AS net_cost,
-            COUNT(*) AS source_rows
-          FROM cost_bq_export_summary_daily summary
-          LEFT JOIN allocation_match allocation
-            ON allocation.summary_id = summary.id
-          WHERE summary.usage_date BETWEEN :start_date AND :end_date
-            AND summary.vendor = :vendor
-            AND summary.account_id = :account_id
-            AND summary.author IS NULL
-            AND {_SUMMARY_CLUSTER} IS NULL
-            AND {_SUMMARY_SHARED_POOL} IS NOT NULL
-            AND allocation.id IS NULL
-          GROUP BY
-            summary.usage_date,
-            summary.vendor,
-            summary.account_id,
-            summary.service_name,
-            summary.sku_name,
-            summary.usage_type,
-            summary.cost_driver_key,
-            summary.region,
-            summary.vendor_tags_json,
-            source_allocation_scope,
-            summary.namespace,
-            summary.workload_name,
-            summary.workload_type,
-            shared_pool
-        )
-        SELECT
-          allocated.usage_date,
-          allocated.vendor,
-          allocated.account_id,
-          allocated.service_name,
-          allocated.sku_name,
-          allocated.usage_type,
-          allocated.cost_driver_key,
-          allocated.region,
-          NULL AS org,
-          NULL AS repo,
-          NULL AS target_branch,
-          NULL AS resource_name,
-          allocated.vendor_tags_json,
-          allocated.source_allocation_scope,
-          allocated.namespace,
-          allocated.workload_name,
-          allocated.workload_type,
-          NULL AS author,
-          NULL AS owner,
-          allocated.service,
-          allocated.project,
-          NULL AS service_exec_id,
-          allocated.attribution_key,
-          allocated.attribution_source,
-          allocated.attribution_status,
-          allocated.allocate_method,
-          NULL AS employee_id,
-          NULL AS group_id,
-          NULL AS manager_id,
-          NULL AS usage_seconds,
-          allocated.list_cost,
-          allocated.effective_cost,
-          allocated.credit_amount,
-          allocated.net_cost,
-          allocated.source_rows,
-          CASE
-            WHEN allocated.source_allocation_scope <> 'direct'
-              OR allocated.namespace IS NOT NULL
-              OR allocated.workload_name IS NOT NULL
-              OR allocated.workload_type IS NOT NULL
-              THEN SHA2(CONCAT_WS(
-              '|',
-              DATE_FORMAT(allocated.usage_date, '%Y-%m-%d'),
-              COALESCE(allocated.vendor, ''),
-              COALESCE(allocated.account_id, ''),
-              COALESCE(allocated.service_name, ''),
-              COALESCE(allocated.sku_name, ''),
-              COALESCE(allocated.usage_type, ''),
-              COALESCE(allocated.cost_driver_key, ''),
-              COALESCE(allocated.region, ''),
-              '',
-              '',
-              '',
-              '',
-              COALESCE(allocated.vendor_tags_json, ''),
-              COALESCE(allocated.source_allocation_scope, 'direct'),
-              COALESCE(allocated.namespace, ''),
-              COALESCE(allocated.workload_name, ''),
-              COALESCE(allocated.workload_type, ''),
-              '',
-              '',
-              COALESCE(allocated.service, ''),
-              COALESCE(allocated.project, ''),
-              '',
-              COALESCE(allocated.attribution_key, ''),
-              COALESCE(allocated.attribution_source, ''),
-              COALESCE(allocated.attribution_status, ''),
-              COALESCE(allocated.allocate_method, ''),
-              '',
-              '',
-              ''
-            ), 256)
-            ELSE SHA2(CONCAT_WS(
-              '|',
-              DATE_FORMAT(allocated.usage_date, '%Y-%m-%d'),
-              COALESCE(allocated.vendor, ''),
-              COALESCE(allocated.account_id, ''),
-              COALESCE(allocated.service_name, ''),
-              COALESCE(allocated.sku_name, ''),
-              COALESCE(allocated.usage_type, ''),
-              COALESCE(allocated.cost_driver_key, ''),
-              COALESCE(allocated.region, ''),
-              '', '', '', '',
-              COALESCE(allocated.vendor_tags_json, ''),
-              '', '',
-              COALESCE(allocated.service, ''),
-              COALESCE(allocated.project, ''),
-              '',
-              COALESCE(allocated.attribution_key, ''),
-              COALESCE(allocated.attribution_source, ''),
-              COALESCE(allocated.attribution_status, ''),
-              COALESCE(allocated.allocate_method, ''),
-              '', '', ''
-            ), 256)
-          END AS dimension_hash
-        FROM (
-          SELECT
-            shared_cost.usage_date,
-            shared_cost.vendor,
-            shared_cost.account_id,
-            shared_cost.service_name,
-            shared_cost.sku_name,
-            shared_cost.usage_type,
-            shared_cost.cost_driver_key,
-            shared_cost.region,
-            shared_cost.vendor_tags_json,
-            shared_cost.source_allocation_scope,
-            shared_cost.namespace,
-            shared_cost.workload_name,
-            shared_cost.workload_type,
-            shared_cost.shared_pool,
-            logical.service,
-            logical.project,
-            CASE
-              WHEN pool_total.allocation_count IS NULL THEN 'unattributed'
-              ELSE CONCAT(
-                'shared:',
-                COALESCE(logical.service, ''),
-                ':',
-                COALESCE(logical.project, ''),
-                ':',
-                COALESCE(shared_cost.shared_pool, '')
-              )
-            END AS attribution_key,
-            CASE
-              WHEN pool_total.allocation_count IS NULL THEN 'missing_label_allocation'
-              ELSE 'label_shared'
-            END AS attribution_source,
-            CASE
-              WHEN pool_total.allocation_count IS NULL THEN 'unattributed'
-              ELSE 'shared'
-            END AS attribution_status,
-            CASE
-              WHEN pool_total.allocation_count IS NULL THEN NULL
-              ELSE 'shared_weighted'
-            END AS allocate_method,
-            CASE
-              WHEN pool_total.allocation_count IS NULL THEN shared_cost.list_cost
-              WHEN pool_total.pool_logical_cost > 0
-                THEN shared_cost.list_cost
-                  * logical.project_logical_cost
-                  / pool_total.pool_logical_cost
-              ELSE shared_cost.list_cost / pool_total.allocation_count
-            END AS list_cost,
-            CASE
-              WHEN pool_total.allocation_count IS NULL THEN shared_cost.effective_cost
-              WHEN pool_total.pool_logical_cost > 0
-                THEN shared_cost.effective_cost
-                  * logical.project_logical_cost
-                  / pool_total.pool_logical_cost
-              ELSE shared_cost.effective_cost / pool_total.allocation_count
-            END AS effective_cost,
-            CASE
-              WHEN pool_total.allocation_count IS NULL THEN shared_cost.credit_amount
-              WHEN pool_total.pool_logical_cost > 0
-                THEN shared_cost.credit_amount
-                  * logical.project_logical_cost
-                  / pool_total.pool_logical_cost
-              ELSE shared_cost.credit_amount / pool_total.allocation_count
-            END AS credit_amount,
-            CASE
-              WHEN pool_total.allocation_count IS NULL THEN shared_cost.net_cost
-              WHEN pool_total.pool_logical_cost > 0
-                THEN shared_cost.net_cost
-                  * logical.project_logical_cost
-                  / pool_total.pool_logical_cost
-              ELSE shared_cost.net_cost / pool_total.allocation_count
-            END AS net_cost,
-            shared_cost.source_rows
-          FROM shared_cost
-          LEFT JOIN logical
-            ON logical.usage_date = shared_cost.usage_date
-           AND logical.vendor = shared_cost.vendor
-           AND logical.account_id = shared_cost.account_id
-           AND logical.shared_pool = shared_cost.shared_pool
-          LEFT JOIN pool_total
-            ON pool_total.usage_date = shared_cost.usage_date
-           AND pool_total.vendor = shared_cost.vendor
-           AND pool_total.account_id = shared_cost.account_id
-           AND pool_total.shared_pool = shared_cost.shared_pool
-        ) allocated
+          attributed.manager_id,
+          attributed.source_summary_row_hash
         """
     )

@@ -274,7 +274,7 @@ Notes:
 
 ## Daily Unattached Block Volume Sync
 
-`sync-unattached-block-volumes` snapshots unattached block volumes for the Cost tab:
+`sync-unattached-block-volumes` snapshots unattached block volumes for operational investigation:
 
 - AWS EBS volumes whose state is `available`
 - GCP Persistent Disk / Hyperdisk resources whose `users` field is empty

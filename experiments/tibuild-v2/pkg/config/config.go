@@ -1,11 +1,12 @@
 package config
 
 type Service struct {
-	Store   Store   `yaml:"store" json:"store"`
-	Github  Github  `yaml:"github" json:"github"`
-	Jenkins Jenkins `yaml:"jenkins" json:"jenkins"`
-	Tekton  Tekton  `yaml:"tekton" json:"tekton"`
-	Lark    Lark    `yaml:"lark" json:"lark"`
+	Store           Store           `yaml:"store" json:"store"`
+	Github          Github          `yaml:"github" json:"github"`
+	Jenkins         Jenkins         `yaml:"jenkins" json:"jenkins"`
+	Tekton          Tekton          `yaml:"tekton" json:"tekton"`
+	Lark            Lark            `yaml:"lark" json:"lark"`
+	IdentityHeaders IdentityHeaders `yaml:"identity_headers,omitempty" json:"identity_headers,omitempty"`
 
 	// ProductRepoMap is a map of product names to their respective Github full repository names(<org>/<repo>).
 	ProductRepoMap map[string]string `yaml:"product_repo_map" json:"product_repo_map"`
@@ -13,6 +14,14 @@ type Service struct {
 	ImageMirrorURLMap map[string]string `yaml:"image_mirror_url_map" json:"image_mirror_url_map"`
 	// ImageSync holds the image sync (copy) service configuration.
 	ImageSync ImageSync `yaml:"image_sync" json:"image_sync"`
+}
+
+// IdentityHeaders configures the trusted ingress headers consumed by TiBuild.
+// Empty values fall back to X-User-Id, X-User-Email and X-User-Name.
+type IdentityHeaders struct {
+	UserID    string `yaml:"user_id,omitempty" json:"user_id,omitempty"`
+	UserEmail string `yaml:"user_email,omitempty" json:"user_email,omitempty"`
+	UserName  string `yaml:"user_name,omitempty" json:"user_name,omitempty"`
 }
 
 // ImageSync configures the image sync (copy) service.

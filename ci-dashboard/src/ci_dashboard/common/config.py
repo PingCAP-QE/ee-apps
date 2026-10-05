@@ -53,6 +53,13 @@ class DatabaseSettings:
     password: str | None
     database: str | None
     ssl_ca: str | None
+    pool_size: int = 10
+    max_overflow: int = 10
+    pool_timeout_seconds: int = 5
+    connect_timeout_seconds: int = 5
+    read_timeout_seconds: int = 35
+    write_timeout_seconds: int = 30
+    query_timeout_seconds: int = 30
 
 
 @dataclass(frozen=True)
@@ -149,6 +156,45 @@ class Settings:
 def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if environ is None else environ
     database_url = env.get("CI_DASHBOARD_DB_URL") or None
+    database_limits = {
+        "pool_size": _read_int(env, "CI_DASHBOARD_DB_POOL_SIZE", 10),
+        "max_overflow": _read_int(env, "CI_DASHBOARD_DB_MAX_OVERFLOW", 10),
+        "pool_timeout_seconds": _read_int(
+            env,
+            "CI_DASHBOARD_DB_POOL_TIMEOUT_SECONDS",
+            5,
+        ),
+        "connect_timeout_seconds": _read_int(
+            env,
+            "CI_DASHBOARD_DB_CONNECT_TIMEOUT_SECONDS",
+            5,
+        ),
+        "read_timeout_seconds": _read_int(
+            env,
+            "CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS",
+            35,
+        ),
+        "write_timeout_seconds": _read_int(
+            env,
+            "CI_DASHBOARD_DB_WRITE_TIMEOUT_SECONDS",
+            30,
+        ),
+        "query_timeout_seconds": _read_int(
+            env,
+            "CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS",
+            30,
+        ),
+    }
+    is_sqlite = bool(database_url and database_url.lower().startswith("sqlite"))
+    if (
+        not is_sqlite
+        and database_limits["query_timeout_seconds"]
+        > database_limits["read_timeout_seconds"]
+    ):
+        raise ValueError(
+            "CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS must be less than or equal to "
+            "CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS"
+        )
     if database_url:
         database = DatabaseSettings(
             url=database_url,
@@ -158,6 +204,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             password=None,
             database=None,
             ssl_ca=env.get("TIDB_SSL_CA") or None,
+            **database_limits,
         )
     else:
         database = DatabaseSettings(
@@ -168,6 +215,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
             password=_read_required(env, "TIDB_PASSWORD"),
             database=_read_required(env, "TIDB_DB"),
             ssl_ca=env.get("TIDB_SSL_CA") or None,
+            **database_limits,
         )
     return Settings(
         database=database,

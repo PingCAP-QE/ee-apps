@@ -11,7 +11,6 @@ from datetime import date, timedelta
 from cost_insight.common.config import AwsBillingSettings, GcpBillingSettings, get_settings
 from cost_insight.common.db import build_engine
 from cost_insight.common.logging import configure_logging
-from cost_insight.jobs.backfill_cost_refine_from_raw import run_backfill_cost_refine_from_raw
 from cost_insight.jobs.aws_split_cost_shadow import (
     AWS_7266_ACCOUNT_ID,
     SHADOW_WINDOW_ID,
@@ -21,15 +20,20 @@ from cost_insight.jobs.aws_split_cost_shadow import (
 from cost_insight.jobs.bootstrap_gcs_cache_last_seen import run_bootstrap_gcs_cache_last_seen
 from cost_insight.jobs.cleanup_gcs_cache import run_cleanup_gcs_cache
 from cost_insight.jobs.cost_sources import list_active_cost_sources
+from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
 from cost_insight.jobs.refresh_attribution_daily import (
+    _TENCENT_CI_SOURCE,
     CostAttributionSource,
-    run_refresh_cost_attribution_daily,
     run_refresh_cost_attribution_from_summary,
 )
-from cost_insight.jobs.sync_gcs_cache_last_seen import run_sync_gcs_cache_last_seen
+from cost_insight.jobs.sync_gcs_cache_last_seen import (
+    run_sync_gcs_cache_last_seen,
+    run_tracked_sync_gcs_cache_last_seen,
+)
 from cost_insight.jobs.sync_aws_billing_summary import (
     AWS_CUR_LEGACY_SCHEMA_VERSION,
     AWS_SPLIT_COST_SCHEMA_VERSION,
+    AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
     AwsBillingSource,
     run_sync_aws_billing_summary,
 )
@@ -41,12 +45,25 @@ from cost_insight.jobs.sync_aws_kubernetes_workload_allocations import (
 )
 from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatched_resources
 from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
-from cost_insight.jobs.sync_gcp_billing_export import run_sync_gcp_billing_export
+from cost_insight.jobs.sync_azure_billing_summary import (
+    AZURE_SUBSCRIPTIONS,
+    run_sync_azure_billing_summary,
+)
+from cost_insight.jobs.sync_alibaba_billing_summary import (
+    ALIBABA_ACCOUNT_DISPLAY_NAMES,
+    run_sync_alibaba_billing_summary,
+)
+from cost_insight.jobs.allocate_tencent_ci_cost import run_allocate_tencent_ci_cost
+from cost_insight.jobs.sync_tencent_billing_summary import run_sync_tencent_billing_summary
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     run_sync_gcp_kubernetes_workload_allocations,
 )
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
 from cost_insight.jobs.sync_gcs_cache_ac_references import run_sync_gcs_cache_ac_references
+from cost_insight.jobs.validate_aws_reconciliation import (
+    resolve_reconciliation_source,
+    run_aws_reconciliation,
+)
 
 
 class _ConnectionBoundEngine:
@@ -57,6 +74,10 @@ class _ConnectionBoundEngine:
 
     @contextmanager
     def begin(self):
+        yield self._connection
+
+    @contextmanager
+    def connect(self):
         yield self._connection
 
 
@@ -73,25 +94,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Cost job runner")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    sync_gcp = subparsers.add_parser(
-        "sync-gcp-billing-export",
-        help="Sync GCP detailed billing export into cost_raw_details",
-    )
-    sync_gcp.add_argument("--start-date", type=_parse_date, default=None)
-    sync_gcp.add_argument("--end-date", type=_parse_date, default=None)
-    sync_gcp.add_argument("--dry-run", action="store_true")
-    sync_gcp.add_argument("--limit", type=int, default=None)
-    sync_gcp.add_argument(
-        "--replace-existing-dates",
-        action="store_true",
-        help="Delete existing GCP raw rows for the requested usage date range before importing.",
-    )
-    sync_gcp.add_argument(
-        "--split-by-day",
-        action="store_true",
-        help="Run one usage date at a time; recommended for backfills.",
-    )
-
     sync_summary = subparsers.add_parser(
         "sync-gcp-billing-summary",
         help="Sync GCP billing export partitions into cost_bq_export_summary_daily",
@@ -99,6 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
     sync_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
     sync_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_summary.add_argument("--account-id", default=None)
     sync_summary.add_argument("--dry-run", action="store_true")
     sync_summary.add_argument("--limit", type=int, default=None)
     sync_summary.add_argument(
@@ -106,6 +109,56 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Delete existing GCP summary rows for the requested export partition range before importing.",
     )
+    sync_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
+    sync_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
+
+    sync_azure_summary = subparsers.add_parser(
+        "sync-azure-billing-summary",
+        help="Sync Azure billing export into cost_bq_export_summary_daily",
+    )
+    sync_azure_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
+    sync_azure_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
+    sync_azure_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_azure_summary.add_argument(
+        "--account-id",
+        choices=tuple(account_id for account_id, _ in AZURE_SUBSCRIPTIONS),
+        default=None,
+    )
+    sync_azure_summary.add_argument("--dry-run", action="store_true")
+    sync_azure_summary.add_argument("--limit", type=int, default=None)
+    sync_azure_summary.add_argument("--replace-existing-partitions", action="store_true")
+    sync_azure_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
+    sync_azure_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
+
+    sync_alibaba_summary = subparsers.add_parser(
+        "sync-alibaba-billing-summary",
+        help="Sync Alibaba Cloud billing export into cost_bq_export_summary_daily",
+    )
+    sync_alibaba_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
+    sync_alibaba_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
+    sync_alibaba_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_alibaba_summary.add_argument("--account-id", default=None)
+    sync_alibaba_summary.add_argument("--dry-run", action="store_true")
+    sync_alibaba_summary.add_argument("--limit", type=int, default=None)
+    sync_alibaba_summary.add_argument("--replace-existing-partitions", action="store_true")
+    sync_alibaba_summary.add_argument("--replace-usage-start-date", type=_parse_date, default=None)
+    sync_alibaba_summary.add_argument("--replace-usage-end-date", type=_parse_date, default=None)
+
+    sync_tencent_summary = subparsers.add_parser(
+        "sync-tencent-billing-summary",
+        help="Sync Tencent organization billing details into cost_bq_export_summary_daily",
+    )
+    sync_tencent_summary.add_argument("--bill-day-start", type=_parse_date, default=None)
+    sync_tencent_summary.add_argument("--bill-day-end", type=_parse_date, default=None)
+    sync_tencent_summary.add_argument("--dry-run", action="store_true")
+
+    allocate_tencent_ci = subparsers.add_parser(
+        "allocate-tencent-ci-cost",
+        help="Replace Tencent CI daily attribution with coarse build-weighted cost.",
+    )
+    allocate_tencent_ci.add_argument("--start-date", type=_parse_date, required=True)
+    allocate_tencent_ci.add_argument("--end-date", type=_parse_date, required=True)
+    allocate_tencent_ci.add_argument("--dry-run", action="store_true")
 
     sync_aws_summary = subparsers.add_parser(
         "sync-aws-billing-summary",
@@ -114,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_aws_summary.add_argument("--export-partition-start", type=_parse_date, default=None)
     sync_aws_summary.add_argument("--export-partition-end", type=_parse_date, default=None)
     sync_aws_summary.add_argument("--earliest-usage-date", type=_parse_date, default=None)
+    sync_aws_summary.add_argument("--account-id", default=None)
     sync_aws_summary.add_argument("--dry-run", action="store_true")
     sync_aws_summary.add_argument("--limit", type=int, default=None)
     sync_aws_summary.add_argument(
@@ -142,7 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sync_gke_allocations = subparsers.add_parser(
         "sync-gcp-kubernetes-workload-allocations",
-        help="Allocate recognizable GKE node list cost to workloads using GKE metering",
+        help="Allocate native GKE residual cost using provider direct list-cost shares",
     )
     sync_gke_allocations.add_argument("--usage-start-date", type=_parse_date, required=True)
     sync_gke_allocations.add_argument("--usage-end-date", type=_parse_date, required=True)
@@ -178,7 +232,9 @@ def build_parser() -> argparse.ArgumentParser:
         "snapshot-aws-split-cost-shadow-legacy",
         help="Create the fixed legacy snapshot for the AWS 7266 split-cost shadow window.",
     )
-    snapshot_aws_shadow.add_argument("--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID)
+    snapshot_aws_shadow.add_argument(
+        "--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID
+    )
     snapshot_aws_shadow.add_argument("--skip-unmatched-resources", action="store_true")
     snapshot_aws_shadow.add_argument("--dry-run", action="store_true")
 
@@ -186,7 +242,9 @@ def build_parser() -> argparse.ArgumentParser:
         "sync-aws-split-cost-shadow",
         help="Write the fixed AWS 7266 split-cost validation window to allowlisted shadow tables.",
     )
-    sync_aws_shadow.add_argument("--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID)
+    sync_aws_shadow.add_argument(
+        "--window-id", choices=(SHADOW_WINDOW_ID,), default=SHADOW_WINDOW_ID
+    )
     sync_aws_shadow.add_argument("--skip-unmatched-resources", action="store_true")
     sync_aws_shadow.add_argument("--dry-run", action="store_true")
     sync_aws_shadow.add_argument("--limit", type=int, default=None)
@@ -204,49 +262,56 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cutover_aws_split.add_argument("--dry-run", action="store_true")
 
-    backfill_refine = subparsers.add_parser(
-        "backfill-gcp-cost-refine-from-raw",
-        help="Backfill cost_bq_export_summary_daily and cost_unmatched_resource_daily from cost_raw_details",
-    )
-    backfill_refine.add_argument("--start-date", type=_parse_date, required=True)
-    backfill_refine.add_argument("--end-date", type=_parse_date, required=True)
-    backfill_refine.add_argument(
-        "--skip-unmatched-resources",
-        action="store_true",
-        help="Only backfill cost_bq_export_summary_daily.",
-    )
-    backfill_refine.add_argument(
-        "--mark-summary-watermark",
-        action="store_true",
-        help="Mark sync-gcp-billing-summary succeeded through the synthetic export partition end.",
-    )
-    backfill_refine.add_argument("--dry-run", action="store_true")
-
-    refresh_attr = subparsers.add_parser(
-        "refresh-cost-attribution-daily",
-        help="Rebuild cost_attribution_daily from cost_raw_details and roster tables",
-    )
-    refresh_attr.add_argument("--start-date", type=_parse_date, required=True)
-    refresh_attr.add_argument("--end-date", type=_parse_date, required=True)
-    refresh_attr.add_argument("--dry-run", action="store_true")
-    refresh_attr.add_argument(
-        "--split-by-day",
-        action="store_true",
-        help="Refresh one usage date at a time; recommended for larger ranges.",
-    )
-
     refresh_summary_attr = subparsers.add_parser(
         "refresh-cost-attribution-from-summary",
         help="Rebuild cost_attribution_daily from cost_bq_export_summary_daily and roster tables",
     )
     refresh_summary_attr.add_argument("--start-date", type=_parse_date, required=True)
     refresh_summary_attr.add_argument("--end-date", type=_parse_date, required=True)
+    refresh_summary_attr.add_argument("--vendor", default=None)
+    refresh_summary_attr.add_argument("--account-id", default=None)
     refresh_summary_attr.add_argument("--dry-run", action="store_true")
     refresh_summary_attr.add_argument(
         "--split-by-day",
         action="store_true",
         help="Refresh one usage date at a time; recommended for larger ranges.",
     )
+
+    validate_aws = subparsers.add_parser(
+        "validate-aws-reconciliation",
+        help="Read-only AWS CE, BigQuery, summary, and attribution reconciliation",
+    )
+    validate_aws.add_argument("--start-date", type=_parse_date, required=True)
+    validate_aws.add_argument("--end-date", type=_parse_date, required=True)
+    validate_aws.add_argument("--account-id", required=True)
+    validate_aws.add_argument("--tenant", required=True)
+    validate_aws.add_argument(
+        "--aws-region",
+        default="us-east-1",
+        help="AWS region for Cost Explorer (default: us-east-1)",
+    )
+    validate_aws.add_argument(
+        "--tenant-tag-key",
+        default="tenant",
+        help="AWS cost allocation tag key used by Cost Explorer (default: tenant)",
+    )
+
+    materialize_resources = subparsers.add_parser(
+        "materialize-resource-serving",
+        help="Build and publish the bounded daily resource drilldown projection",
+    )
+    materialize_resources.add_argument("--start-date", type=_parse_date, required=True)
+    materialize_resources.add_argument("--end-date", type=_parse_date, required=True)
+    materialize_resources.add_argument(
+        "--basis",
+        choices=("native",),
+    )
+    materialize_resources.add_argument("--processing-start-date", type=_parse_date)
+    materialize_resources.add_argument("--processing-end-date", type=_parse_date)
+    materialize_resources.add_argument("--materialization-version")
+    materialize_resources.add_argument("--vendor")
+    materialize_resources.add_argument("--account-id")
+    materialize_resources.add_argument("--dry-run", action="store_true")
 
     sync_gcs_cache = subparsers.add_parser(
         "sync-gcs-cache-last-seen",
@@ -340,21 +405,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     ):
         raise ValueError("--limit cannot be used with destructive replacement")
     require_database = getattr(args, "require_database", True)
+    if args.command == "sync-gcs-cache-last-seen" and not args.dry_run:
+        require_database = True
     settings = get_settings(require_database=require_database)
     configure_logging(settings.log_level)
-
-    if args.command == "sync-gcp-billing-export":
-        if args.replace_existing_dates and (args.start_date is None or args.end_date is None):
-            raise ValueError("--replace-existing-dates requires --start-date and --end-date")
-        engine = build_engine(settings)
-        try:
-            summaries = []
-            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
-                summaries.extend(_run_sync_gcp_command(engine, settings=gcp_settings, args=args))
-            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
-            return 0
-        finally:
-            engine.dispose()
 
     if args.command == "sync-gcp-billing-summary":
         if args.replace_existing_partitions and (
@@ -363,14 +417,81 @@ def main(argv: Sequence[str] | None = None) -> int:
             raise ValueError(
                 "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
             )
+        if (args.replace_usage_start_date is None) != (args.replace_usage_end_date is None):
+            raise ValueError(
+                "--replace-usage-start-date and --replace-usage-end-date must be set together"
+            )
+        if args.replace_usage_start_date and not args.replace_existing_partitions:
+            raise ValueError("scoped usage-date replacement requires --replace-existing-partitions")
+        if args.replace_usage_start_date and not args.account_id:
+            raise ValueError("scoped usage-date replacement requires --account-id")
         engine = build_engine(settings)
         try:
             summaries = []
-            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
+            for gcp_settings in _resolve_gcp_sources(
+                engine,
+                settings=settings.gcp_billing,
+                account_id=args.account_id,
+            ):
                 summaries.append(
                     run_sync_gcp_billing_summary(
                         engine,
                         settings=gcp_settings,
+                        export_partition_start=args.export_partition_start,
+                        export_partition_end=args.export_partition_end,
+                        earliest_usage_date=args.earliest_usage_date,
+                        dry_run=args.dry_run,
+                        limit=args.limit,
+                        replace_existing_partitions=args.replace_existing_partitions,
+                        replacement_usage_start_date=args.replace_usage_start_date,
+                        replacement_usage_end_date=args.replace_usage_end_date,
+                    )
+                )
+            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-azure-billing-summary":
+        if args.replace_existing_partitions and (
+            args.export_partition_start is None or args.export_partition_end is None
+        ):
+            raise ValueError(
+                "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
+            )
+        if (args.replace_usage_start_date is None) != (args.replace_usage_end_date is None):
+            raise ValueError(
+                "--replace-usage-start-date and --replace-usage-end-date must be set together"
+            )
+        if args.replace_usage_start_date and not args.replace_existing_partitions:
+            raise ValueError("scoped usage-date replacement requires --replace-existing-partitions")
+        if args.replace_usage_start_date and not args.account_id:
+            raise ValueError("scoped usage-date replacement requires --account-id")
+        if (
+            args.replace_usage_start_date
+            and args.export_partition_start != args.export_partition_end
+        ):
+            raise ValueError("scoped usage-date replacement requires one export partition")
+        if args.export_partition_start and args.export_partition_end:
+            if args.export_partition_start > args.export_partition_end:
+                raise ValueError("export partition start date must be before or equal to end date")
+            if (args.export_partition_end - args.export_partition_start).days + 1 > 5:
+                raise ValueError("Azure sync supports a maximum five-day export window")
+        engine = build_engine(settings)
+        try:
+            selected = [
+                item
+                for item in AZURE_SUBSCRIPTIONS
+                if args.account_id is None or item[0] == args.account_id
+            ]
+            summaries = []
+            for account_id, display_name in selected:
+                summaries.append(
+                    run_sync_azure_billing_summary(
+                        engine,
+                        settings=settings.azure_billing,
+                        account_id=account_id,
+                        display_name=display_name,
                         export_partition_start=args.export_partition_start,
                         export_partition_end=args.export_partition_end,
                         earliest_usage_date=args.earliest_usage_date,
@@ -384,7 +505,82 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             engine.dispose()
 
+    if args.command == "sync-alibaba-billing-summary":
+        if args.replace_existing_partitions and (
+            args.export_partition_start is None or args.export_partition_end is None
+        ):
+            raise ValueError(
+                "--replace-existing-partitions requires --export-partition-start and --export-partition-end"
+            )
+        if (args.replace_usage_start_date is None) != (args.replace_usage_end_date is None):
+            raise ValueError(
+                "--replace-usage-start-date and --replace-usage-end-date must be set together"
+            )
+        if args.replace_usage_start_date and not args.replace_existing_partitions:
+            raise ValueError("scoped usage-date replacement requires --replace-existing-partitions")
+        account_id = args.account_id or settings.alibaba_billing.account_id
+        engine = build_engine(settings)
+        try:
+            summary = run_sync_alibaba_billing_summary(
+                engine,
+                settings=settings.alibaba_billing,
+                account_id=account_id,
+                display_name=ALIBABA_ACCOUNT_DISPLAY_NAMES.get(account_id, account_id),
+                export_partition_start=args.export_partition_start,
+                export_partition_end=args.export_partition_end,
+                earliest_usage_date=args.earliest_usage_date,
+                dry_run=args.dry_run,
+                limit=args.limit,
+                replace_existing_partitions=args.replace_existing_partitions,
+                replacement_usage_start_date=args.replace_usage_start_date,
+                replacement_usage_end_date=args.replace_usage_end_date,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "sync-tencent-billing-summary":
+        if (args.bill_day_start is None) != (args.bill_day_end is None):
+            raise ValueError("--bill-day-start and --bill-day-end must be set together")
+        if args.dry_run and args.bill_day_start is None:
+            raise ValueError("--dry-run requires --bill-day-start and --bill-day-end")
+        engine = build_engine(settings)
+        try:
+            summary = run_sync_tencent_billing_summary(
+                engine,
+                settings=settings.tencent_billing,
+                bill_day_start=args.bill_day_start,
+                bill_day_end=args.bill_day_end,
+                dry_run=args.dry_run,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
+    if args.command == "allocate-tencent-ci-cost":
+        engine = build_engine(settings)
+        try:
+            summary = run_allocate_tencent_ci_cost(
+                engine,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                dry_run=args.dry_run,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
     if args.command == "sync-aws-billing-summary":
+        if (args.usage_start_date is None) != (args.usage_end_date is None):
+            raise ValueError("--usage-start-date and --usage-end-date must be set together")
+        if args.usage_start_date and args.usage_end_date:
+            if args.usage_start_date > args.usage_end_date:
+                raise ValueError("usage start date must be before or equal to usage end date")
+            if (args.usage_end_date - args.usage_start_date).days + 1 > 5:
+                raise ValueError("AWS sync supports a maximum five-day usage window")
         if args.replace_existing_partitions and (
             args.export_partition_start is None or args.export_partition_end is None
         ):
@@ -394,11 +590,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.replace_existing_dates and (
             args.usage_start_date is None or args.usage_end_date is None
         ):
-            raise ValueError("--replace-existing-dates requires --usage-start-date and --usage-end-date")
+            raise ValueError(
+                "--replace-existing-dates requires --usage-start-date and --usage-end-date"
+            )
         engine = build_engine(settings)
         try:
             summaries = []
-            sources = _resolve_aws_sources(engine, settings=settings.aws_billing)
+            sources = _resolve_aws_sources(
+                engine,
+                settings=settings.aws_billing,
+                account_id=args.account_id,
+            )
             if args.replace_existing_dates and any(
                 source.schema_version != AWS_SPLIT_COST_SCHEMA_VERSION for source in sources
             ):
@@ -657,7 +859,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     dry_run=args.dry_run,
                     tcms_allocation_table=settings.tcms_allocation.allocation_table,
                 )
-                cutover_summaries.extend((residual_allocations, kubernetes_allocations, attribution))
+                cutover_summaries.extend(
+                    (residual_allocations, kubernetes_allocations, attribution)
+                )
             print(
                 json.dumps(
                     _summaries_to_json(cutover_summaries),
@@ -669,51 +873,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             engine.dispose()
 
-    if args.command == "backfill-gcp-cost-refine-from-raw":
-        engine = build_engine(settings)
-        try:
-            summaries = []
-            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
-                summaries.append(
-                    run_backfill_cost_refine_from_raw(
-                        engine,
-                        settings=gcp_settings,
-                        start_date=args.start_date,
-                        end_date=args.end_date,
-                        include_unmatched_resources=not args.skip_unmatched_resources,
-                        mark_summary_watermark=args.mark_summary_watermark,
-                        dry_run=args.dry_run,
-                    )
-                )
-            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
-            return 0
-        finally:
-            engine.dispose()
-
-    if args.command == "refresh-cost-attribution-daily":
-        engine = build_engine(settings)
-        try:
-            summaries = []
-            for source in _resolve_attribution_sources(
-                engine,
-                gcp_settings=settings.gcp_billing,
-                aws_settings=settings.aws_billing,
-            ):
-                summaries.extend(_run_refresh_attribution_command(engine, source=source, args=args))
-            print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
-            return 0
-        finally:
-            engine.dispose()
-
     if args.command == "refresh-cost-attribution-from-summary":
+        if (args.vendor is None) != (args.account_id is None):
+            raise ValueError("--vendor and --account-id must be set together")
         engine = build_engine(settings)
         try:
-            summaries = []
-            for source in _resolve_attribution_sources(
+            sources = _resolve_attribution_sources(
                 engine,
                 gcp_settings=settings.gcp_billing,
                 aws_settings=settings.aws_billing,
-            ):
+            )
+            if args.vendor is not None:
+                sources = tuple(
+                    source
+                    for source in sources
+                    if source.vendor == args.vendor and source.account_id == args.account_id
+                )
+                if not sources:
+                    raise ValueError(f"Cost attribution source is not active: {args.vendor}/{args.account_id}")
+            summaries = []
+            for source in sources:
                 summaries.extend(
                     _run_refresh_attribution_from_summary_command(
                         engine,
@@ -727,12 +906,75 @@ def main(argv: Sequence[str] | None = None) -> int:
         finally:
             engine.dispose()
 
+    if args.command == "validate-aws-reconciliation":
+        if args.start_date >= args.end_date:
+            raise ValueError("--start-date must be before --end-date")
+        from google.cloud import bigquery
+        import boto3
+
+        engine = build_engine(settings)
+        try:
+            result = run_aws_reconciliation(
+                engine,
+                bq_client=bigquery.Client(),
+                ce_client=boto3.client("ce", region_name=args.aws_region),
+                source=resolve_reconciliation_source(
+                    engine,
+                    account_id=args.account_id,
+                    legacy_table=settings.aws_billing.billing_table,
+                ),
+                tenant=args.tenant,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                tenant_tag_key=args.tenant_tag_key,
+            )
+            print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+            return 0 if result.passed else 1
+        finally:
+            engine.dispose()
+
+    if args.command == "materialize-resource-serving":
+        if (args.processing_start_date is None) != (args.processing_end_date is None):
+            raise ValueError("processing start and end dates must be provided together")
+        if (args.vendor is None) != (args.account_id is None):
+            raise ValueError("--vendor and --account-id must be provided together")
+        engine = build_engine(settings)
+        try:
+            summary = run_materialize_resource_serving(
+                engine,
+                start_date=args.start_date,
+                end_date=args.end_date,
+                basis=args.basis,
+                processing_start_date=args.processing_start_date,
+                processing_end_date=args.processing_end_date,
+                materialization_version=args.materialization_version,
+                vendor=args.vendor,
+                account_id=args.account_id,
+                dry_run=args.dry_run,
+                batch_size=settings.gcp_billing.page_size,
+            )
+            print(json.dumps(_summary_to_json(summary), indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
+
     if args.command == "sync-gcs-cache-last-seen":
-        summary = run_sync_gcs_cache_last_seen(
-            settings=settings.gcs_cache,
-            run_date=args.run_date,
-            dry_run=args.dry_run,
-        )
+        if args.dry_run:
+            summary = run_sync_gcs_cache_last_seen(
+                settings=settings.gcs_cache,
+                run_date=args.run_date,
+                dry_run=True,
+            )
+        else:
+            engine = build_engine(settings)
+            try:
+                summary = run_tracked_sync_gcs_cache_last_seen(
+                    engine,
+                    settings=settings.gcs_cache,
+                    run_date=args.run_date,
+                )
+            finally:
+                engine.dispose()
         print(json.dumps(_summaries_to_json([summary]), indent=2, sort_keys=True))
         return 0
 
@@ -801,87 +1043,6 @@ def _parse_non_negative_int(value: str) -> int:
     return parsed
 
 
-def _run_sync_gcp_command(engine, *, settings, args):
-    logger = logging.getLogger(__name__)
-    if args.split_by_day:
-        if args.start_date is None or args.end_date is None:
-            raise ValueError("--split-by-day requires --start-date and --end-date")
-        summaries = []
-        for usage_date in _date_range(args.start_date, args.end_date):
-            logger.info("sync-gcp-billing-export day started", extra={"usage_date": usage_date})
-            summary = run_sync_gcp_billing_export(
-                engine,
-                settings=settings,
-                start_date=usage_date,
-                end_date=usage_date,
-                dry_run=args.dry_run,
-                limit=args.limit,
-                replace_existing_dates=args.replace_existing_dates,
-            )
-            logger.info(
-                "sync-gcp-billing-export day finished",
-                extra={"summary": summary.__dict__},
-            )
-            summaries.append(summary)
-        return summaries
-
-    summary = run_sync_gcp_billing_export(
-        engine,
-        settings=settings,
-        start_date=args.start_date,
-        end_date=args.end_date,
-        dry_run=args.dry_run,
-        limit=args.limit,
-        replace_existing_dates=args.replace_existing_dates,
-    )
-    logger.info(
-        "sync-gcp-billing-export finished",
-        extra={"summary": summary.__dict__},
-    )
-    return [summary]
-
-
-def _run_refresh_attribution_command(engine, *, source: CostAttributionSource, args):
-    logger = logging.getLogger(__name__)
-    if args.split_by_day:
-        summaries = []
-        for usage_date in _date_range(args.start_date, args.end_date):
-            logger.info(
-                "refresh-cost-attribution-daily day started",
-                extra={
-                    "vendor": source.vendor,
-                    "account_id": source.account_id,
-                    "usage_date": usage_date,
-                },
-            )
-            summary = run_refresh_cost_attribution_daily(
-                engine,
-                source=source,
-                start_date=usage_date,
-                end_date=usage_date,
-                dry_run=args.dry_run,
-            )
-            logger.info(
-                "refresh-cost-attribution-daily day finished",
-                extra={"summary": summary.__dict__},
-            )
-            summaries.append(summary)
-        return summaries
-
-    summary = run_refresh_cost_attribution_daily(
-        engine,
-        source=source,
-        start_date=args.start_date,
-        end_date=args.end_date,
-        dry_run=args.dry_run,
-    )
-    logger.info(
-        "refresh-cost-attribution-daily finished",
-        extra={"summary": summary.__dict__},
-    )
-    return [summary]
-
-
 def _run_refresh_attribution_from_summary_command(
     engine,
     *,
@@ -940,15 +1101,40 @@ def _date_range(start_date: date, end_date: date):
         current += timedelta(days=1)
 
 
-def _resolve_gcp_sources(engine, *, settings: GcpBillingSettings) -> tuple[GcpBillingSettings, ...]:
+def _resolve_gcp_sources(
+    engine,
+    *,
+    settings: GcpBillingSettings,
+    account_id: str | None = None,
+) -> tuple[GcpBillingSettings, ...]:
     sources = _list_sources(engine, vendor="gcp")
+    if account_id:
+        if not any(source.account_id == account_id for source in sources):
+            raise ValueError(f"GCP cost source is not active: {account_id}")
+        return (replace(settings, account_id=account_id),)
     if not sources:
         return (settings,)
     return tuple(replace(settings, account_id=source.account_id) for source in sources)
 
 
-def _resolve_aws_sources(engine, *, settings: AwsBillingSettings) -> tuple[AwsBillingSource, ...]:
+def _resolve_aws_sources(
+    engine,
+    *,
+    settings: AwsBillingSettings,
+    account_id: str | None = None,
+) -> tuple[AwsBillingSource, ...]:
     sources = _list_sources(engine, vendor="aws")
+    if account_id and sources:
+        sources = tuple(source for source in sources if source.account_id == account_id)
+        if not sources:
+            raise ValueError(f"AWS cost source is not active: {account_id}")
+    if not account_id:
+        # F04 is backfilled by its dedicated bounded job, never by the monthly sync.
+        sources = tuple(
+            source
+            for source in sources
+            if source.source_schema_version != AWS_TIDB_CLOUD_F04_SCHEMA_VERSION
+        )
     if sources:
         resolved_sources = []
         for source in sources:
@@ -967,10 +1153,11 @@ def _resolve_aws_sources(engine, *, settings: AwsBillingSettings) -> tuple[AwsBi
                 )
             )
         return tuple(resolved_sources)
-    if settings.account_id:
+    fallback_account_id = account_id or settings.account_id
+    if fallback_account_id:
         return (
             AwsBillingSource(
-                account_id=settings.account_id,
+                account_id=fallback_account_id,
                 billing_table=settings.billing_table,
             ),
         )
@@ -1012,6 +1199,7 @@ def _resolve_attribution_sources(
         return tuple(
             CostAttributionSource(vendor=source.vendor, account_id=source.account_id)
             for source in sources
+            if (source.vendor, source.account_id) != _TENCENT_CI_SOURCE
         )
     fallback_sources = [CostAttributionSource(vendor="gcp", account_id=gcp_settings.account_id)]
     if aws_settings.account_id:

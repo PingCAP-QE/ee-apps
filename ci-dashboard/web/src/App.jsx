@@ -8,6 +8,8 @@ import MigrateStatusPage from "./pages/MigrateStatusPage";
 import FlakyPage from "./pages/FlakyPage";
 import RuntimeInsightsPage from "./pages/RuntimeInsightsPage";
 import CostPage from "./pages/CostPage";
+import WeeklyCostPage from "./pages/WeeklyCostPage";
+import CICostWeeklyPage from "./pages/CICostWeeklyPage";
 import {
   buildCostSourceOptions,
   buildScopeLabel,
@@ -18,13 +20,14 @@ import {
   buildFilterSearch,
   buildNavSearchByPath,
   CI_STATUS_PATH,
+  CI_WEEKLY_COST_PATH,
   COST_PATH,
   DEFAULT_COST_SOURCE,
   MIGRATE_STATUS_PATH,
+  WEEKLY_COST_PATH,
   readFiltersFromSearch,
   RUNTIME_INSIGHTS_PATH,
   sameFilters,
-  WEEK_GRANULARITY_PATHS,
 } from "./lib/filterUrl";
 
 const REPO_OPTIONS = [
@@ -40,15 +43,22 @@ const REPO_OPTIONS = [
 
 export default function App() {
   const [defaultRange] = useState(() => getDefaultDateRange());
+  const [costBreakdownGroupBy, setCostBreakdownGroupBy] = useState("owner");
   const location = useLocation();
   const navigate = useNavigate();
+  // Remember route-specific selections only when building links to other dashboard tabs.
   const [filtersByPath, setFiltersByPath] = useState(() => ({
     [location.pathname]: readFiltersFromSearch(defaultRange, location.pathname, location.search),
   }));
-  const filters = filtersByPath[location.pathname]
-    || readFiltersFromSearch(defaultRange, location.pathname, location.search);
+  const filters = readFiltersFromSearch(
+    defaultRange,
+    location.pathname,
+    location.search,
+  );
   const isCostPage = location.pathname === COST_PATH;
   const isWeeklySummaryPage = location.pathname === "/";
+  const isWeeklyCostPage = location.pathname === WEEKLY_COST_PATH;
+  const isCIWeeklyCostPage = location.pathname === CI_WEEKLY_COST_PATH;
 
   useEffect(() => {
     const urlFilters = readFiltersFromSearch(defaultRange, location.pathname, location.search);
@@ -64,6 +74,8 @@ export default function App() {
     });
   }, [defaultRange, location.pathname, location.search]);
 
+  // Canonicalize bookmarked and browser-history URLs. Local filter changes already
+  // navigate to the same canonical search string, so this is a no-op for those changes.
   useEffect(() => {
     const nextSearch = buildFilterSearch(filters, location.pathname);
     if (nextSearch === location.search) {
@@ -78,55 +90,6 @@ export default function App() {
     );
   }, [filters, location.pathname, location.search, navigate]);
 
-  useEffect(() => {
-    if (location.pathname !== "/flaky") {
-      return;
-    }
-
-    setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname]
-        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
-      if (routeFilters.repo || routeFilters.branch || routeFilters.issue_status) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [location.pathname]: {
-          ...routeFilters,
-          repo: "pingcap/tidb",
-          branch: "master",
-          issue_status: "closed",
-        },
-      };
-    });
-  }, [defaultRange, location.pathname, location.search]);
-
-  useEffect(() => {
-    if (!WEEK_GRANULARITY_PATHS.has(location.pathname)) {
-      return;
-    }
-
-    setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname]
-        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
-      const hasValidGranularity = location.pathname === COST_PATH
-        ? routeFilters.granularity === "week" || routeFilters.granularity === "month"
-        : routeFilters.granularity === "week";
-      if (hasValidGranularity) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [location.pathname]: {
-          ...routeFilters,
-          granularity: "week",
-        },
-      };
-    });
-  }, [defaultRange, location.pathname, location.search]);
-
   const jobs = useApiData(
     "/api/v1/filters/jobs",
     {
@@ -135,14 +98,14 @@ export default function App() {
       start_date: filters.start_date,
       end_date: filters.end_date,
     },
-    !isCostPage && !isWeeklySummaryPage,
+    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage,
   );
   const branches = useApiData(
     "/api/v1/filters/branches",
     {
       repo: filters.repo,
     },
-    !isCostPage && !isWeeklySummaryPage,
+    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage,
   );
   const cloudPhases = useApiData("/api/v1/filters/cloud-phases", {
     repo: filters.repo,
@@ -150,10 +113,20 @@ export default function App() {
     job_name: filters.job_name,
     start_date: filters.start_date,
     end_date: filters.end_date,
-  }, !isCostPage && !isWeeklySummaryPage);
+  }, !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage);
   const costSources = useApiData(
     "/api/v1/pages/cost-sources",
     {},
+    isCostPage,
+  );
+  const costFilterValues = useApiData(
+    "/api/v1/pages/cost-filter-values",
+    {
+      start_date: filters.start_date,
+      end_date: filters.end_date,
+      granularity: filters.granularity,
+      cost_source: filters.cost_source,
+    },
     isCostPage,
   );
   const costSourceOptions = buildCostSourceOptions(
@@ -165,38 +138,24 @@ export default function App() {
   ) || costSourceOptions[0];
 
   function handleFilterChange(key, value) {
-    setFiltersByPath((current) => {
-      const routeFilters = current[location.pathname]
-        || readFiltersFromSearch(defaultRange, location.pathname, location.search);
-      if (key === "repo") {
-        return {
-          ...current,
-          [location.pathname]: {
-            ...routeFilters,
-            repo: value,
-            branch: "",
-            job_name: "",
-          },
-        };
-      }
-      if (key === "branch") {
-        return {
-          ...current,
-          [location.pathname]: {
-            ...routeFilters,
-            branch: value,
-            job_name: "",
-          },
-        };
-      }
-      return {
-        ...current,
-        [location.pathname]: {
-          ...routeFilters,
-          [key]: value,
-        },
-      };
-    });
+    const nextFilters = {
+      ...filters,
+      ...(typeof key === "object" ? key : { [key]: value }),
+    };
+    if (key === "repo") {
+      nextFilters.branch = "";
+      nextFilters.job_name = "";
+    }
+    if (key === "branch") {
+      nextFilters.job_name = "";
+    }
+    navigate(
+      {
+        pathname: location.pathname,
+        search: buildFilterSearch(nextFilters, location.pathname),
+      },
+      { replace: true },
+    );
   }
 
   const navSearchByPath = buildNavSearchByPath(filtersByPath, defaultRange, filters);
@@ -208,6 +167,7 @@ export default function App() {
     jobs: jobs.data?.items || [],
     cloudPhases: cloudPhases.data?.items || [],
     costSources: costSourceOptions,
+    costFilterValues: costFilterValues.data?.items || {},
     scopeLabel: buildScopeLabel(filters, location.pathname, selectedCostSource?.label),
   };
 
@@ -217,7 +177,9 @@ export default function App() {
       onFilterChange={handleFilterChange}
       filterOptions={filterOptions}
       navSearchByPath={navSearchByPath}
-      showFilters={!isWeeklySummaryPage}
+      showFilters={!isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage}
+      costBreakdownGroupBy={costBreakdownGroupBy}
+      onCostBreakdownGroupByChange={setCostBreakdownGroupBy}
     >
       <Routes>
         <Route path="/" element={<WeeklySummaryPage />} />
@@ -228,7 +190,18 @@ export default function App() {
           path={RUNTIME_INSIGHTS_PATH}
           element={<RuntimeInsightsPage filters={filters} />}
         />
-        <Route path={COST_PATH} element={<CostPage filters={filters} />} />
+        <Route
+          path={COST_PATH}
+          element={(
+            <CostPage
+              filters={filters}
+              costBreakdownGroupBy={costBreakdownGroupBy}
+              onCostBreakdownGroupByChange={setCostBreakdownGroupBy}
+            />
+          )}
+        />
+        <Route path={WEEKLY_COST_PATH} element={<WeeklyCostPage />} />
+        <Route path={CI_WEEKLY_COST_PATH} element={<CICostWeeklyPage />} />
       </Routes>
     </DashboardLayout>
   );
