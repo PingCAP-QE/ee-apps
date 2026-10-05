@@ -290,7 +290,10 @@ func buildMacBuildFromCustomRun(cr *tektonv1beta1.CustomRun, namespace, name str
 	if gitSha != "" {
 		spec.Source.GitSha = &gitSha
 	}
-	if refspec := params["git-refspec"]; refspec != "" {
+	// Only pass a refspec for pull-request refs (`refs/pull/N/head`). Branch/tag
+	// builds check out `gitSha` directly; a `+refs/heads/*` refspec would target
+	// the currently checked-out branch and make `git fetch` refuse.
+	if refspec := params["git-refspec"]; strings.Contains(refspec, "refs/pull/") {
 		spec.Source.GitRefspec = &refspec
 	}
 	if ttl := parseInt32(params["ttl-seconds-after-finished"]); ttl != nil {

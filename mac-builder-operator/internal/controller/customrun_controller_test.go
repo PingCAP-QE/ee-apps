@@ -214,6 +214,23 @@ func TestBuildMacBuildFromCustomRunMissingRequired(t *testing.T) {
 	}
 }
 
+func TestBuildMacBuildFromCustomRunDropsBranchRefspec(t *testing.T) {
+	t.Parallel()
+
+	cr := newTestMacBuildCustomRun("cr-branch", map[string]string{
+		paramGitURL:    testGitURL,
+		paramComponent: testComponent,
+		paramRefspec:   "+refs/heads/master:refs/heads/master",
+	})
+	mb, err := buildMacBuildFromCustomRun(cr, "default", "mb")
+	if err != nil {
+		t.Fatalf("buildMacBuildFromCustomRun failed: %v", err)
+	}
+	if mb.Spec.Source.GitRefspec != nil {
+		t.Fatalf("expected branch refspec to be dropped, got %q", *mb.Spec.Source.GitRefspec)
+	}
+}
+
 func TestMapPhaseToCondition(t *testing.T) {
 	t.Parallel()
 
