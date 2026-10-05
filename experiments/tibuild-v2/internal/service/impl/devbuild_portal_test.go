@@ -33,19 +33,16 @@ func TestSafeErrorSummary(t *testing.T) {
 	assert.Nil(t, safeErrorSummary(""))
 }
 
-func TestCapabilitiesAdvertisesDarwinForPD(t *testing.T) {
+func TestCapabilitiesAdvertiseDarwinPlatforms(t *testing.T) {
 	srv := &devbuildsrvc{productRepoMap: map[string]string{"pd": "tikv/pd", "tidb": "pingcap/tidb"}}
 
 	got, err := srv.Capabilities(context.Background())
 	assert.NoError(t, err)
+	assert.NotEmpty(t, got.Products)
 
-	platforms := map[string][]string{}
+	// Platforms are advertised uniformly; darwin support is not gated per product.
+	wantPlatforms := []string{"linux", "linux/amd64", "linux/arm64", "darwin", "darwin/amd64", "darwin/arm64"}
 	for _, p := range got.Products {
-		platforms[p.ID] = p.Platforms
+		assert.Subset(t, p.Platforms, wantPlatforms, "product %s should advertise darwin platforms", p.ID)
 	}
-
-	assert.Subset(t, platforms["pd"], []string{"linux", "darwin", "darwin/amd64", "darwin/arm64"})
-	assert.Subset(t, platforms["tidb"], []string{"linux"})
-	assert.NotContains(t, platforms["tidb"], "darwin/amd64")
-	assert.NotContains(t, platforms["tidb"], "darwin/arm64")
 }
