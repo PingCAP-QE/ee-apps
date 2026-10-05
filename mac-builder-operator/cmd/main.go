@@ -41,6 +41,7 @@ import (
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/controller"
+	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -53,6 +54,9 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(buildv1alpha1.AddToScheme(scheme))
+
+	// Register Tekton types so the manager can watch CustomRun objects.
+	utilruntime.Must(tektonv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -66,9 +70,10 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	var enableAgent, enableGC bool
-	var buildTimeout, buildPollInterval time.Duration
+	var enableAgent, enableGC, enableCustomRun bool
+	var buildTimeout, buildPollInterval, customRunPollInterval time.Duration
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
+	var macBuildNamespace string
 	defaultWorkerName, err := os.Hostname()
 	if err != nil {
 		setupLog.Error(err, "unable to get hostname for default worker name")
@@ -79,6 +84,12 @@ func main() {
 	// Controller-specific flags
 	flag.BoolVar(&enableAgent, "enable-agent", false, "Enable the MacBuild agent reconciler. Runs on the Mac worker.")
 	flag.BoolVar(&enableGC, "enable-gc", true, "Enable the MacBuild GC reconciler. Runs in the cluster.")
+	flag.BoolVar(&enableCustomRun, "enable-customrun", true,
+		"Enable the MacBuild CustomRun reconciler (Tekton custom task backed by MacBuild). Runs in the cluster.")
+	flag.StringVar(&macBuildNamespace, "macbuild-namespace", "default",
+		"Namespace where the CustomRun reconciler creates MacBuild objects.")
+	flag.DurationVar(&customRunPollInterval, "customrun-poll-interval", 30*time.Second,
+		"How often running CustomRuns are re-checked for MacBuild status changes.")
 	flag.DurationVar(&buildTimeout, "build-timeout", 24*time.Hour,
 		"Maximum time a MacBuild may stay in Building before the agent marks it failed.")
 	flag.DurationVar(&buildPollInterval, "build-poll-interval", 5*time.Minute,
@@ -120,8 +131,8 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	if !enableAgent && !enableGC {
-		setupLog.Info("No controllers enabled. Use --enable-agent or --enable-gc to start a controller.")
+	if !enableAgent && !enableGC && !enableCustomRun {
+		setupLog.Info("No controllers enabled. Use --enable-agent, --enable-gc or --enable-customrun to start a controller.")
 		os.Exit(1)
 	}
 	if enableAgent && buildTimeout <= 0 {
@@ -269,6 +280,19 @@ func main() {
 			os.Exit(1)
 		}
 		setupLog.Info("MacBuild GC controller enabled.")
+	}
+
+	if enableCustomRun {
+		if err := (&controller.MacBuildCustomRunReconciler{
+			Client:            mgr.GetClient(),
+			Scheme:            mgr.GetScheme(),
+			MacBuildNamespace: macBuildNamespace,
+			PollInterval:      customRunPollInterval,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "MacBuildCustomRun")
+			os.Exit(1)
+		}
+		setupLog.Info("MacBuild CustomRun controller enabled.", "macBuildNamespace", macBuildNamespace)
 	}
 
 	// +kubebuilder:scaffold:builder
