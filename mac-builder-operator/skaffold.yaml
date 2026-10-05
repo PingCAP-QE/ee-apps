@@ -1,0 +1,14 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: mac-builder-operator
+build:
+  platforms: ["linux/amd64", "linux/arm64"]
+  artifacts:
+    - image: mac-builder-operator
+      docker:
+        dockerfile: Dockerfile
+  local:
+    useDockerCLI: true
+    useBuildkit: true
+    concurrency: 0

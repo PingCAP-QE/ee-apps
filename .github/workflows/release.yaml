@@ -70,6 +70,8 @@ jobs:
               - 'publisher/**'
             chatops:
               - 'chatops-lark/**'
+            mac-builder-operator:
+              - 'mac-builder-operator/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -138,5 +140,10 @@ jobs:
       - name: Publish image - chatops-lark
         if: steps.changes.outputs.chatops == 'true'
         working-directory: chatops-lark
+        run: |
+          skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Publish image - mac-builder-operator
+        if: steps.changes.outputs.mac-builder-operator == 'true'
+        working-directory: mac-builder-operator
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
