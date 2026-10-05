@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,4 +31,18 @@ func TestSafeErrorSummary(t *testing.T) {
 		assert.Equal(t, "pipeline failed token=[redacted]", *got)
 	}
 	assert.Nil(t, safeErrorSummary(""))
+}
+
+func TestCapabilitiesAdvertiseDarwinPlatforms(t *testing.T) {
+	srv := &devbuildsrvc{productRepoMap: map[string]string{"pd": "tikv/pd", "tidb": "pingcap/tidb"}}
+
+	got, err := srv.Capabilities(context.Background())
+	assert.NoError(t, err)
+	assert.NotEmpty(t, got.Products)
+
+	// Platforms are advertised uniformly; darwin support is not gated per product.
+	wantPlatforms := []string{"linux", "linux/amd64", "linux/arm64", "darwin", "darwin/amd64", "darwin/arm64"}
+	for _, p := range got.Products {
+		assert.Subset(t, p.Platforms, wantPlatforms, "product %s should advertise darwin platforms", p.ID)
+	}
 }

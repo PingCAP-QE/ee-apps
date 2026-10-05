@@ -175,13 +175,18 @@ func (s *devbuildsrvc) Capabilities(context.Context) (*devbuild.DevBuildCapabili
 			ID:              product,
 			Label:           productLabel(product),
 			Editions:        []string{"community"},
-			Platforms:       []string{"linux", "linux/amd64", "linux/arm64"},
+			Platforms:       supportedPlatforms,
 			DefaultEdition:  "community",
 			DefaultPlatform: "linux",
 		})
 	}
 	return result, nil
 }
+
+// supportedPlatforms lists the build platforms advertised to clients. macOS
+// (darwin) devbuilds run through the Tekton pipeline backed by a MacBuild
+// CustomRun; platforms are advertised uniformly across products.
+var supportedPlatforms = []string{"linux", "linux/amd64", "linux/arm64", "darwin", "darwin/amd64", "darwin/arm64"}
 
 // Create and trigger devbuild
 func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*devbuild.DevBuild, error) {
