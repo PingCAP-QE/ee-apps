@@ -1,0 +1,16 @@
+{{- if and .Values.metrics.enabled .Values.metrics.service.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mac-builder-operator.fullname" . }}-metrics
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "mac-builder-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: {{ .Values.metrics.service.port }}
+      targetPort: 8443
+      protocol: TCP
+{{- end }}
