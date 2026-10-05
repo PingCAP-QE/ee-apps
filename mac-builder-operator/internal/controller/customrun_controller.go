@@ -174,6 +174,13 @@ func (r *MacBuildCustomRunReconciler) updateCustomRunStatus(
 		return err
 	}
 
+	// Skip no-op writes: re-writing an identical status would trigger another
+	// reconcile event and spin a hot loop.
+	if existing := latest.Status.GetCondition(apis.ConditionSucceeded); existing != nil &&
+		existing.Status == conditionStatus && existing.Reason == reason && existing.Message == message {
+		return nil
+	}
+
 	if latest.Status.StartTime == nil {
 		start := macBuild.Status.StartTime
 		if start == nil {
