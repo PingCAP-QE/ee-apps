@@ -1,0 +1,8 @@
+apiVersion: v2
+name: mac-builder-operator
+description: >-
+  A Helm chart for mac-builder-operator: the MacBuild CRD, macOS build agent,
+  GC reconciler, and the Tekton CustomRun controller.
+type: application
+version: 0.1.0
+appVersion: "v0.0.0"

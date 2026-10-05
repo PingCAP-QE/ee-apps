@@ -5,6 +5,22 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - tekton.dev
+  resources:
+  - customruns
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - tekton.dev
+  resources:
+  - customruns/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - tibuild.pingcap.net
   resources:
   - macbuilds
@@ -28,5 +44,7 @@ rules:
   - macbuilds/status
   verbs:
   - get
+  - list
   - patch
   - update
+  - watch

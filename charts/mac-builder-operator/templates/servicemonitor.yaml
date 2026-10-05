@@ -1,0 +1,23 @@
+{{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "mac-builder-operator.fullname" . }}
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "mac-builder-operator.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - path: /metrics
+      port: https
+      scheme: https
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true
+{{- end }}
