@@ -15,4 +15,4 @@ spec:
     push: false
     registry: "hub.pingcap.net"
   # (TTL remains at the top level)
-  ttlSecondsAfterFinished: 3600 # 1 hour
+  ttl: 1h # 1 hour

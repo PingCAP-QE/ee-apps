@@ -57,8 +57,8 @@ func (r *MacBuildGCReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Check if TTL is set. If not, we don't do anything.
-	if macBuild.Spec.TtlSecondsAfterFinished == nil {
-		logger.V(1).Info("No TtlSecondsAfterFinished set, skipping GC.")
+	if macBuild.Spec.Ttl == nil {
+		logger.V(1).Info("No ttl set, skipping GC.")
 		return ctrl.Result{}, nil
 	}
 
@@ -76,7 +76,7 @@ func (r *MacBuildGCReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Calculate expiration time.
-	ttl := time.Duration(*macBuild.Spec.TtlSecondsAfterFinished) * time.Second
+	ttl := macBuild.Spec.Ttl.Duration
 	expirationTime := macBuild.Status.CompletionTime.Add(ttl)
 	now := time.Now()
 

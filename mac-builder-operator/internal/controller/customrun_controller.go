@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -303,8 +302,8 @@ func buildMacBuildFromCustomRun(cr *tektonv1beta1.CustomRun, namespace, name str
 	if refspec := params["git-refspec"]; strings.Contains(refspec, "refs/pull/") {
 		spec.Source.GitRefspec = &refspec
 	}
-	if ttl := parseInt32(params["ttl-seconds-after-finished"]); ttl != nil {
-		spec.TtlSecondsAfterFinished = ttl
+	if ttl := parseDuration(params["ttl"]); ttl != nil {
+		spec.Ttl = ttl
 	}
 
 	return &buildv1alpha1.MacBuild{
@@ -338,14 +337,14 @@ func parseBool(value string) bool {
 	}
 }
 
-func parseInt32(value string) *int32 {
-	if strings.TrimSpace(value) == "" {
+func parseDuration(value string) *metav1.Duration {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
 		return nil
 	}
-	n, err := strconv.ParseInt(strings.TrimSpace(value), 10, 32)
+	d, err := time.ParseDuration(trimmed)
 	if err != nil {
 		return nil
 	}
-	v := int32(n)
-	return &v
+	return &metav1.Duration{Duration: d}
 }

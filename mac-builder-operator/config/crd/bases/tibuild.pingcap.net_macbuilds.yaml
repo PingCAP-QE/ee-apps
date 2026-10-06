@@ -114,13 +114,11 @@ spec:
                 - gitRef
                 - gitRepository
                 type: object
-              ttlSecondsAfterFinished:
+              ttl:
                 description: |-
-                  Seconds to retain the build resource after it has finished (succeeded or failed).
+                  Duration to retain the build resource after it has finished (succeeded or failed).
                   After this time, it will be automatically deleted. If unset, it will be kept indefinitely.
-                format: int32
-                minimum: 0
-                type: integer
+                type: string
             required:
             - artifacts
             - build

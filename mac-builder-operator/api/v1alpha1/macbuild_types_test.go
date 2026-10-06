@@ -1,11 +1,37 @@
 package v1alpha1
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func TestMacBuildSpecTTLDurationJSON(t *testing.T) {
+	t.Parallel()
+
+	spec := MacBuildSpec{Ttl: &metav1.Duration{Duration: 24 * time.Hour}}
+	data, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatalf("marshal spec: %v", err)
+	}
+	if !strings.Contains(string(data), `"ttl":"24h0m0s"`) {
+		t.Fatalf("expected duration ttl in JSON, got %s", data)
+	}
+	if strings.Contains(string(data), "ttlSecondsAfterFinished") {
+		t.Fatalf("legacy field must not be serialized: %s", data)
+	}
+
+	var back MacBuildSpec
+	if err := json.Unmarshal([]byte(`{"ttl":"24h"}`), &back); err != nil {
+		t.Fatalf("unmarshal spec: %v", err)
+	}
+	if back.Ttl == nil || back.Ttl.Duration != 24*time.Hour {
+		t.Fatalf("expected parsed ttl 24h, got %#v", back.Ttl)
+	}
+}
 
 func TestNormalizeBuildArch(t *testing.T) {
 	t.Parallel()

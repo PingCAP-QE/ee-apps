@@ -23,11 +23,11 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 )
@@ -66,7 +66,7 @@ func TestManualNativeBuildJob(t *testing.T) {
 				Push:     true, // Set to true if you want to test pushing artifacts
 				Registry: "hub.pingcap.net/devbuild",
 			},
-			TtlSecondsAfterFinished: ptr.To[int32](3600),
+			Ttl: &metav1.Duration{Duration: time.Hour},
 		},
 	}
 
