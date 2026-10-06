@@ -27,4 +27,3 @@ Assemble a gcloud-free kubeconfig on the worker (server + CA + this token):
   kubectl -n {{ default (include "mac-builder-operator.macBuildNamespace" .) .Values.worker.serviceAccount.namespace }} get secret {{ default (printf "%s-worker-token" (include "mac-builder-operator.fullname" .)) .Values.worker.token.name }} -o jsonpath='{.data.token}' | base64 -d
 {{- end }}
 {{- end }}
-
