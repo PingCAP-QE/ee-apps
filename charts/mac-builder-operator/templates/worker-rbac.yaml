@@ -1,0 +1,106 @@
+{{- if .Values.worker.create -}}
+{{- $fullname := include "mac-builder-operator.fullname" . -}}
+{{- $workerNS := default (include "mac-builder-operator.macBuildNamespace" .) .Values.worker.serviceAccount.namespace -}}
+{{- $workerSA := default (printf "%s-worker" $fullname) .Values.worker.serviceAccount.name -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $workerSA }}
+  namespace: {{ $workerNS }}
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+  {{- with .Values.worker.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullname }}-worker-read
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+rules:
+  # The worker agent's informer watches MacBuilds cluster-wide, so the read
+  # permission must be cluster-scoped.
+  - apiGroups:
+      - tibuild.pingcap.net
+    resources:
+      - macbuilds
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-worker-read
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-worker-read
+subjects:
+  - kind: ServiceAccount
+    name: {{ $workerSA }}
+    namespace: {{ $workerNS }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-worker
+  namespace: {{ $workerNS }}
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+rules:
+  # Writes stay scoped to the namespace where MacBuilds live.
+  - apiGroups:
+      - tibuild.pingcap.net
+    resources:
+      - macbuilds
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+  - apiGroups:
+      - tibuild.pingcap.net
+    resources:
+      - macbuilds/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
+      - tibuild.pingcap.net
+    resources:
+      - macbuilds/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-worker
+  namespace: {{ $workerNS }}
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-worker
+subjects:
+  - kind: ServiceAccount
+    name: {{ $workerSA }}
+    namespace: {{ $workerNS }}
+{{- end }}

@@ -16,3 +16,15 @@ MacBuild objects are created in namespace: {{ include "mac-builder-operator.macB
 Check the controller pods:
 
   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "mac-builder-operator.name" . }},app.kubernetes.io/instance={{ .Release.Name }}
+{{- if .Values.worker.create }}
+
+External macOS worker agent RBAC enabled. ServiceAccount:
+  {{ default (printf "%s-worker" (include "mac-builder-operator.fullname" .)) .Values.worker.serviceAccount.name }} (namespace {{ default (include "mac-builder-operator.macBuildNamespace" .) .Values.worker.serviceAccount.namespace }})
+{{- if .Values.worker.token.create }}
+
+Assemble a gcloud-free kubeconfig on the worker (server + CA + this token):
+
+  kubectl -n {{ default (include "mac-builder-operator.macBuildNamespace" .) .Values.worker.serviceAccount.namespace }} get secret {{ default (printf "%s-worker-token" (include "mac-builder-operator.fullname" .)) .Values.worker.token.name }} -o jsonpath='{.data.token}' | base64 -d
+{{- end }}
+{{- end }}
+

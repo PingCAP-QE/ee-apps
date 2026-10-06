@@ -1,0 +1,17 @@
+{{- if and .Values.worker.create .Values.worker.token.create -}}
+{{- $fullname := include "mac-builder-operator.fullname" . -}}
+{{- $workerNS := default (include "mac-builder-operator.macBuildNamespace" .) .Values.worker.serviceAccount.namespace -}}
+{{- $workerSA := default (printf "%s-worker" $fullname) .Values.worker.serviceAccount.name -}}
+# Long-lived token for the external macOS worker agent. Lets the worker assemble
+# a kubeconfig (server + CA + this token) without gcloud / an exec plugin.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ default (printf "%s-worker-token" $fullname) .Values.worker.token.name }}
+  namespace: {{ $workerNS }}
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/service-account.name: {{ $workerSA }}
+type: kubernetes.io/service-account-token
+{{- end }}
