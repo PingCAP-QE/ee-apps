@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -168,5 +169,36 @@ var _ = Describe("MacBuild Controller", func() {
 			Expect(updated.Status.PhaseHistory[3].Phase).To(Equal(buildv1alpha1.PhasePublishing))
 			Expect(updated.Status.PhaseHistory[4].Phase).To(Equal(buildv1alpha1.PhaseSucceeded))
 		})
+	})
+})
+
+var _ = Describe("MacBuild spec.ttl CRD validation", func() {
+	ctx := context.Background()
+
+	newUnstructuredMacBuild := func(name, ttl string) *unstructured.Unstructured {
+		u := &unstructured.Unstructured{}
+		u.SetGroupVersionKind(buildv1alpha1.GroupVersion.WithKind("MacBuild"))
+		u.SetName(name)
+		u.SetNamespace("default")
+		u.Object["spec"] = map[string]interface{}{
+			"source":    map[string]interface{}{"gitRepository": "https://github.com/pingcap/tidb.git", "gitRef": "main"},
+			"build":     map[string]interface{}{"component": "tidb", "version": "nightly"},
+			"artifacts": map[string]interface{}{},
+			"ttl":       ttl,
+		}
+		return u
+	}
+
+	It("accepts a valid duration ttl", func() {
+		u := newUnstructuredMacBuild("ttl-valid", "90m")
+		Expect(k8sClient.Create(ctx, u)).To(Succeed())
+		DeferCleanup(func() { _ = k8sClient.Delete(ctx, u) })
+	})
+
+	It("rejects a non-duration ttl string", func() {
+		u := newUnstructuredMacBuild("ttl-invalid", "not-a-duration")
+		err := k8sClient.Create(ctx, u)
+		Expect(err).To(HaveOccurred())
+		Expect(errors.IsInvalid(err)).To(BeTrue(), "expected Invalid status, got %v", err)
 	})
 })

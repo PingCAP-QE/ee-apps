@@ -52,11 +52,11 @@ type MacBuildSpec struct {
 	// +kubebuilder:validation:Required
 	Artifacts ArtifactsSpec `json:"artifacts"`
 
-	// Seconds to retain the build resource after it has finished (succeeded or failed).
+	// Duration to retain the build resource after it has finished (succeeded or failed).
 	// After this time, it will be automatically deleted. If unset, it will be kept indefinitely.
 	// +optional
-	// +kubebuilder:validation:Minimum=0
-	TtlSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('0s')",message="ttl must be a valid, non-negative duration (e.g. 1h, 90m)"
+	Ttl *metav1.Duration `json:"ttl,omitempty"`
 }
 
 // SourceSpec defines the code source

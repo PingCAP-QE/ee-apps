@@ -47,7 +47,7 @@ const (
 	paramProfile   = "profile"
 	paramPush      = "push"
 	paramRegistry  = "registry"
-	paramTTL       = "ttl-seconds-after-finished"
+	paramTTL       = "ttl"
 )
 
 func newTestMacBuildCustomRun(name string, params map[string]string) *tektonv1beta1.CustomRun {
@@ -134,7 +134,7 @@ func TestBuildMacBuildFromCustomRun(t *testing.T) {
 		paramProfile:   testProfile,
 		paramPush:      "true",
 		paramRegistry:  testRegistry,
-		paramTTL:       "86400",
+		paramTTL:       "24h",
 	})
 
 	mb, err := buildMacBuildFromCustomRun(cr, testMacBuildNamespace, "macbuild-1")
@@ -175,8 +175,8 @@ func TestBuildMacBuildFromCustomRun(t *testing.T) {
 	if !mb.Spec.Artifacts.Push || mb.Spec.Artifacts.Registry != testRegistry {
 		t.Fatalf("unexpected artifacts spec: %#v", mb.Spec.Artifacts)
 	}
-	if mb.Spec.TtlSecondsAfterFinished == nil || *mb.Spec.TtlSecondsAfterFinished != 86400 {
-		t.Fatalf("unexpected ttl: %#v", mb.Spec.TtlSecondsAfterFinished)
+	if mb.Spec.Ttl == nil || mb.Spec.Ttl.Duration != 24*time.Hour {
+		t.Fatalf("unexpected ttl: %#v", mb.Spec.Ttl)
 	}
 }
 

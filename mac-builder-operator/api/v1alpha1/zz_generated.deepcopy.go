@@ -21,6 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -180,9 +181,9 @@ func (in *MacBuildSpec) DeepCopyInto(out *MacBuildSpec) {
 	in.Source.DeepCopyInto(&out.Source)
 	out.Build = in.Build
 	out.Artifacts = in.Artifacts
-	if in.TtlSecondsAfterFinished != nil {
-		in, out := &in.TtlSecondsAfterFinished, &out.TtlSecondsAfterFinished
-		*out = new(int32)
+	if in.Ttl != nil {
+		in, out := &in.Ttl, &out.Ttl
+		*out = new(v1.Duration)
 		**out = **in
 	}
 }

@@ -35,9 +35,9 @@ type MacBuildSpec struct {
     Artifacts ArtifactsSpec `json:"artifacts"`
 
     // Lifecycle management (GC)
-    // Seconds to retain the build resource after it has finished (succeeded or failed).
+    // Duration to retain the build resource after it has finished (succeeded or failed).
     // +optional
-    TtlSecondsAfterFinished *int32 `json:"ttlSecondsAfterFinished,omitempty"`
+    Ttl *metav1.Duration `json:"ttl,omitempty"`
 }
 
 type SourceSpec struct {
