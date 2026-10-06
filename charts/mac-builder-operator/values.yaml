@@ -47,6 +47,24 @@ serviceAccount:
 rbac:
   create: true
 
+# External macOS worker agents run outside the cluster (the in-cluster agent is
+# controller.agent above). Enable this to create a dedicated, least-privilege
+# ServiceAccount + RBAC for those workers, plus an optional long-lived token
+# Secret used to assemble a gcloud-free kubeconfig on the worker.
+worker:
+  create: false
+  serviceAccount:
+    # Defaults to <fullname>-worker.
+    name: ""
+    # Namespace for the worker SA/Role. Defaults to macBuildNamespace.
+    namespace: ""
+    annotations: {}
+  token:
+    # Create a kubernetes.io/service-account-token Secret for the worker SA.
+    create: false
+    # Defaults to <fullname>-worker-token.
+    name: ""
+
 crd:
   create: true
 
