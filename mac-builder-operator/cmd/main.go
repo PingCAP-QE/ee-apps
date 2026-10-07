@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	goruntime "runtime"
 	"strings"
 	"time"
@@ -80,6 +81,8 @@ func main() {
 		os.Exit(1)
 	}
 	var workerName, workerArch string
+	var bootstrap bool
+	var bootstrapScript string
 
 	// Controller-specific flags
 	flag.BoolVar(&enableAgent, "enable-agent", false, "Enable the MacBuild agent reconciler. Runs on the Mac worker.")
@@ -104,6 +107,10 @@ func main() {
 		"Unique worker identity stored in MacBuild status when the agent claims a build.")
 	flag.StringVar(&workerArch, "worker-arch", goruntime.GOARCH,
 		"CPU architecture this worker can handle. Supported values: amd64, arm64.")
+	flag.BoolVar(&bootstrap, "bootstrap", false,
+		"Run the worker bootstrap script to install missing prerequisites (mise, generic tools) before starting.")
+	flag.StringVar(&bootstrapScript, "bootstrap-script", "hack/worker-bootstrap.sh",
+		"Path to the worker bootstrap script used by --bootstrap.")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -151,6 +158,11 @@ func main() {
 		}
 		workerName = normalizedWorkerName
 		workerArch = normalizedWorkerArch
+
+		if err := ensureWorkerPrerequisites(bootstrap, bootstrapScript); err != nil {
+			setupLog.Error(err, "worker prerequisites not satisfied")
+			os.Exit(1)
+		}
 	}
 
 	artifactsScriptSource, err := (controller.ArtifactsScriptSourceConfig{
@@ -325,4 +337,34 @@ func validateAgentIdentity(workerName string, workerArch string) (string, string
 	}
 
 	return normalizedWorkerName, normalizedWorkerArch, nil
+}
+
+// ensureWorkerPrerequisites verifies the worker has the OS-global prerequisites
+// the agent relies on (Xcode Command Line Tools, mise). Missing prerequisites
+// fail fast with guidance, unless --bootstrap is set, in which case the worker
+// bootstrap script is run first.
+func ensureWorkerPrerequisites(bootstrap bool, bootstrapScript string) error {
+	var missing []string
+	if _, err := exec.LookPath("mise"); err != nil {
+		missing = append(missing, "mise")
+	}
+	if err := exec.Command("xcode-select", "-p").Run(); err != nil {
+		missing = append(missing, "Xcode Command Line Tools")
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	if !bootstrap {
+		return fmt.Errorf("missing worker prerequisites %v; install them or start the agent with --bootstrap", missing)
+	}
+
+	setupLog.Info("Running worker bootstrap", "script", bootstrapScript, "missing", missing)
+	cmd := exec.Command("bash", bootstrapScript)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("worker bootstrap failed: %w", err)
+	}
+	return nil
 }

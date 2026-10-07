@@ -41,12 +41,15 @@ type nativeBuildJob struct {
 	artifactsScriptSource ArtifactsScriptSourceConfig
 
 	// Paths
-	workspaceDir     string
-	sourceDir        string
-	artifactsRepoDir string
-	buildScriptPath  string
-	envFilePath      string
-	pushedResultPath string
+	workspaceDir         string
+	sourceDir            string
+	artifactsRepoDir     string
+	buildScriptPath      string
+	envFilePath          string
+	pushedResultPath     string
+	releasePackagePath   string
+	miseConfigPath       string
+	toolchainProvisioned bool
 
 	reportPhase  buildPhaseReporter
 	stdoutWriter io.Writer
@@ -80,8 +83,12 @@ func newNativeBuildJob(
 		buildScriptPath:  filepath.Join(workspaceDir, "build-package-artifacts.sh"),
 		envFilePath:      filepath.Join(workspaceDir, "remote.env"),
 		pushedResultPath: filepath.Join(workspaceDir, "pushed.yaml"),
-		stdoutWriter:     os.Stdout,
-		stderrWriter:     os.Stderr,
+		// release-package.yaml is written by the artifacts gen script (see
+		// generateBuildScript) and carries the matched builder's macos.tools.
+		releasePackagePath: filepath.Join(workspaceDir, "release-package.yaml"),
+		miseConfigPath:     filepath.Join(workspaceDir, "mise.toml"),
+		stdoutWriter:       os.Stdout,
+		stderrWriter:       os.Stderr,
 	}
 }
 
@@ -123,6 +130,10 @@ func (j *nativeBuildJob) Run() (*buildResult, error) {
 	if _, err := os.Stat(j.buildScriptPath); os.IsNotExist(err) {
 		j.logger.Info("Build script was not generated, skipping build. (This may be expected for some components)")
 		return result, nil
+	}
+
+	if err := j.provisionToolchain(); err != nil {
+		return result, err
 	}
 
 	if err := j.updatePhase(buildv1alpha1.PhaseBuilding, "Running build steps on the worker."); err != nil {
@@ -441,10 +452,63 @@ func (j *nativeBuildJob) generateBuildScript() error {
 		j.buildScriptPath,
 		j.spec.Artifacts.Registry,
 	)
-	if err := j.exec(cmdGenScript); err != nil {
+	if err := j.exec(cmdGenScript, j.workspaceDir); err != nil {
 		return fmt.Errorf("failed to generate build script: %w", err)
 	}
 	return nil
+}
+
+// provisionToolchain resolves the component's declared macos.tools (from the
+// rendered release-package.yaml) and provisions them per build via mise: it
+// writes a per-build mise.toml and runs `mise install` (isolated config, shared
+// tool cache). When no macos.tools is declared it leaves the job on the ambient
+// (bootstrap/global) toolchain — the fallback path.
+func (j *nativeBuildJob) provisionToolchain() error {
+	data, err := os.ReadFile(j.releasePackagePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			j.logger.Info("No rendered component config; using ambient toolchain.")
+			return nil
+		}
+		return fmt.Errorf("read component config: %w", err)
+	}
+
+	tools, err := resolveMacOSTools(data)
+	if err != nil {
+		return err
+	}
+	if len(tools) == 0 {
+		j.logger.Info("No macos.tools declared for this component/version; using ambient toolchain.")
+		return nil
+	}
+
+	if err := os.WriteFile(j.miseConfigPath, []byte(renderMiseToml(tools)), 0o644); err != nil {
+		return fmt.Errorf("write mise.toml: %w", err)
+	}
+
+	j.logger.Info("Provisioning toolchain via mise", "tools", tools)
+	if err := j.exec(j.miseCommand("install"), j.workspaceDir); err != nil {
+		return fmt.Errorf("mise install: %w", err)
+	}
+	j.toolchainProvisioned = true
+	return nil
+}
+
+// miseCommand builds a `mise ...` command bound to this build's mise.toml.
+func (j *nativeBuildJob) miseCommand(args ...string) *exec.Cmd {
+	cmd := exec.Command("mise", args...)
+	cmd.Env = append(os.Environ(), "MISE_CONFIG_FILE="+j.miseConfigPath)
+	return cmd
+}
+
+// toolchainCommand runs name with args. When a per-build toolchain was
+// provisioned it executes under `mise exec` (so the declared tool versions are
+// used); otherwise it runs the command directly (ambient/fallback toolchain).
+func (j *nativeBuildJob) toolchainCommand(name string, args ...string) *exec.Cmd {
+	if j.toolchainProvisioned {
+		return j.miseCommand(append([]string{"exec", "--", name}, args...)...)
+	}
+	return exec.Command(name, args...)
 }
 
 // createRunnableScript creates a runnable script with the given content.
@@ -469,7 +533,7 @@ func (j *nativeBuildJob) executeBuild() error {
 		return err
 	}
 
-	cmdBuild := exec.Command(runScriptPath)
+	cmdBuild := j.toolchainCommand(runScriptPath)
 	buildDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
 	if err := j.exec(cmdBuild, buildDir); err != nil {
 		return fmt.Errorf("build execution failed: %w", err)
@@ -482,7 +546,7 @@ func (j *nativeBuildJob) executePublish() (string, error) {
 	j.logger.Info("Executing build script (Publish phase)...")
 	releaseDir := filepath.Join(j.sourceDir, j.spec.Build.Component, "build")
 
-	cmdPublish := exec.Command(j.buildScriptPath, "-p", "-w", releaseDir, "-o", j.pushedResultPath)
+	cmdPublish := j.toolchainCommand(j.buildScriptPath, "-p", "-w", releaseDir, "-o", j.pushedResultPath)
 	buildDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
 
 	if err := j.exec(cmdPublish, buildDir); err != nil {
