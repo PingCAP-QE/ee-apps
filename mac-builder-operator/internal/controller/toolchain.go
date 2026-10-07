@@ -18,10 +18,8 @@ package controller
 
 import (
 	"fmt"
-	"regexp"
-	"sort"
-	"strings"
 
+	toml "github.com/pelletier/go-toml/v2"
 	"sigs.k8s.io/yaml"
 )
 
@@ -61,29 +59,15 @@ func resolveMacOSTools(data []byte) (map[string]string, error) {
 	return nil, nil
 }
 
-var bareTomlKey = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
-
-// renderMiseToml renders a minimal mise.toml containing only the [tools] table,
-// with keys sorted for determinism. Empty input yields an empty string.
-func renderMiseToml(tools map[string]string) string {
+// renderMiseToml renders a minimal mise.toml containing only the [tools] table.
+// Empty input yields an empty string.
+func renderMiseToml(tools map[string]string) (string, error) {
 	if len(tools) == 0 {
-		return ""
+		return "", nil
 	}
-	keys := make([]string, 0, len(tools))
-	for k := range tools {
-		keys = append(keys, k)
+	out, err := toml.Marshal(map[string]any{"tools": tools})
+	if err != nil {
+		return "", fmt.Errorf("marshal mise.toml: %w", err)
 	}
-	sort.Strings(keys)
-
-	var b strings.Builder
-	b.WriteString("[tools]\n")
-	for _, k := range keys {
-		key := k
-		if !bareTomlKey.MatchString(key) {
-			key = `"` + strings.ReplaceAll(key, `"`, `\"`) + `"`
-		}
-		val := strings.ReplaceAll(tools[k], `"`, `\"`)
-		fmt.Fprintf(&b, "%s = \"%s\"\n", key, val)
-	}
-	return b.String()
+	return string(out), nil
 }

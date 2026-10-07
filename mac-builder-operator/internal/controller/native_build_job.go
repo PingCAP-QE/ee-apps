@@ -482,7 +482,11 @@ func (j *nativeBuildJob) provisionToolchain() error {
 		return nil
 	}
 
-	if err := os.WriteFile(j.miseConfigPath, []byte(renderMiseToml(tools)), 0o644); err != nil {
+	miseToml, err := renderMiseToml(tools)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(j.miseConfigPath, []byte(miseToml), 0o644); err != nil {
 		return fmt.Errorf("write mise.toml: %w", err)
 	}
 

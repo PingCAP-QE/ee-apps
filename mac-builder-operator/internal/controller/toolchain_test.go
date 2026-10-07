@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"reflect"
 	"testing"
+
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 func TestResolveMacOSTools(t *testing.T) {
@@ -68,19 +71,23 @@ func TestRenderMiseToml(t *testing.T) {
 		"aqua:jqlang/jq":         "1.7",
 		"aqua:oras-project/oras": "1",
 	}
-	got := renderMiseToml(tools)
-
-	want := `[tools]
-"aqua:jqlang/jq" = "1.7"
-"aqua:mikefarah/yq" = "4"
-"aqua:oras-project/oras" = "1"
-go = "1.25"
-`
-	if got != want {
-		t.Fatalf("renderMiseToml mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	out, err := renderMiseToml(tools)
+	if err != nil {
+		t.Fatalf("renderMiseToml: %v", err)
 	}
 
-	if renderMiseToml(nil) != "" {
-		t.Fatalf("expected empty toml for empty tools")
+	var parsed struct {
+		Tools map[string]string `toml:"tools"`
+	}
+	if err := toml.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("unmarshal rendered toml: %v\n%s", err, out)
+	}
+	if !reflect.DeepEqual(parsed.Tools, tools) {
+		t.Fatalf("round-trip mismatch:\n got %#v\nwant %#v", parsed.Tools, tools)
+	}
+
+	empty, err := renderMiseToml(nil)
+	if err != nil || empty != "" {
+		t.Fatalf("expected empty toml for empty tools, got %q (err %v)", empty, err)
 	}
 }
