@@ -65,14 +65,13 @@ func TestCloneArtifactsRepoRejectsMismatchedExpectedCommit(t *testing.T) {
 	}
 }
 
-func TestCloneArtifactsRepoRejectsBranchRevision(t *testing.T) {
+func TestCloneArtifactsRepoChecksOutBranchRevision(t *testing.T) {
 	t.Parallel()
 
-	repoDir, _, firstCommit, _ := createArtifactsRepoFixture(t)
+	repoDir, _, secondCommit, _ := createArtifactsRepoFixture(t)
 	job := newNativeBuildJob(context.Background(), newTestMacBuild(), ArtifactsScriptSourceConfig{
-		URL:            repoDir,
-		Revision:       "release/1.0",
-		ExpectedCommit: firstCommit,
+		URL:      repoDir,
+		Revision: "release/1.0",
 	})
 
 	if err := job.setupWorkspace(); err != nil {
@@ -80,12 +79,16 @@ func TestCloneArtifactsRepoRejectsBranchRevision(t *testing.T) {
 	}
 	defer job.cleanup()
 
-	err := job.cloneArtifactsRepo()
-	if err == nil {
-		t.Fatal("expected cloneArtifactsRepo to reject branch revision")
+	if err := job.cloneArtifactsRepo(); err != nil {
+		t.Fatalf("expected branch revision to be accepted, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "reachable tag or full commit SHA") {
-		t.Fatalf("expected branch rejection error, got %v", err)
+
+	headCommit, err := job.gitHeadCommit(job.artifactsRepoDir)
+	if err != nil {
+		t.Fatalf("resolve cloned HEAD: %v", err)
+	}
+	if headCommit != secondCommit {
+		t.Fatalf("expected cloned HEAD %q, got %q", secondCommit, headCommit)
 	}
 }
 

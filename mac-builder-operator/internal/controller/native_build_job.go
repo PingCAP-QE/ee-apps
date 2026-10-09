@@ -234,7 +234,7 @@ func (j *nativeBuildJob) cloneArtifactsRepo() error {
 		return err
 	}
 
-	cmd = exec.Command("git", "checkout", "--detach", checkoutRef)
+	cmd = exec.Command("git", "checkout", checkoutRef)
 	if err := j.exec(cmd, j.artifactsRepoDir); err != nil {
 		return fmt.Errorf("failed to checkout artifacts repo revision %q: %w", source.Revision, err)
 	}
@@ -243,7 +243,7 @@ func (j *nativeBuildJob) cloneArtifactsRepo() error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve artifacts repo HEAD commit: %w", err)
 	}
-	if headCommit != source.ExpectedCommit {
+	if source.ExpectedCommit != "" && headCommit != source.ExpectedCommit {
 		return fmt.Errorf(
 			"artifacts repo revision %q resolved to %q, expected %q",
 			source.Revision,
@@ -305,27 +305,10 @@ func (j *nativeBuildJob) gitHeadCommit(dir string) (string, error) {
 	return strings.TrimSpace(string(hashBytes)), nil
 }
 
+// resolveArtifactsCheckoutRef returns the ref git should check out. The revision
+// may be a branch (e.g. main), a tag, or a full commit SHA; git resolves all.
 func (j *nativeBuildJob) resolveArtifactsCheckoutRef(revision string) (string, error) {
-	if isFullCommitSHA(revision) {
-		return revision, nil
-	}
-
-	tagRef := revision
-	if !strings.HasPrefix(tagRef, "refs/tags/") {
-		tagRef = "refs/tags/" + revision
-	}
-
-	cmd := exec.Command("git", "rev-parse", "--verify", tagRef+"^{commit}")
-	cmd.Dir = j.artifactsRepoDir
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf(
-			"artifacts repo revision %q must be a reachable tag or full commit SHA: %s",
-			revision,
-			strings.TrimSpace(string(output)),
-		)
-	}
-
-	return tagRef, nil
+	return revision, nil
 }
 
 // generateEnvFile generates the environment file for the build.
