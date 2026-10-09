@@ -7,9 +7,12 @@ import (
 )
 
 const (
-	DefaultArtifactsScriptRepoURL        = "https://github.com/PingCAP-QE/artifacts.git"
-	DefaultArtifactsScriptRepoRevision   = "99e1b3dd576eecb71e7e56f83aac3fd158af3468"
-	DefaultArtifactsScriptExpectedCommit = DefaultArtifactsScriptRepoRevision
+	DefaultArtifactsScriptRepoURL = "https://github.com/PingCAP-QE/artifacts.git"
+	// DefaultArtifactsScriptRepoRevision tracks the artifacts repo main branch. The
+	// repo is continuously updated, so the build scripts are intentionally not pinned
+	// by default; set ExpectedCommit (or pass a full SHA/tag) to pin for reproducibility.
+	DefaultArtifactsScriptRepoRevision   = "main"
+	DefaultArtifactsScriptExpectedCommit = ""
 )
 
 var fullCommitSHARegexp = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
@@ -21,7 +24,8 @@ type ArtifactsScriptSourceConfig struct {
 	ExpectedCommit string
 }
 
-// Normalize applies defaults and rejects mutable refs before a worker executes external scripts.
+// Normalize applies defaults. A branch (e.g. main), a tag, or a full commit SHA
+// is accepted; when ExpectedCommit is set the checked-out HEAD must match it.
 func (c ArtifactsScriptSourceConfig) Normalize() (ArtifactsScriptSourceConfig, error) {
 	normalized := ArtifactsScriptSourceConfig{
 		URL:            strings.TrimSpace(c.URL),
@@ -40,51 +44,20 @@ func (c ArtifactsScriptSourceConfig) Normalize() (ArtifactsScriptSourceConfig, e
 		}
 	}
 
-	if normalized.ExpectedCommit == "" {
-		switch {
-		case normalized.Revision == DefaultArtifactsScriptRepoRevision:
-			normalized.ExpectedCommit = DefaultArtifactsScriptExpectedCommit
-		case isFullCommitSHA(normalized.Revision):
-			normalized.ExpectedCommit = normalized.Revision
-		default:
-			return ArtifactsScriptSourceConfig{}, fmt.Errorf(
-				"artifacts repo expected commit must be set when revision %q is not a full commit SHA",
-				normalized.Revision,
-			)
-		}
-	}
-
-	if isMutableGitRevision(normalized.Revision) {
-		return ArtifactsScriptSourceConfig{}, fmt.Errorf(
-			"artifacts repo revision %q must be an immutable commit or tag; branch refs are not allowed",
-			normalized.Revision,
-		)
-	}
-	if !isFullCommitSHA(normalized.ExpectedCommit) {
+	if normalized.ExpectedCommit != "" && !isFullCommitSHA(normalized.ExpectedCommit) {
 		return ArtifactsScriptSourceConfig{}, fmt.Errorf(
 			"artifacts repo expected commit %q must be a full 40-character SHA",
 			normalized.ExpectedCommit,
 		)
 	}
+	// Pin to the revision when it is a full commit SHA and no expected commit was given.
+	if normalized.ExpectedCommit == "" && isFullCommitSHA(normalized.Revision) {
+		normalized.ExpectedCommit = strings.ToLower(normalized.Revision)
+	}
 
-	normalized.ExpectedCommit = strings.ToLower(normalized.ExpectedCommit)
 	return normalized, nil
 }
 
 func isFullCommitSHA(value string) bool {
 	return fullCommitSHARegexp.MatchString(strings.TrimSpace(value))
-}
-
-func isMutableGitRevision(value string) bool {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" || isFullCommitSHA(trimmed) {
-		return false
-	}
-
-	lower := strings.ToLower(trimmed)
-	return lower == "main" ||
-		lower == "master" ||
-		strings.HasPrefix(lower, "refs/heads/") ||
-		strings.HasPrefix(lower, "refs/remotes/") ||
-		strings.HasPrefix(lower, "origin/")
 }
