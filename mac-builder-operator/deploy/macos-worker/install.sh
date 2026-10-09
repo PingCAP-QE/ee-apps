@@ -87,6 +87,7 @@ if ! command -v mise >/dev/null 2>&1; then
 fi
 export PATH="$HOME/.local/bin:$PREFIX:$PATH"
 command -v mise >/dev/null 2>&1 || die "mise not found on PATH after install"
+MISE_BIN="$(command -v mise)"
 log "mise: $(mise --version)"
 
 # ---- 3) worker-global toolchain from artifacts -----------------------------
@@ -126,13 +127,16 @@ if [[ "$INSTALL_SERVICE" == true ]]; then
 <plist version="1.0"><dict>
   <key>Label</key><string>${SERVICE_LABEL}</string>
   <key>ProgramArguments</key><array>
+    <string>${MISE_BIN}</string>
+    <string>exec</string>
+    <string>--</string>
     <string>${PREFIX}/macbuild-agent</string>
 $(
   for a in "${agent_args[@]}"; do printf '    <string>%s</string>\n' "$a"; done
 )
   </array>
   <key>EnvironmentVariables</key><dict>
-    <key>PATH</key><string>${HOME}/.local/bin:${PREFIX}:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PATH</key><string>${HOME}/.local/share/mise/shims:${HOME}/.local/bin:${PREFIX}:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>KUBECONFIG</key><string>${KUBECONFIG_PATH}</string>
   </dict>
   <key>RunAtLoad</key><true/>
@@ -146,7 +150,7 @@ EOF
   log "Installed + started LaunchAgent ${SERVICE_LABEL} (logs: ~/Library/Logs/macbuild-agent*.log)"
 elif [[ "$RUN_FOREGROUND" == true ]]; then
   log "Starting agent in the foreground..."
-  exec env KUBECONFIG="$KUBECONFIG_PATH" PATH="$HOME/.local/bin:$PREFIX:$PATH" "$PREFIX/macbuild-agent" "${agent_args[@]}"
+  exec env KUBECONFIG="$KUBECONFIG_PATH" "$MISE_BIN" exec -- "$PREFIX/macbuild-agent" "${agent_args[@]}"
 else
   log "Done. Start the agent with:"
   log "  KUBECONFIG=$KUBECONFIG_PATH mise exec -- $PREFIX/macbuild-agent ${agent_args[*]}"
