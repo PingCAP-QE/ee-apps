@@ -311,32 +311,19 @@ func (j *nativeBuildJob) resolveArtifactsCheckoutRef(revision string) (string, e
 	return revision, nil
 }
 
-// generateEnvFile generates the environment file for the build.
+// generateEnvFile generates the environment file for the build. Go is provided
+// per-build via mise (see provisionToolchain), so PATH is intentionally not
+// rewritten here — prepending a system go bin would shadow mise's toolchain and
+// cause "compile: version ... does not match go tool version ..." mismatches.
 func (j *nativeBuildJob) generateEnvFile() error {
 	j.logger.Info("Generating environment file...")
 
-	goVerCmd := exec.Command("go", "version")
-	goVerOut, err := goVerCmd.Output()
-	var goBinPath string
-	if err == nil {
-		parts := strings.Split(string(goVerOut), " ")
-		if len(parts) >= 3 {
-			verParts := strings.Split(parts[2], ".")
-			if len(verParts) >= 2 {
-				goBinPath = fmt.Sprintf("/usr/local/%s.%s/bin", verParts[0], verParts[1])
-			}
-		}
-	} else {
-		j.logger.Error(err, "Failed to get 'go version', $PATH may be incomplete in env file")
-	}
-
-	envContent := fmt.Sprintf(`
+	envContent := `
 export LC_ALL=C.UTF-8
-export PATH=%s:$PATH
 export NPM_CONFIG_REGISTRY="https://registry.npmmirror.com"
 export NODE_OPTIONS="--max_old_space_size=8192"
 export CARGO_NET_GIT_FETCH_WITH_CLI=true
-`, goBinPath)
+`
 
 	if err := os.WriteFile(j.envFilePath, []byte(envContent), 0644); err != nil {
 		return fmt.Errorf("failed to write env file: %w", err)
