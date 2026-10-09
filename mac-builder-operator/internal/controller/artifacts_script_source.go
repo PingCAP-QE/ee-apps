@@ -8,7 +8,7 @@ import (
 
 const (
 	DefaultArtifactsScriptRepoURL        = "https://github.com/PingCAP-QE/artifacts.git"
-	DefaultArtifactsScriptRepoRevision   = "99e1b3dd576eecb71e7e56f83aac3fd158af3468"
+	DefaultArtifactsScriptRepoRevision   = "4f25d0e06aec38fbefb5c02513964571eb13eea7"
 	DefaultArtifactsScriptExpectedCommit = DefaultArtifactsScriptRepoRevision
 )
 
