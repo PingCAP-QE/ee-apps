@@ -520,13 +520,16 @@ func (j *nativeBuildJob) executePublish() (string, error) {
 	j.logger.Info("Executing build script (Publish phase)...")
 	releaseDir := filepath.Join(j.sourceDir, j.spec.Build.Component, "build")
 
-	cmdPublish := j.toolchainCommand(j.buildScriptPath, "-p", "-w", releaseDir, "-o", j.pushedResultPath)
 	buildDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
 
+	// Build a fresh command per attempt: an *exec.Cmd can only be started once.
+	cmdPublish := j.toolchainCommand(j.buildScriptPath, "-p", "-w", releaseDir, "-o", j.pushedResultPath)
 	if err := j.exec(cmdPublish, buildDir); err != nil {
-		j.logger.Info("Publish failed, retrying once...", "error", err)
-		if errRetry := j.exec(cmdPublish, buildDir); errRetry != nil {
-			return "", fmt.Errorf("publish execution failed after retry: %w", errRetry)
+		firstErr := err
+		j.logger.Info("Publish failed, retrying once...", "error", firstErr)
+		retry := j.toolchainCommand(j.buildScriptPath, "-p", "-w", releaseDir, "-o", j.pushedResultPath)
+		if errRetry := j.exec(retry, buildDir); errRetry != nil {
+			return "", fmt.Errorf("publish execution failed: %w (first attempt: %v)", errRetry, firstErr)
 		}
 	}
 
