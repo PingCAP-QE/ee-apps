@@ -13,6 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 const (
@@ -180,6 +181,88 @@ func TestReconcilePendingMismatchedArchDoesNotClaimBuild(t *testing.T) {
 	}
 	if updated.Status.WorkerArch != nil {
 		t.Fatalf("expected workerArch to remain nil, got %#v", updated.Status.WorkerArch)
+	}
+}
+
+func TestReconcileDoesNotClaimBuildRacedByAnotherWorker(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := &buildv1alpha1.MacBuild{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "build-race",
+			Namespace: "default",
+		},
+		Status: buildv1alpha1.MacBuildStatus{
+			Phase: buildv1alpha1.PhasePending,
+			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
+				{
+					Phase:          buildv1alpha1.PhasePending,
+					TransitionTime: metav1.NewTime(fixedNow.Add(-time.Minute)),
+				},
+			},
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	if err := buildv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add buildv1alpha1 scheme: %v", err)
+	}
+	base := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&buildv1alpha1.MacBuild{}).
+		WithObjects(macBuild).
+		Build()
+
+	// Simulate another same-arch worker winning the claim between this worker's
+	// initial read and the status update: from the second Get (the one inside
+	// the claim update) the object already looks claimed by worker-b.
+	getCalls := 0
+	k8sClient := interceptor.NewClient(base, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			getCalls++
+			if err := c.Get(ctx, key, obj, opts...); err != nil {
+				return err
+			}
+			if getCalls >= 2 {
+				if mb, ok := obj.(*buildv1alpha1.MacBuild); ok && mb.Status.Phase == buildv1alpha1.PhasePending {
+					mb.Status.Phase = buildv1alpha1.PhasePreparing
+					mb.Status.WorkerID = stringPtr(testWorkerB)
+					mb.Status.StartTime = &metav1.Time{Time: fixedNow}
+				}
+			}
+			return nil
+		},
+	})
+
+	reconciler := &MacBuildReconciler{
+		Client:     k8sClient,
+		Scheme:     scheme,
+		WorkerID:   testWorkerA,
+		WorkerArch: testWorkerArch,
+		now:        func() time.Time { return fixedNow },
+		runBuild: func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
+			t.Fatal("runBuild should not be called when another worker claimed the build")
+			return nil, nil
+		},
+	}
+
+	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
+	})
+	if err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+	if result != (ctrl.Result{}) {
+		t.Fatalf("expected no requeue when the build was claimed elsewhere, got %+v", result)
+	}
+
+	var updated buildv1alpha1.MacBuild
+	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(macBuild), &updated); err != nil {
+		t.Fatalf("get updated MacBuild: %v", err)
+	}
+	if updated.Status.WorkerID == nil || *updated.Status.WorkerID != testWorkerB {
+		t.Fatalf("expected the other worker's claim to stand, got workerID %#v", updated.Status.WorkerID)
 	}
 }
 
