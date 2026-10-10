@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from ci_dashboard.common.config import JenkinsSettings
 from ci_dashboard.jobs.jenkins_client import (
@@ -45,6 +46,23 @@ def test_build_api_url_rewrites_to_internal_host() -> None:
         url
         == "http://jenkins.jenkins.svc.cluster.local:80/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/301/wfapi/describe"
     )
+
+
+@pytest.mark.parametrize("host", ["do.pingcap.net", "external.example.com", "prow.tidb.net.example.com"])
+@pytest.mark.parametrize("suffix", ["logText/progressiveText", "wfapi/describe", "consoleText", "timings/"])
+def test_build_api_url_preserves_non_gcp_controller(host: str, suffix: str) -> None:
+    assert build_api_url(
+        f"https://{host}/jenkins/job/pingcap/job/tidb/job/ghpr_build/1201/display/redirect",
+        suffix,
+        internal_base_url="http://jenkins.jenkins.svc.cluster.local/jenkins",
+    ) == f"https://{host}/jenkins/job/pingcap/job/tidb/job/ghpr_build/1201/{suffix}"
+
+
+def test_build_progressive_text_url_preserves_tencent_controller() -> None:
+    assert build_progressive_text_url(
+        "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/1193/",
+        internal_base_url="http://jenkins.jenkins.svc.cluster.local",
+    ) == "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/1193/logText/progressiveText"
 
 
 def test_rewrite_build_url_host_preserves_path() -> None:

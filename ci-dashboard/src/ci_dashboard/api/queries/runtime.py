@@ -1067,7 +1067,7 @@ def get_error_l1_share(engine: Engine, filters: CommonFilters) -> dict[str, Any]
     with engine.begin() as connection:
         where_clause, params = build_common_where(filters, table_alias="b")
         builds_table = builds_table_expr(connection, filters, alias="b")
-        failure_where = failure_like_expr("b")
+        failure_where = _error_catalog_failure_expr("b")
         classification_scope = _classification_scope_expr("b")
         l1 = _effective_l1_expr("b")
         l2 = _effective_l2_expr("b")
@@ -1116,7 +1116,7 @@ def get_error_l1_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]
         where_clause, params = build_common_where(filters, table_alias="b")
         builds_table = builds_table_expr(connection, filters, alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
-        failure_where = failure_like_expr("b")
+        failure_where = _error_catalog_failure_expr("b")
         classification_scope = _classification_scope_expr("b")
         l1 = _effective_l1_expr("b")
         rows = connection.execute(
@@ -1154,7 +1154,7 @@ def get_error_l2_trends(engine: Engine, filters: CommonFilters) -> dict[str, Any
         where_clause, params = build_common_where(filters, table_alias="b")
         builds_table = builds_table_expr(connection, filters, alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
-        failure_where = failure_like_expr("b")
+        failure_where = _error_catalog_failure_expr("b")
         classification_scope = _classification_scope_expr("b")
         l1 = _effective_l1_expr("b")
         l2 = _effective_l2_expr("b")
@@ -1249,7 +1249,7 @@ def get_infra_l2_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]
         where_clause, params = build_common_where(filters, table_alias="b")
         builds_table = builds_table_expr(connection, filters, alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
-        failure_where = failure_like_expr("b")
+        failure_where = _error_catalog_failure_expr("b")
         classification_scope = _classification_scope_expr("b")
         l1 = _effective_l1_expr("b")
         l2 = _effective_l2_expr("b")
@@ -1302,7 +1302,7 @@ def get_error_top_jobs(
         where_clause, params = build_common_where(filters, table_alias="b")
         params["limit"] = limit
         builds_table = builds_table_expr(connection, filters, alias="b")
-        failure_where = failure_like_expr("b")
+        failure_where = _error_catalog_failure_expr("b")
         classification_scope = _classification_scope_expr("b")
         l1 = _effective_l1_expr("b")
         l2 = _effective_l2_expr("b")
@@ -1347,7 +1347,7 @@ def get_classification_coverage(engine: Engine, filters: CommonFilters) -> dict[
         where_clause, params = build_common_where(filters, table_alias="b")
         builds_table = builds_table_expr(connection, filters, alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
-        failure_where = failure_like_expr("b")
+        failure_where = _error_catalog_failure_expr("b")
         classification_scope = _classification_scope_expr("b")
         rows = connection.execute(
             text(
@@ -1540,7 +1540,7 @@ def get_error_builds(
         params["limit"] = limit
         params["selected_job_name"] = selected_job_name
         builds_table = builds_table_expr(connection, filters, alias="b")
-        failure_where = failure_like_expr("b")
+        failure_where = _error_catalog_failure_expr("b")
         classification_scope = _classification_scope_expr("b")
         l1 = _effective_l1_expr("b")
         l2 = _effective_l2_expr("b")
@@ -1985,6 +1985,16 @@ def _effective_l1_expr(alias: str) -> str:
 
 def _effective_l2_expr(alias: str) -> str:
     return f"COALESCE({alias}.revise_error_l2_subcategory, {alias}.error_l2_subcategory, 'UNCLASSIFIED')"
+
+
+def _error_catalog_failure_expr(alias: str) -> str:
+    # Normal superseded cancellations are not errors, even when they have no log.
+    # Use the effective pair so human revisions win without hiding other aborts.
+    return (
+        f"({failure_like_expr(alias)} AND NOT ("
+        f"{_effective_l1_expr(alias)} = 'OTHERS' "
+        f"AND {_effective_l2_expr(alias)} = 'SUPERSEDED_BY_NEWER_BUILD'))"
+    )
 
 
 def _classification_scope_expr(alias: str) -> str:

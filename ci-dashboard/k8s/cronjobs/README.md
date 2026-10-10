@@ -255,6 +255,7 @@ Useful overrides:
 - `--log-tail-bytes 262144` keeps the default tail size at 256 KiB.
 - default object layout is `YYMM/<build_id>.log`, for example `2604/1682039.log`.
 - `--gcs-prefix ci-dashboard/jenkins` is optional if we later want an extra stable prefix in front of the month folder.
+- `--jenkins-internal-base-url` applies only to the GCP `prow.tidb.net` controller. Tencent `do.pingcap.net` requests keep their original HTTPS host.
 - `--jenkins-secret <secret>` enables server-side Jenkins auth if console access is later restricted.
 - `--suspend true` is recommended until GCS write permission is confirmed.
 
@@ -271,6 +272,7 @@ Notes:
 - The CronJob should only be rolled out after the jobs image includes the V3 `archive-error-logs` command.
 - The current `ci-dashboard` GKE service account does not yet appear to have confirmed GCS write access, so bucket IAM must be granted before unsuspending the recurring CronJob.
 - The first slice is intentionally serial: no fetch concurrency flag is required for bring-up.
+- See [Tencent archive repair](../../docs/tencent-jenkins-error-archive-repair.md) for release verification and bounded historical recovery after the controller-routing fix.
 
 ## Daily Unattached Block Volume Sync
 
