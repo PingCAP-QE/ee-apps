@@ -479,6 +479,66 @@ func TestReconcileMarksStaleForeignBuildFailed(t *testing.T) {
 	}
 }
 
+func TestReconcilePrefersAPIReaderOverCachedClient(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+
+	// The informer cache still shows the previous, active phase (stale)...
+	cachedObject := &buildv1alpha1.MacBuild{
+		ObjectMeta: metav1.ObjectMeta{Name: "build-stale-cache", Namespace: "default"},
+		Status: buildv1alpha1.MacBuildStatus{
+			Phase: buildv1alpha1.PhasePublishing,
+			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
+				{Phase: buildv1alpha1.PhasePublishing, TransitionTime: metav1.NewTime(fixedNow.Add(-time.Minute))},
+			},
+			WorkerID:  stringPtr(testWorkerA),
+			StartTime: &metav1.Time{Time: fixedNow.Add(-time.Minute)},
+		},
+	}
+	// ...while the API server already reports the build as finished.
+	liveObject := cachedObject.DeepCopy()
+	liveObject.Status.Phase = buildv1alpha1.PhaseSucceeded
+
+	scheme := runtime.NewScheme()
+	if err := buildv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("add buildv1alpha1 scheme: %v", err)
+	}
+	cachedClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&buildv1alpha1.MacBuild{}).
+		WithObjects(cachedObject).
+		Build()
+	apiReader := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&buildv1alpha1.MacBuild{}).
+		WithObjects(liveObject).
+		Build()
+
+	reconciler := &MacBuildReconciler{
+		Client:     cachedClient,
+		APIReader:  apiReader,
+		Scheme:     scheme,
+		WorkerID:   testWorkerA,
+		WorkerArch: testWorkerArch,
+		now:        func() time.Time { return fixedNow },
+		runBuild: func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
+			t.Fatal("runBuild should not be called: the live phase is Succeeded")
+			return nil, nil
+		},
+	}
+
+	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: cachedObject.Name, Namespace: cachedObject.Namespace},
+	})
+	if err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+	if result != (ctrl.Result{}) {
+		t.Fatalf("expected no requeue when the live phase is terminal, got %+v", result)
+	}
+}
+
 func newTestMacBuildReconciler(
 	t *testing.T,
 	fixedNow time.Time,
