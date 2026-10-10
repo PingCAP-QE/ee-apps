@@ -14,6 +14,7 @@ from sqlalchemy import event, text
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.main import app, create_app
 from ci_dashboard.api.queries import cost as cost_queries
+from ci_dashboard.api.queries import flaky as flaky_queries
 from ci_dashboard.api.queries import pages as page_queries
 from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.api.routes import common as common_routes
@@ -125,6 +126,22 @@ def test_cost_unmatched_source_date_index_hints_only_apply_to_scoped_windows() -
     assert cost_queries._cost_attribution_index_hint(mysql_connection, all_sources) == ""
     assert cost_queries._cost_attribution_index_hint(mysql_connection, unbounded_source) == ""
     assert cost_queries._cost_attribution_index_hint(sqlite_connection, scoped) == ""
+
+
+def test_flaky_tencent_build_key_expression_preserves_current_and_legacy_hosts() -> None:
+    sqlite_connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    mysql_connection = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+
+    assert flaky_queries._normalize_case_build_key_expr(sqlite_connection, "pcr.build_url") == (
+        "normalize_build_url(pcr.build_url)"
+    )
+    mysql_key_expression = flaky_queries._normalize_case_build_key_expr(
+        mysql_connection, "pcr.build_url"
+    )
+    assert "LIKE 'https://do.pingcap.net/%' THEN 'https://do.pingcap.net'" in mysql_key_expression
+    assert flaky_queries._legacy_tencent_build_key_expr("pcr.build_key") == (
+        "REPLACE(pcr.build_key, 'https://do.pingcap.net/', 'https://prow.tidb.net/')"
+    )
 
 
 def test_cost_aggregate_sources_read_from_tiflash() -> None:
@@ -1924,6 +1941,89 @@ def test_distinct_case_counts_match_legacy_do_host_case_runs(sqlite_engine) -> N
             assert issue_weekly_rates.status_code == 200
             rows = {row["case_name"]: row for row in issue_weekly_rates.json()["rows"]}
             assert rows["TestLegacyDoHost"]["cells"] == ["100.00% (1/1)"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_flaky_case_counts_match_current_tencent_host_with_legacy_case_key(sqlite_engine) -> None:
+    current_tencent_url = "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/1201/"
+    _insert_build(
+        sqlite_engine,
+        source_prow_row_id=1201,
+        source_prow_job_id="current-tencent-build",
+        repo_full_name="pingcap/tidb",
+        target_branch="master",
+        base_ref="master",
+        job_name="ghpr_unit_test",
+        state="success",
+        cloud_phase="TENCENT",
+        is_flaky=0,
+        is_retry_loop=0,
+        failure_category=None,
+        start_time="2026-10-01 10:00:00",
+        pr_number=1201,
+        normalized_build_url=current_tencent_url,
+        build_id="1201",
+        build_system="JENKINS",
+    )
+    _insert_pr_event(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        pr_number=1201,
+        target_branch="master",
+        event_key="pr-1201-master",
+        event_time="2026-10-01 09:50:00",
+    )
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="master",
+        case_name="TestTencentCurrentUrl",
+        build_url=current_tencent_url,
+        flaky=1,
+        report_time="2026-10-01 10:10:00",
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE problem_case_runs
+                SET normalized_build_key = 'https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_unit_test/1201/'
+                WHERE case_name = 'TestTencentCurrentUrl'
+                """
+            )
+        )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=1201,
+        case_name="TestTencentCurrentUrl",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-10-01 10:20:00",
+    )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            params = {
+                "repo": "pingcap/tidb",
+                "branch": "master",
+                "start_date": "2026-10-01",
+                "end_date": "2026-10-01",
+            }
+            distinct_counts = client.get("/api/v1/flaky/distinct-case-counts", params=params)
+            assert distinct_counts.status_code == 200
+            assert distinct_counts.json()["rows"] == [{"branch": "master", "values": [1]}]
+
+            case_flow = client.get("/api/v1/flaky/case-flow-v2", params=params)
+            assert case_flow.status_code == 200
+            assert case_flow.json()["meta"]["case_count_in_scope"] == 1
+
+            issue_weekly_rates = client.get("/api/v1/flaky/issue-weekly-rates", params=params)
+            assert issue_weekly_rates.status_code == 200
+            rows = {row["case_name"]: row for row in issue_weekly_rates.json()["rows"]}
+            assert rows["TestTencentCurrentUrl"]["cells"] == ["100.00% (1/1)"]
     finally:
         app.dependency_overrides.clear()
 
