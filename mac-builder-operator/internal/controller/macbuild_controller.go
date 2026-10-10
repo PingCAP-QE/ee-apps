@@ -43,6 +43,13 @@ type MacBuildReconciler struct {
 	BuildPollInterval     time.Duration
 	ArtifactsScriptSource ArtifactsScriptSourceConfig
 
+	// APIReader reads directly from the API server (uncached). The reconciler
+	// uses it for the reads that decide whether to (re)run a build, so it never
+	// acts on a stale phase: a reconcile triggered right after a build completes
+	// could otherwise read the previous active phase from the informer cache and
+	// restart the whole build. Falls back to Client when nil (e.g. in tests).
+	APIReader client.Reader
+
 	now      func() time.Time
 	runBuild func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error)
 }
@@ -78,7 +85,7 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// get macBuild object
 	var macBuild buildv1alpha1.MacBuild
-	if err := r.Get(ctx, req.NamespacedName, &macBuild); err != nil {
+	if err := r.reader().Get(ctx, req.NamespacedName, &macBuild); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("MacBuild resource not found. Ignoring since object must be deleted.")
 			return ctrl.Result{}, nil
@@ -248,6 +255,16 @@ func (r *MacBuildReconciler) runNativeBuild(
 	return job.Run()
 }
 
+// reader returns the client used for the reads that decide whether to (re)run a
+// build. Reading through the API server (uncached) avoids restarting a build
+// from a stale phase still present in the informer cache.
+func (r *MacBuildReconciler) reader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
+}
+
 func (r *MacBuildReconciler) currentTime() time.Time {
 	if r.now != nil {
 		return r.now()
@@ -306,7 +323,7 @@ func (r *MacBuildReconciler) updateBuildStatus(
 	var updated buildv1alpha1.MacBuild
 
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if err := r.Get(ctx, key, &updated); err != nil {
+		if err := r.reader().Get(ctx, key, &updated); err != nil {
 			return err
 		}
 

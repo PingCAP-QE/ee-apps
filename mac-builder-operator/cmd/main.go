@@ -258,6 +258,7 @@ func main() {
 		setupLog.Info("Starting manager with worker identity", "workerID", workerName, "workerArch", workerArch)
 		if err := (&controller.MacBuildReconciler{
 			Client:                mgr.GetClient(),
+			APIReader:             mgr.GetAPIReader(),
 			Scheme:                mgr.GetScheme(),
 			WorkerID:              workerName,
 			WorkerArch:            workerArch,
