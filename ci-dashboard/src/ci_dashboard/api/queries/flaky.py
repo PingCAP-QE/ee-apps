@@ -282,6 +282,7 @@ def get_distinct_flaky_case_counts_by_branch(
                     {bucket_expr(connection, "b.start_time", "week")} AS week_start,
                     b.start_time,
                     NULLIF(b.normalized_build_url, '') AS normalized_build_url,
+                    {_legacy_tencent_build_key_expr("NULLIF(b.normalized_build_url, '')")} AS build_match_key,
                     UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
                   FROM ci_l1_builds b
                   JOIN target_prs p
@@ -324,6 +325,7 @@ def get_distinct_flaky_case_counts_by_branch(
                     branch,
                     case_name,
                     build_key,
+                    {_legacy_tencent_build_key_expr("build_key")} AS build_match_key,
                     cloud_phase,
                     report_time,
                     MAX(flaky_flag) AS flaky_flag
@@ -336,7 +338,7 @@ def get_distinct_flaky_case_counts_by_branch(
                   COUNT(DISTINCT cr.case_name) AS distinct_flaky_case_count
                 FROM build_scope bs
                 JOIN case_runs cr
-                  ON cr.build_key = bs.normalized_build_url
+                  ON cr.build_match_key = bs.build_match_key
                  AND cr.branch = bs.branch
                  AND cr.cloud_phase = bs.cloud_phase
                  AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
@@ -1087,6 +1089,7 @@ def _fetch_issue_weekly_rate_rows(
                 {bucket_expr(connection, "b.start_time", "week")} AS week_start,
                 b.start_time,
                 NULLIF(b.normalized_build_url, '') AS normalized_build_url,
+                {_legacy_tencent_build_key_expr("NULLIF(b.normalized_build_url, '')")} AS build_match_key,
                 b.job_name,
                 UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
               FROM ci_l1_builds b
@@ -1136,6 +1139,7 @@ def _fetch_issue_weekly_rate_rows(
                 branch,
                 case_name,
                 build_key,
+                {_legacy_tencent_build_key_expr("build_key")} AS build_match_key,
                 cloud_phase,
                 report_time,
                 MAX(flaky_flag) AS flaky_flag
@@ -1153,7 +1157,7 @@ def _fetch_issue_weekly_rate_rows(
                 ON cr.case_name = ic.case_name
                AND cr.branch = ic.issue_branch
               JOIN build_scope bs
-                ON bs.normalized_build_url = cr.build_key
+                ON bs.build_match_key = cr.build_match_key
                AND bs.branch = ic.issue_branch
                AND bs.cloud_phase = cr.cloud_phase
                AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
@@ -1170,7 +1174,7 @@ def _fetch_issue_weekly_rate_rows(
                 ON cr.case_name = ic.case_name
                AND cr.branch = ic.issue_branch
               JOIN build_scope bs
-                ON bs.normalized_build_url = cr.build_key
+                ON bs.build_match_key = cr.build_match_key
                AND bs.branch = ic.issue_branch
                AND bs.cloud_phase = cr.cloud_phase
                AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
@@ -1261,6 +1265,7 @@ def _fetch_weekly_flaky_case_presence(
                 {bucket_expr(connection, "b.start_time", "week")} AS week_start,
                 b.start_time,
                 NULLIF(b.normalized_build_url, '') AS normalized_build_url,
+                {_legacy_tencent_build_key_expr("NULLIF(b.normalized_build_url, '')")} AS build_match_key,
                 UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
               FROM ci_l1_builds b
               JOIN target_prs p
@@ -1303,6 +1308,7 @@ def _fetch_weekly_flaky_case_presence(
                 branch,
                 case_name,
                 build_key,
+                {_legacy_tencent_build_key_expr("build_key")} AS build_match_key,
                 cloud_phase,
                 report_time,
                 MAX(flaky_flag) AS flaky_flag
@@ -1315,7 +1321,7 @@ def _fetch_weekly_flaky_case_presence(
               cr.case_name
             FROM build_scope bs
             JOIN case_runs cr
-              ON cr.build_key = bs.normalized_build_url
+              ON cr.build_match_key = bs.build_match_key
              AND cr.branch = bs.branch
              AND cr.cloud_phase = bs.cloud_phase
              AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
@@ -1684,10 +1690,7 @@ def _optional_clause(value: object | None, clause: str) -> str:
 
 def _normalize_case_build_key_expr(connection: Connection, column_name: str) -> str:
     if connection.dialect.name == "sqlite":
-        return (
-            f"REPLACE(normalize_build_url({column_name}), "
-            "'https://do.pingcap.net/', 'https://prow.tidb.net/')"
-        )
+        return f"normalize_build_url({column_name})"
 
     trimmed = f"TRIM(COALESCE({column_name}, ''))"
     without_redirect = f"REPLACE({trimmed}, '/display/redirect', '')"
@@ -1695,7 +1698,7 @@ def _normalize_case_build_key_expr(connection: Connection, column_name: str) -> 
         "CASE "
         f"WHEN {without_redirect} = '' THEN NULL "
         f"WHEN {without_redirect} LIKE 'https://prow.tidb.net/%' THEN 'https://prow.tidb.net' "
-        f"WHEN {without_redirect} LIKE 'https://do.pingcap.net/%' THEN 'https://prow.tidb.net' "
+        f"WHEN {without_redirect} LIKE 'https://do.pingcap.net/%' THEN 'https://do.pingcap.net' "
         f"WHEN {without_redirect} REGEXP '^https?://jenkins\\\\.jenkins\\\\.svc\\\\.cluster\\\\.local(:[0-9]+)?/' THEN 'https://prow.tidb.net' "
         f"WHEN {without_redirect} NOT REGEXP '^https?://' THEN 'https://prow.tidb.net' "
         "ELSE NULL "
@@ -1734,6 +1737,10 @@ def _normalize_case_build_key_expr(connection: Connection, column_name: str) -> 
         f"ELSE CONCAT({canonical_host}, {canonical_path}, '/') "
         "END"
     )
+
+
+def _legacy_tencent_build_key_expr(column_name: str) -> str:
+    return f"REPLACE({column_name}, 'https://do.pingcap.net/', 'https://prow.tidb.net/')"
 
 
 def _case_cloud_phase_expr(column_name: str) -> str:
