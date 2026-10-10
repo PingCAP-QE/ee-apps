@@ -116,17 +116,34 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		}
 
 		logger.Info("Phase: Pending. Claiming and setting to Preparing.")
+		// The claim must be exclusive: several same-arch workers reconcile the
+		// same Pending MacBuild concurrently, and an unconditional status update
+		// would let more than one of them transition it to Preparing and then run
+		// the build (each seeing itself as the owner). Only claim when the
+		// freshly-read phase is still Pending — the first writer wins, the rest
+		// back off without touching the status.
+		claimed := false
 		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+			claimed = false
+			if status.Phase != buildv1alpha1.PhasePending {
+				// Another worker claimed it first; leave the status untouched.
+				return
+			}
 			status.SetPhase(buildv1alpha1.PhasePreparing, "Build claimed by worker and preparing workspace.", now)
 			status.WorkerID = &r.WorkerID
 			status.WorkerArch = optionalString(r.WorkerArch)
 			status.StartTime = &now
 			status.CompletionTime = nil
 			status.Message = nil
+			claimed = true
 		})
 		if err != nil {
 			logger.Error(err, "Failed to update status to Preparing")
 			return ctrl.Result{}, err
+		}
+		if !claimed {
+			logger.Info("Pending build was already claimed by another worker. Leaving it.")
+			return ctrl.Result{}, nil
 		}
 		macBuild = *updatedBuild
 
