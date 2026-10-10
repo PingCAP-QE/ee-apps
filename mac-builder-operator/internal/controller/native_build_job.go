@@ -468,11 +468,14 @@ func (j *nativeBuildJob) provisionToolchain() error {
 	return nil
 }
 
-// miseCommand builds a `mise ...` command bound to this build's mise.toml.
+// miseCommand builds a `mise ...` command. The per-build mise.toml lives at
+// <workspace>/mise.toml, an ancestor of the dirs commands run in, so mise
+// auto-discovers it and merges it with the worker's *global* mise config. This
+// keeps both the per-build toolchain (e.g. go) and the worker-global tools
+// (yq/gomplate/oras/deno) available. Setting MISE_CONFIG_FILE would replace the
+// config set and hide the global tools.
 func (j *nativeBuildJob) miseCommand(args ...string) *exec.Cmd {
-	cmd := exec.Command("mise", args...)
-	cmd.Env = append(os.Environ(), "MISE_CONFIG_FILE="+j.miseConfigPath)
-	return cmd
+	return exec.Command("mise", args...)
 }
 
 // toolchainCommand runs name with args. When a per-build toolchain was
