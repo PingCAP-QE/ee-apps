@@ -13,6 +13,7 @@ const incomingCostUrl = "/cost?start_date=2026-08-10&end_date=2026-08-10&cost_so
 let App;
 let CostPage;
 let FlakyPage;
+let RuntimeInsightsPage;
 let CostFilterControls;
 let getDashboardVersion;
 let LabeledDonutShareChart;
@@ -30,6 +31,7 @@ before(async () => {
   ({ default: App } = await server.ssrLoadModule("/src/App.jsx"));
   ({ default: CostPage } = await server.ssrLoadModule("/src/pages/CostPage.jsx"));
   ({ default: FlakyPage } = await server.ssrLoadModule("/src/pages/FlakyPage.jsx"));
+  ({ default: RuntimeInsightsPage } = await server.ssrLoadModule("/src/pages/RuntimeInsightsPage.jsx"));
   ({ default: CostFilterControls } = await server.ssrLoadModule("/src/components/CostFilterControls.jsx"));
   ({ getDashboardVersion } = await server.ssrLoadModule("/src/components/layout.jsx"));
   ({ LabeledDonutShareChart, IssueWeeklyRateTable } = await server.ssrLoadModule("/src/components/charts.jsx"));
@@ -97,6 +99,25 @@ test("dashboard version uses the runtime meta value and falls back locally", () 
     assert.equal(getDashboardVersion(), "local");
   } finally {
     globalThis.document = originalDocument;
+  }
+});
+
+test("runtime catalog explains limited coverage and normal cancellation exclusion", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(RuntimeInsightsPage, { filters: {} }));
+      await Promise.resolve();
+    });
+    const content = JSON.stringify(renderer.toJSON());
+    assert.match(content, /scoped to builds with logs or labels/);
+    assert.match(content, /normal superseded cancellations are excluded/);
+  } finally {
+    renderer?.unmount();
+    globalThis.fetch = originalFetch;
   }
 });
 

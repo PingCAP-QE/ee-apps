@@ -205,7 +205,8 @@ def build_api_url(
     internal_base_url: str | None = None,
 ) -> str:
     normalized_build_url = canonicalize_build_url(build_url)
-    if internal_base_url:
+    # This override belongs to the GCP controller, not Tencent or other Jenkins instances.
+    if internal_base_url and urlsplit(normalized_build_url).hostname == "prow.tidb.net":
         normalized_build_url = rewrite_build_url_host(
             normalized_build_url,
             internal_base_url=internal_base_url,

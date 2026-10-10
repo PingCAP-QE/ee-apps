@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
+import httpx
+import pytest
 from sqlalchemy import text
 
 from ci_dashboard.common.config import (
@@ -15,6 +19,7 @@ from ci_dashboard.jobs.archive_error_logs import (
     redact_console_log,
     run_archive_error_logs,
 )
+from ci_dashboard.jobs.jenkins_client import JenkinsClient
 
 
 def _settings() -> Settings:
@@ -184,6 +189,60 @@ def test_run_archive_error_logs_archives_failed_jenkins_build(sqlite_engine) -> 
         ).mappings().one()
 
     assert row["log_gcs_uri"] == "gcs://ci-dashboard-test/2604/101.log"
+
+
+@pytest.mark.parametrize("job,number", [("ghpr_build", 1201), ("ghpr_unit_test", 1193)])
+def test_run_archive_error_logs_uses_tencent_controller_with_gcp_internal_base(
+    sqlite_engine, job: str, number: int,
+) -> None:
+    _insert_build(sqlite_engine, build_id=number)
+    build_url = f"https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/{job}/{number}/"
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text("UPDATE ci_l1_builds SET normalized_build_url = :url, job_name = :job, cloud_phase = 'TENCENT' WHERE id = :id"),
+            {"url": build_url, "job": f"pingcap/tidb/{job}", "id": number},
+        )
+
+    settings = _settings()
+    settings = replace(
+        settings,
+        jenkins=replace(settings.jenkins, internal_base_url="http://jenkins.jenkins.svc.cluster.local"),
+    )
+    seen_urls: list[httpx.URL] = []
+    console = "token=secret\nContainer [golang] terminated [OOMKilled]\n"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_urls.append(request.url)
+        if request.url.host != "do.pingcap.net":
+            return httpx.Response(404)
+        if request.url.path.endswith("/logText/progressiveText"):
+            start = int(request.url.params["start"])
+            return httpx.Response(
+                200,
+                text=console[start:],
+                headers={"X-Text-Size": str(len(console)), "X-More-Data": "false"},
+            )
+        if request.url.path.endswith("/wfapi/describe"):
+            return httpx.Response(200, json={"stages": []})
+        return httpx.Response(404)
+
+    uploader = _FakeUploader()
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        summary = run_archive_error_logs(
+            sqlite_engine, settings, build_id=number,
+            fetcher=JenkinsClient(settings.jenkins, client=http_client), uploader=uploader,
+        )
+
+    assert summary.builds_archived == 1
+    assert summary.builds_failed == 0
+    assert len(seen_urls) == 3  # Progressive probe, tail, and failed-stage discovery.
+    assert all(url.host == "do.pingcap.net" for url in seen_urls)
+    assert all(url.path.startswith(f"/jenkins/job/pingcap/job/tidb/job/{job}/{number}/") for url in seen_urls)
+    assert uploader.calls[0][2] == "token=[REDACTED]\nContainer [golang] terminated [OOMKilled]\n"
+    with sqlite_engine.begin() as connection:
+        assert connection.scalar(text("SELECT log_gcs_uri FROM ci_l1_builds WHERE id = :id"), {"id": number}) == (
+            f"gcs://ci-dashboard-test/2604/{number}.log"
+        )
 
 
 def test_run_archive_error_logs_appends_failed_pipeline_node_logs(sqlite_engine) -> None:

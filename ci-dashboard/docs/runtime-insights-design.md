@@ -95,6 +95,14 @@ If a human revision exists, it wins. Otherwise the machine classification is
 used. Nulls are shown as `OTHERS / UNCLASSIFIED` so classification coverage is
 visible instead of silently disappearing.
 
+Confirmed effective `OTHERS / SUPERSEDED_BY_NEWER_BUILD` outcomes are normal
+cancellations, not errors. Exclude them consistently from Error Catalog shares,
+L1/L2 trends, rankings, build drilldowns, and classification coverage denominators.
+A human revision to another category keeps the build in the error population;
+other aborted outcomes (including INFRA and unclassified aborts) are not excluded.
+Raw build states and stored taxonomy classifications remain unchanged. This is
+an Error Catalog rule, not a change to the global build-health state definitions.
+
 ### 3.4 Experimental Tab To Formal Tab Promotion
 
 The `Runtime Insights` tab is allowed to contain exploratory charts. A chart can
@@ -763,6 +771,9 @@ Backend tests:
 - `first_created_at` is not used as pod creation time
 - top-job rankings enforce the minimum sample count
 - effective category prefers revised fields over machine fields
+- effective superseded cancellations are excluded consistently from all error
+  catalog sections and coverage, without counting them as missing-log failures
+- other aborted outcomes and superseded builds revised to INFRA remain visible
 - null categories become `OTHERS / UNCLASSIFIED`
 - SQLite time-difference helper returns positive seconds with the same argument
   order as TiDB

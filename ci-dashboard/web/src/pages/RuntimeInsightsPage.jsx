@@ -405,7 +405,7 @@ export default function RuntimeInsightsPage({ filters }) {
 
         <Panel
           title="Jenkins Error Catalog Trend"
-          subtitle={`Showing ${selectedL1} count by time bucket, with its share of the total bucket on the right axis.`}
+          subtitle={`Showing ${selectedL1} count by time bucket and share on the right axis, scoped to builds with logs or labels; normal superseded cancellations are excluded.`}
           loading={page.loading}
           error={page.error}
         >

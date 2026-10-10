@@ -48,7 +48,7 @@ Optional:
   --db-secret NAME                Secret containing TIDB_* or CI_DASHBOARD_DB_URL. Default: ci-dashboard-db
   --gcs-bucket NAME               GCS bucket for archived logs. Required.
   --gcs-prefix PATH               Optional GCS object prefix. Default: empty.
-  --jenkins-internal-base-url URL Internal Jenkins base URL. Required.
+  --jenkins-internal-base-url URL GCP (prow.tidb.net) internal Jenkins base URL. Required.
   --build-limit N                 Max builds archived per run. Default: 100
   --log-tail-bytes N              Tail byte cap. Default: 262144
   --log-level LEVEL               CI_DASHBOARD_LOG_LEVEL override. Default: INFO

@@ -84,6 +84,13 @@ Notes:
   offset commits.
 - `backfill-jenkins-timings --lookback-days 30` provides a one-off historical
   repair command; it is intentionally not deployed as a recurring CronJob.
+- `CI_DASHBOARD_JENKINS_INTERNAL_BASE_URL` overrides only `prow.tidb.net` (GCP)
+  Jenkins requests. `do.pingcap.net` (Tencent) and other controllers keep their
+  original host for console logs, pipeline-node APIs, and timings.
+- Error Catalog excludes effective `OTHERS / SUPERSEDED_BY_NEWER_BUILD`
+  cancellations, including from its trends, rankings, drilldowns, and coverage.
+  Raw build states and taxonomy records remain unchanged. Historical Tencent
+  archive recovery is described in [the repair runbook](docs/tencent-jenkins-error-archive-repair.md).
 
 ## Local Frontend Against TiDB
 

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from datetime import date
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.main import app
 from ci_dashboard.api.queries import runtime as runtime_queries
+from ci_dashboard.api.queries.base import CommonFilters
 
 DEFAULT_COMPLETION_TIME = object()
 
@@ -250,6 +254,177 @@ def test_error_classification_scope_skips_unclassified_no_log_builds(sqlite_engi
     l1_items = {item["name"]: item for item in body["error_l1_share"]["items"]}
     assert l1_items["INFRA"]["value"] == 1
     assert l1_items["OTHERS"]["value"] == 2
+
+
+@pytest.mark.parametrize(
+    ("granularity", "bucket"),
+    [("day", "2026-04-22"), ("week", "2026-04-20"), ("month", "2026-04-01")],
+)
+def test_error_catalog_excludes_only_effective_superseded_cancellations(
+    sqlite_engine, granularity, bucket,
+) -> None:
+    superseded = {
+        "error_l1_category": "OTHERS",
+        "error_l2_subcategory": "SUPERSEDED_BY_NEWER_BUILD",
+    }
+    cases = [
+        # Both archived and metadata-only normal cancellations must disappear.
+        {**superseded, "log_gcs_uri": "gcs://test/superseded.log"},
+        superseded,
+        {"error_l1_category": "INFRA", "error_l2_subcategory": "K8S",
+         "revise_error_l1_category": "OTHERS",
+         "revise_error_l2_subcategory": "SUPERSEDED_BY_NEWER_BUILD",
+         "log_gcs_uri": "gcs://test/revised.log"},
+        {"revise_error_l1_category": "OTHERS",
+         "revise_error_l2_subcategory": "SUPERSEDED_BY_NEWER_BUILD"},
+        # Either revised category can change the effective pair; human review wins.
+        {**superseded, "revise_error_l2_subcategory": "CODE_CONFLICT"},
+        {**superseded, "revise_error_l1_category": "INFRA"},
+        {**superseded, "revise_error_l1_category": "INFRA",
+         "revise_error_l2_subcategory": "OOMKILLED"},
+        {"error_l1_category": "INFRA", "error_l2_subcategory": "K8S"},
+        {"log_gcs_uri": "gcs://test/unknown-aborted.log"},
+        {},
+        {"build_system": "PROW_NATIVE"},
+        {"error_l1_category": "OTHERS", "error_l2_subcategory": "CODE_CONFLICT"},
+        {"error_l1_category": "OTHERS", "error_l2_subcategory": "ABORT_BY_ADMIN"},
+    ]
+    job_name = "pingcap/tidb/catalog-job"
+    for build_id, categories in enumerate(cases, start=801):
+        _insert_build(
+            sqlite_engine,
+            build_id=build_id,
+            source_prow_job_id=f"catalog-{build_id}",
+            job_name=job_name,
+            state="aborted",
+            start_time="2026-04-22 10:00:00",
+            normalized_build_url=f"https://prow.tidb.net/jenkins/job/catalog-job/{build_id}/",
+            **categories,
+        )
+
+    params = {
+        "repo": "pingcap/tidb", "branch": "master", "cloud_phase": "GCP",
+        "start_date": "2026-04-20", "end_date": "2026-04-26",
+        "granularity": granularity,
+    }
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/pages/runtime-insights", params=params)
+            top_jobs = client.get("/api/v1/pages/runtime-error-top-jobs", params=params)
+            builds = client.get(
+                "/api/v1/pages/runtime-error-builds",
+                params={**params, "selected_job_name": job_name},
+            )
+            excluded_filter = {
+                **params, "error_l1_category": "OTHERS",
+                "error_l2_subcategory": "SUPERSEDED_BY_NEWER_BUILD",
+            }
+            excluded_jobs = client.get(
+                "/api/v1/pages/runtime-error-top-jobs", params=excluded_filter,
+            )
+            excluded_builds = client.get(
+                "/api/v1/pages/runtime-error-builds",
+                params={**excluded_filter, "selected_job_name": job_name},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    for result in (response, top_jobs, builds, excluded_jobs, excluded_builds):
+        assert result.status_code == 200
+    body = response.json()
+    # The catalog-only fix must not hide raw aborted builds from runtime metrics.
+    assert body["runtime_summary"]["total_build_count"] == 13
+    share = body["error_l1_share"]
+    assert {item["name"]: (item["value"], item["share_pct"]) for item in share["items"]} == {
+        "OTHERS": (4, 57.1), "INFRA": (3, 42.9),
+    }
+    assert {
+        l1: {item["name"]: (item["value"], item["share_pct"]) for item in items}
+        for l1, items in share["l2_details"].items()
+    } == {
+        "OTHERS": {"CODE_CONFLICT": (2, 50.0), "ABORT_BY_ADMIN": (1, 25.0),
+                   "UNCLASSIFIED": (1, 25.0)},
+        "INFRA": {"SUPERSEDED_BY_NEWER_BUILD": (1, 33.3), "OOMKILLED": (1, 33.3),
+                  "K8S": (1, 33.3)},
+    }
+    assert {series["key"]: series["points"] for series in body["error_l1_trend"]["series"]} == {
+        "INFRA": [[bucket, 3]], "OTHERS": [[bucket, 4]],
+        "BUILD": [[bucket, 0]], "UT": [[bucket, 0]], "IT": [[bucket, 0]],
+    }
+    assert {
+        l1: {series["key"]: series["points"] for series in item["series"]}
+        for l1, item in body["error_l2_trends"]["items"].items()
+    } == {
+        "OTHERS": {"CODE_CONFLICT": [[bucket, 2]], "ABORT_BY_ADMIN": [[bucket, 1]],
+                   "UNCLASSIFIED": [[bucket, 1]]},
+        "INFRA": {"SUPERSEDED_BY_NEWER_BUILD": [[bucket, 1]],
+                  "OOMKILLED": [[bucket, 1]], "K8S": [[bucket, 1]]},
+    }
+    coverage = body["classification_coverage"]
+    assert coverage["summary"] == {
+        "total_failure_like_count": 9, "classification_scope_count": 7,
+        "skipped_no_log_count": 2, "classified_count": 6, "unclassified_count": 1,
+        "human_revised_count": 2, "specific_classified_count": 3,
+        "machine_specific_count": 1, "machine_others_count": 3,
+        "pending_analyze_count": 1, "missing_log_count": 2,
+        "no_jenkins_log_count": 1, "missing_jenkins_log_count": 1,
+    }
+    assert {
+        series["key"]: series["points"]
+        for series in coverage["classified_vs_unclassified_trend"]["series"]
+    } == {"classified_count": [[bucket, 6]], "unclassified_count": [[bucket, 1]]}
+    assert coverage["machine_vs_revised"]["groups"][0]["values"] == [4, 2]
+    assert [(item["name"], item["value"], item["infra_count"]) for item in top_jobs.json()["items"]] == [
+        (job_name, 7, 3),
+    ]
+    assert {item["build_number"] for item in builds.json()["items"]} == {
+        "805", "806", "807", "808", "809", "812", "813",
+    }
+    assert excluded_jobs.json()["items"] == []
+    assert excluded_builds.json()["items"] == []
+
+    filters = CommonFilters(
+        repo="pingcap/tidb", branch="master", cloud_phase="GCP",
+        start_date=date(2026, 4, 20), end_date=date(2026, 4, 26), granularity=granularity,
+    )
+    assert runtime_queries.get_infra_l2_share(sqlite_engine, filters)["items"] == share["l2_details"]["INFRA"]
+    infra_trend = runtime_queries.get_infra_l2_trend(sqlite_engine, filters)
+    assert {series["key"]: series["points"] for series in infra_trend["series"] if series["key"] in {"K8S", "OOMKILLED"}} == {
+        "K8S": [[bucket, 1]], "OOMKILLED": [[bucket, 1]],
+    }
+
+
+def test_cancellation_only_catalog_has_no_errors_or_missing_logs(sqlite_engine) -> None:
+    # L2-only metadata is outside classification scope, but its effective pair
+    # still confirms a normal cancellation: it must not become a missing log.
+    cases = [
+        {"error_l1_category": "OTHERS",
+         "error_l2_subcategory": "SUPERSEDED_BY_NEWER_BUILD"},
+        {"error_l2_subcategory": "SUPERSEDED_BY_NEWER_BUILD"},
+        {"revise_error_l2_subcategory": "SUPERSEDED_BY_NEWER_BUILD"},
+    ]
+    for build_id, categories in enumerate(cases, start=901):
+        _insert_build(
+            sqlite_engine,
+            build_id=build_id,
+            source_prow_job_id=f"cancelled-{build_id}",
+            job_name="cancelled-job",
+            state="aborted",
+            start_time="2026-04-22 10:00:00",
+            normalized_build_url=f"https://prow.tidb.net/jenkins/job/cancelled-job/{build_id}/",
+            **categories,
+        )
+    filters = CommonFilters()
+    assert runtime_queries.get_error_l1_share(sqlite_engine, filters)["items"] == []
+    assert runtime_queries.get_error_l2_trends(sqlite_engine, filters)["items"] == {}
+    assert all(not series["points"] for series in runtime_queries.get_error_l1_trend(sqlite_engine, filters)["series"])
+    assert runtime_queries.get_error_top_jobs(sqlite_engine, filters)["items"] == []
+    assert runtime_queries.get_error_builds(sqlite_engine, filters, job_name="cancelled-job")["items"] == []
+    coverage = runtime_queries.get_classification_coverage(sqlite_engine, filters)
+    assert all(value == 0 for value in coverage["summary"].values())
+    assert all(not series["points"] for series in coverage["classified_vs_unclassified_trend"]["series"])
+    assert coverage["machine_vs_revised"]["groups"][0]["values"] == [0, 0]
 
 
 def test_runtime_error_top_jobs_supports_l1_l2_drilldown_and_job_urls(sqlite_engine) -> None:
