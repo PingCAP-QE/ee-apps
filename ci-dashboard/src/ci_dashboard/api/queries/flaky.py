@@ -1142,12 +1142,12 @@ def _fetch_issue_weekly_rate_rows(
               FROM case_runs_raw
               GROUP BY branch, case_name, build_key, cloud_phase, report_time
             ),
+            -- Cloud-guard job discovery and numerators to avoid legacy cross-cloud key collisions.
             case_job_scope AS (
               SELECT
                 ic.case_name,
                 ic.issue_branch,
-                bs.job_name,
-                bs.cloud_phase
+                bs.job_name
               FROM issue_cases ic
               JOIN case_runs cr
                 ON cr.case_name = ic.case_name
@@ -1157,7 +1157,7 @@ def _fetch_issue_weekly_rate_rows(
                AND bs.branch = ic.issue_branch
                AND bs.cloud_phase = cr.cloud_phase
                AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
-              GROUP BY ic.case_name, ic.issue_branch, bs.job_name, bs.cloud_phase
+              GROUP BY ic.case_name, ic.issue_branch, bs.job_name
             ),
             case_weekly_flaky AS (
               SELECT
@@ -1176,6 +1176,7 @@ def _fetch_issue_weekly_rate_rows(
                AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
               GROUP BY ic.case_name, ic.issue_branch, bs.week_start
             ),
+            -- Count job runs across clouds, still subject to build_scope's explicit cloud filter.
             case_weekly_denominator AS (
               SELECT
                 cjs.case_name,
@@ -1186,7 +1187,6 @@ def _fetch_issue_weekly_rate_rows(
               JOIN build_scope bs
                 ON bs.branch = cjs.issue_branch
                AND bs.job_name = cjs.job_name
-               AND bs.cloud_phase = cjs.cloud_phase
               GROUP BY cjs.case_name, cjs.issue_branch, bs.week_start
             ),
             case_weekly_keys AS (
