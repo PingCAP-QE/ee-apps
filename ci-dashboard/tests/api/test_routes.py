@@ -379,15 +379,19 @@ def _insert_problem_case_run(
     build_url: str,
     flaky: int,
     report_time: str,
+    normalized_build_key: str | None = None,
+    cloud_phase: str | None = None,
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
             text(
                 """
                 INSERT INTO problem_case_runs (
-                  repo, branch, suite_name, case_name, flaky, timecost_ms, report_time, build_url, reason
+                  repo, branch, suite_name, case_name, flaky, timecost_ms, report_time, build_url,
+                  normalized_build_key, cloud_phase, reason
                 ) VALUES (
-                  :repo, :branch, 'unit', :case_name, :flaky, 10, :report_time, :build_url, 'flake'
+                  :repo, :branch, 'unit', :case_name, :flaky, 10, :report_time, :build_url,
+                  :normalized_build_key, :cloud_phase, 'flake'
                 )
                 """
             ),
@@ -396,6 +400,8 @@ def _insert_problem_case_run(
                 "branch": branch,
                 "case_name": case_name,
                 "build_url": build_url,
+                "normalized_build_key": normalized_build_key,
+                "cloud_phase": cloud_phase,
                 "flaky": flaky,
                 "report_time": report_time,
             },
@@ -1483,13 +1489,13 @@ def test_flaky_trend_and_composition(api_client: TestClient) -> None:
         "TestCaseAlpha",
         "TestCaseBeta",
     ]
-    assert issue_weekly_rates_body["rows"][0]["cells"] == ["100.00% (1/1)"]
+    assert issue_weekly_rates_body["rows"][0]["cells"] == ["50.00% (1/2)"]
     assert issue_weekly_rates_body["rows"][1]["cells"] == ["100.00% (1/1)"]
     assert issue_weekly_rates_body["trend"]["series"] == [
         {
             "key": "issue_filtered_flaky_rate_pct",
             "type": "line",
-            "points": [["2026-04-06", 100.0]],
+            "points": [["2026-04-06", 66.67]],
         }
     ]
 
@@ -1685,7 +1691,146 @@ def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: Tes
     assert summary_by_week["2026-03-30"]["net_case_count"] == -1
 
 
-def test_case_tables_exclude_cross_cloud_and_stale_build_key_collisions(sqlite_engine) -> None:
+@pytest.mark.parametrize("tencent_flaky_run", [False, True])
+def test_issue_weekly_rates_follow_job_across_cloud_migration(
+    sqlite_engine, tencent_flaky_run: bool
+) -> None:
+    job_name = "pingcap/tidb/pull_unit_test_ddlv1"
+    builds = [
+        (
+            9801,
+            "GCP",
+            "2026-09-07 09:00:00",
+            "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_ddlv1/9801/",
+        ),
+        (
+            9802,
+            "TENCENT",
+            "2026-09-07 12:00:00",
+            "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_ddlv1/9802/",
+        ),
+        (
+            9803,
+            "TENCENT",
+            "2026-09-14 09:00:00",
+            "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/pull_unit_test_ddlv1/9803/",
+        ),
+    ]
+    for build_id, cloud_phase, start_time, normalized_build_url in builds:
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=build_id,
+            source_prow_job_id=f"cloud-migration-{build_id}",
+            repo_full_name="pingcap/tidb",
+            target_branch="master",
+            base_ref="master",
+            job_name=job_name,
+            state="success",
+            cloud_phase=cloud_phase,
+            is_flaky=0,
+            is_retry_loop=0,
+            failure_category=None,
+            start_time=start_time,
+            pr_number=build_id,
+            normalized_build_url=normalized_build_url,
+        )
+        _insert_pr_event(
+            sqlite_engine,
+            repo="pingcap/tidb",
+            pr_number=build_id,
+            target_branch="master",
+            event_key=f"cloud-migration-pr-{build_id}",
+            event_time=start_time,
+        )
+
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="master",
+        case_name="TestCloudMigration",
+        build_url=builds[0][3],
+        flaky=1,
+        report_time="2026-09-07 09:10:00",
+    )
+    if tencent_flaky_run:
+        _insert_problem_case_run(
+            sqlite_engine,
+            repo="pingcap/tidb",
+            branch="master",
+            case_name="TestCloudMigration",
+            build_url=builds[2][3],
+            normalized_build_key=builds[2][3],
+            cloud_phase="TENCENT",
+            flaky=1,
+            report_time="2026-09-14 09:10:00",
+        )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=70000,
+        case_name="TestCloudMigration",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-09-01 08:00:00",
+    )
+
+    app.dependency_overrides[get_engine] = lambda: sqlite_engine
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/api/v1/flaky/issue-weekly-rates",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "start_date": "2026-09-07",
+                    "end_date": "2026-09-20",
+                },
+            )
+            assert response.status_code == 200
+            row = response.json()["rows"][0]
+            assert row["cells"] == [
+                "50.00% (1/2)",
+                "100.00% (1/1)" if tencent_flaky_run else "0.00% (0/1)",
+            ]
+
+            gcp_response = client.get(
+                "/api/v1/flaky/issue-weekly-rates",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "cloud_phase": "GCP",
+                    "start_date": "2026-09-07",
+                    "end_date": "2026-09-20",
+                },
+            )
+            assert gcp_response.status_code == 200
+            assert gcp_response.json()["rows"][0]["cells"] == [
+                "100.00% (1/1)",
+                "0.00% (0/0)",
+            ]
+
+            tencent_response = client.get(
+                "/api/v1/flaky/issue-weekly-rates",
+                params={
+                    "repo": "pingcap/tidb",
+                    "branch": "master",
+                    "cloud_phase": "TENCENT",
+                    "start_date": "2026-09-07",
+                    "end_date": "2026-09-20",
+                },
+            )
+            assert tencent_response.status_code == 200
+            # Job discovery requires an attributable case run in the filtered cloud.
+            assert tencent_response.json()["rows"][0]["cells"] == (
+                ["0.00% (0/1)", "100.00% (1/1)"]
+                if tencent_flaky_run
+                else ["0.00% (0/0)", "0.00% (0/0)"]
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_case_tables_exclude_cross_cloud_and_stale_case_run_attribution(sqlite_engine) -> None:
     _insert_build(
         sqlite_engine,
         source_prow_row_id=900,
@@ -1854,14 +1999,15 @@ def test_case_tables_exclude_cross_cloud_and_stale_build_key_collisions(sqlite_e
                 row["case_name"]: row
                 for row in issue_weekly_rates.json()["rows"]
             }
-            assert rows["TestLive"]["cells"] == ["50.00% (1/2)"]
+            # Attribution excludes ghost runs; the denominator spans all three job builds/clouds.
+            assert rows["TestLive"]["cells"] == ["33.33% (1/3)"]
             assert rows["TestGhostCloud"]["cells"] == ["0.00% (0/0)"]
             assert rows["TestGhostTime"]["cells"] == ["0.00% (0/0)"]
             assert issue_weekly_rates.json()["trend"]["series"] == [
                 {
                     "key": "issue_filtered_flaky_rate_pct",
                     "type": "line",
-                    "points": [["2026-04-06", 50.0]],
+                    "points": [["2026-04-06", 33.33]],
                 }
             ]
     finally:
@@ -2538,7 +2684,7 @@ def test_page_routes(api_client: TestClient) -> None:
         {
             "key": "issue_filtered_flaky_rate_pct",
             "type": "line",
-            "points": [["2026-04-06", 100.0]],
+            "points": [["2026-04-06", 66.67]],
         }
     ]
     assert flaky_body["bucketed_flaky_rate"]["series"] == [
@@ -2559,7 +2705,7 @@ def test_page_routes(api_client: TestClient) -> None:
     assert flaky_body["bucketed_flaky_rate"]["meta"]["requested_granularity"] == "day"
     assert flaky_body["bucketed_flaky_rate"]["meta"]["effective_granularity"] == "week"
     assert flaky_body["issue_case_weekly_rates"]["rows"][0]["display_name"] == "[master] TestCaseAlpha"
-    assert flaky_body["issue_case_weekly_rates"]["rows"][0]["cells"] == ["100.00% (1/1)"]
+    assert flaky_body["issue_case_weekly_rates"]["rows"][0]["cells"] == ["50.00% (1/2)"]
     assert flaky_body["issue_case_weekly_rates"]["rows"][1]["cells"] == ["100.00% (1/1)"]
     failure_series = {
         item["key"]: item
