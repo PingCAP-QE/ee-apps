@@ -16,6 +16,7 @@ let FlakyPage;
 let RuntimeInsightsPage;
 let CostFilterControls;
 let getDashboardVersion;
+let DashboardLayout;
 let LabeledDonutShareChart;
 let IssueWeeklyRateTable;
 let WeeklyCostPage;
@@ -33,7 +34,7 @@ before(async () => {
   ({ default: FlakyPage } = await server.ssrLoadModule("/src/pages/FlakyPage.jsx"));
   ({ default: RuntimeInsightsPage } = await server.ssrLoadModule("/src/pages/RuntimeInsightsPage.jsx"));
   ({ default: CostFilterControls } = await server.ssrLoadModule("/src/components/CostFilterControls.jsx"));
-  ({ getDashboardVersion } = await server.ssrLoadModule("/src/components/layout.jsx"));
+  ({ getDashboardVersion, DashboardLayout } = await server.ssrLoadModule("/src/components/layout.jsx"));
   ({ LabeledDonutShareChart, IssueWeeklyRateTable } = await server.ssrLoadModule("/src/components/charts.jsx"));
   ({ default: WeeklyCostPage } = await server.ssrLoadModule("/src/pages/WeeklyCostPage.jsx"));
 });
@@ -118,6 +119,29 @@ test("runtime catalog explains limited coverage and normal cancellation exclusio
   } finally {
     renderer?.unmount();
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("compact primary navigation keeps all tabs and puts descriptions in hover titles", async () => {
+  let renderer;
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(
+        MemoryRouter,
+        { initialEntries: ["/cost"] },
+        React.createElement(DashboardLayout, { showFilters: false }, "Preview"),
+      ));
+    });
+    const links = renderer.root.findByProps({ "aria-label": "Primary" }).findAllByType("a");
+    assert.deepEqual(links.map((link) => link.findByType("span").children.join("")), [
+      "Weekly Summary", "CI Status", "Flaky", "Tencent Migration",
+      "QA Cost Weekly", "CI Cost Weekly", "Cost", "CI details insight",
+    ]);
+    assert.ok(links.every((link) => link.props.title));
+    assert.equal(links.find((link) => link.props.href === "/cost").props["aria-current"], "page");
+    assert.equal(renderer.root.findAllByProps({ className: "sidebar-link__caption" }).length, 0);
+  } finally {
+    await act(async () => renderer?.unmount());
   }
 });
 
@@ -454,10 +478,19 @@ test("QA Cost Weekly direct route uses its fixed API URL and explains an old sou
   }
 });
 
-test("CI Cost Weekly uses its fixed endpoint and renders account-period budget gauges", async () => {
+test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budget line", async () => {
   const requests = [];
   const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
   let renderer;
+
+  globalThis.window = {
+    setTimeout(callback) {
+      callback();
+      return 1;
+    },
+    clearTimeout() {},
+  };
 
   globalThis.fetch = async (url) => {
     requests.push(String(url));
@@ -502,26 +535,42 @@ test("CI Cost Weekly uses its fixed endpoint and renders account-period budget g
           },
         },
         weekly_cost_history: {
+          budget_points: [
+            { week_start: "2026-08-31", period_budget: 650 },
+            { week_start: "2026-09-07", period_budget: 300 },
+          ],
           series: [
             {
               cost_source: "gcp:pingcap-testing-account",
               cost_metric: "list_cost",
-              points: [{ week_start: "2026-08-31", cost: 100 }],
+              points: [
+                { week_start: "2026-08-31", cost: 100 },
+                { week_start: "2026-09-07", cost: 150 },
+              ],
             },
             {
               cost_source: "tencent:100050658403",
               cost_metric: "list_cost",
-              points: [{ week_start: "2026-08-31", cost: 200 }],
+              points: [
+                { week_start: "2026-08-31", cost: 200 },
+                { week_start: "2026-09-07", cost: 300 },
+              ],
             },
             {
               cost_source: "gcp:pingcap-testing-account",
               cost_metric: "net_cost",
-              points: [{ week_start: "2026-08-31", cost: 80 }],
+              points: [
+                { week_start: "2026-08-31", cost: 80 },
+                { week_start: "2026-09-07", cost: 120 },
+              ],
             },
             {
               cost_source: "tencent:100050658403",
               cost_metric: "net_cost",
-              points: [{ week_start: "2026-08-31", cost: 500 }],
+              points: [
+                { week_start: "2026-08-31", cost: 500 },
+                { week_start: "2026-09-07", cost: 250 },
+              ],
             },
           ],
         },
@@ -578,19 +627,54 @@ test("CI Cost Weekly uses its fixed endpoint and renders account-period budget g
     assert.equal(new Set(historyBars.map((bar) => bar.props.x)).size, 2);
     assert.deepEqual(historyBars.map((bar) => bar.props.fill), [
       "#1f4e79",
-      "#9cc9e7",
-      "#0f7c82",
+      "#1f4e79",
+      "#93d6d1",
       "#93d6d1",
     ]);
+    for (let weekIndex = 0; weekIndex < 2; weekIndex += 1) {
+      const gcpBar = historyBars[weekIndex].props;
+      const tencentBar = historyBars[weekIndex + 2].props;
+      assert.equal(gcpBar.x, tencentBar.x);
+      assert.ok(Math.abs(tencentBar.y + tencentBar.height - gcpBar.y) < 1e-8);
+    }
+    assert.ok(Math.abs(historyBars[2].props.height / historyBars[0].props.height - 5) < 1e-8);
+    assert.ok(Math.abs(historyBars[3].props.height / historyBars[1].props.height - 250 / 150) < 1e-8);
+    const budgetLine = historyChart.findByType("polyline");
+    assert.equal(budgetLine.props.stroke, "#d1495b");
+    assert.equal(budgetLine.props.strokeDasharray, "7 6");
+    const budgetLinePoints = budgetLine.props.points.split(" ").map((point) => point.split(",").map(Number));
+    assert.equal(budgetLinePoints.length, 2);
+    assert.ok(budgetLinePoints[0][1] < historyBars[2].props.y);
+    assert.ok(budgetLinePoints[1][1] > historyBars[3].props.y);
     const historyLegend = renderer.root.findAllByProps({ "aria-pressed": false });
-    assert.equal(historyLegend.length, 4);
+    assert.deepEqual(
+      historyLegend.map((button) => button.findAllByType("span")[1].children.join("")),
+      ["GCP list cost", "Tencent net cost"],
+    );
+    const firstHitArea = historyChart.findAllByProps({ className: "chart-hit-area" })[0];
+    await act(async () => firstHitArea.props.onMouseEnter());
+    assert.deepEqual(
+      historyChart.findAllByProps({ className: "chart-tooltip__text" }).map((row) => row.children.join("")),
+      ["GCP list cost: $100.00", "Tencent net cost: $500.00", "GCP + Tencent weekly budget: $650.00"],
+    );
+    assert.equal(
+      historyChart.findByProps({ className: "chart-tooltip__text chart-tooltip__text--strong" }).children.join(""),
+      "Sum: $600.00",
+    );
+    await act(async () => firstHitArea.props.onMouseLeave());
     await act(async () => historyLegend[0].props.onClick());
     const focusedHistoryChart = renderer.root.findByProps({
       "aria-label": "Last 8 complete weeks stacked CI cost chart",
     });
     assert.equal(
       focusedHistoryChart.findAllByType("rect").filter((bar) => bar.props.rx === 2).length,
-      1,
+      2,
+    );
+    assert.equal(focusedHistoryChart.findByType("polyline").props.stroke, "#d1495b");
+    await act(async () => historyLegend[0].props.onClick());
+    assert.equal(
+      historyChart.findAllByType("rect").filter((bar) => bar.props.rx === 2).length,
+      4,
     );
     const rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /CI Cost Weekly/);
@@ -602,6 +686,7 @@ test("CI Cost Weekly uses its fixed endpoint and renders account-period budget g
     assert.match(rendered, /Cumulative spend/);
     assert.match(rendered, /Cost trend/);
     assert.match(rendered, /Last week budget utilization · GCP list \+ Tencent net/);
+    assert.match(rendered, /GCP \+ Tencent weekly budget/);
     assert.doesNotMatch(rendered, /Each week has list-cost and net-cost bars; each is stacked by GCP and Tencent/);
     assert.match(rendered, /2026-09-14 – 2026-09-20/);
     assert.match(rendered, /Last natural month/);
@@ -615,6 +700,47 @@ test("CI Cost Weekly uses its fixed endpoint and renders account-period budget g
     assert.doesNotMatch(rendered, /Last complete week —/);
     assert.match(rendered, /\$100\.00/);
     assert.match(rendered, /Not configured/);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+  }
+});
+
+test("CI Cost Weekly distinguishes a zero weekly budget from an unavailable budget", async () => {
+  const originalFetch = globalThis.fetch;
+  let periodBudget = 0;
+  let renderer;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      weekly_cost_history: {
+        series: [{
+          cost_source: "gcp:pingcap-testing-account",
+          cost_metric: "list_cost",
+          points: [{ week_start: "2026-09-07", cost: 100 }],
+        }],
+        budget_points: [{ week_start: "2026-09-07", period_budget: periodBudget }],
+      },
+    }),
+  });
+  async function renderReport() {
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(MemoryRouter, { initialEntries: ["/ci-cost-weekly"] }, React.createElement(App)),
+      );
+      await Promise.resolve();
+    });
+  }
+  try {
+    await renderReport();
+    assert.match(JSON.stringify(renderer.toJSON()), /GCP \+ Tencent weekly budget/);
+    assert.equal(renderer.root.findAllByType("polyline").length, 1);
+    await act(async () => renderer.unmount());
+    periodBudget = null;
+    await renderReport();
+    assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /GCP \+ Tencent weekly budget/);
+    assert.equal(renderer.root.findAllByType("polyline").length, 0);
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;

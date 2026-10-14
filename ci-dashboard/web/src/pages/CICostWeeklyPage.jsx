@@ -1,10 +1,17 @@
 import { useState } from "react";
 import { formatCurrency, formatDateRangeLabel, formatPercent, useApiData } from "../lib/api";
-import { LabeledDonutShareChart, PageIntro, Panel, StatCard, TrendChart } from "../components/charts";
+import { EmptyState, LabeledDonutShareChart, PageIntro, Panel, StatCard, TrendChart } from "../components/charts";
 import {
   BudgetUtilizationGauge,
   CumulativeWeeklyCostChart,
 } from "../components/WeeklyCostBudget";
+
+const categoryCurrency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 export default function CICostWeeklyPage() {
   const report = useApiData("/api/v1/pages/ci-weekly-cost");
@@ -14,18 +21,34 @@ export default function CICostWeeklyPage() {
   const lastCompleteMonth = report.data?.last_complete_month || {};
   const accountPeriodCosts = report.data?.budget_period_cost?.accounts || [];
   const lastWeekCostShare = report.data?.last_week_cost_share || {};
+  const categoryAccounts = report.data?.last_week_category_share?.accounts || [];
   const weeklyCostHistory = report.data?.weekly_cost_history?.series || [];
-  const weeklyCostSeries = weeklyCostHistory.map((item) => ({
-    key: `${item.cost_source}:${item.cost_metric}`,
-    label: `${formatAccountLabelForSource(item.cost_source)} ${formatCostBasis(item.cost_metric)}`,
-    color: weeklyCostColor(item.cost_source, item.cost_metric),
-    stackGroup: item.cost_metric,
-    type: "bar",
-    points: item.points.map((point) => [point.week_start, point.cost]),
-  }));
+  const weeklyCostSeries = weeklyCostHistory
+    .filter((item) =>
+      (item.cost_source.startsWith("gcp:") && item.cost_metric === "list_cost")
+      || (item.cost_source.startsWith("tencent:") && item.cost_metric === "net_cost"),
+    )
+    .map((item) => ({
+      key: `${item.cost_source}:${item.cost_metric}`,
+      label: `${formatAccountLabelForSource(item.cost_source)} ${formatCostBasis(item.cost_metric)}`,
+      color: item.cost_source.startsWith("gcp:") ? "#1f4e79" : "#93d6d1",
+      type: "bar",
+      points: item.points.map((point) => [point.week_start, point.cost]),
+    }));
   const visibleWeeklyCostSeries = focusedHistorySeriesKey
     ? weeklyCostSeries.filter((item) => item.key === focusedHistorySeriesKey)
     : weeklyCostSeries;
+  const weeklyBudgetPoints = report.data?.weekly_cost_history?.budget_points || [];
+  const weeklyBudgetSeries = weeklyBudgetPoints.some((point) => point.period_budget != null)
+    ? [{
+        key: "budget_target",
+        label: "GCP + Tencent weekly budget",
+        color: "#d1495b",
+        type: "line",
+        dash: true,
+        points: weeklyBudgetPoints.map((point) => [point.week_start, point.period_budget]),
+      }]
+    : [];
   const lastWeekBudgetUtilization = totalBudgetUtilization(accounts);
 
   return (
@@ -102,7 +125,7 @@ export default function CICostWeeklyPage() {
           />
           <div>
             <TrendChart
-              series={visibleWeeklyCostSeries}
+              series={[...visibleWeeklyCostSeries, ...weeklyBudgetSeries]}
               yFormatter={formatCurrency}
               stackBars
               showLegend={false}
@@ -125,6 +148,12 @@ export default function CICostWeeklyPage() {
                   </button>
                 );
               })}
+              {weeklyBudgetSeries.map((item) => (
+                <div className="chart-legend__item" key={item.key}>
+                  <span className="chart-legend__swatch" style={{ backgroundColor: item.color }} />
+                  <span>{item.label}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -159,7 +188,105 @@ export default function CICostWeeklyPage() {
           />
         </div>
       </Panel>
+
+      <Panel
+        title="Last week cost categories"
+        subtitle="Grouped by billing service, GKE allocation scope, resource/bucket name, and service/project metadata—not a dynamic/fixed split. Charts show only categories > 1% of each account total; small categories remain in the tables and are not renormalized."
+        loading={report.loading}
+        error={report.error}
+      >
+        <div className="donut-grid">
+          {categoryAccounts.map((account) => (
+            <CategoryCostBreakdown key={account.cost_source} account={account} />
+          ))}
+        </div>
+        {!categoryAccounts.length ? <EmptyState message="No cost category data available." /> : null}
+        <p className="ci-weekly-cost__category-note">
+          GKE/TKE and disks can include idle or shared services. Artifact Registry is not self-hosted
+          Artifactory; GCP Jenkins cache has not been separately identified. Zot COS is storage only;
+          shared compute and any external dedicated-line invoices are not separately identified here.
+        </p>
+      </Panel>
     </div>
+  );
+}
+
+function CategoryCostBreakdown({ account }) {
+  const title = `${formatAccountLabel(account)} ${formatCostBasis(account.cost_basis)} categories`;
+  const items = account.items || [];
+  const total = Number(account.total_cost || 0);
+  const ciResourceKeys = account.vendor === "gcp" ? ["gke", "gcp_pvc"] : ["tke", "cbs"];
+  const ciResourceCost = items.reduce(
+    (sum, item) => sum + (ciResourceKeys.includes(item.key) ? Number(item.value || 0) : 0),
+    0,
+  );
+  const visibleItems = total > 0 ? items.filter((item) => Number(item.value) > total / 100) : [];
+  const visibleTotal = visibleItems.reduce((sum, item) => sum + Number(item.value), 0);
+  const hasNegativeAdjustments = items.some((item) => Number(item.value) < 0);
+  const missingDates = account.missing_dates || [];
+
+  return (
+    <section className="ci-weekly-cost__category-account" aria-label={title}>
+      {!hasNegativeAdjustments || visibleTotal <= total ? (
+        <LabeledDonutShareChart
+          title={title}
+          subtitle="Blank arc represents omitted categories ≤ 1%."
+          items={visibleItems}
+          totalValue={total}
+          totalLabel="USD"
+          centerValue={categoryCurrency.format(total)}
+          centerLabel={formatCostBasis(account.cost_basis)}
+          metricValueFormatter={categoryCurrency.format}
+          emptyMessage={`No categories > 1% available for ${formatAccountLabel(account)}.`}
+        />
+      ) : (
+        <EmptyState message="Cost adjustments prevent a proportional pie; see the table." compact />
+      )}
+      <p className="ci-weekly-cost__category-note" role={missingDates.length ? "status" : undefined}>
+        {missingDates.length
+          ? `${account.observed_dates?.length || 0}/7 dates with billing records. No records for ${missingDates.join(", ")}; totals may be incomplete.`
+          : "Billing records cover all 7 dates; amounts may still be revised."}
+      </p>
+      <div className="table-scroll">
+        <table className="data-table data-table--compact ci-weekly-cost__category-table" aria-label={`${title} table`}>
+          <thead>
+            <tr>
+              <th scope="col">Category</th>
+              <th scope="col">Cost (USD)</th>
+              <th scope="col">Share</th>
+              <th scope="col">Grouping basis</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.key}>
+                <th scope="row">{item.name}</th>
+                <td>{categoryCurrency.format(item.value)}</td>
+                <td>{total ? `${Number(item.share_pct || 0).toFixed(2)}%` : "—"}</td>
+                <td className="ci-weekly-cost__category-evidence">{item.evidence}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">Total</th>
+              <td>{categoryCurrency.format(total)}</td>
+              <td>{total ? "100.00%" : "—"}</td>
+              <td />
+            </tr>
+            <tr aria-label="Dynamic CI resources subtotal">
+              <th scope="row">Dynamic CI resources</th>
+              <td>{categoryCurrency.format(ciResourceCost)}</td>
+              <td>{total ? `${(ciResourceCost / total * 100).toFixed(2)}%` : "—"}</td>
+              <td className="ci-weekly-cost__category-evidence">
+                {account.vendor === "gcp" ? "GKE + Kubernetes PVC / Hyperdisk" : "TKE / Serverless + CBS disks"}.
+                Included in Total; includes idle/shared costs.
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -182,14 +309,6 @@ function formatAccountLabel(account) {
 
 function formatAccountLabelForSource(costSource) {
   return costSource.startsWith("gcp:") ? "GCP" : "Tencent";
-}
-
-function weeklyCostColor(costSource, costMetric) {
-  const isGcp = costSource.startsWith("gcp:");
-  if (costMetric === "list_cost") {
-    return isGcp ? "#1f4e79" : "#9cc9e7";
-  }
-  return isGcp ? "#0f7c82" : "#93d6d1";
 }
 
 function totalBudgetUtilization(accounts) {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
+import calendar
+from datetime import date, timedelta
 
 from fastapi import HTTPException, Query
 
@@ -27,6 +28,86 @@ def get_common_filters(
     validate_granularity(granularity)
     validate_date_range(start_date, end_date)
     validate_issue_status(issue_status)
+    return _common_filters(
+        repo=repo,
+        branch=branch,
+        job_name=job_name,
+        cloud_phase=cloud_phase,
+        issue_status=issue_status,
+        start_date=start_date,
+        end_date=end_date,
+        granularity=granularity,
+        cost_source=cost_source,
+        owner_include=owner_include,
+        owner_exclude=owner_exclude,
+        team_include=team_include,
+        team_exclude=team_exclude,
+        project_include=project_include,
+        project_exclude=project_exclude,
+    )
+
+
+def get_cost_filters(
+    repo: str | None = None,
+    branch: str | None = None,
+    job_name: str | None = None,
+    cloud_phase: str | None = None,
+    issue_status: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    granularity: str = Query(default="week"),
+    cost_source: str | None = None,
+    owner_include: str | None = None,
+    owner_exclude: str | None = None,
+    team_include: str | None = None,
+    team_exclude: str | None = None,
+    project_include: str | None = None,
+    project_exclude: str | None = None,
+) -> CommonFilters:
+    validate_cost_granularity(granularity)
+    start_date, end_date, granularity = normalize_cost_date_range(
+        start_date,
+        end_date,
+        granularity,
+    )
+    validate_issue_status(issue_status)
+    return _common_filters(
+        repo=repo,
+        branch=branch,
+        job_name=job_name,
+        cloud_phase=cloud_phase,
+        issue_status=issue_status,
+        start_date=start_date,
+        end_date=end_date,
+        granularity=granularity,
+        cost_source=cost_source,
+        owner_include=owner_include,
+        owner_exclude=owner_exclude,
+        team_include=team_include,
+        team_exclude=team_exclude,
+        project_include=project_include,
+        project_exclude=project_exclude,
+    )
+
+
+def _common_filters(
+    *,
+    repo: str | None,
+    branch: str | None,
+    job_name: str | None,
+    cloud_phase: str | None,
+    issue_status: str | None,
+    start_date: date | None,
+    end_date: date | None,
+    granularity: str,
+    cost_source: str | None,
+    owner_include: str | None,
+    owner_exclude: str | None,
+    team_include: str | None,
+    team_exclude: str | None,
+    project_include: str | None,
+    project_exclude: str | None,
+) -> CommonFilters:
     cost_sources = parse_cost_sources(cost_source)
     cost_vendor, cost_account_id = cost_sources[0] if len(cost_sources) == 1 else (None, None)
     return CommonFilters(
@@ -53,6 +134,55 @@ def get_common_filters(
 def validate_granularity(granularity: str) -> None:
     if granularity not in SUPPORTED_GRANULARITIES:
         raise HTTPException(status_code=400, detail="granularity must be one of: day, week, month")
+
+
+def validate_cost_granularity(granularity: str) -> None:
+    if granularity not in SUPPORTED_GRANULARITIES:
+        raise HTTPException(status_code=422, detail="granularity must be one of: day, week, month")
+
+
+def normalize_cost_date_range(
+    start_date: date | None,
+    end_date: date | None,
+    granularity: str,
+) -> tuple[date | None, date | None, str]:
+    if start_date is None and end_date is None and granularity == "week":
+        end_date = _last_completed_week_end(date.today())
+        start_date = end_date - timedelta(days=55)
+
+    if start_date is None or end_date is None:
+        if granularity in {"day", "week"}:
+            raise HTTPException(
+                status_code=422,
+                detail="start_date and end_date are required for day and week cost granularity",
+            )
+        return start_date, end_date, granularity
+
+    if start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
+
+    if granularity == "day" and (end_date - start_date).days + 1 > 14:
+        raise HTTPException(status_code=422, detail="day cost granularity supports at most 14 days")
+
+    if granularity == "week" and end_date >= _add_months_clamped(start_date, 2):
+        raise HTTPException(
+            status_code=422,
+            detail="week cost granularity requires end_date before start_date plus 2 calendar months",
+        )
+
+    return start_date, end_date, granularity
+
+
+def _last_completed_week_end(today: date) -> date:
+    return today - timedelta(days=today.weekday() + 1)
+
+
+def _add_months_clamped(value: date, months: int) -> date:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
 
 
 def validate_date_range(start_date: date | None, end_date: date | None) -> None:

@@ -27,7 +27,7 @@ from ci_dashboard.api.queries.pages import (
     get_runtime_insights_page,
 )
 from ci_dashboard.api.queries.runtime import get_error_builds, get_error_top_jobs
-from ci_dashboard.api.routes.common import get_common_filters
+from ci_dashboard.api.routes.common import get_common_filters, get_cost_filters
 
 router = APIRouter(prefix="/api/v1/pages", tags=["pages"])
 
@@ -66,7 +66,7 @@ def runtime_insights_page(
 
 @router.get("/cost")
 def cost_page(
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_insight_page(engine, filters)
@@ -81,7 +81,7 @@ def cost_sources_page(
 
 @router.get("/cost-filter-values")
 def cost_filter_values_page(
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_filter_values_page(engine, filters)
@@ -92,7 +92,7 @@ def cost_trend_page(
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
     allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_trend_page(
@@ -112,7 +112,7 @@ def cost_share_page(
     ),
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     _validate_cost_drilldown_child(dimension, drilldown_group)
@@ -127,7 +127,7 @@ def cost_share_page(
 
 @router.get("/cost-budget-pace")
 def cost_budget_pace_page(
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_budget_pace_page(engine, filters)
@@ -135,7 +135,7 @@ def cost_budget_pace_page(
 
 @router.get("/cost-weekly-account-summaries")
 def cost_weekly_account_summaries_page(
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_weekly_account_summaries_page(engine, filters)
@@ -180,7 +180,7 @@ def cost_repo_group_stack_page(
     ),
     drilldown_group: str | None = Query(default=None, pattern="^(team|cost_driver)$"),
     drilldown_value: str | None = None,
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     _validate_cost_drilldown_child(group_by, drilldown_group)
@@ -196,7 +196,7 @@ def cost_repo_group_stack_page(
 @router.get("/cost-engineering-group-share")
 def cost_engineering_group_share_page(
     allocation_basis: str | None = Query(default=None, pattern="^current_attribution$"),
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_cost_engineering_group_share_page(
@@ -215,7 +215,7 @@ def cost_unmatched_resources_page(
     cursor: str | None = Query(default=None, max_length=512),
     scope_dimension: str | None = Query(default=None, pattern="^(team|project)$"),
     scope_value: str | None = Query(default=None, max_length=255),
-    filters: CommonFilters = Depends(get_common_filters),
+    filters: CommonFilters = Depends(get_cost_filters),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     try:

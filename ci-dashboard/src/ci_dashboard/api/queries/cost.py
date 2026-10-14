@@ -16,6 +16,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from ci_dashboard.api.queries.base import CommonFilters, bucket_expr, rate_pct, to_number
+from ci_dashboard.api.queries.ci_cost_categories import (
+    CI_WEEKLY_COST_SOURCES,
+    get_ci_weekly_cost_category_share,
+)
 
 COST_STACK_LIMIT = 8
 COST_STACK_OTHERS_DIMENSION = "__cost_stack_others__"
@@ -39,10 +43,6 @@ COST_SHARE_LIMIT = 8
 WEEKLY_COST_TEAM_SHARE_LIMIT = 8
 WEEKLY_COST_UNATTRIBUTED_TEAM_NAME = "Unattributed"
 WEEKLY_COST_NO_PROJECT_NAME = "(no project)"
-CI_WEEKLY_COST_SOURCES = (
-    ("gcp", "pingcap-testing-account"),
-    ("tencent", "100050658403"),
-)
 VALID_COST_SHARE_DIMENSIONS = frozenset(
     {"account", "owner", "team", "service", "sku", "cost_driver", "project", "service_exec_id", "region"}
 )
@@ -923,7 +923,7 @@ def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
         "last_complete_month": _ci_weekly_cost_period(previous_month_start, previous_month_end),
         "accounts": [],
         "budget_period_cost": _ci_weekly_cost_empty_budget_period_cost(),
-        "weekly_cost_history": {"series": []},
+        "weekly_cost_history": {"series": [], "budget_points": []},
         "last_week_cost_share": _ci_weekly_cost_empty_last_week_cost_share(),
     }
 
@@ -939,6 +939,13 @@ def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
             connection,
             last_week_start,
             last_week_end,
+        )
+        report["last_week_category_share"] = get_ci_weekly_cost_category_share(
+            connection,
+            last_week_start,
+            last_week_end,
+            list_cost_expr=_billing_report_list_cost_expr("c"),
+            net_cost_expr=_usd_cost_expr("c", "c.net_cost"),
         )
 
     report["accounts"] = [
@@ -963,6 +970,7 @@ def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
     )
     report["weekly_cost_history"] = _ci_weekly_cost_weekly_history(
         cost_values,
+        budget_rows,
         eight_week_start,
         last_week_end,
     )
@@ -1254,12 +1262,14 @@ def _ci_weekly_cost_actual(
 
 def _ci_weekly_cost_weekly_history(
     cost_values: Mapping[tuple[tuple[str, str], date], Mapping[str, Decimal]],
+    budget_rows: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
     start_date: date,
     end_date: date,
 ) -> dict[str, Any]:
     week_starts = [start_date + timedelta(days=7 * index) for index in range(8)]
     return {
         "period": _ci_weekly_cost_period(start_date, end_date),
+        "budget_points": _ci_weekly_cost_budget_points(budget_rows, week_starts),
         "series": [
             {
                 "cost_source": _cost_source_value(*source),
@@ -1284,6 +1294,47 @@ def _ci_weekly_cost_weekly_history(
             for source in CI_WEEKLY_COST_SOURCES
         ],
     }
+
+
+def _ci_weekly_cost_budget_points(
+    budget_rows: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+    week_starts: Sequence[date],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "week_start": week_start.isoformat(),
+            "period_budget": _ci_weekly_cost_total_weekly_budget(
+                budget_rows,
+                week_start,
+                week_start + timedelta(days=6),
+            ),
+        }
+        for week_start in week_starts
+    ]
+
+
+def _ci_weekly_cost_total_weekly_budget(
+    budget_rows: Mapping[tuple[str, str], Sequence[Mapping[str, Any]]],
+    start_date: date,
+    end_date: date,
+) -> float | None:
+    total = Decimal(0)
+    for source in CI_WEEKLY_COST_SOURCES:
+        period_plans = [
+            plan
+            for plan in budget_rows.get(source, ())
+            if _ci_weekly_cost_plan_overlaps(plan, start_date, end_date)
+        ]
+        if not period_plans:
+            return None
+        for plan in period_plans:
+            overlap_start = max(start_date, plan["period_start_date"])
+            overlap_end = min(end_date, plan["period_end_date"])
+            overlap_days = (overlap_end - overlap_start).days + 1
+            plan_days = (plan["period_end_date"] - plan["period_start_date"]).days + 1
+            # Round only after combining the prorated account budgets.
+            total += Decimal(str(plan["budget_amount"])) * overlap_days / plan_days
+    return _money(total)
 
 
 def _ci_weekly_cost_budget_period_cost(
@@ -3819,7 +3870,7 @@ def _budget_amount_for_days(budget_period: BudgetPeriod, days: int) -> float:
 
 
 def _cost_filters(filters: CommonFilters) -> CommonFilters:
-    granularity = filters.granularity if filters.granularity in {"week", "month"} else "week"
+    granularity = filters.granularity if filters.granularity in {"day", "week", "month"} else "week"
     return CommonFilters(
         start_date=filters.start_date,
         end_date=filters.end_date,
@@ -4500,10 +4551,16 @@ def _cost_source_label(vendor: str, account_id: str) -> str:
 
 def _bucket_starts(filters: CommonFilters, rows: list[dict[str, Any]]) -> list[str]:
     if filters.start_date and filters.end_date:
+        if filters.granularity == "day":
+            return _day_bucket_starts(filters.start_date, filters.end_date)
         if filters.granularity == "month":
             return _month_bucket_starts(filters.start_date, filters.end_date)
         return _week_bucket_starts(filters.start_date, filters.end_date)
     return sorted({str(row["bucket_start"]) for row in rows})
+
+
+def _day_bucket_starts(start_date: date, end_date: date) -> list[str]:
+    return [(start_date + timedelta(days=offset)).isoformat() for offset in range((end_date - start_date).days + 1)]
 
 
 def _week_bucket_starts(start_date: date, end_date: date) -> list[str]:
@@ -4529,6 +4586,8 @@ def _month_bucket_starts(start_date: date, end_date: date) -> list[str]:
 
 
 def _bucket_end(bucket_start: date, granularity: str) -> date:
+    if granularity == "day":
+        return bucket_start
     if granularity == "month":
         last_day = calendar.monthrange(bucket_start.year, bucket_start.month)[1]
         return bucket_start.replace(day=last_day)

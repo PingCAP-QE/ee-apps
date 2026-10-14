@@ -71,6 +71,17 @@ Notes:
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
 - the Cost and CI details insight tabs are always available
+- the Cost tab uses T+3 data availability in UTC. End has a hover/focus info hint,
+  its calendar and URL filters cap End at the latest available date, and the
+  default End date uses the same three-day lag.
+- the Cost tab supports Day, Week, and Month buckets. Day is limited to 14 days
+  including both dates. Week requires the end date to be strictly before the
+  start date plus two calendar months (clamped to the target month's last day
+  when necessary): July 1 through August 31 allows Week, but July 1 through
+  September 1 requires Month. The UI disables incompatible options and
+  automatically coarsens invalid selections; the Cost API enforces these limits.
+  Cost API requests without dates default to the last eight complete weeks when
+  using the default Week bucket.
 - during UI iteration, run `make api` and `make web-dev` in separate terminals
 - `backfill-range` is stateless and does not update `ci_job_state`, so the same time window can be re-imported safely
 - `CI_DASHBOARD_REFRESH_BUILD_LIMIT` controls how many impacted builds one `refresh-build-derived` run will process before checkpointing and continuing in the next CronJob run; the default is `5000`, valid values are positive integers, and smaller values trade shorter/faster runs for more CronJob passes before backlog catch-up finishes

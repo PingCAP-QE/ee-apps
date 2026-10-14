@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ALL_COST_SOURCES, COST_PATH } from "./filterUrl.js";
+import { ALL_COST_SOURCES, COST_DEFAULT_LAG_DAYS, COST_PATH } from "./filterUrl.js";
 
 function normalizePrefix(value) {
   if (!value || value === "/") {
@@ -12,7 +12,7 @@ function normalizePrefix(value) {
 
 const viteEnv = import.meta.env || {};
 const API_BASE = normalizePrefix(viteEnv.VITE_API_BASE_URL || viteEnv.BASE_URL);
-export const COST_DATA_LAG_DAYS = 4;
+export const COST_DATA_LAG_DAYS = COST_DEFAULT_LAG_DAYS;
 
 export function getDefaultDateRange() {
   const end = new Date();

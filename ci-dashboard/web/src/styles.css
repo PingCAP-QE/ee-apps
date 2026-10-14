@@ -47,7 +47,7 @@ select {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: 192px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -55,10 +55,13 @@ select {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  gap: 1.4rem;
-  padding: 1.4rem;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background:
     linear-gradient(180deg, rgba(49, 87, 114, 0.98), rgba(18, 47, 61, 0.98)),
     linear-gradient(145deg, rgba(42, 157, 143, 0.25), transparent 45%);
@@ -66,8 +69,8 @@ select {
 }
 
 .brand-mark {
-  padding: 1rem;
-  border-radius: 28px;
+  padding: 0.65rem 0.6rem;
+  border-radius: 14px;
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
@@ -83,13 +86,17 @@ select {
   font-weight: 600;
 }
 
-.brand-mark h1,
+.brand-mark h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.3;
+}
+
 .page-intro h2,
 .filter-bar h2 {
   margin: 0.35rem 0 0.5rem;
 }
 
-.brand-mark p,
 .page-intro p,
 .filter-bar p,
 .sidebar-note p {
@@ -99,14 +106,16 @@ select {
 
 .sidebar-nav {
   display: grid;
-  gap: 0.7rem;
+  flex-shrink: 0;
+  gap: 0.25rem;
 }
 
 .sidebar-link {
-  display: grid;
-  gap: 0.2rem;
-  padding: 1rem 1.05rem;
-  border-radius: 22px;
+  display: block;
+  padding: 0.6rem 0.65rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  line-height: 1.35;
   color: rgba(244, 241, 235, 0.8);
   text-decoration: none;
   border: 1px solid transparent;
@@ -129,8 +138,6 @@ select {
   font-weight: 600;
 }
 
-.sidebar-link__caption,
-.sidebar-note p,
 .filter-field span,
 .panel__header p,
 .stat-card__label,
@@ -149,14 +156,15 @@ select {
 
 .sidebar-note {
   margin-top: auto;
-  padding: 1rem;
-  border-radius: 24px;
+  padding: 0.5rem 0.65rem;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.07);
 }
 
 .sidebar-note__version {
-  margin-top: 0.75rem;
-  font-size: 0.82rem;
+  margin: 0;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
   color: rgba(244, 241, 235, 0.74);
 }
 
@@ -656,7 +664,7 @@ select {
   outline-offset: 2px;
 }
 
-.info-hint__tooltip {
+.info-hint .info-hint__tooltip {
   position: absolute;
   left: 50%;
   bottom: calc(100% + 0.55rem);
@@ -931,6 +939,42 @@ select {
   grid-template-rows: auto auto;
   min-height: 0;
   gap: 0.9rem;
+}
+
+.ci-weekly-cost__category-account {
+  min-width: 0;
+}
+
+.ci-weekly-cost__category-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.ci-weekly-cost .ci-weekly-cost__category-table {
+  min-width: 520px;
+  font-size: 0.85rem;
+}
+
+.ci-weekly-cost .ci-weekly-cost__category-table th,
+.ci-weekly-cost .ci-weekly-cost__category-table td {
+  padding: 0.7rem 0.55rem;
+}
+
+.ci-weekly-cost .ci-weekly-cost__category-table tbody th {
+  min-width: 150px;
+}
+
+.ci-weekly-cost__category-table td.ci-weekly-cost__category-evidence {
+  min-width: 160px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+}
+
+.ci-weekly-cost__category-table tfoot {
+  color: var(--navy);
+  font-weight: 700;
 }
 
 .ci-weekly-cost__accounts,
@@ -2898,12 +2942,7 @@ button.chart-legend__item:focus-visible,
 
 @media (max-width: 1180px) {
   .app-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: static;
-    height: auto;
+    grid-template-columns: 176px minmax(0, 1fr);
   }
 
   .filter-bar {
@@ -2945,6 +2984,24 @@ button.chart-legend__item:focus-visible,
 }
 
 @media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    gap: 0.5rem;
+  }
+
+  .sidebar-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sidebar-note {
+    display: none;
+  }
+
   .main-column,
   .sidebar {
     padding: 1rem;
@@ -3105,6 +3162,31 @@ button.chart-legend__item:focus-visible,
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.72rem;
+  align-items: start;
+}
+
+.cost-filter-controls__dates small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.cost-filter-controls__date-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+}
+
+.cost-filter-controls__date-label .info-hint__tooltip {
+  top: calc(100% + 0.55rem);
+  bottom: auto;
+}
+
+.cost-filter-controls__date-label .info-hint__tooltip::after {
+  top: auto;
+  bottom: 100%;
+  border-width: 0 6px 7px;
+  border-color: transparent transparent rgba(26, 42, 51, 0.96);
 }
 
 .cost-filter-controls__dates input,

@@ -6,7 +6,7 @@ export const WEEKLY_COST_PATH = "/qa-cost-weekly";
 export const CI_WEEKLY_COST_PATH = "/ci-cost-weekly";
 export const ALL_COST_SOURCES = "all";
 export const DEFAULT_COST_SOURCE = "gcp:pingcap-testing-account";
-export const COST_DEFAULT_LAG_DAYS = 4;
+export const COST_DEFAULT_LAG_DAYS = 3;
 export const FILTER_QUERY_KEYS = [
   "start_date",
   "end_date",
@@ -71,11 +71,52 @@ export function buildDefaultFilters(defaultRange, pathname) {
   return baseFilters;
 }
 
+export function getCostBucketOptions({ start_date, end_date }) {
+  const start = parseCostDate(start_date);
+  const end = parseCostDate(end_date);
+  const validRange = start && end && start <= end;
+  const weekLimit = start && new Date(start);
+  if (weekLimit) {
+    weekLimit.setUTCMonth(start.getUTCMonth() + 2, 1);
+    const monthEnd = new Date(weekLimit);
+    monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1, 0);
+    weekLimit.setUTCDate(Math.min(start.getUTCDate(), monthEnd.getUTCDate()));
+  }
+  const invalidRangeReason = "Select valid start and end dates, with Start on or before End.";
+  const dayAllowed = Boolean(validRange && (end - start) / 86400000 + 1 <= 14);
+  const weekAllowed = Boolean(validRange && end < weekLimit);
+
+  return [
+    {
+      value: "day",
+      label: "Day",
+      disabled: !dayAllowed,
+      reason: dayAllowed ? "" : validRange
+        ? "Day requires at most 14 days, including both dates."
+        : invalidRangeReason,
+    },
+    {
+      value: "week",
+      label: "Week",
+      disabled: !weekAllowed,
+      reason: weekAllowed ? "" : validRange
+        ? `Week requires End before ${weekLimit.toISOString().slice(0, 10)} (Start + 2 calendar months).`
+        : invalidRangeReason,
+    },
+    { value: "month", label: "Month", disabled: false, reason: "" },
+  ];
+}
+
+function parseCostDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.getUTCFullYear() > 0
+    && date.toISOString().slice(0, 10) === value ? date : null;
+}
+
 export function normalizeFiltersForPath(pathname, filters) {
   const next = { ...filters };
-  const allowedGranularities = pathname === COST_PATH
-    ? new Set(["week", "month"])
-    : new Set(["day", "week", "month"]);
+  const allowedGranularities = new Set(["day", "week", "month"]);
   if (!allowedGranularities.has(next.granularity)) {
     next.granularity = WEEK_GRANULARITY_PATHS.has(pathname) ? "week" : "day";
   }
@@ -83,6 +124,13 @@ export function normalizeFiltersForPath(pathname, filters) {
     next.granularity = "week";
   }
   if (pathname === COST_PATH) {
+    const latestCostDate = getLatestCostDate();
+    if (parseCostDate(next.end_date) && next.end_date > latestCostDate) {
+      next.end_date = latestCostDate;
+    }
+    const bucketOptions = getCostBucketOptions(next);
+    const selectedIndex = bucketOptions.findIndex((option) => option.value === next.granularity);
+    next.granularity = bucketOptions.slice(selectedIndex).find((option) => !option.disabled).value;
     next.repo = "";
     next.branch = "";
     next.job_name = "";
@@ -154,19 +202,16 @@ export function buildNavSearchByPath(filtersByPath, defaultRange, currentFilters
   }, {});
 }
 
+export function getLatestCostDate(referenceDate = new Date()) {
+  const end = new Date(referenceDate);
+  end.setUTCDate(end.getUTCDate() - COST_DEFAULT_LAG_DAYS);
+  return end.toISOString().slice(0, 10);
+}
+
 function getLaggedCostDefaultRange(defaultRange) {
-  const end = new Date(`${defaultRange.end_date}T00:00:00`);
-  end.setDate(end.getDate() - COST_DEFAULT_LAG_DAYS);
-  const endDate = formatDate(end);
+  const endDate = getLatestCostDate(`${defaultRange.end_date}T00:00:00Z`);
   return {
     start_date: `${endDate.slice(0, 8)}01`,
     end_date: endDate,
   };
-}
-
-function formatDate(value) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }

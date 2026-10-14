@@ -21,7 +21,6 @@ export function DashboardLayout({
       <aside className="sidebar">
         <div className="brand-mark">
           <h1>CI Dashboard</h1>
-          <p>Build health, flaky patterns, and migration status,</p>
         </div>
 
         <nav className="sidebar-nav" aria-label="Primary">
@@ -76,10 +75,6 @@ export function DashboardLayout({
         </nav>
 
         <div className="sidebar-note">
-          <p>
-            Build ingestion stays all-repo. PR metadata is best effort and can lag a little
-            behind source activity.
-          </p>
           <p className="sidebar-note__version">Version {currentVersion}</p>
         </div>
       </aside>
@@ -112,13 +107,13 @@ function NavItem({ to, search = "", label, caption }) {
   return (
     <NavLink
       to={`${to}${search || ""}`}
+      title={caption}
       end={to === "/"}
       className={({ isActive }) =>
         isActive ? "sidebar-link sidebar-link--active" : "sidebar-link"
       }
     >
       <span className="sidebar-link__label">{label}</span>
-      <span className="sidebar-link__caption">{caption}</span>
     </NavLink>
   );
 }
