@@ -45,6 +45,13 @@ type SourceSpec struct {
     GitRef        string  `json:"gitRef"`
     GitSha        *string `json:"gitSha,omitempty"`     // Optional, overrides GitRef
     GitRefspec    *string `json:"gitRefspec,omitempty"` // Optional, for PRs
+    // Optional, Secret with git credentials for private-repo clones
+    // (kubernetes.io/basic-auth or kubernetes.io/ssh-auth). Empty keeps the
+    // clone anonymous (public repositories).
+    GitSecretRef  *string `json:"gitSecretRef,omitempty"`
+    // Optional, initialize git submodules after checkout (default true,
+    // mirrors the Tekton pingcap-git-clone `submodules` param).
+    Submodules    *bool   `json:"submodules,omitempty"`
 }
 
 type BuildSpec struct {

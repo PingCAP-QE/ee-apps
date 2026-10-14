@@ -302,6 +302,13 @@ func buildMacBuildFromCustomRun(cr *tektonv1beta1.CustomRun, namespace, name str
 	if refspec := params["git-refspec"]; strings.Contains(refspec, "refs/pull/") {
 		spec.Source.GitRefspec = &refspec
 	}
+	if secretRef := strings.TrimSpace(params["git-secret-ref"]); secretRef != "" {
+		spec.Source.GitSecretRef = &secretRef
+	}
+	// Tri-state: absent keeps the default (initialize submodules, Tekton parity).
+	if submodules, ok := parseOptionalBool(params["submodules"]); ok {
+		spec.Source.Submodules = &submodules
+	}
 	if ttl := parseDuration(params["ttl"]); ttl != nil {
 		spec.Ttl = ttl
 	}
@@ -334,6 +341,20 @@ func parseBool(value string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// parseOptionalBool parses a tri-state bool param. The second return value
+// reports whether the param was present at all, so absent/empty params stay
+// unset instead of being coerced to false.
+func parseOptionalBool(value string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return false, false
+	case "true", "1", "yes":
+		return true, true
+	default:
+		return false, true
 	}
 }
 

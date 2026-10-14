@@ -33,3 +33,49 @@ Run `install.sh --help`. Common ones: `--kubeconfig`, `--worker-arch`, `--worker
 The agent needs a kubeconfig for the cluster (no gcloud dependency). See the
 worker ServiceAccount/RBAC in the ee-ops chart and mint a token-based kubeconfig,
 then pass it via `--kubeconfig`.
+
+## Private repositories (git credentials)
+
+Builds of private repositories (e.g. `pingcap-inc/tici`) need git credentials.
+A build references a Kubernetes Secret in the MacBuild namespace through
+`spec.source.gitSecretRef` (Tekton: the `git-secret-ref` CustomRun param) — the
+same Secret shapes the Tekton `pingcap-git-clone` task consumes via its
+`basic-auth`/`ssh-directory` workspaces. The agent materializes the credentials
+**per build only** (removed right after the checkout; never written to logs,
+artifacts, or anywhere outside the build workspace).
+
+Supported Secret shapes:
+
+- **HTTPS (PAT) — `kubernetes.io/basic-auth`** with `username` + `password`
+  (`password` may be replaced by a `token` key). Common values:
+  `username: x-access-token`, `password: <GitHub PAT>`. A packed
+  `.git-credentials` data key is also accepted verbatim.
+- **SSH — `kubernetes.io/ssh-auth`** with `ssh-privatekey` (plus optional
+  `known_hosts`), or the Tekton `ssh-directory` style key files
+  (`id_ed25519`/`id_rsa`/`known_hosts`/`config`, ...).
+
+The credentials are also used when initializing git submodules. Builds without
+`source.gitSecretRef` clone anonymously (public repositories).
+
+Example:
+
+```bash
+# One credentials Secret per namespace (or one per repository).
+kubectl -n ee-cd create secret generic github-git-credentials \
+  --type=kubernetes.io/basic-auth \
+  --from-literal=username=x-access-token \
+  --from-literal=password="$GITHUB_PAT"
+
+# Reference it from the build (MacBuild CR, or the `git-secret-ref` param when
+# driven by a Tekton CustomRun):
+#   spec:
+#     source:
+#       gitRepository: https://github.com/pingcap-inc/tici.git
+#       gitRef: main
+#       gitSecretRef: github-git-credentials
+```
+
+The worker's ServiceAccount needs `get` on Secrets in the MacBuild namespace to
+read the referenced one; the chart's worker Role grants exactly that (it is
+namespace-scoped to the MacBuild namespace). Credential values are never
+logged; failures report only the Secret name and the reason.

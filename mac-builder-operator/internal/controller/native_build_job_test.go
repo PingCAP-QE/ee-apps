@@ -151,6 +151,206 @@ func createArtifactsRepoFixture(t *testing.T) (repoDir string, firstCommit strin
 	return repoDir, firstCommit, secondCommit, firstTag
 }
 
+func TestSubmodulesEnabledDefaultsToTrue(t *testing.T) {
+	t.Parallel()
+
+	job := newNativeBuildJob(context.Background(), newTestMacBuild(), ArtifactsScriptSourceConfig{})
+	if !job.submodulesEnabled() {
+		t.Fatal("expected submodules to be initialized by default (Tekton pingcap-git-clone parity)")
+	}
+
+	disabled := false
+	macBuild := newTestMacBuild()
+	macBuild.Spec.Source.Submodules = &disabled
+	job = newNativeBuildJob(context.Background(), macBuild, ArtifactsScriptSourceConfig{})
+	if job.submodulesEnabled() {
+		t.Fatal("expected source.submodules=false to skip submodule initialization")
+	}
+
+	enabled := true
+	macBuild.Spec.Source.Submodules = &enabled
+	job = newNativeBuildJob(context.Background(), macBuild, ArtifactsScriptSourceConfig{})
+	if !job.submodulesEnabled() {
+		t.Fatal("expected source.submodules=true to initialize submodules")
+	}
+}
+
+func TestCloneAndCheckoutSourceInitializesSubmodules(t *testing.T) {
+	// Local-path submodules need the file protocol allowed (git >= 2.38).
+	t.Setenv("GIT_ALLOW_PROTOCOL", "file")
+
+	superDir, commit := createRepoWithSubmoduleFixture(t)
+	macBuild := newTestMacBuild()
+	macBuild.Spec.Source = buildv1alpha1.SourceSpec{GitRepository: superDir, GitRef: "main"}
+
+	job := newNativeBuildJob(context.Background(), macBuild, ArtifactsScriptSourceConfig{})
+	if err := job.setupWorkspace(); err != nil {
+		t.Fatalf("setup workspace: %v", err)
+	}
+	defer job.cleanup()
+
+	gotCommit, err := job.cloneAndCheckoutSource()
+	if err != nil {
+		t.Fatalf("clone and checkout: %v", err)
+	}
+	if gotCommit != commit {
+		t.Fatalf("expected commit %q, got %q", commit, gotCommit)
+	}
+
+	subFile := filepath.Join(job.sourceDir, macBuild.Spec.Build.Component, "sub", "sub.txt")
+	if _, err := os.Stat(subFile); err != nil {
+		t.Fatalf("expected submodule file %s to be checked out: %v", subFile, err)
+	}
+}
+
+func TestCloneAndCheckoutSourceSkipsSubmodulesWhenDisabled(t *testing.T) {
+	t.Setenv("GIT_ALLOW_PROTOCOL", "file")
+
+	superDir, _ := createRepoWithSubmoduleFixture(t)
+	disabled := false
+	macBuild := newTestMacBuild()
+	macBuild.Spec.Source = buildv1alpha1.SourceSpec{
+		GitRepository: superDir,
+		GitRef:        "main",
+		Submodules:    &disabled,
+	}
+
+	job := newNativeBuildJob(context.Background(), macBuild, ArtifactsScriptSourceConfig{})
+	if err := job.setupWorkspace(); err != nil {
+		t.Fatalf("setup workspace: %v", err)
+	}
+	defer job.cleanup()
+
+	if _, err := job.cloneAndCheckoutSource(); err != nil {
+		t.Fatalf("clone and checkout: %v", err)
+	}
+
+	subFile := filepath.Join(job.sourceDir, macBuild.Spec.Build.Component, "sub", "sub.txt")
+	if _, err := os.Stat(subFile); !os.IsNotExist(err) {
+		t.Fatalf("expected submodule content to be absent when submodules are disabled, stat err: %v", err)
+	}
+}
+
+func TestGitCommandAppliesCredentials(t *testing.T) {
+	t.Parallel()
+
+	job := newNativeBuildJob(context.Background(), newTestMacBuild(), ArtifactsScriptSourceConfig{})
+
+	creds := &gitCredentials{
+		kind: gitCredentialKindBasicAuth,
+		args: []string{"-c", "credential.helper="},
+		env:  []string{"GIT_TERMINAL_PROMPT=0"},
+	}
+	cmd := job.gitCommand(creds, "clone", "https://example.invalid/repo.git", "/tmp/x")
+	if got := strings.Join(cmd.Args, " "); !strings.Contains(got, "git -c credential.helper= clone") {
+		t.Fatalf("expected credential overrides ahead of the git subcommand, got %q", got)
+	}
+	found := false
+	for _, entry := range cmd.Env {
+		if entry == "GIT_TERMINAL_PROMPT=0" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected credential environment to be applied")
+	}
+
+	// Anonymous clones keep the inherited environment untouched.
+	plain := job.gitCommand(nil, "status")
+	if plain.Env != nil {
+		t.Fatalf("expected no environment override without credentials, got %v", plain.Env)
+	}
+}
+
+func TestCloneAndCheckoutSourceWithRefspecAndGitSha(t *testing.T) {
+	t.Parallel()
+
+	repoDir := t.TempDir()
+	runGit(t, repoDir, "init", "-b", "main")
+	runGit(t, repoDir, "config", "user.name", "Tester")
+	runGit(t, repoDir, "config", "user.email", "tester@example.com")
+	if err := os.WriteFile(filepath.Join(repoDir, "README.md"), []byte("repo\n"), 0o644); err != nil {
+		t.Fatalf("write repo file: %v", err)
+	}
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "initial")
+	runGit(t, repoDir, "branch", "release/1.0")
+
+	refspec := "+refs/heads/release/*:refs/remotes/origin/release/*"
+	sha := strings.TrimSpace(runGit(t, repoDir, "rev-parse", "release/1.0"))
+
+	macBuild := newTestMacBuild()
+	macBuild.Spec.Source = buildv1alpha1.SourceSpec{
+		GitRepository: repoDir,
+		GitRef:        "main",
+		GitSha:        &sha,
+		GitRefspec:    &refspec,
+	}
+
+	job := newNativeBuildJob(context.Background(), macBuild, ArtifactsScriptSourceConfig{})
+	if err := job.setupWorkspace(); err != nil {
+		t.Fatalf("setup workspace: %v", err)
+	}
+	defer job.cleanup()
+
+	gotCommit, err := job.cloneAndCheckoutSource()
+	if err != nil {
+		t.Fatalf("clone and checkout: %v", err)
+	}
+	if gotCommit != sha {
+		t.Fatalf("expected gitSha %q to be checked out, got %q", sha, gotCommit)
+	}
+}
+
+func TestCloneAndCheckoutSourceRemovesMaterializedCredentialsOnFailure(t *testing.T) {
+	t.Parallel()
+
+	// A local path cannot host basic-auth credentials: resolving fails before the
+	// clone. The materialized credentials directory must not be left behind.
+	job := newGitCredentialsJob(t, buildv1alpha1.SourceSpec{
+		GitRepository: "/tmp/local-repo",
+		GitRef:        "main",
+		GitSecretRef:  stringPtr(testCredentialsSecretName),
+	}, basicAuthSecret(testCredentialsSecretName, testCredentialsToken))
+
+	if _, err := job.cloneAndCheckoutSource(); err == nil {
+		t.Fatal("expected cloneAndCheckoutSource to fail for local paths with basic-auth credentials")
+	}
+
+	if _, err := os.Stat(filepath.Join(job.workspaceDir, gitCredentialsDirName)); !os.IsNotExist(err) {
+		t.Fatalf("expected credentials dir to be cleaned up, stat err: %v", err)
+	}
+}
+
+func createRepoWithSubmoduleFixture(t *testing.T) (superDir, commit string) {
+	t.Helper()
+
+	subDir := t.TempDir()
+	runGit(t, subDir, "init", "-b", "main")
+	runGit(t, subDir, "config", "user.name", "Tester")
+	runGit(t, subDir, "config", "user.email", "tester@example.com")
+	if err := os.WriteFile(filepath.Join(subDir, "sub.txt"), []byte("from-submodule\n"), 0o644); err != nil {
+		t.Fatalf("write submodule file: %v", err)
+	}
+	runGit(t, subDir, "add", ".")
+	runGit(t, subDir, "commit", "-m", "sub initial")
+
+	superDir = t.TempDir()
+	runGit(t, superDir, "init", "-b", "main")
+	runGit(t, superDir, "config", "user.name", "Tester")
+	runGit(t, superDir, "config", "user.email", "tester@example.com")
+	if err := os.WriteFile(filepath.Join(superDir, "README.md"), []byte("super\n"), 0o644); err != nil {
+		t.Fatalf("write superproject file: %v", err)
+	}
+	runGit(t, superDir, "add", ".")
+	runGit(t, superDir, "commit", "-m", "super initial")
+
+	runGitEnv(t, superDir, []string{"GIT_ALLOW_PROTOCOL=file"}, "submodule", "add", subDir, "sub")
+	runGit(t, superDir, "commit", "-m", "add submodule")
+
+	return superDir, strings.TrimSpace(runGit(t, superDir, "rev-parse", "HEAD"))
+}
+
 func newTestMacBuild() buildv1alpha1.MacBuild {
 	return buildv1alpha1.MacBuild{
 		ObjectMeta: metav1.ObjectMeta{
@@ -178,8 +378,17 @@ func newTestMacBuild() buildv1alpha1.MacBuild {
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 
+	return runGitEnv(t, dir, nil, args...)
+}
+
+func runGitEnv(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, output)

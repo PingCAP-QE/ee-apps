@@ -69,6 +69,7 @@ const (
 // +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -251,8 +252,16 @@ func (r *MacBuildReconciler) runNativeBuild(
 		return r.runBuild(ctx, macBuild, reportPhase)
 	}
 	job := newNativeBuildJob(ctx, macBuild, r.ArtifactsScriptSource)
+	job.credentialsReader = r.secretReader()
 	job.reportPhase = reportPhase
 	return job.Run()
+}
+
+// secretReader returns the client used to read git credential Secrets. Like
+// reader(), it prefers the uncached API reader so secret material is never
+// retained in the informer cache.
+func (r *MacBuildReconciler) secretReader() client.Reader {
+	return r.reader()
 }
 
 // reader returns the client used for the reads that decide whether to (re)run a

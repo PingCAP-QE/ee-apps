@@ -29,6 +29,7 @@ import (
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
 	"github.com/go-logr/logr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -50,6 +51,12 @@ type nativeBuildJob struct {
 	releasePackagePath   string
 	miseConfigPath       string
 	toolchainProvisioned bool
+
+	// credentialsReader reads the git credentials Secret referenced by
+	// source.gitSecretRef for private-repo clones. It should read through the
+	// API server (uncached) so secrets are never cached in memory. Nil disables
+	// credentials and keeps the clone anonymous.
+	credentialsReader client.Reader
 
 	reportPhase  buildPhaseReporter
 	stdoutWriter io.Writer
@@ -255,19 +262,30 @@ func (j *nativeBuildJob) cloneArtifactsRepo() error {
 	return nil
 }
 
-// cloneAndCheckoutSource clones the source repository and checks out the specified ref.
+// cloneAndCheckoutSource clones the source repository, checks out the specified
+// ref, and initializes git submodules. Git credentials (when configured) are
+// materialized from the referenced Secret for the duration of the checkout only
+// and are removed before the build starts.
 func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
-	j.logger.Info("Cloning source repository", "repo", j.spec.Source.GitRepository)
+	creds, err := j.resolveSourceGitCredentials(j.ctx)
+	if err != nil {
+		return "", err
+	}
+	if creds != nil {
+		defer creds.cleanup()
+	}
+
+	j.logger.Info("Cloning source repository", "repo", j.spec.Source.GitRepository, "credentials", creds.describe())
 
 	toCloneDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
-	cmdClone := exec.Command("git", "clone", j.spec.Source.GitRepository, toCloneDir)
+	cmdClone := j.gitCommand(creds, "clone", j.spec.Source.GitRepository, toCloneDir)
 	if err := j.exec(cmdClone); err != nil {
 		return "", fmt.Errorf("failed to clone source repo: %w", err)
 	}
 
 	if j.spec.Source.GitRefspec != nil && *j.spec.Source.GitRefspec != "" {
 		j.logger.Info("Fetching refspec", "refspec", *j.spec.Source.GitRefspec)
-		cmdFetch := exec.Command("git", "fetch", "origin", *j.spec.Source.GitRefspec)
+		cmdFetch := j.gitCommand(creds, "fetch", "origin", *j.spec.Source.GitRefspec)
 		if err := j.exec(cmdFetch, toCloneDir); err != nil {
 			return "", fmt.Errorf("failed to fetch refspec: %w", err)
 		}
@@ -278,9 +296,13 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 		checkoutRef = *j.spec.Source.GitSha
 	}
 	j.logger.Info("Checking out source", "ref", checkoutRef)
-	cmdCheckout := exec.Command("git", "checkout", checkoutRef)
+	cmdCheckout := j.gitCommand(creds, "checkout", checkoutRef)
 	if err := j.exec(cmdCheckout, toCloneDir); err != nil {
 		return "", fmt.Errorf("failed to checkout source: %w", err)
+	}
+
+	if err := j.initSourceSubmodules(creds, toCloneDir); err != nil {
+		return "", err
 	}
 
 	// Get the final commit hash
@@ -293,6 +315,46 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 	commitHash := strings.TrimSpace(string(hashBytes))
 	j.logger.Info("Source checked out", "commitHash", commitHash)
 	return commitHash, nil
+}
+
+// initSourceSubmodules initializes the source repo's git submodules. The Tekton
+// pingcap-git-clone task enables submodules by default, and components that
+// vendor dependencies as submodules (e.g. tiflash's contrib/) fail to configure
+// when they are missing, so the mac path mirrors that default.
+func (j *nativeBuildJob) initSourceSubmodules(creds *gitCredentials, dir string) error {
+	if !j.submodulesEnabled() {
+		j.logger.Info("Skipping git submodule initialization", "submodules", false, "dir", dir)
+		return nil
+	}
+
+	j.logger.Info("Initializing git submodules", "submodules", true, "dir", dir)
+	cmd := j.gitCommand(creds, "submodule", "update", "--init", "--recursive")
+	if err := j.exec(cmd, dir); err != nil {
+		return fmt.Errorf("failed to initialize git submodules: %w", err)
+	}
+	return nil
+}
+
+// submodulesEnabled reports whether submodules should be initialized. It
+// defaults to true (Tekton pingcap-git-clone parity); set source.submodules to
+// false to skip them.
+func (j *nativeBuildJob) submodulesEnabled() bool {
+	if j.spec.Source.Submodules != nil {
+		return *j.spec.Source.Submodules
+	}
+	return true
+}
+
+// gitCommand builds a git command that consumes the given (optional)
+// credentials. Credential overrides are passed via `git -c` flags and
+// environment variables that carry only helper names and file paths — never
+// secret material — so they are safe to log.
+func (j *nativeBuildJob) gitCommand(creds *gitCredentials, args ...string) *exec.Cmd {
+	cmd := exec.Command("git", append(creds.gitArgs(), args...)...)
+	if env := creds.gitEnv(); len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	return cmd
 }
 
 func (j *nativeBuildJob) gitHeadCommit(dir string) (string, error) {
