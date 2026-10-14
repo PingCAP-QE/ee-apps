@@ -49,8 +49,8 @@ func gitRefURL(gitRef, repo string) string {
 //go:embed lark_templates/devbuild-notify.yaml.tmpl
 var larkTemplateBytes string
 
-// NewLarkCardWithGoTemplate renders native Lark multilingual fields. The
-// template owns all display text; Go only supplies data and escaping helpers.
+// NewLarkCardWithGoTemplate renders the English notification template.
+// Go supplies artifact data and escaping helpers.
 func NewLarkCardWithGoTemplate(infos *NotificationInfo) (map[string]any, error) {
 	var tmpl *template.Template
 	funcs := sprig.FuncMap()
@@ -82,7 +82,7 @@ func NewLarkCardWithGoTemplate(infos *NotificationInfo) (map[string]any, error) 
 	return card, nil
 }
 
-// NewLarkCardJSON builds a localized Lark Card JSON 2.0 message.
+// NewLarkCardJSON builds a Lark Card JSON 2.0 message.
 func NewLarkCardJSON(infos *NotificationInfo) (string, error) {
 	values, err := NewLarkCardWithGoTemplate(infos)
 	if err != nil {

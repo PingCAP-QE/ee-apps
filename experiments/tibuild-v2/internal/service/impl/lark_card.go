@@ -138,8 +138,7 @@ func notificationDownloadURL(base, reference string) string {
 	return buildArtifactURL(strings.TrimRight(base, "/"), &devbuild.OciFile{Repo: repo, Tag: tag, File: file})
 }
 
-// notificationCardData contains only artifact data and links. All visible
-// language variants live in the card template and are selected by Lark.
+// notificationCardData contains artifact data and links for the card template.
 type notificationCardData struct {
 	*NotificationInfo
 	ImageGroups  []imageRepository

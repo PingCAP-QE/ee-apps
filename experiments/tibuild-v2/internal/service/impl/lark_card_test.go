@@ -143,23 +143,21 @@ func renderLarkCard(t testing.TB, info *NotificationInfo) map[string]any {
 	return card
 }
 
-func TestLarkNativeLocalization(t *testing.T) {
+func TestLarkEnglishText(t *testing.T) {
 	info := &NotificationInfo{Status: "SUCCESS", Product: "tiflash", CreatedBy: "name\"with\nnewline", IsHotfix: true, GitRef: "tag/v1", GithubRepo: "pingcap/tiflash", ErrMsg: "unsafe <at id=all> **text**", Images: []ImageInfo{{Platform: MultiArch, URL: "registry/a:v1"}}, Binaries: []BinaryInfo{{OciReference: "registry/a:v1/a.tar.gz", FileName: "a.tar.gz", Sha256Reference: "registry/a:v1/a.tar.gz.sha256"}}, PipelineRuns: []PipelineRunInfo{{Name: "test", Status: "Succeeded"}}}
 	card := renderLarkCard(t, info)
 	require.Equal(t, "2.0", card["schema"])
 	require.NotContains(t, card, "i18n_elements")
 	require.NotContains(t, card, "i18n_body")
-	var pairs []string
+	var contents []string
 	walkCard(card, func(el map[string]any) {
-		if locales, ok := el["i18n_content"].(map[string]any); ok {
-			require.Contains(t, locales, "en_us")
-			require.Contains(t, locales, "zh_cn")
-			require.Equal(t, el["content"], locales["en_us"])
-			pairs = append(pairs, locales["en_us"].(string)+"|"+locales["zh_cn"].(string))
+		require.NotContains(t, el, "i18n_content")
+		if content, ok := el["content"].(string); ok {
+			contents = append(contents, content)
 		}
 	})
-	text := strings.Join(pairs, "\n")
-	for _, expected := range []string{"**Multi-arch**|**多架构**", "**Docker Images**|**容器镜像**", "**二进制文件**", "校验文件:", "**创建人:**", "**热修复:**", "**流水线**", "**错误**"} {
+	text := strings.Join(contents, "\n")
+	for _, expected := range []string{"**Multi-arch**", "**Docker Images**", "**Binaries**", "Checksum:", "**Created By:**", "**Hotfix:**", "**Pipeline Runs**", "**Error**"} {
 		require.Contains(t, text, expected)
 	}
 	require.NotContains(t, text, "<at id=all>")
