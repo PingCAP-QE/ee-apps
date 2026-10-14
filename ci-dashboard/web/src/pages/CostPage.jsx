@@ -49,7 +49,7 @@ export default function CostPage({
   const costFilters = {
     start_date: filters.start_date,
     end_date: filters.end_date,
-    granularity: filters.granularity === "month" ? "month" : "week",
+    granularity: filters.granularity,
     cost_source: selectedCostSourceValue,
     branch: filters.branch,
     owner_include: filters.owner_include,

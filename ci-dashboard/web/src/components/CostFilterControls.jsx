@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { ALL_COST_SOURCES } from "../lib/filterUrl";
+import { ALL_COST_SOURCES, COST_DEFAULT_LAG_DAYS, getCostBucketOptions, getLatestCostDate } from "../lib/filterUrl";
+import { InfoHint } from "./charts";
 
 export const COST_BREAKDOWN_GROUPS = [
   { key: "account", label: "Account", description: "accounts" },
@@ -26,6 +27,12 @@ export default function CostFilterControls({
     [costSources, filters.cost_source],
   );
   const selectedAccounts = selectedValues(filters.cost_source);
+  const latestCostDate = getLatestCostDate();
+  const bucketOptions = getCostBucketOptions(filters);
+  const bucketReasons = bucketOptions
+    .filter((option) => option.disabled)
+    .map((option) => option.reason)
+    .join(" ");
 
   return (
     <section className="filter-bar cost-filter-controls">
@@ -38,17 +45,25 @@ export default function CostFilterControls({
         <DateField
           label="End"
           value={filters.end_date}
+          max={latestCostDate}
+          hint={`Cost data has a ${COST_DEFAULT_LAG_DAYS}-day delay (T+${COST_DEFAULT_LAG_DAYS}). Latest available date: ${latestCostDate} (UTC).`}
           onChange={(value) => onFilterChange("end_date", value)}
         />
         <label className="filter-field">
           <span>Bucket</span>
           <select
             value={filters.granularity}
+            aria-label="Bucket"
+            aria-describedby={bucketReasons ? "cost-bucket-limits" : undefined}
             onChange={(event) => onFilterChange("granularity", event.target.value)}
           >
-            <option value="week">Week</option>
-            <option value="month">Month</option>
+            {bucketOptions.map((option) => (
+              <option key={option.value} value={option.value} disabled={option.disabled} title={option.reason}>
+                {option.label}
+              </option>
+            ))}
           </select>
+          {bucketReasons ? <small id="cost-bucket-limits">{bucketReasons}</small> : null}
         </label>
         <label className="filter-field">
           <span>Group by</span>
@@ -99,12 +114,16 @@ export default function CostFilterControls({
   );
 }
 
-function DateField({ label, value, onChange }) {
+function DateField({ label, value, onChange, max, hint }) {
+  const inputId = useId();
   return (
-    <label className="filter-field">
-      <span>{label}</span>
-      <input type="date" value={value} onChange={(event) => onChange(event.target.value)} />
-    </label>
+    <div className="filter-field">
+      <div className="cost-filter-controls__date-label">
+        <label htmlFor={inputId}>{label}</label>
+        {hint ? <InfoHint text={hint} ariaLabel="Cost data availability" /> : null}
+      </div>
+      <input id={inputId} type="date" value={value} max={max} onChange={(event) => onChange(event.target.value)} />
+    </div>
   );
 }
 

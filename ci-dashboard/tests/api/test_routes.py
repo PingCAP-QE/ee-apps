@@ -60,6 +60,57 @@ def test_cost_resource_cursor_rejects_bad_request(api_client: TestClient) -> Non
     assert response.json()["detail"] == "invalid resource cursor"
 
 
+def test_cost_route_date_policy_rejects_invalid_ranges_before_db_reads(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    reads: list[str] = []
+
+    def record_read(_conn, _cursor, statement, _parameters, _context, _executemany):
+        if "cost_attribution_daily" in statement.lower() or "cost_budgets" in statement.lower():
+            reads.append(statement)
+
+    event.listen(sqlite_engine, "before_cursor_execute", record_read)
+    try:
+        invalid_requests = [
+            {"granularity": "day"},
+            {"granularity": "day", "start_date": "2026-07-01", "end_date": "2026-07-15"},
+            {"granularity": "week", "start_date": "2026-07-01", "end_date": "2026-09-01"},
+            {"granularity": "week", "start_date": "2026-01-31", "end_date": "2026-03-31"},
+            {"granularity": "week", "start_date": "2023-12-31", "end_date": "2024-02-29"},
+            {"granularity": "week", "start_date": "2026-07-02"},
+            {"granularity": "week", "start_date": "not-a-date", "end_date": "2026-07-02"},
+        ]
+        for params in invalid_requests:
+            response = api_client.get("/api/v1/pages/cost-trend", params=params)
+            assert response.status_code == 422
+    finally:
+        event.remove(sqlite_engine, "before_cursor_execute", record_read)
+
+    assert reads == []
+
+
+def test_cost_route_date_policy_allows_daily_weekly_and_default_ranges(
+    api_client: TestClient,
+) -> None:
+    for params in [
+        {"granularity": "day", "start_date": "2026-07-01", "end_date": "2026-07-14"},
+        {"granularity": "week", "start_date": "2026-07-01", "end_date": "2026-08-31"},
+        {"granularity": "week", "start_date": "2026-12-01", "end_date": "2027-01-31"},
+        {"granularity": "week", "start_date": "2026-01-31", "end_date": "2026-03-30"},
+        {"granularity": "week", "start_date": "2023-12-31", "end_date": "2024-02-28"},
+        {"granularity": "month"},
+    ]:
+        response = api_client.get("/api/v1/pages/cost-trend", params=params)
+        assert response.status_code == 200
+
+    default_response = api_client.get("/api/v1/pages/cost-trend")
+    assert default_response.status_code == 200
+    assert default_response.json()["meta"]["granularity"] == "week"
+    assert default_response.json()["meta"]["start_date"] is not None
+    assert default_response.json()["meta"]["end_date"] is not None
+
+
 def test_get_engine_dependency_caches_underlying_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     from ci_dashboard.api import dependencies as dependencies_module
 
@@ -3690,7 +3741,7 @@ def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> N
     params = {
         "start_date": "2026-05-01",
         "end_date": "2026-05-31",
-        "granularity": "day",
+        "granularity": "week",
     }
 
     trend_response = api_client.get("/api/v1/pages/cost-trend", params=params)
@@ -3812,6 +3863,68 @@ def test_cost_page_supporting_routes(sqlite_engine, api_client: TestClient) -> N
             "share_pct": 100.0,
             "interactive": False,
         }
+    ]
+
+
+def test_cost_page_routes_support_daily_buckets_with_zero_gaps(
+    sqlite_engine,
+    api_client: TestClient,
+) -> None:
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-02",
+        repo="tidb",
+        group_id=111,
+        net_cost=8,
+        list_cost=10,
+        dimension_hash="daily-tidb",
+    )
+    _insert_cost_attribution(
+        sqlite_engine,
+        usage_date="2026-05-04",
+        repo="tiflash",
+        group_id=120,
+        net_cost=16,
+        list_cost=20,
+        dimension_hash="daily-tiflash",
+    )
+    params = {
+        "start_date": "2026-05-01",
+        "end_date": "2026-05-05",
+        "granularity": "day",
+    }
+
+    trend_response = api_client.get("/api/v1/pages/cost-trend", params=params)
+    stack_response = api_client.get("/api/v1/pages/cost-repo-group-stack", params=params)
+
+    assert trend_response.status_code == 200
+    assert stack_response.status_code == 200
+    trend_body = trend_response.json()
+    assert trend_body["meta"]["granularity"] == "day"
+    trend_series = {series["key"]: series["points"] for series in trend_body["series"]}
+    assert trend_series["list_cost"] == [
+        ["2026-05-01", 0.0],
+        ["2026-05-02", 10.0],
+        ["2026-05-03", 0.0],
+        ["2026-05-04", 20.0],
+        ["2026-05-05", 0.0],
+    ]
+    stack_body = stack_response.json()
+    assert stack_body["meta"]["granularity"] == "day"
+    stack_series = {series["label"]: series["points"] for series in stack_body["series"]}
+    assert stack_series["tidb"] == [
+        ["2026-05-01", 0.0],
+        ["2026-05-02", 10.0],
+        ["2026-05-03", 0.0],
+        ["2026-05-04", 0.0],
+        ["2026-05-05", 0.0],
+    ]
+    assert stack_series["tiflash"] == [
+        ["2026-05-01", 0.0],
+        ["2026-05-02", 0.0],
+        ["2026-05-03", 0.0],
+        ["2026-05-04", 20.0],
+        ["2026-05-05", 0.0],
     ]
 
 
@@ -4166,7 +4279,7 @@ def test_cost_source_filter_and_sources_route(
         params={
             "start_date": "2026-05-01",
             "end_date": "2026-05-31",
-            "granularity": "day",
+            "granularity": "week",
             "cost_source": "aws:946646677266",
         },
     )
@@ -5138,6 +5251,65 @@ def test_ci_weekly_cost_rejects_overlapping_plans(sqlite_engine) -> None:
         cost_queries._ci_weekly_cost_budget_rows(connection)
 
 
+def test_ci_weekly_cost_budget_points_prorate_and_require_both_accounts() -> None:
+    gcp, tencent = cost_queries.CI_WEEKLY_COST_SOURCES
+    budget_rows = {
+        gcp: (
+            {
+                "period_start_date": date(2026, 1, 1),
+                "period_end_date": date(2026, 1, 3),
+                "budget_amount": Decimal("30"),
+            },
+            {
+                "period_start_date": date(2026, 1, 4),
+                "period_end_date": date(2026, 1, 10),
+                "budget_amount": Decimal("70"),
+            },
+            {
+                "period_start_date": date(2026, 1, 12),
+                "period_end_date": date(2026, 1, 18),
+                "budget_amount": Decimal("0"),
+            },
+        ),
+        tencent: (
+            {
+                "period_start_date": date(2026, 1, 1),
+                "period_end_date": date(2026, 1, 10),
+                "budget_amount": Decimal("100"),
+            },
+            {
+                "period_start_date": date(2026, 1, 12),
+                "period_end_date": date(2026, 1, 18),
+                "budget_amount": Decimal("70"),
+            },
+        ),
+    }
+
+    assert cost_queries._ci_weekly_cost_budget_points(
+        budget_rows,
+        [date(2025, 12, 29), date(2026, 1, 5), date(2026, 1, 12), date(2026, 1, 19)],
+    ) == [
+        {"week_start": "2025-12-29", "period_budget": 80.0},
+        {"week_start": "2026-01-05", "period_budget": 120.0},
+        {"week_start": "2026-01-12", "period_budget": 70.0},
+        {"week_start": "2026-01-19", "period_budget": None},
+    ]
+    assert cost_queries._ci_weekly_cost_total_weekly_budget(
+        {gcp: budget_rows[gcp]}, date(2026, 1, 5), date(2026, 1, 11)
+    ) is None
+    fractional_plans = {
+        source: ({
+            "period_start_date": date(2026, 1, 1),
+            "period_end_date": date(2026, 1, 31),
+            "budget_amount": Decimal("0.02"),
+        },)
+        for source in (gcp, tencent)
+    }
+    assert cost_queries._ci_weekly_cost_total_weekly_budget(
+        fractional_plans, date(2026, 1, 12), date(2026, 1, 18)
+    ) == 0.01
+
+
 def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
     sqlite_engine,
     api_client: TestClient,
@@ -5283,8 +5455,30 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
             ]
         },
     }
+    categories = payload["last_week_category_share"]
+    assert categories["period"] == payload["last_complete_week"]
+    category_accounts = {item["vendor"]: item for item in categories["accounts"]}
+    assert category_accounts["gcp"]["cost_basis"] == "list_cost"
+    assert category_accounts["gcp"]["total_cost"] == 100.0
+    assert category_accounts["tencent"]["cost_basis"] == "net_cost"
+    assert category_accounts["tencent"]["total_cost"] == 500.0
+    for account in category_accounts.values():
+        assert sum(item["value"] for item in account["items"]) == account["total_cost"]
+        assert account["observed_dates"] == ["2026-09-16"]
+        assert len(account["missing_dates"]) == 6
+
     history = payload["weekly_cost_history"]
     assert history["period"] == {"start_date": "2026-07-27", "end_date": "2026-09-20"}
+    assert history["budget_points"] == [
+        {"week_start": "2026-07-27", "period_budget": None},
+        {"week_start": "2026-08-03", "period_budget": None},
+        {"week_start": "2026-08-10", "period_budget": None},
+        {"week_start": "2026-08-17", "period_budget": None},
+        {"week_start": "2026-08-24", "period_budget": None},
+        {"week_start": "2026-08-31", "period_budget": 3077.36},
+        {"week_start": "2026-09-07", "period_budget": 3473.58},
+        {"week_start": "2026-09-14", "period_budget": 3473.58},
+    ]
     assert [(item["cost_source"], item["cost_metric"]) for item in history["series"]] == [
         ("gcp:pingcap-testing-account", "list_cost"),
         ("tencent:100050658403", "list_cost"),
@@ -6235,7 +6429,7 @@ def test_cost_budget_pace_route(
     body = response.json()
     assert body["scope"]["start_date"] == "2026-05-16"
     assert body["scope"]["end_date"] == "2026-05-22"
-    assert body["scope"]["granularity"] == "week"
+    assert body["scope"]["granularity"] == "day"
     assert body["scope"]["cost_source"] == "gcp:pingcap-testing-account"
     assert body["budget_health"] == {
         "metric_key": "net_cost",
@@ -6323,7 +6517,7 @@ def test_cost_query_page_helpers_cover_parallel_paths(monkeypatch: pytest.Monkey
         start_date=date(2026, 5, 1),
         end_date=date(2026, 5, 31),
         branch="master",
-        granularity="week",
+        granularity="day",
         cost_vendor="aws",
         cost_account_id="946646677266",
     )
@@ -6377,14 +6571,14 @@ def test_get_cost_page_parallelizes_for_non_sqlite(monkeypatch: pytest.MonkeyPat
 
     assert result["scope"]["start_date"] == "2026-05-01"
     assert result["scope"]["end_date"] == "2026-05-31"
-    assert result["scope"]["granularity"] == "week"
+    assert result["scope"]["granularity"] == "day"
     assert result["scope"]["cost_vendor"] == "aws"
     assert result["scope"]["cost_account_id"] == "946646677266"
     assert result["scope"]["job_names"] == []
-    assert result["cost_trend"] == {"name": "trend", "granularity": "week"}
-    assert result["repo_group_stack"] == {"name": "stack", "granularity": "week"}
-    assert result["engineering_group_share"] == {"name": "share", "granularity": "week"}
-    assert captured_granularities == ["week", "week", "week"]
+    assert result["cost_trend"] == {"name": "trend", "granularity": "day"}
+    assert result["repo_group_stack"] == {"name": "stack", "granularity": "day"}
+    assert result["engineering_group_share"] == {"name": "share", "granularity": "day"}
+    assert captured_granularities == ["day", "day", "day"]
 
 
 def test_get_budget_pace_for_non_sqlite(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6420,7 +6614,7 @@ def test_get_budget_pace_for_non_sqlite(monkeypatch: pytest.MonkeyPatch) -> None
         ),
     )
 
-    assert result["scope"]["granularity"] == "week"
+    assert result["scope"]["granularity"] == "day"
     assert result["budget_health"]["status"] == "healthy"
 
 

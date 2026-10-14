@@ -136,7 +136,7 @@ export function StatCard({
   );
 }
 
-export function InfoHint({ text }) {
+export function InfoHint({ text, ariaLabel = "Show metric definition" }) {
   const tooltipId = useId();
 
   return (
@@ -144,7 +144,7 @@ export function InfoHint({ text }) {
       <button
         type="button"
         className="info-hint__button"
-        aria-label="Show metric definition"
+        aria-label={ariaLabel}
         aria-describedby={tooltipId}
       >
         i

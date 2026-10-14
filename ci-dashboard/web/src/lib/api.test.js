@@ -2,10 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  COST_DATA_LAG_DAYS,
+  getLaggedTrailingDateRange,
   getLatestBranchValue,
   getPreviousCompleteMondayWeek,
   getStableCostSummaryWeek,
 } from "./api.js";
+
+test("Cost trailing dates share the T+3 default lag", () => {
+  assert.equal(COST_DATA_LAG_DAYS, 3);
+  assert.deepEqual(getLaggedTrailingDateRange(new Date("2026-06-12T12:00:00")), {
+    start_date: "2026-06-03",
+    end_date: "2026-06-09",
+  });
+});
 
 test("returns the previous complete Monday through Sunday week", () => {
   assert.deepEqual(
