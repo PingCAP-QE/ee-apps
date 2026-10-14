@@ -43,11 +43,6 @@ type MacBuildReconciler struct {
 	BuildPollInterval     time.Duration
 	ArtifactsScriptSource ArtifactsScriptSourceConfig
 
-	// DefaultGitCredentialsSecret is the namespace-level default Secret holding
-	// git credentials for private-repo clones. A build can override it with
-	// spec.source.gitSecretRef. Empty disables the default (anonymous clones).
-	DefaultGitCredentialsSecret string
-
 	// APIReader reads directly from the API server (uncached). The reconciler
 	// uses it for the reads that decide whether to (re)run a build, so it never
 	// acts on a stale phase: a reconcile triggered right after a build completes
@@ -258,7 +253,6 @@ func (r *MacBuildReconciler) runNativeBuild(
 	}
 	job := newNativeBuildJob(ctx, macBuild, r.ArtifactsScriptSource)
 	job.credentialsReader = r.secretReader()
-	job.defaultGitCredentialsSecret = r.DefaultGitCredentialsSecret
 	job.reportPhase = reportPhase
 	return job.Run()
 }

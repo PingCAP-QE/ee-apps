@@ -37,10 +37,12 @@ then pass it via `--kubeconfig`.
 ## Private repositories (git credentials)
 
 Builds of private repositories (e.g. `pingcap-inc/tici`) need git credentials.
-The agent takes them from a Kubernetes Secret — the same idea as binding a
-`basic-auth`/`ssh-directory` Secret to the Tekton `pingcap-git-clone` task — and
-materializes them **per build only** (removed right after the checkout;
-never written to logs, artifacts, or anywhere outside the build workspace).
+A build references a Kubernetes Secret in the MacBuild namespace through
+`spec.source.gitSecretRef` (Tekton: the `git-secret-ref` CustomRun param) — the
+same Secret shapes the Tekton `pingcap-git-clone` task consumes via its
+`basic-auth`/`ssh-directory` workspaces. The agent materializes the credentials
+**per build only** (removed right after the checkout; never written to logs,
+artifacts, or anywhere outside the build workspace).
 
 Supported Secret shapes:
 
@@ -52,14 +54,8 @@ Supported Secret shapes:
   `known_hosts`), or the Tekton `ssh-directory` style key files
   (`id_ed25519`/`id_rsa`/`known_hosts`/`config`, ...).
 
-The credentials are also used when initializing git submodules.
-
-Resolution order for each build:
-
-1. `spec.source.gitSecretRef` (a Secret name in the MacBuild's namespace), or
-   the `git-secret-ref` CustomRun param when driven by Tekton;
-2. the agent's default Secret name, set with `--default-git-credentials-secret`;
-3. none — the clone is anonymous (public repositories only).
+The credentials are also used when initializing git submodules. Builds without
+`source.gitSecretRef` clone anonymously (public repositories).
 
 Example:
 
@@ -70,12 +66,16 @@ kubectl -n ee-cd create secret generic github-git-credentials \
   --from-literal=username=x-access-token \
   --from-literal=password="$GITHUB_PAT"
 
-# Then install/start the agent with the namespace-wide default (install.sh
-# passes it through to the agent as a flag):
-#   install.sh --service --default-git-credentials-secret=github-git-credentials
+# Reference it from the build (MacBuild CR, or the `git-secret-ref` param when
+# driven by a Tekton CustomRun):
+#   spec:
+#     source:
+#       gitRepository: https://github.com/pingcap-inc/tici.git
+#       gitRef: main
+#       gitSecretRef: github-git-credentials
 ```
 
-The worker's ServiceAccount needs `get` on the git credentials Secret in the
+The worker's ServiceAccount needs `get` on the referenced Secret in the
 MacBuild namespace. For chart-managed workers, list the Secret name(s) in
 `worker.gitCredentialsSecrets` — the chart grants access by `resourceNames`, so
 the worker can only read exactly those Secrets. Credential values are never

@@ -26,7 +26,6 @@ const (
 func newGitCredentialsJob(
 	t *testing.T,
 	source buildv1alpha1.SourceSpec,
-	defaultSecretName string,
 	objects ...client.Object,
 ) *nativeBuildJob {
 	t.Helper()
@@ -42,7 +41,6 @@ func newGitCredentialsJob(
 
 	job := newNativeBuildJob(context.Background(), macBuild, ArtifactsScriptSourceConfig{})
 	job.credentialsReader = fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
-	job.defaultGitCredentialsSecret = defaultSecretName
 
 	if err := job.setupWorkspace(); err != nil {
 		t.Fatalf("setup workspace: %v", err)
@@ -70,7 +68,7 @@ func TestResolveSourceGitCredentialsBasicAuth(t *testing.T) {
 		GitRepository: "https://github.com/pingcap-inc/tici.git",
 		GitRef:        "main",
 		GitSecretRef:  stringPtr(testCredentialsSecretName),
-	}, "", basicAuthSecret(testCredentialsSecretName, testCredentialsToken))
+	}, basicAuthSecret(testCredentialsSecretName, testCredentialsToken))
 
 	creds, err := job.resolveSourceGitCredentials(job.ctx)
 	if err != nil {
@@ -140,7 +138,7 @@ func TestResolveSourceGitCredentialsSSH(t *testing.T) {
 		GitRepository: "git@github.com:pingcap-inc/tici.git",
 		GitRef:        "main",
 		GitSecretRef:  stringPtr(testCredentialsSecretName),
-	}, "", secret)
+	}, secret)
 
 	creds, err := job.resolveSourceGitCredentials(job.ctx)
 	if err != nil {
@@ -177,42 +175,24 @@ func TestResolveSourceGitCredentialsSSH(t *testing.T) {
 	}
 }
 
-func TestResolveSourceGitCredentialsUsesDefaultSecret(t *testing.T) {
+func TestResolveSourceGitCredentialsUsesReferencedSecret(t *testing.T) {
 	t.Parallel()
+
+	referenced := basicAuthSecret(testCredentialsSecretName, testCredentialsToken)
+	unreferenced := basicAuthSecret("other-git-credentials", "other-token")
 
 	job := newGitCredentialsJob(t, buildv1alpha1.SourceSpec{
 		GitRepository: "https://github.com/pingcap-inc/tici.git",
 		GitRef:        "main",
-	}, testCredentialsSecretName, basicAuthSecret(testCredentialsSecretName, testCredentialsToken))
+		GitSecretRef:  stringPtr(referenced.Name),
+	}, referenced, unreferenced)
 
 	creds, err := job.resolveSourceGitCredentials(job.ctx)
 	if err != nil {
 		t.Fatalf("resolve credentials: %v", err)
 	}
-	if creds == nil || creds.secretName != testCredentialsSecretName {
-		t.Fatalf("expected default secret to be used, got %#v", creds)
-	}
-}
-
-func TestResolveSourceGitCredentialsPerBuildSecretOverridesDefault(t *testing.T) {
-	t.Parallel()
-
-	defaultSecret := basicAuthSecret("default-git-credentials", "default-token")
-	perBuildSecret := basicAuthSecret("per-build-git-credentials", testCredentialsToken)
-
-	override := perBuildSecret.Name
-	job := newGitCredentialsJob(t, buildv1alpha1.SourceSpec{
-		GitRepository: "https://github.com/pingcap-inc/tici.git",
-		GitRef:        "main",
-		GitSecretRef:  &override,
-	}, defaultSecret.Name, defaultSecret, perBuildSecret)
-
-	creds, err := job.resolveSourceGitCredentials(job.ctx)
-	if err != nil {
-		t.Fatalf("resolve credentials: %v", err)
-	}
-	if creds == nil || creds.secretName != perBuildSecret.Name {
-		t.Fatalf("expected per-build secret to win, got %#v", creds)
+	if creds == nil || creds.secretName != referenced.Name {
+		t.Fatalf("expected the referenced secret to be used, got %#v", creds)
 	}
 }
 
@@ -222,7 +202,7 @@ func TestResolveSourceGitCredentialsDisabled(t *testing.T) {
 	job := newGitCredentialsJob(t, buildv1alpha1.SourceSpec{
 		GitRepository: "https://github.com/pingcap-inc/tici.git",
 		GitRef:        "main",
-	}, "")
+	})
 
 	creds, err := job.resolveSourceGitCredentials(job.ctx)
 	if err != nil {
@@ -243,7 +223,8 @@ func TestResolveSourceGitCredentialsMissingSecret(t *testing.T) {
 	job := newGitCredentialsJob(t, buildv1alpha1.SourceSpec{
 		GitRepository: "https://github.com/pingcap-inc/tici.git",
 		GitRef:        "main",
-	}, "does-not-exist")
+		GitSecretRef:  stringPtr("does-not-exist"),
+	})
 
 	_, err := job.resolveSourceGitCredentials(job.ctx)
 	if err == nil {
@@ -265,7 +246,7 @@ func TestResolveSourceGitCredentialsUnsupportedSecret(t *testing.T) {
 		GitRepository: "https://github.com/pingcap-inc/tici.git",
 		GitRef:        "main",
 		GitSecretRef:  stringPtr(testCredentialsSecretName),
-	}, "", secret)
+	}, secret)
 
 	if _, err := job.resolveSourceGitCredentials(job.ctx); err == nil {
 		t.Fatal("expected an error for an unsupported secret shape")
@@ -287,7 +268,7 @@ func TestResolveSourceGitCredentialsOpaqueSecretDetectedByKeys(t *testing.T) {
 		GitRepository: "https://github.com/pingcap-inc/tici.git",
 		GitRef:        "main",
 		GitSecretRef:  stringPtr(testCredentialsSecretName),
-	}, "", secret)
+	}, secret)
 
 	creds, err := job.resolveSourceGitCredentials(job.ctx)
 	if err != nil {

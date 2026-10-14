@@ -310,7 +310,8 @@ func TestCloneAndCheckoutSourceRemovesMaterializedCredentialsOnFailure(t *testin
 	job := newGitCredentialsJob(t, buildv1alpha1.SourceSpec{
 		GitRepository: "/tmp/local-repo",
 		GitRef:        "main",
-	}, "", basicAuthSecret(testCredentialsSecretName, testCredentialsToken))
+		GitSecretRef:  stringPtr(testCredentialsSecretName),
+	}, basicAuthSecret(testCredentialsSecretName, testCredentialsToken))
 
 	if _, err := job.cloneAndCheckoutSource(); err == nil {
 		t.Fatal("expected cloneAndCheckoutSource to fail for local paths with basic-auth credentials")

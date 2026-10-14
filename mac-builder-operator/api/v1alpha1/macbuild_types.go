@@ -83,9 +83,7 @@ type SourceSpec struct {
 	// a `kubernetes.io/basic-auth` Secret (username/password), a `token` key, a
 	// packed `.git-credentials` key, or a `kubernetes.io/ssh-auth` Secret /
 	// ssh key files (`ssh-privatekey`, `id_ed25519`, `id_rsa`, `known_hosts`,
-	// `config`, ...). When empty, the agent falls back to its default secret
-	// (--default-git-credentials-secret); when neither is set, the clone is
-	// anonymous.
+	// `config`, ...). When empty, the clone is anonymous (public repositories).
 	// +optional
 	GitSecretRef *string `json:"gitSecretRef,omitempty"`
 

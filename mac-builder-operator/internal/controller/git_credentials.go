@@ -103,21 +103,18 @@ func (c *gitCredentials) describe() string {
 }
 
 // resolveSourceGitCredentials reads and materializes the git credentials Secret
-// for the source clone: the MacBuild's source.gitSecretRef when set, otherwise
-// the operator's namespace-level default Secret. It returns (nil, nil) when no
-// secret is configured — public repositories keep cloning anonymously.
+// referenced by the MacBuild's source.gitSecretRef. It returns (nil, nil) when
+// no secret is referenced — public repositories keep cloning anonymously.
 func (j *nativeBuildJob) resolveSourceGitCredentials(ctx context.Context) (*gitCredentials, error) {
 	if j.credentialsReader == nil {
 		return nil, nil
 	}
 
-	secretName := strings.TrimSpace(j.defaultGitCredentialsSecret)
-	if ref := j.spec.Source.GitSecretRef; ref != nil && strings.TrimSpace(*ref) != "" {
-		secretName = strings.TrimSpace(*ref)
-	}
-	if secretName == "" {
+	ref := j.spec.Source.GitSecretRef
+	if ref == nil || strings.TrimSpace(*ref) == "" {
 		return nil, nil
 	}
+	secretName := strings.TrimSpace(*ref)
 
 	var secret corev1.Secret
 	key := client.ObjectKey{Namespace: j.macBuild.Namespace, Name: secretName}

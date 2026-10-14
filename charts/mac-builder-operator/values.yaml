@@ -29,10 +29,6 @@ agent:
   workerArch: ""
   buildTimeout: 24h
   buildPollInterval: 5m
-  # Secret in the MacBuild namespace with git credentials for private-repo
-  # clones (kubernetes.io/basic-auth or kubernetes.io/ssh-auth). Empty keeps
-  # the clone anonymous; builds can override it with spec.source.gitSecretRef.
-  defaultGitCredentialsSecret: ""
 
 artifactsRepo:
   url: https://github.com/PingCAP-QE/artifacts.git
@@ -70,8 +66,7 @@ worker:
     name: ""
   # Secret name(s) in the MacBuild namespace the worker may read for git
   # credentials of private-repo clones. Empty grants no secret access; list
-  # every Secret referenced by --default-git-credentials-secret or
-  # spec.source.gitSecretRef.
+  # every Secret referenced by spec.source.gitSecretRef.
   gitCredentialsSecrets: []
 
 crd:

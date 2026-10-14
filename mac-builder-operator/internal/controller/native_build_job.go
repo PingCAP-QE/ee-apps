@@ -52,15 +52,11 @@ type nativeBuildJob struct {
 	miseConfigPath       string
 	toolchainProvisioned bool
 
-	// credentialsReader reads the git credentials Secret for private-repo
-	// clones (source.gitSecretRef, or the default secret below). It should read
-	// through the API server (uncached) so secrets are never cached in memory.
-	// Nil disables credentials and keeps the clone anonymous.
+	// credentialsReader reads the git credentials Secret referenced by
+	// source.gitSecretRef for private-repo clones. It should read through the
+	// API server (uncached) so secrets are never cached in memory. Nil disables
+	// credentials and keeps the clone anonymous.
 	credentialsReader client.Reader
-
-	// defaultGitCredentialsSecret is the namespace-level default Secret name for
-	// private-repo clones, overridden per build by source.gitSecretRef.
-	defaultGitCredentialsSecret string
 
 	reportPhase  buildPhaseReporter
 	stdoutWriter io.Writer
