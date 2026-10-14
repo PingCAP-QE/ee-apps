@@ -28,6 +28,7 @@ PREFIX="${PREFIX:-$HOME/.local/bin}"
 WORKER_NAME="${WORKER_NAME:-$(hostname)}"
 WORKER_ARCH="${WORKER_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/')}"
 MACBUILD_NAMESPACE="${MACBUILD_NAMESPACE:-ee-cd}"
+DEFAULT_GIT_CREDENTIALS_SECRET="${DEFAULT_GIT_CREDENTIALS_SECRET:-}"
 KUBECONFIG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
 AGENT_BUILD_GO="${AGENT_BUILD_GO:-1.25}"
 INSTALL_SERVICE=false
@@ -48,6 +49,9 @@ Usage: install.sh [OPTIONS]
   --prefix DIR            install prefix for the agent binary (default: ~/.local/bin)
   --eeapps-ref REF        ee-apps ref to build the agent from (default: main)
   --artifacts-ref REF     artifacts ref for the worker-global toolset (default: main)
+  --default-git-credentials-secret NAME
+                          Secret in the MacBuild namespace with git credentials for
+                          private-repo clones (default: none, anonymous clones)
   --service               install + start a LaunchAgent (${SERVICE_LABEL})
   --run                   build everything, then run the agent in the foreground
   -h|--help               show this help
@@ -64,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --prefix)         PREFIX="$2"; shift 2 ;;
     --eeapps-ref)     EEAPPS_REF="$2"; shift 2 ;;
     --artifacts-ref)  ARTIFACTS_REF="$2"; shift 2 ;;
+    --default-git-credentials-secret) DEFAULT_GIT_CREDENTIALS_SECRET="$2"; shift 2 ;;
     --service)        INSTALL_SERVICE=true; shift ;;
     --run)            RUN_FOREGROUND=true; shift ;;
     -h|--help)        usage 0 ;;
@@ -116,6 +121,9 @@ log "Installed agent: $PREFIX/macbuild-agent"
 
 agent_args=(--enable-agent --enable-gc=false --enable-customrun=false \
   --macbuild-namespace="$MACBUILD_NAMESPACE" --worker-name="$WORKER_NAME" --worker-arch="$WORKER_ARCH")
+if [[ -n "$DEFAULT_GIT_CREDENTIALS_SECRET" ]]; then
+  agent_args+=(--default-git-credentials-secret="$DEFAULT_GIT_CREDENTIALS_SECRET")
+fi
 
 # ---- 5) start --------------------------------------------------------------
 if [[ "$INSTALL_SERVICE" == true ]]; then

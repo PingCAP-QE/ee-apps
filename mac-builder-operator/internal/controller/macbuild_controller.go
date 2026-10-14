@@ -43,6 +43,11 @@ type MacBuildReconciler struct {
 	BuildPollInterval     time.Duration
 	ArtifactsScriptSource ArtifactsScriptSourceConfig
 
+	// DefaultGitCredentialsSecret is the namespace-level default Secret holding
+	// git credentials for private-repo clones. A build can override it with
+	// spec.source.gitSecretRef. Empty disables the default (anonymous clones).
+	DefaultGitCredentialsSecret string
+
 	// APIReader reads directly from the API server (uncached). The reconciler
 	// uses it for the reads that decide whether to (re)run a build, so it never
 	// acts on a stale phase: a reconcile triggered right after a build completes
@@ -69,6 +74,7 @@ const (
 // +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -251,8 +257,17 @@ func (r *MacBuildReconciler) runNativeBuild(
 		return r.runBuild(ctx, macBuild, reportPhase)
 	}
 	job := newNativeBuildJob(ctx, macBuild, r.ArtifactsScriptSource)
+	job.credentialsReader = r.secretReader()
+	job.defaultGitCredentialsSecret = r.DefaultGitCredentialsSecret
 	job.reportPhase = reportPhase
 	return job.Run()
+}
+
+// secretReader returns the client used to read git credential Secrets. Like
+// reader(), it prefers the uncached API reader so secret material is never
+// retained in the informer cache.
+func (r *MacBuildReconciler) secretReader() client.Reader {
+	return r.reader()
 }
 
 // reader returns the client used for the reads that decide whether to (re)run a

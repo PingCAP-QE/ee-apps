@@ -9,6 +9,12 @@ spec:
   source:
     gitRepository: https://github.com/pingcap/tidb.git
     gitRef: main
+    # Optional: Secret in this namespace with git credentials for private-repo
+    # clones (kubernetes.io/basic-auth or kubernetes.io/ssh-auth). Falls back to
+    # the agent's --default-git-credentials-secret.
+    # gitSecretRef: github-git-credentials
+    # Optional: initialize git submodules after checkout (default true).
+    # submodules: true
   build:
     component: tidb
     version: nightly

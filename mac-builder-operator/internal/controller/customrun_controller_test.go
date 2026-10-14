@@ -36,18 +36,20 @@ const (
 )
 
 const (
-	paramGitURL    = "git-url"
-	paramGitRef    = "git-ref"
-	paramGitRev    = "git-revision"
-	paramRefspec   = "git-refspec"
-	paramComponent = "component"
-	paramVersion   = "version"
-	paramOS        = "os"
-	paramArch      = "arch"
-	paramProfile   = "profile"
-	paramPush      = "push"
-	paramRegistry  = "registry"
-	paramTTL       = "ttl"
+	paramGitURL       = "git-url"
+	paramGitRef       = "git-ref"
+	paramGitRev       = "git-revision"
+	paramRefspec      = "git-refspec"
+	paramGitSecretRef = "git-secret-ref"
+	paramSubmodules   = "submodules"
+	paramComponent    = "component"
+	paramVersion      = "version"
+	paramOS           = "os"
+	paramArch         = "arch"
+	paramProfile      = "profile"
+	paramPush         = "push"
+	paramRegistry     = "registry"
+	paramTTL          = "ttl"
 )
 
 func newTestMacBuildCustomRun(name string, params map[string]string) *tektonv1beta1.CustomRun {
@@ -228,6 +230,65 @@ func TestBuildMacBuildFromCustomRunDropsBranchRefspec(t *testing.T) {
 	}
 	if mb.Spec.Source.GitRefspec != nil {
 		t.Fatalf("expected branch refspec to be dropped, got %q", *mb.Spec.Source.GitRefspec)
+	}
+}
+
+func TestBuildMacBuildFromCustomRunGitCredentialsAndSubmodules(t *testing.T) {
+	t.Parallel()
+
+	cr := newTestMacBuildCustomRun("cr-git-creds", map[string]string{
+		paramGitURL:       testGitURL,
+		paramComponent:    testComponent,
+		paramGitSecretRef: "github-git-credentials",
+		paramSubmodules:   "true",
+	})
+	mb, err := buildMacBuildFromCustomRun(cr, "default", "mb")
+	if err != nil {
+		t.Fatalf("buildMacBuildFromCustomRun failed: %v", err)
+	}
+	if mb.Spec.Source.GitSecretRef == nil || *mb.Spec.Source.GitSecretRef != "github-git-credentials" {
+		t.Fatalf("unexpected git secret ref: %#v", mb.Spec.Source.GitSecretRef)
+	}
+	if mb.Spec.Source.Submodules == nil || !*mb.Spec.Source.Submodules {
+		t.Fatalf("expected submodules=true, got %#v", mb.Spec.Source.Submodules)
+	}
+}
+
+func TestBuildMacBuildFromCustomRunSubmodulesOptOut(t *testing.T) {
+	t.Parallel()
+
+	cr := newTestMacBuildCustomRun("cr-no-submodules", map[string]string{
+		paramGitURL:     testGitURL,
+		paramComponent:  testComponent,
+		paramSubmodules: "false",
+	})
+	mb, err := buildMacBuildFromCustomRun(cr, "default", "mb")
+	if err != nil {
+		t.Fatalf("buildMacBuildFromCustomRun failed: %v", err)
+	}
+	if mb.Spec.Source.Submodules == nil || *mb.Spec.Source.Submodules {
+		t.Fatalf("expected submodules=false, got %#v", mb.Spec.Source.Submodules)
+	}
+}
+
+func TestBuildMacBuildFromCustomRunLeavesUnsetParamsNil(t *testing.T) {
+	t.Parallel()
+
+	cr := newTestMacBuildCustomRun("cr-unset", map[string]string{
+		paramGitURL:    testGitURL,
+		paramComponent: testComponent,
+	})
+	mb, err := buildMacBuildFromCustomRun(cr, "default", "mb")
+	if err != nil {
+		t.Fatalf("buildMacBuildFromCustomRun failed: %v", err)
+	}
+	if mb.Spec.Source.GitSecretRef != nil {
+		t.Fatalf("expected no git secret ref, got %#v", mb.Spec.Source.GitSecretRef)
+	}
+	// Absent submodules must stay unset so the operator default (initialize
+	// submodules, Tekton parity) applies.
+	if mb.Spec.Source.Submodules != nil {
+		t.Fatalf("expected submodules to stay unset, got %#v", mb.Spec.Source.Submodules)
 	}
 }
 

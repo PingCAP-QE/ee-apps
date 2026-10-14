@@ -77,6 +77,25 @@ type SourceSpec struct {
 	// Optional: A git refspec to fetch before checkout (e.g., refs/pull/123/head)
 	// +optional
 	GitRefspec *string `json:"gitRefspec,omitempty"`
+
+	// Optional: Name of a Secret in the MacBuild's namespace that holds the git
+	// credentials used to clone private repositories. Supported secret shapes:
+	// a `kubernetes.io/basic-auth` Secret (username/password), a `token` key, a
+	// packed `.git-credentials` key, or a `kubernetes.io/ssh-auth` Secret /
+	// ssh key files (`ssh-privatekey`, `id_ed25519`, `id_rsa`, `known_hosts`,
+	// `config`, ...). When empty, the agent falls back to its default secret
+	// (--default-git-credentials-secret); when neither is set, the clone is
+	// anonymous.
+	// +optional
+	GitSecretRef *string `json:"gitSecretRef,omitempty"`
+
+	// Optional: Initialize git submodules after checkout
+	// (`git submodule update --init --recursive`), mirroring the Tekton
+	// pingcap-git-clone `submodules` param (which defaults to true). When nil,
+	// submodules are initialized (the default); set to false to skip them, e.g.
+	// for repositories whose submodules are not needed.
+	// +optional
+	Submodules *bool `json:"submodules,omitempty"`
 }
 
 // BuildSpec defines the build parameters

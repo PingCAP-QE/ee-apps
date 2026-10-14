@@ -87,6 +87,17 @@ rules:
     verbs:
       - create
       - patch
+  {{- with .Values.worker.gitCredentialsSecrets }}
+  # Read git credentials for private-repo clones, scoped to the listed names.
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+    resourceNames:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

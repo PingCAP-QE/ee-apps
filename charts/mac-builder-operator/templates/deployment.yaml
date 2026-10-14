@@ -51,6 +51,9 @@ spec:
             - --artifacts-repo-url={{ .Values.artifactsRepo.url }}
             - --artifacts-repo-revision={{ .Values.artifactsRepo.revision }}
             - --artifacts-repo-commit={{ .Values.artifactsRepo.commit }}
+            {{- with .Values.agent.defaultGitCredentialsSecret }}
+            - --default-git-credentials-secret={{ . }}
+            {{- end }}
             {{- end }}
             {{- if .Values.controller.gc }}
             - --enable-gc

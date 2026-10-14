@@ -73,7 +73,7 @@ func main() {
 	var enableAgent, enableGC, enableCustomRun bool
 	var buildTimeout, buildPollInterval, customRunPollInterval time.Duration
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
-	var macBuildNamespace string
+	var macBuildNamespace, defaultGitCredentialsSecret string
 	defaultWorkerName, err := os.Hostname()
 	if err != nil {
 		setupLog.Error(err, "unable to get hostname for default worker name")
@@ -100,6 +100,10 @@ func main() {
 		"Immutable tag or commit to check out from the artifacts repo before generating build scripts.")
 	flag.StringVar(&artifactsRepoCommit, "artifacts-repo-commit", controller.DefaultArtifactsScriptExpectedCommit,
 		"Expected full commit SHA for the pinned artifacts repo revision.")
+	flag.StringVar(&defaultGitCredentialsSecret, "default-git-credentials-secret", "",
+		"Name of a Secret in the MacBuild namespace holding git credentials for private-repo clones "+
+			"(kubernetes.io/basic-auth or kubernetes.io/ssh-auth). Empty disables the default; "+
+			"a build can override it with spec.source.gitSecretRef.")
 	flag.StringVar(&workerName, "worker-name", defaultWorkerName,
 		"Unique worker identity stored in MacBuild status when the agent claims a build.")
 	flag.StringVar(&workerArch, "worker-arch", goruntime.GOARCH,
@@ -265,6 +269,8 @@ func main() {
 			BuildTimeout:          buildTimeout,
 			BuildPollInterval:     buildPollInterval,
 			ArtifactsScriptSource: artifactsScriptSource,
+
+			DefaultGitCredentialsSecret: defaultGitCredentialsSecret,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "MacBuildAgent")
 			os.Exit(1)
