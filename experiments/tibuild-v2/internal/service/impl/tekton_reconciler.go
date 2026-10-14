@@ -323,12 +323,12 @@ func extractArtifactsFromResults(results []tknv1.PipelineRunResult, params tknv1
 						Platform: platform,
 						URL:      img.Repo + ":" + img.Tag,
 					})
-					// If the image has multi-arch tags, append the multi-arch image
-					// with the first tag (manifest list, no platform suffix).
-					if len(img.MultiArchTags) > 0 {
+					// If the image has multi-arch tags, append the multi-arch images
+					// for every tag (manifest list, no platform suffix).
+					for _, tag := range img.MultiArchTags {
 						images = append(images, schema.ImageArtifact{
 							Platform: MultiArch,
-							URL:      img.Repo + ":" + img.MultiArchTags[0],
+							URL:      img.Repo + ":" + tag,
 						})
 					}
 				}
@@ -367,13 +367,13 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
 							URL:      img.Repo + ":" + img.Tag,
 						})
 						hasData = true
-						// If the image has multi-arch tags, append the multi-arch image
-						// with the first tag (manifest list, no platform suffix).
+						// If the image has multi-arch tags, append the multi-arch images
+						// for every tag (manifest list, no platform suffix).
 						// Both pipelines may report the same multi-arch tags, so dedupe.
-						if len(img.MultiArchTags) > 0 {
+						for _, tag := range img.MultiArchTags {
 							report.Images = appendUniqueImage(report.Images, schema.ImageArtifact{
 								Platform: MultiArch,
-								URL:      img.Repo + ":" + img.MultiArchTags[0],
+								URL:      img.Repo + ":" + tag,
 							})
 						}
 					}

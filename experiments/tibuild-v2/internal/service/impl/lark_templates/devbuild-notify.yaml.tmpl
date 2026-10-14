@@ -1,105 +1,177 @@
+{{/* Card JSON 2.0 uses component-level i18n_content. Lark selects the locale.
+     All dynamic YAML scalars are JSON-quoted to prevent data changing layout. */}}
+{{- define "markdown" -}}
+tag: markdown
+content: {{ .EN | toJson }}
+i18n_content:
+  en_us: {{ .EN | toJson }}
+  zh_cn: {{ .ZH | toJson }}
+{{- end -}}
+
+schema: "2.0"
 config:
-  wide_screen_mode: true
+  width_mode: default
 header:
   template: {{ StatusColor .Status }}
   title:
-    content: "{{ StatusEmoji .Status }}{{ if .IsHotfix }} 🔥HOTFIX{{ end }} DevBuild #{{ .BuildID }} - {{ .Product }} {{ .Edition }}"
     tag: plain_text
-elements:
-  - tag: div
-    fields:
-      {{- with .Status }}
-      - is_short: false
-        text:
-          tag: lark_md
-          content: "**Status:**\t{{ StatusEmoji . }}{{ . }}"
-      {{- end }}
-      {{- with .CreatedBy }}
-      - is_short: false
-        text:
-          tag: lark_md
-          content: "🧑‍💻 **Created By:**\t{{ . }}"
-      {{- end }}
-      {{- with .CreatedAt }}
-      - is_short: false
-        text:
-          tag: lark_md
-          content: "🛫 **Created at:**\t{{ . }}"
-      {{- end }}
-      {{- with .CompletedAt }}
-      - is_short: false
-        text:
-          tag: lark_md
-          content: "🛬 **Completed time:**\t{{ . }}"
-      {{- end }}
-  - tag: hr
-  - tag: markdown
-    content: |-
-      **Request:**
-      - **Product:** {{ .Product }}
-      - **Edition:** {{ .Edition }}
-      - **Version:** {{ .Version }}
-      {{- if .IsHotfix }}
-      - **Hotfix:** 🔥 Yes
-      {{- end }}
-      - **Platform:** {{ .Platform }}
-      {{- with .GithubRepo }}
-      - **Repository:** [{{ . }}](https://github.com/{{ . }})
-      {{- end }}
-      {{- $gitRefURL := GitRefURL .GitRef .GithubRepo }}
-      {{- if $gitRefURL }}
-      - **Git Ref:** [{{ .GitRef }}]({{ $gitRefURL }})
-      {{- else }}
-      - **Git Ref:** {{ .GitRef }}
-      {{- end }}
+    {{- $hotfix := ternary " 🔥HOTFIX" "" .IsHotfix }}
+    {{- $title := printf "%s%s DevBuild #%d - %s %s" (StatusEmoji .Status) $hotfix .BuildID .Product .Edition }}
+    content: {{ $title | toJson }}
+    i18n_content:
+      en_us: {{ $title | toJson }}
+      zh_cn: {{ printf "%s%s 开发构建 #%d - %s %s" (StatusEmoji .Status) $hotfix .BuildID .Product .Edition | toJson }}
+body:
+  padding: 12px
+  vertical_spacing: 12px
+  elements:
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          vertical_spacing: 8px
+          elements:
+            {{- $en := "" }}
+            {{- $zh := "" }}
+            {{- with .Status }}
+              {{- $en = printf "%s**Status:** %s%s\n" $en (StatusEmoji .) (Escape .) }}
+              {{- $zh = printf "%s**状态:** %s%s\n" $zh (StatusEmoji .) (Escape .) }}
+            {{- end }}
+            {{- with .CreatedBy }}
+              {{- $en = printf "%s**Created By:** %s\n" $en (Escape .) }}
+              {{- $zh = printf "%s**创建人:** %s\n" $zh (Escape .) }}
+            {{- end }}
+            {{- with .CreatedAt }}
+              {{- $en = printf "%s**Created at:** %s\n" $en (Escape .) }}
+              {{- $zh = printf "%s**创建时间:** %s\n" $zh (Escape .) }}
+            {{- end }}
+            {{- with .CompletedAt }}
+              {{- $en = printf "%s**Completed time:** %s\n" $en (Escape .) }}
+              {{- $zh = printf "%s**完成时间:** %s\n" $zh (Escape .) }}
+            {{- end }}
+            -{{ include "markdown" (dict "EN" $en "ZH" $zh) | nindent 14 }}
+            {{- $en = printf "**Request**\n- **Product:** %s\n- **Edition:** %s\n- **Version:** %s\n- **Platform:** %s" (Escape .Product) (Escape .Edition) (Escape .Version) (Escape .Platform) }}
+            {{- $zh = printf "**构建请求**\n- **产品:** %s\n- **版本类型:** %s\n- **版本:** %s\n- **平台:** %s" (Escape .Product) (Escape .Edition) (Escape .Version) (Escape .Platform) }}
+            {{- if .IsHotfix }}
+              {{- $en = printf "%s\n- **Hotfix:** 🔥 Yes" $en }}
+              {{- $zh = printf "%s\n- **热修复:** 🔥 是" $zh }}
+            {{- end }}
+            {{- with .GithubRepo }}
+              {{- $repo := Link . (printf "https://github.com/%s" .) }}
+              {{- $en = printf "%s\n- **Repository:** %s" $en $repo }}
+              {{- $zh = printf "%s\n- **仓库:** %s" $zh $repo }}
+            {{- end }}
+            {{- $ref := Link .GitRef (GitRefURL .GitRef .GithubRepo) }}
+            {{- $en = printf "%s\n- **Git Ref:** %s" $en $ref }}
+            {{- $zh = printf "%s\n- **Git 引用:** %s" $zh $ref }}
+            -{{ include "markdown" (dict "EN" $en "ZH" $zh) | nindent 14 }}
 
-  {{- if or .GitSha .Images .Binaries }}
-  - tag: hr
-  - tag: markdown
-    content: |-
-      **Build Report**
-      {{- if .GitSha }}
-      {{- $shaURL := GitRefURL .GitSha $.GithubRepo }}
-      {{- if $shaURL }}
-      - **Git SHA:** [{{ .GitSha }}]({{ $shaURL }})
-      {{- else }}
-      - **Git SHA:** {{ .GitSha }}
-      {{- end }}
-      {{- end }}
-      {{- if .Images }}
-      - **Docker Images:**
-        ```YAML
-        {{- range .Images }}
-        - {{ .URL }}
-        {{- end }}
-        ```
-      {{- end }}
-      {{- if .Binaries }}
-      - **Binaries:**
-        ```YAML
-        {{- range .Binaries }}
-        - {{ .OciReference }}
-        {{- end }}
-        ```
-      {{- end }}
-  {{- end }}
-
-  {{- if .PipelineRuns }}
-  - tag: hr
-  - tag: markdown
-    content: |-
-        **Pipeline Runs:**
-        {{- range .PipelineRuns }}
-        - {{ PipelineStatusEmoji .Status }} **{{ .Name }}:** [{{ .Status }}]({{ .URL }})
-        {{- end }}
-  {{- end }}
-
-  {{- if .ErrMsg }}
-  - tag: hr
-  - tag: markdown
-    content: |-
-      **Error:**
-      ```text
-      {{ .ErrMsg }}
-      ```
-  {{- end }}
+    {{- if or .GitSha .ImageGroups .BinaryGroups }}
+    {{- $en := "**Build Report**" }}
+    {{- $zh := "**构建产物**" }}
+    {{- with .GitSha }}
+      {{- $sha := Link . (GitRefURL (printf "commit/%s" .) $.GithubRepo) }}
+      {{- $en = printf "%s\n**Git SHA:** %s" $en $sha }}
+      {{- $zh = printf "%s\n**Git SHA:** %s" $zh $sha }}
+    {{- end }}
+    -{{ include "markdown" (dict "EN" $en "ZH" $zh) | nindent 6 }}
+      text_size: heading-2
+    {{- end }}
+    {{- if .ImageGroups }}
+    -{{ include "markdown" (dict "EN" "**Docker Images**" "ZH" "**容器镜像**") | nindent 6 }}
+    {{- end }}
+    {{- range .ImageGroups }}
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          vertical_spacing: 8px
+          elements:
+            - tag: markdown
+              content: {{ Escape .Repo | toJson }}
+            {{- range .Platforms }}
+            {{- if eq .Platform "multi-arch" }}
+            -{{ include "markdown" (dict "EN" "**Multi-arch**" "ZH" "**多架构**") | nindent 14 }}
+            {{- else }}
+            - tag: markdown
+              content: {{ printf "**%s**" (Escape .Platform) | toJson }}
+            {{- end }}
+            {{- range .Tags }}
+            - tag: markdown
+              content: {{ ImageLink .Tag .Reference | toJson }}
+            {{- end }}
+            {{- end }}
+    {{- end }}
+    {{- if .BinaryGroups }}
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          vertical_spacing: 8px
+          elements:
+            -{{ include "markdown" (dict "EN" "**Binaries**" "ZH" "**二进制文件**") | nindent 14 }}
+            {{- range .BinaryGroups }}
+            {{- if .Platform }}
+            - tag: markdown
+              content: {{ printf "**%s**" (Escape .Platform) | toJson }}
+            {{- else }}
+            -{{ include "markdown" (dict "EN" "**Unknown platform**" "ZH" "**未知平台**") | nindent 14 }}
+            {{- end }}
+            {{- range .Files }}
+            {{- $en := Link .FileName .URL }}
+            {{- $zh := $en }}
+            {{- if not .Downloadable }}
+              {{- $en = printf "%s\n<font color='grey'>Download service is not configured</font>" $en }}
+              {{- $zh = printf "%s\n<font color='grey'>尚未配置下载服务</font>" $zh }}
+            {{- end }}
+            -{{ include "markdown" (dict "EN" $en "ZH" $zh) | nindent 14 }}
+            {{- if .HasChecksum }}
+            {{- $sha := Link "SHA256" .Sha256URL }}
+            -{{ include "markdown" (dict "EN" (printf "<font color='grey'>Checksum:</font> %s" $sha) "ZH" (printf "<font color='grey'>校验文件:</font> %s" $sha)) | nindent 14 }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+    {{- end }}
+    {{- if .PipelineRuns }}
+    {{- $en := "**Pipeline Runs**" }}
+    {{- $zh := "**流水线**" }}
+    {{- range .PipelineRuns }}
+      {{- $line := printf "\n- %s **%s:** %s" (PipelineStatusEmoji .Status) (Escape .Name) (Link .Status .URL) }}
+      {{- $en = printf "%s%s" $en $line }}
+      {{- $zh = printf "%s%s" $zh $line }}
+    {{- end }}
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          elements:
+            -{{ include "markdown" (dict "EN" $en "ZH" $zh) | nindent 14 }}
+    {{- end }}
+    {{- with .ErrMsg }}
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          elements:
+            -{{ include "markdown" (dict "EN" (printf "**Error**\n%s" (Escape .)) "ZH" (printf "**错误**\n%s" (Escape .))) | nindent 14 }}
+    {{- end }}

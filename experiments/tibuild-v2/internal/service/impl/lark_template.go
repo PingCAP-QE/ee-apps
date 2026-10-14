@@ -2,13 +2,12 @@ package impl
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
 	yaml "gopkg.in/yaml.v3"
-
-	_ "embed"
 )
 
 // isHex checks if a string is a valid 40-character hex commit SHA.
@@ -50,32 +49,40 @@ func gitRefURL(gitRef, repo string) string {
 //go:embed lark_templates/devbuild-notify.yaml.tmpl
 var larkTemplateBytes string
 
-// NewLarkCardWithGoTemplate builds a Lark interactive card JSON from the template.
+// NewLarkCardWithGoTemplate renders native Lark multilingual fields. The
+// template owns all display text; Go only supplies data and escaping helpers.
 func NewLarkCardWithGoTemplate(infos *NotificationInfo) (map[string]any, error) {
-	funcMap := sprig.FuncMap()
-	funcMap["StatusColor"] = StatusColor
-	funcMap["StatusEmoji"] = StatusEmoji
-	funcMap["PipelineStatusEmoji"] = PipelineStatusEmoji
-	funcMap["GitRefURL"] = gitRefURL
-	tmpl, err := template.New("lark").Funcs(funcMap).Parse(larkTemplateBytes)
+	var tmpl *template.Template
+	funcs := sprig.FuncMap()
+	funcs["StatusColor"] = StatusColor
+	funcs["StatusEmoji"] = StatusEmoji
+	funcs["PipelineStatusEmoji"] = PipelineStatusEmoji
+	funcs["GitRefURL"] = gitRefURL
+	funcs["Escape"] = escapeCardText
+	funcs["Link"] = cardLink
+	funcs["ImageLink"] = imageCardLink
+	funcs["include"] = func(name string, data any) (string, error) {
+		var out bytes.Buffer
+		err := tmpl.ExecuteTemplate(&out, name, data)
+		return out.String(), err
+	}
+	var err error
+	tmpl, err = template.New("lark").Funcs(funcs).Parse(larkTemplateBytes)
 	if err != nil {
 		return nil, err
 	}
-
-	tmplResult := new(bytes.Buffer)
-	if err := tmpl.Execute(tmplResult, infos); err != nil {
+	var out bytes.Buffer
+	if err := tmpl.Execute(&out, prepareNotificationCard(infos)); err != nil {
 		return nil, err
 	}
-
-	values := make(map[string]any)
-	if err := yaml.Unmarshal(tmplResult.Bytes(), &values); err != nil {
+	var card map[string]any
+	if err := yaml.Unmarshal(out.Bytes(), &card); err != nil {
 		return nil, err
 	}
-
-	return values, nil
+	return card, nil
 }
 
-// NewLarkCardJSON builds a Lark interactive card JSON string from the template.
+// NewLarkCardJSON builds a localized Lark Card JSON 2.0 message.
 func NewLarkCardJSON(infos *NotificationInfo) (string, error) {
 	values, err := NewLarkCardWithGoTemplate(infos)
 	if err != nil {

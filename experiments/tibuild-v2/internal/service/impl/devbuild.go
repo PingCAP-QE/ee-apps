@@ -84,6 +84,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 	// Register Lark notification hook if enabled
 	if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
 		srvc.larkNotifier = NewLarkNotifier(cfg.Lark.AppID, cfg.Lark.AppSecret, cfg.Lark.Channels, logger)
+		srvc.larkNotifier.configureArtifacts(cfg)
 		registerNotificationHook(dbClient, srvc.larkNotifier, logger)
 		logger.Info().Msg("lark notification hook registered")
 	}

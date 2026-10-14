@@ -1,0 +1,178 @@
+package impl
+
+import (
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
+	"github.com/stretchr/testify/require"
+	tknv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+)
+
+func TestNotificationImageGrouping(t *testing.T) {
+	images := []ImageInfo{
+		{Platform: "linux/arm64", URL: "registry:5000/a:v1_linux_arm64"},
+		{Platform: "linux/amd64", URL: "registry:5000/b:v1_linux_amd64"},
+		{Platform: "linux/amd64", URL: "registry:5000/a:v2_linux_amd64"},
+		{Platform: MultiArch, URL: "registry:5000/a:v1"},
+		{Platform: "linux/amd64", URL: "registry:5000/a:v1_linux_amd64"},
+		{Platform: "linux/amd64", URL: "registry:5000/a:v1_linux_amd64"},
+	}
+	groups := groupNotificationImages(images)
+	require.Len(t, groups, 2)
+	require.Equal(t, "registry:5000/a", groups[0].Repo)
+	require.Len(t, groups[0].Platforms, 3)
+	require.Equal(t, MultiArch, groups[0].Platforms[0].Platform)
+	require.Equal(t, "linux/amd64", groups[0].Platforms[1].Platform)
+	require.Len(t, groups[0].Platforms[1].Tags, 2)
+	require.Equal(t, "v1_linux_amd64", groups[0].Platforms[1].Tags[0].Tag)
+	require.Len(t, groups[1].Platforms[0].Tags, 1)
+	// Sorting must be independent of Tekton callback arrival order.
+	for i, j := 0, len(images)-1; i < j; i, j = i+1, j-1 {
+		images[i], images[j] = images[j], images[i]
+	}
+	require.Equal(t, groups, groupNotificationImages(images))
+	repo, tag := splitImageReference("registry:5000/a@sha256:abcdef")
+	require.Equal(t, "registry:5000/a", repo)
+	require.Equal(t, "@sha256:abcdef", tag)
+}
+
+func TestNotificationBinaryLinksAndChecksums(t *testing.T) {
+	info := buildNotificationInfo(&ent.DevBuild{Status: "SUCCESS", BuildReport: schema.BuildReport{Binaries: []schema.OciArtifact{
+		{Repo: "registry:5000/a/package", Tag: "v1_linux_arm64", Platform: "linux/arm64", Files: []string{"b.tar.gz.sha256", "b.tar.gz"}},
+		{Repo: "registry:5000/a/package", Tag: "v1_linux_amd64", Platform: "linux/amd64", Files: []string{"a.tar.gz", "a.tar.gz.sha256", "no-checksum.tar.gz"}},
+	}}})
+	require.Len(t, info.Binaries, 3)
+	require.Equal(t, "registry:5000/a/package:v1_linux_arm64/b.tar.gz.sha256", info.Binaries[0].Sha256Reference)
+	for i := range info.Binaries {
+		bin := &info.Binaries[i]
+		bin.URL = notificationDownloadURL("https://downloads.example.com/oci-file", bin.OciReference)
+		bin.Sha256URL = notificationDownloadURL("https://downloads.example.com/oci-file", bin.Sha256Reference)
+	}
+	u, err := url.Parse(info.Binaries[0].URL)
+	require.NoError(t, err)
+	require.Equal(t, "b.tar.gz", u.Query().Get("file"))
+	require.Equal(t, "v1_linux_arm64", u.Query().Get("tag"))
+	card := renderLarkCard(t, info)
+	var markdown []string
+	walkCard(card, func(el map[string]any) {
+		if el["tag"] == "markdown" {
+			markdown = append(markdown, el["content"].(string))
+		}
+
+	})
+	text := strings.Join(markdown, "\n")
+	require.Less(t, strings.Index(text, "**linux/amd64**"), strings.Index(text, "**linux/arm64**"))
+	require.Less(t, strings.Index(text, "a.tar.gz]"), strings.Index(text, "no-checksum.tar.gz]"))
+	require.Contains(t, text, "[SHA256](https://")
+	for _, bin := range info.Binaries {
+		require.Contains(t, text, bin.URL)
+		if bin.Sha256URL != "" {
+			require.Contains(t, text, bin.Sha256URL)
+		}
+	}
+	require.NotContains(t, text, "```")
+}
+
+func walkCard(value any, visit func(map[string]any)) {
+	switch v := value.(type) {
+	case map[string]any:
+		visit(v)
+		for _, child := range v {
+			walkCard(child, visit)
+		}
+	case []any:
+		for _, child := range v {
+			walkCard(child, visit)
+		}
+	}
+}
+
+func TestNotificationReferencesWithoutCallbacks(t *testing.T) {
+	info := &NotificationInfo{Status: "SUCCESS", Images: []ImageInfo{
+		{Platform: MultiArch, URL: "registry/a:v1"},
+		{Platform: "linux/amd64", URL: "registry/a:v1_linux_amd64"},
+		{Platform: "linux/amd64", URL: "registry/a:v2_linux_amd64"},
+		{Platform: MultiArch, URL: "registry/b:v1"},
+	}}
+	card := renderLarkCard(t, info)
+	var markdown []string
+	walkCard(card, func(el map[string]any) {
+		require.NotEqual(t, "button", el["tag"])
+		require.NotContains(t, el, "behaviors")
+		if el["tag"] == "markdown" {
+			markdown = append(markdown, el["content"].(string))
+		}
+	})
+	text := strings.Join(markdown, "\n")
+	for _, image := range info.Images {
+		require.Contains(t, text, "]("+image.URL+")")
+	}
+	require.NotContains(t, text, "https://registry/")
+	require.Contains(t, text, "**Multi-arch**")
+}
+
+func TestMultipleMultiArchTagsArePreserved(t *testing.T) {
+	results := []tknv1.PipelineRunResult{{Name: "pushed-images", Value: *tknv1.NewStructuredValues(`images:
+- repo: registry/a
+  tag: v1_linux_amd64
+  multi_arch_tags: [v1, latest]
+- repo: registry/b
+  tag: v1_linux_amd64
+  multi_arch_tags: [v1, latest]
+`)}}
+	_, images := extractArtifactsFromResults(results, nil)
+	require.Len(t, images, 6)
+	pr := tknv1.PipelineRun{}
+	pr.Status.Results = results
+	report := buildBuildReport([]tknv1.PipelineRun{pr, pr})
+	require.Len(t, report.Images, 6)
+	for _, repo := range []string{"registry/a", "registry/b"} {
+		for _, tag := range []string{"v1", "latest"} {
+			require.Contains(t, report.Images, schema.ImageArtifact{Platform: MultiArch, URL: repo + ":" + tag})
+		}
+	}
+}
+
+func renderLarkCard(t testing.TB, info *NotificationInfo) map[string]any {
+	t.Helper()
+	card, err := NewLarkCardWithGoTemplate(info)
+	require.NoError(t, err)
+	return card
+}
+
+func TestLarkNativeLocalization(t *testing.T) {
+	info := &NotificationInfo{Status: "SUCCESS", Product: "tiflash", CreatedBy: "name\"with\nnewline", IsHotfix: true, GitRef: "tag/v1", GithubRepo: "pingcap/tiflash", ErrMsg: "unsafe <at id=all> **text**", Images: []ImageInfo{{Platform: MultiArch, URL: "registry/a:v1"}}, Binaries: []BinaryInfo{{OciReference: "registry/a:v1/a.tar.gz", FileName: "a.tar.gz", Sha256Reference: "registry/a:v1/a.tar.gz.sha256"}}, PipelineRuns: []PipelineRunInfo{{Name: "test", Status: "Succeeded"}}}
+	card := renderLarkCard(t, info)
+	require.Equal(t, "2.0", card["schema"])
+	require.NotContains(t, card, "i18n_elements")
+	require.NotContains(t, card, "i18n_body")
+	var pairs []string
+	walkCard(card, func(el map[string]any) {
+		if locales, ok := el["i18n_content"].(map[string]any); ok {
+			require.Contains(t, locales, "en_us")
+			require.Contains(t, locales, "zh_cn")
+			require.Equal(t, el["content"], locales["en_us"])
+			pairs = append(pairs, locales["en_us"].(string)+"|"+locales["zh_cn"].(string))
+		}
+	})
+	text := strings.Join(pairs, "\n")
+	for _, expected := range []string{"**Multi-arch**|**多架构**", "**Docker Images**|**容器镜像**", "**二进制文件**", "校验文件:", "**创建人:**", "**热修复:**", "**流水线**", "**错误**"} {
+		require.Contains(t, text, expected)
+	}
+	require.NotContains(t, text, "<at id=all>")
+}
+
+func TestImageCardLinkPreservesReference(t *testing.T) {
+	for _, ref := range []string{
+		"us-docker.pkg.dev/pingcap-testing-account/dev/pingcap/tiflash/image:v26.3.13-c6401b9-nextgen",
+		"registry.example.com:5000/team/image:v1_linux_amd64",
+		"team/image:v1",
+	} {
+		_, tag := splitImageReference(ref)
+		require.Equal(t, "["+escapeCardText(tag)+"]("+ref+")", imageCardLink(tag, ref))
+	}
+	require.Equal(t, "tag", imageCardLink("tag", "registry/a:v1) [injection](https://example.com"))
+}

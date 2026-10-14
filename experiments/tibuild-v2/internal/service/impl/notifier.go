@@ -27,6 +27,15 @@ type LarkNotifier struct {
 	client   atomic.Value // stores *larksdk.Client
 	channels []config.LarkChannel
 	logger   *zerolog.Logger
+	options  atomic.Value // notificationOptions
+}
+
+type notificationOptions struct {
+	DownloadURL string
+}
+
+func (n *LarkNotifier) configureArtifacts(cfg *config.Service) {
+	n.options.Store(notificationOptions{DownloadURL: cfg.Tekton.OciFileDownloadURL})
 }
 
 // NewLarkNotifier creates a new LarkNotifier with Lark app credentials and optional channels.
@@ -36,6 +45,7 @@ func NewLarkNotifier(appID, appSecret string, channels []config.LarkChannel, log
 		logger:   logger,
 	}
 	n.client.Store(newLarkClient(appID, appSecret))
+	n.options.Store(notificationOptions{})
 	return n
 }
 
@@ -58,7 +68,14 @@ func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) (*schema
 		return nil, nil
 	}
 
-	cardStr, err := NewLarkCardJSON(buildNotificationInfo(build))
+	info := buildNotificationInfo(build)
+	options := n.options.Load().(notificationOptions)
+	for i := range info.Binaries {
+		bin := &info.Binaries[i]
+		bin.URL = notificationDownloadURL(options.DownloadURL, bin.OciReference)
+		bin.Sha256URL = notificationDownloadURL(options.DownloadURL, bin.Sha256Reference)
+	}
+	cardStr, err := NewLarkCardJSON(info)
 	if err != nil {
 		n.logger.Err(err).Int("build_id", build.ID).Msg("failed to build notification card")
 		return nil, err

@@ -203,7 +203,7 @@ func TestNewLarkCardJSON(t *testing.T) {
 			}
 
 			// Verify elements exist
-			elements, ok := card["elements"].([]any)
+			elements, ok := card["body"].(map[string]any)["elements"].([]any)
 			if !ok {
 				t.Fatal("missing 'elements' key in card")
 			}
