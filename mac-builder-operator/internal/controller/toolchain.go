@@ -27,7 +27,11 @@ import (
 // per-component artifacts config (`release-package.yaml`), produced by the
 // artifacts repo's gen script. See PingCAP-QE/artifacts packages/packages.yaml.tmpl.
 type builderEntry struct {
-	If    bool   `json:"if"`
+	// If is the rendered match flag: true for the builder matching the build
+	// target, false for the others. It is absent when the builder has no `if:`
+	// expression at all (an unconditional builder, e.g. tici) — such a builder
+	// matches as well.
+	If    *bool  `json:"if"`
 	Image string `json:"image"`
 	MacOS *struct {
 		Tools map[string]string `json:"tools"`
@@ -48,7 +52,11 @@ func resolveMacOSTools(data []byte) (map[string]string, error) {
 	}
 	for i := range cfg.Builders {
 		b := cfg.Builders[i]
-		if !b.If || b.MacOS == nil {
+		if b.If != nil && !*b.If {
+			// Explicitly unmatched builder.
+			continue
+		}
+		if b.MacOS == nil {
 			continue
 		}
 		if len(b.MacOS.Tools) == 0 {

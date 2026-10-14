@@ -38,6 +38,49 @@ builders:
 		}
 	})
 
+	t.Run("returns tools of an unconditional builder without an if field", func(t *testing.T) {
+		t.Parallel()
+		// Builder entries without an `if:` expression render without the field
+		// (e.g. tici's single builder); they are the matched builder.
+		data := []byte(`
+builders:
+  - image: ghcr.io/x/tici:v2025.12.7-13-gadaea9a-centos7
+    macos:
+      tools:
+        rust: "nightly-2025-04-15"
+`)
+		got, err := resolveMacOSTools(data)
+		if err != nil {
+			t.Fatalf("resolveMacOSTools: %v", err)
+		}
+		if got["rust"] != "nightly-2025-04-15" {
+			t.Fatalf("unexpected tools: %#v", got)
+		}
+	})
+
+	t.Run("skips unmatched builders around an unconditional one", func(t *testing.T) {
+		t.Parallel()
+		data := []byte(`
+builders:
+  - if: false
+    image: ghcr.io/x/tici:fips
+    macos:
+      tools:
+        rust: "nightly-2026-01-30"
+  - image: ghcr.io/x/tici:v2025.12.7-13-gadaea9a-centos7
+    macos:
+      tools:
+        rust: "nightly-2025-04-15"
+`)
+		got, err := resolveMacOSTools(data)
+		if err != nil {
+			t.Fatalf("resolveMacOSTools: %v", err)
+		}
+		if got["rust"] != "nightly-2025-04-15" {
+			t.Fatalf("unexpected tools: %#v", got)
+		}
+	})
+
 	t.Run("returns nil when the matched builder has no macos.tools", func(t *testing.T) {
 		t.Parallel()
 		data := []byte(`
