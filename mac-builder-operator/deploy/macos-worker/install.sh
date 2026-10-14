@@ -136,7 +136,7 @@ $(
 )
   </array>
   <key>EnvironmentVariables</key><dict>
-    <key>PATH</key><string>${HOME}/.local/share/mise/shims:${HOME}/.local/bin:${PREFIX}:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>PATH</key><string>${HOME}/.local/share/mise/shims:${HOME}/.local/bin:${PREFIX}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>KUBECONFIG</key><string>${KUBECONFIG_PATH}</string>
   </dict>
   <key>RunAtLoad</key><true/>
@@ -150,7 +150,10 @@ EOF
   log "Installed + started LaunchAgent ${SERVICE_LABEL} (logs: ~/Library/Logs/macbuild-agent*.log)"
 elif [[ "$RUN_FOREGROUND" == true ]]; then
   log "Starting agent in the foreground..."
-  exec env KUBECONFIG="$KUBECONFIG_PATH" "$MISE_BIN" exec -- "$PREFIX/macbuild-agent" "${agent_args[@]}"
+  # Keep Homebrew on PATH for foreground runs too: /opt/homebrew for arm64,
+  # /usr/local for x86_64 (some build scripts call `brew --prefix ...`).
+  exec env KUBECONFIG="$KUBECONFIG_PATH" PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" \
+    "$MISE_BIN" exec -- "$PREFIX/macbuild-agent" "${agent_args[@]}"
 else
   log "Done. Start the agent with:"
   log "  KUBECONFIG=$KUBECONFIG_PATH mise exec -- $PREFIX/macbuild-agent ${agent_args[*]}"
