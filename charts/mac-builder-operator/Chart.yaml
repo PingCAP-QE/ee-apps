@@ -4,5 +4,5 @@ description: >-
   A Helm chart for mac-builder-operator: the MacBuild CRD, macOS build agent,
   GC reconciler, and the Tekton CustomRun controller.
 type: application
-version: 0.3.0
+version: 0.3.1
 appVersion: "v0.0.0"

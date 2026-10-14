@@ -2,11 +2,11 @@
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: macbuilds.tibuild.pingcap.net
   labels:
     {{- include "mac-builder-operator.labels" . | nindent 4 }}
-  annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
 spec:
   group: tibuild.pingcap.net
   names:
@@ -107,11 +107,28 @@ spec:
                   gitRepository:
                     description: Git repository URL (e.g., https://github.com/user/repo.git)
                     type: string
+                  gitSecretRef:
+                    description: |-
+                      Optional: Name of a Secret in the MacBuild's namespace that holds the git
+                      credentials used to clone private repositories. Supported secret shapes:
+                      a `kubernetes.io/basic-auth` Secret (username/password), a `token` key, a
+                      packed `.git-credentials` key, or a `kubernetes.io/ssh-auth` Secret /
+                      ssh key files (`ssh-privatekey`, `id_ed25519`, `id_rsa`, `known_hosts`,
+                      `config`, ...). When empty, the clone is anonymous (public repositories).
+                    type: string
                   gitSha:
                     description: |-
                       Optional: A specific git commit SHA to check out. Overrides gitRef if provided.
                       (Maps to Tekton git-sha param)
                     type: string
+                  submodules:
+                    description: |-
+                      Optional: Initialize git submodules after checkout
+                      (`git submodule update --init --recursive`), mirroring the Tekton
+                      pingcap-git-clone `submodules` param (which defaults to true). When nil,
+                      submodules are initialized (the default); set to false to skip them, e.g.
+                      for repositories whose submodules are not needed.
+                    type: boolean
                 required:
                 - gitRef
                 - gitRepository
