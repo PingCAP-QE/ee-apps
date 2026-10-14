@@ -8,7 +8,12 @@ from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, timedelta
 
-from cost_insight.common.config import AwsBillingSettings, GcpBillingSettings, get_settings
+from cost_insight.common.config import (
+    DEFAULT_GCP_ACCOUNT_ID,
+    AwsBillingSettings,
+    GcpBillingSettings,
+    get_settings,
+)
 from cost_insight.common.db import build_engine
 from cost_insight.common.logging import configure_logging
 from cost_insight.jobs.aws_split_cost_shadow import (
@@ -663,7 +668,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         engine = build_engine(settings)
         try:
             summaries = []
-            for gcp_settings in _resolve_gcp_sources(engine, settings=settings.gcp_billing):
+            # The high-cardinality CI account must not starve smaller projects
+            # when the shared weekly Job reaches its deadline.
+            sources = sorted(
+                _resolve_gcp_sources(engine, settings=settings.gcp_billing),
+                key=lambda source: source.account_id == DEFAULT_GCP_ACCOUNT_ID,
+            )
+            for gcp_settings in sources:
                 summaries.append(
                     run_sync_gcp_unmatched_resources(
                         engine,

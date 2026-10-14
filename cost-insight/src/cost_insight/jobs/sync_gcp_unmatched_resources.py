@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import and_, column, delete, or_, select, table, text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import GcpBillingSettings
@@ -67,6 +67,10 @@ UNMATCHED_RESOURCE_TABLE = "cost_unmatched_resource_daily"
 RESOURCE_WRITE_BATCH_SIZE = 10
 # A usage-date replacement must also bound its total transaction size.
 RESOURCE_REPLACEMENT_TRANSACTION_ROW_LIMIT = 1_000
+# Bound SQL parameters without putting resource label JSON in cleanup queries.
+_RESOURCE_CLEANUP_PREDICATE_BATCH_SIZE = 25
+_RESOURCE_CLEANUP_PROBE_BATCH_SIZE = 400
+_RESOURCE_CLEANUP_ID_BATCH_SIZE = 400
 _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
@@ -542,31 +546,95 @@ def _delete_superseded_resource_rows(
     # Label backfills change the hash shape. AWS usedby is added to the compact
     # summary tag set, while resource rows retain full provider tags, so match
     # the prior source-summary hash rather than the resource JSON.
-    params = []
+    groups: dict[tuple[Any, ...], dict[tuple[Any, ...], dict[str, Any]]] = {}
     for row in rows:
         superseded_source_summary_row_hash = _superseded_source_summary_row_hash(row)
         if row.get("vendor_tags_json") is None and superseded_source_summary_row_hash is None:
             continue
-        params.append(
-            {
-                "vendor": row.get("vendor") or "",
-                "account_id": row.get("account_id") or "",
-                "billing_account_id": row.get("billing_account_id") or "",
-                "export_partition_date": row["export_partition_date"],
-                "usage_date": row["usage_date"],
-                "service_name": row.get("service_name") or "",
-                "sku_name": row.get("sku_name") or "",
-                "namespace": row.get("namespace") or "",
-                "author": row.get("author") or "",
-                "org": row.get("org") or "",
-                "repo": row.get("repo") or "",
-                "target_branch": row.get("target_branch") or "",
-                "resource_name": row.get("resource_name") or "",
-                "superseded_source_summary_row_hash": superseded_source_summary_row_hash,
-            }
+        params = {
+            "vendor": row.get("vendor") or "",
+            "account_id": row.get("account_id") or "",
+            "billing_account_id": row.get("billing_account_id") or "",
+            "export_partition_date": row["export_partition_date"],
+            "usage_date": row["usage_date"],
+            "service_name": row.get("service_name") or "",
+            "sku_name": row.get("sku_name") or "",
+            "namespace": row.get("namespace") or "",
+            "author": row.get("author") or "",
+            "org": row.get("org") or "",
+            "repo": row.get("repo") or "",
+            "target_branch": row.get("target_branch") or "",
+            "resource_name": row.get("resource_name") or "",
+            "superseded_source_summary_row_hash": superseded_source_summary_row_hash,
+        }
+        scope = tuple(
+            params[key] for key in ("vendor", "account_id", "export_partition_date", "usage_date")
         )
-    if params:
-        connection.execute(_DELETE_SUPERSEDED_RESOURCE_ROWS, params)
+        groups.setdefault(scope, {})[tuple(params.values())] = params
+
+    cleanup_table = table(
+        UNMATCHED_RESOURCE_TABLE, column("id"), column("resource_name"),
+        column("vendor_tags_json"), column("source_summary_row_hash"),
+    )
+    for conditions in groups.values():
+        predicates = list(conditions.values())
+        # Keep common source/date filters outside OR so TiDB can select the
+        # vendor/account/export index prefix rather than every source that day.
+        scope = _SUPERSEDED_RESOURCE_SCOPE.unique_params(**predicates[0])
+        resource_names = sorted({p["resource_name"] for p in predicates})
+        superseded_hashes = sorted({
+            p["superseded_source_summary_row_hash"] for p in predicates
+            if p["superseded_source_summary_row_hash"] is not None
+        })
+        # This over-inclusive gate only skips empty legacy scopes. The full
+        # old predicate below remains the authority for every deletion.
+        has_candidates = False
+        for start in range(
+            0, max(len(resource_names), len(superseded_hashes)), _RESOURCE_CLEANUP_PROBE_BATCH_SIZE,
+        ):
+            names = resource_names[start : start + _RESOURCE_CLEANUP_PROBE_BATCH_SIZE]
+            hashes = superseded_hashes[start : start + _RESOURCE_CLEANUP_PROBE_BATCH_SIZE]
+            branches = []
+            # Empty expanding-IN introduces a subquery and a costly TiDB hash
+            # join. Omit empty branches instead of compiling empty lists.
+            if names:
+                branches.append(and_(
+                    cleanup_table.c.vendor_tags_json.is_(None),
+                    cleanup_table.c.resource_name.in_(names),
+                ))
+            if hashes:
+                branches.append(cleanup_table.c.source_summary_row_hash.in_(hashes))
+            if connection.execute(select(cleanup_table.c.id).where(
+                scope, or_(*branches),
+            ).limit(1)).first() is not None:
+                has_candidates = True
+                break
+        if not has_candidates:
+            continue
+        for start in range(0, len(predicates), _RESOURCE_CLEANUP_PREDICATE_BATCH_SIZE):
+            # Keep comparisons in SQL (including database collation and NULL
+            # handling). Recheck the old guard before deleting by primary key.
+            predicate = or_(*(
+                _SUPERSEDED_RESOURCE_PREDICATE.unique_params(**params)
+                for params in predicates[start : start + _RESOURCE_CLEANUP_PREDICATE_BATCH_SIZE]
+            ))
+            after_id = 0
+            while True:
+                ids = connection.execute(select(cleanup_table.c.id).where(
+                    scope, predicate, cleanup_table.c.id > after_id,
+                ).order_by(cleanup_table.c.id).limit(
+                    _RESOURCE_CLEANUP_ID_BATCH_SIZE,
+                )).scalars().all()
+                if not ids:
+                    break
+                connection.execute(delete(cleanup_table).where(
+                    cleanup_table.c.id.in_(ids), predicate,
+                ).prefix_with(
+                    "/*+ USE_INDEX(cost_unmatched_resource_daily, PRIMARY) */", dialect="mysql",
+                ))
+                # Progress even if a concurrently relabeled candidate no longer
+                # satisfies the guarded DELETE under a current read.
+                after_id = ids[-1]
 
 
 def _build_upsert_statement(
@@ -798,10 +866,16 @@ _INVALIDATE_RESOURCE_SERVING_PUBLICATION_RANGE = text(
 )
 
 
-_DELETE_SUPERSEDED_RESOURCE_ROWS = text(
+_SUPERSEDED_RESOURCE_SCOPE = text(
     """
-    DELETE FROM cost_unmatched_resource_daily
-    WHERE vendor = :vendor
+    vendor = :vendor AND account_id = :account_id
+      AND export_partition_date = :export_partition_date AND usage_date = :usage_date
+    """
+)
+
+_SUPERSEDED_RESOURCE_PREDICATE = text(
+    """
+    (vendor = :vendor
       AND account_id = :account_id
       AND COALESCE(billing_account_id, '') = :billing_account_id
       AND export_partition_date = :export_partition_date
@@ -817,6 +891,6 @@ _DELETE_SUPERSEDED_RESOURCE_ROWS = text(
       AND (
         vendor_tags_json IS NULL
         OR source_summary_row_hash = :superseded_source_summary_row_hash
-      )
+      ))
     """
 )
