@@ -9,6 +9,7 @@ on:
     paths:
       - .github/workflows/ci-mac-builder-operator.yml
       - mac-builder-operator/**
+      - charts/mac-builder-operator/**
 
 jobs:
   lint:
