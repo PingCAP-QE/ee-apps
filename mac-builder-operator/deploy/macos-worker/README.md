@@ -75,8 +75,7 @@ kubectl -n ee-cd create secret generic github-git-credentials \
 #       gitSecretRef: github-git-credentials
 ```
 
-The worker's ServiceAccount needs `get` on the referenced Secret in the
-MacBuild namespace. For chart-managed workers, list the Secret name(s) in
-`worker.gitCredentialsSecrets` — the chart grants access by `resourceNames`, so
-the worker can only read exactly those Secrets. Credential values are never
+The worker's ServiceAccount needs `get` on Secrets in the MacBuild namespace to
+read the referenced one; the chart's worker Role grants exactly that (it is
+namespace-scoped to the MacBuild namespace). Credential values are never
 logged; failures report only the Secret name and the reason.

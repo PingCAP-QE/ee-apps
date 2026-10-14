@@ -64,10 +64,6 @@ worker:
     create: false
     # Defaults to <fullname>-worker-token.
     name: ""
-  # Secret name(s) in the MacBuild namespace the worker may read for git
-  # credentials of private-repo clones. Empty grants no secret access; list
-  # every Secret referenced by spec.source.gitSecretRef.
-  gitCredentialsSecrets: []
 
 crd:
   create: true

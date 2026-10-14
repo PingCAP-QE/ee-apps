@@ -87,17 +87,15 @@ rules:
     verbs:
       - create
       - patch
-  {{- with .Values.worker.gitCredentialsSecrets }}
-  # Read git credentials for private-repo clones, scoped to the listed names.
+  # Read the git credentials Secrets referenced by builds (source.gitSecretRef)
+  # to clone private repositories. The worker Role is namespaced, so this is
+  # confined to the MacBuild namespace.
   - apiGroups:
       - ""
     resources:
       - secrets
     verbs:
       - get
-    resourceNames:
-      {{- toYaml . | nindent 6 }}
-  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
