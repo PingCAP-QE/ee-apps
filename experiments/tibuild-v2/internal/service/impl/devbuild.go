@@ -38,6 +38,7 @@ type devbuildsrvc struct {
 	reconcilerSince        time.Duration
 	httpClient             *http.Client
 	larkNotifier           *LarkNotifier
+	larkRetryLookback      time.Duration
 	jenkins                struct {
 		client  *gojenkins.Jenkins
 		jobName string
@@ -77,6 +78,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		ociFileDownloadURL:     strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/"),
 		reconcilerSince:        reconcilerSince,
 		httpClient:             &http.Client{Timeout: 30 * time.Second},
+		larkRetryLookback:      parseLarkRetryLookback(cfg.Lark.RetryLookback, logger),
 	}
 	srvc.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
 	srvc.jenkins.jobName = cfg.Jenkins.JobName

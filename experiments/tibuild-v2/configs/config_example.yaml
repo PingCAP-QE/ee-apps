@@ -37,6 +37,10 @@ lark:
   enabled: false
   app_id: "cli_xxxxxxxxxxxxxxxx"
   app_secret: "your-app-secret"
+  # On config reload, failed notifications from builds updated within this
+  # window are retried (compensation for e.g. an invalid app secret).
+  # Defaults to 168h (7 days) when empty.
+  retry_lookback: "168h"
   channels:
     - name: "devbuild-team"
       chat_id: "oc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"

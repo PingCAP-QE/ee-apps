@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -55,7 +56,13 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	if s.larkNotifier != nil {
 		if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
 			s.larkNotifier.Reload(cfg.Lark.AppID, cfg.Lark.AppSecret, cfg.Lark.Channels)
+			s.larkRetryLookback = parseLarkRetryLookback(cfg.Lark.RetryLookback, s.logger)
 			s.logger.Debug().Msg("lark notifier credentials and channels updated on reload")
+
+			// Compensate for notifications that failed under the previous
+			// configuration (e.g. an invalid app secret). Run asynchronously so
+			// the reload path stays fast and is not blocked by network calls.
+			go s.retryFailedNotifications(context.Background())
 		} else if !cfg.Lark.Enabled {
 			s.larkNotifier.Disable()
 			s.logger.Debug().Msg("lark notifier disabled on reload")

@@ -64,6 +64,10 @@ type Lark struct {
 	AppID     string        `yaml:"app_id,omitempty" json:"app_id,omitempty"`
 	AppSecret string        `yaml:"app_secret,omitempty" json:"app_secret,omitempty"`
 	Channels  []LarkChannel `yaml:"channels,omitempty" json:"channels,omitempty"`
+	// RetryLookback bounds how far back the notification compensation scans for
+	// previously failed deliveries after a config reload (e.g. "168h").
+	// Defaults to 168h (7 days) when empty.
+	RetryLookback string `yaml:"retry_lookback,omitempty" json:"retry_lookback,omitempty"`
 }
 
 // LarkChannel represents a Lark group chat to send notifications to.

@@ -73,9 +73,21 @@ func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) (*schema
 		newID, err := n.sendOrUpdate(ctx, client, build.ID, build.CreatedBy, dm.MessageID, cardStr)
 		if err != nil {
 			n.logger.Err(err).Int("build_id", build.ID).Msg("lark DM notification failed")
-		} else if newID != dm.MessageID {
-			dm.MessageID = newID
-			changed = true
+			if !dm.Failed {
+				dm.Failed = true
+				changed = true
+			}
+		} else {
+			if dm.Failed {
+				// Recovered after a previous failure; clear the flag so the
+				// compensation pass stops retrying this build.
+				dm.Failed = false
+				changed = true
+			}
+			if newID != dm.MessageID {
+				dm.MessageID = newID
+				changed = true
+			}
 		}
 	}
 
@@ -85,7 +97,17 @@ func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) (*schema
 		newID, err := n.sendOrUpdate(ctx, client, build.ID, ch.ChatID, cur.MessageID, cardStr)
 		if err != nil {
 			n.logger.Err(err).Int("build_id", build.ID).Str("channel", ch.Name).Msg("lark channel notification failed")
-		} else if newID != cur.MessageID {
+			if !cur.Failed {
+				cur.Failed = true
+				changed = true
+			}
+			continue
+		}
+		if cur.Failed {
+			cur.Failed = false
+			changed = true
+		}
+		if newID != cur.MessageID {
 			cur.MessageID = newID
 			cur.ChatID = ch.ChatID
 			changed = true

@@ -59,4 +59,8 @@ type NotificationState struct {
 type LarkMessageState struct {
 	ChatID    string `json:"chat_id,omitempty"`
 	MessageID string `json:"message_id,omitempty"`
+	// Failed marks that the last delivery attempt to this channel errored.
+	// It is used to retry recent failures after the configuration is fixed
+	// (e.g. an invalid app secret) without replaying successful notifications.
+	Failed bool `json:"failed,omitempty"`
 }
