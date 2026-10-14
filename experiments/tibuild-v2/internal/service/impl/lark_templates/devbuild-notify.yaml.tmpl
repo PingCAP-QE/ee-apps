@@ -1,105 +1,155 @@
+{{/* All dynamic YAML scalars are JSON-quoted to prevent data changing layout. */}}
+{{- define "markdown" -}}
+tag: markdown
+content: {{ . | toJson }}
+{{- end -}}
+
+schema: "2.0"
 config:
-  wide_screen_mode: true
+  width_mode: default
 header:
   template: {{ StatusColor .Status }}
   title:
-    content: "{{ StatusEmoji .Status }}{{ if .IsHotfix }} 🔥HOTFIX{{ end }} DevBuild #{{ .BuildID }} - {{ .Product }} {{ .Edition }}"
     tag: plain_text
-elements:
-  - tag: div
-    fields:
-      {{- with .Status }}
-      - is_short: false
-        text:
-          tag: lark_md
-          content: "**Status:**\t{{ StatusEmoji . }}{{ . }}"
-      {{- end }}
-      {{- with .CreatedBy }}
-      - is_short: false
-        text:
-          tag: lark_md
-          content: "🧑‍💻 **Created By:**\t{{ . }}"
-      {{- end }}
-      {{- with .CreatedAt }}
-      - is_short: false
-        text:
-          tag: lark_md
-          content: "🛫 **Created at:**\t{{ . }}"
-      {{- end }}
-      {{- with .CompletedAt }}
-      - is_short: false
-        text:
-          tag: lark_md
-          content: "🛬 **Completed time:**\t{{ . }}"
-      {{- end }}
-  - tag: hr
-  - tag: markdown
-    content: |-
-      **Request:**
-      - **Product:** {{ .Product }}
-      - **Edition:** {{ .Edition }}
-      - **Version:** {{ .Version }}
-      {{- if .IsHotfix }}
-      - **Hotfix:** 🔥 Yes
-      {{- end }}
-      - **Platform:** {{ .Platform }}
-      {{- with .GithubRepo }}
-      - **Repository:** [{{ . }}](https://github.com/{{ . }})
-      {{- end }}
-      {{- $gitRefURL := GitRefURL .GitRef .GithubRepo }}
-      {{- if $gitRefURL }}
-      - **Git Ref:** [{{ .GitRef }}]({{ $gitRefURL }})
-      {{- else }}
-      - **Git Ref:** {{ .GitRef }}
-      {{- end }}
+    {{- $hotfix := ternary " 🔥HOTFIX" "" .IsHotfix }}
+    {{- $title := printf "%s%s DevBuild #%d - %s %s" (StatusEmoji .Status) $hotfix .BuildID .Product .Edition }}
+    content: {{ $title | toJson }}
+body:
+  padding: 12px
+  vertical_spacing: 12px
+  elements:
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          vertical_spacing: 8px
+          elements:
+            {{- $text := "" }}
+            {{- with .Status }}
+              {{- $text = printf "%s**Status:** %s%s\n" $text (StatusEmoji .) (Escape .) }}
+            {{- end }}
+            {{- with .CreatedBy }}
+              {{- $text = printf "%s**Created By:** %s\n" $text (Escape .) }}
+            {{- end }}
+            {{- with .CreatedAt }}
+              {{- $text = printf "%s**Created at:** %s\n" $text (Escape .) }}
+            {{- end }}
+            {{- with .CompletedAt }}
+              {{- $text = printf "%s**Completed time:** %s\n" $text (Escape .) }}
+            {{- end }}
+            -{{ include "markdown" $text | nindent 14 }}
+            {{- $text = printf "**Request**\n- **Product:** %s\n- **Edition:** %s\n- **Version:** %s\n- **Platform:** %s" (Escape .Product) (Escape .Edition) (Escape .Version) (Escape .Platform) }}
+            {{- if .IsHotfix }}
+              {{- $text = printf "%s\n- **Hotfix:** 🔥 Yes" $text }}
+            {{- end }}
+            {{- with .GithubRepo }}
+              {{- $repo := Link . (printf "https://github.com/%s" .) }}
+              {{- $text = printf "%s\n- **Repository:** %s" $text $repo }}
+            {{- end }}
+            {{- $ref := Link .GitRef (GitRefURL .GitRef .GithubRepo) }}
+            {{- $text = printf "%s\n- **Git Ref:** %s" $text $ref }}
+            -{{ include "markdown" $text | nindent 14 }}
 
-  {{- if or .GitSha .Images .Binaries }}
-  - tag: hr
-  - tag: markdown
-    content: |-
-      **Build Report**
-      {{- if .GitSha }}
-      {{- $shaURL := GitRefURL .GitSha $.GithubRepo }}
-      {{- if $shaURL }}
-      - **Git SHA:** [{{ .GitSha }}]({{ $shaURL }})
-      {{- else }}
-      - **Git SHA:** {{ .GitSha }}
-      {{- end }}
-      {{- end }}
-      {{- if .Images }}
-      - **Docker Images:**
-        ```YAML
-        {{- range .Images }}
-        - {{ .URL }}
-        {{- end }}
-        ```
-      {{- end }}
-      {{- if .Binaries }}
-      - **Binaries:**
-        ```YAML
-        {{- range .Binaries }}
-        - {{ .OciReference }}
-        {{- end }}
-        ```
-      {{- end }}
-  {{- end }}
-
-  {{- if .PipelineRuns }}
-  - tag: hr
-  - tag: markdown
-    content: |-
-        **Pipeline Runs:**
-        {{- range .PipelineRuns }}
-        - {{ PipelineStatusEmoji .Status }} **{{ .Name }}:** [{{ .Status }}]({{ .URL }})
-        {{- end }}
-  {{- end }}
-
-  {{- if .ErrMsg }}
-  - tag: hr
-  - tag: markdown
-    content: |-
-      **Error:**
-      ```text
-      {{ .ErrMsg }}
-      ```
-  {{- end }}
+    {{- if or .GitSha .ImageGroups .BinaryGroups }}
+    {{- $text := "**Build Report**" }}
+    {{- with .GitSha }}
+      {{- $sha := Link . (GitRefURL (printf "commit/%s" .) $.GithubRepo) }}
+      {{- $text = printf "%s\n**Git SHA:** %s" $text $sha }}
+    {{- end }}
+    -{{ include "markdown" $text | nindent 6 }}
+      text_size: heading-2
+    {{- end }}
+    {{- if .ImageGroups }}
+    -{{ include "markdown" "**Docker Images**" | nindent 6 }}
+    {{- end }}
+    {{- range .ImageGroups }}
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          vertical_spacing: 8px
+          elements:
+            - tag: markdown
+              content: {{ Escape .Repo | toJson }}
+            {{- range .Platforms }}
+            {{- if eq .Platform "multi-arch" }}
+            -{{ include "markdown" "**Multi-arch**" | nindent 14 }}
+            {{- else }}
+            - tag: markdown
+              content: {{ printf "**%s**" (Escape .Platform) | toJson }}
+            {{- end }}
+            {{- range .Tags }}
+            - tag: markdown
+              content: {{ ImageLink .Tag .Reference | toJson }}
+            {{- end }}
+            {{- end }}
+    {{- end }}
+    {{- if .BinaryGroups }}
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          vertical_spacing: 8px
+          elements:
+            -{{ include "markdown" "**Binaries**" | nindent 14 }}
+            {{- range .BinaryGroups }}
+            {{- if .Platform }}
+            - tag: markdown
+              content: {{ printf "**%s**" (Escape .Platform) | toJson }}
+            {{- else }}
+            -{{ include "markdown" "**Unknown platform**" | nindent 14 }}
+            {{- end }}
+            {{- range .Files }}
+            {{- $text := Link .FileName .URL }}
+            {{- if not .Downloadable }}
+              {{- $text = printf "%s\n<font color='grey'>Download service is not configured</font>" $text }}
+            {{- end }}
+            -{{ include "markdown" $text | nindent 14 }}
+            {{- if .HasChecksum }}
+            {{- $sha := Link "SHA256" .Sha256URL }}
+            -{{ include "markdown" (printf "<font color='grey'>Checksum:</font> %s" $sha) | nindent 14 }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
+    {{- end }}
+    {{- if .PipelineRuns }}
+    {{- $text := "**Pipeline Runs**" }}
+    {{- range .PipelineRuns }}
+      {{- $line := printf "\n- %s **%s:** %s" (PipelineStatusEmoji .Status) (Escape .Name) (Link .Status .URL) }}
+      {{- $text = printf "%s%s" $text $line }}
+    {{- end }}
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          elements:
+            -{{ include "markdown" $text | nindent 14 }}
+    {{- end }}
+    {{- with .ErrMsg }}
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 12px
+          background_style: grey-50
+          elements:
+            -{{ include "markdown" (printf "**Error**\n%s" (Escape .)) | nindent 14 }}
+    {{- end }}

@@ -14,7 +14,12 @@ type ImageInfo struct {
 
 // BinaryInfo contains information about a binary artifact for notification.
 type BinaryInfo struct {
-	OciReference string
+	OciReference    string
+	Platform        string
+	FileName        string
+	URL             string
+	Sha256URL       string
+	Sha256Reference string
 }
 
 // NotificationInfo contains information for building a notification card.
@@ -98,9 +103,17 @@ func buildNotificationInfo(build *ent.DevBuild) *NotificationInfo {
 		}
 
 		for _, oci := range build.BuildReport.Binaries {
-			for _, f := range oci.Files {
+			for _, bin := range ociArtifactToBinArtifacts(oci.Repo, oci.Tag, oci.Files, oci.Platform) {
+				f := bin.OciFile.File
+				checksum := ""
+				if bin.Sha256OCIFile != nil {
+					checksum = oci.Repo + ":" + oci.Tag + "/" + bin.Sha256OCIFile.File
+				}
 				info.Binaries = append(info.Binaries, BinaryInfo{
-					OciReference: oci.Repo + ":" + oci.Tag + "/" + f,
+					OciReference:    oci.Repo + ":" + oci.Tag + "/" + f,
+					Platform:        oci.Platform,
+					FileName:        f,
+					Sha256Reference: checksum,
 				})
 			}
 		}

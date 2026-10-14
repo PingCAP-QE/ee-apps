@@ -55,6 +55,7 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	if s.larkNotifier != nil {
 		if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
 			s.larkNotifier.Reload(cfg.Lark.AppID, cfg.Lark.AppSecret, cfg.Lark.Channels)
+			s.larkNotifier.configureArtifacts(cfg)
 			s.logger.Debug().Msg("lark notifier credentials and channels updated on reload")
 		} else if !cfg.Lark.Enabled {
 			s.larkNotifier.Disable()
