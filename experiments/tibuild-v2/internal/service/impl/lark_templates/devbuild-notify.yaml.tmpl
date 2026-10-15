@@ -58,7 +58,7 @@ body:
     {{- if .ImageGroups }}
       {{- $report = printf "%s\n- **Docker Images:**" $report }}
       {{- range .ImageGroups }}
-        {{- $report = printf "%s\n    - **Repository:** %s" $report (Code .Repo) }}
+        {{- $report = printf "%s\n    - %s" $report (Code .Repo) }}
         {{- range .Platforms }}
           {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
           {{- $tags := list }}

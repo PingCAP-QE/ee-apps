@@ -188,7 +188,7 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 	require.Equal(t, "**Request:**\n- **Product:** tiflash\n- **Edition:** nextgen\n- **Version:** v1\n- **Platform:** linux\n- **Repository:** [pingcap/tiflash](https://github.com/pingcap/tiflash)\n- **Git Ref:** [tag/v1](https://github.com/pingcap/tiflash/tree/v1)", elements[2].(map[string]any)["content"])
 	require.Equal(t, "hr", elements[3].(map[string]any)["tag"])
 	report := elements[4].(map[string]any)["content"].(string)
-	require.Contains(t, report, "\n- **Docker Images:**\n    - **Repository:** ` registry/a `\n        - **Multi-arch:** ` v1 ` · ` v2 `\n        - **linux/amd64:** ` v1_linux_amd64 `")
+	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `\n        - **Multi-arch:** ` v1 ` · ` v2 `\n        - **linux/amd64:** ` v1_linux_amd64 `")
 	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)\n        - [b.tar.gz](https://download.example/b.tar.gz)")
 	var rules int
 	walkCard(card, func(el map[string]any) {
@@ -212,8 +212,8 @@ func TestBuildReportItems(t *testing.T) {
 		}
 	})
 	require.NotEmpty(t, report)
-	require.Contains(t, report, "\n- **Docker Images:**\n    - **Repository:** ` registry/a `")
-	require.Contains(t, report, "\n    - **Repository:** ` registry/b `\n        - **Multi-arch:** ` v2 `")
+	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `")
+	require.Contains(t, report, "\n    - ` registry/b `\n        - **Multi-arch:** ` v2 `")
 	require.Contains(t, report, "\n        - **linux/amd64:** ` v1_linux_amd64 `")
 	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)")
 	require.NotContains(t, report, "](registry/")
