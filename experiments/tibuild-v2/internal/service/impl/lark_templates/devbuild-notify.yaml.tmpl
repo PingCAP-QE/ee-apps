@@ -63,7 +63,13 @@ body:
           {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
           {{- $tags := list }}
           {{- range .Tags }}
-            {{- $tags = append $tags (Code .Tag) }}
+            {{- $tag := Code .Tag }}
+            {{- if not $.IsHotfix }}
+              {{- with ImageSyncURL $.ImageSyncURL .Reference }}
+                {{- $tag = printf "%s %s" $tag (Link "Sync" .) }}
+              {{- end }}
+            {{- end }}
+            {{- $tags = append $tags $tag }}
           {{- end }}
           {{- $report = printf "%s\n        - **%s:** %s" $report (Escape $platform) (join " · " $tags) }}
         {{- end }}

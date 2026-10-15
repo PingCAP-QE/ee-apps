@@ -31,11 +31,12 @@ type LarkNotifier struct {
 }
 
 type notificationOptions struct {
-	DownloadURL string
+	DownloadURL  string
+	ImageSyncURL string
 }
 
 func (n *LarkNotifier) configureArtifacts(cfg *config.Service) {
-	n.options.Store(notificationOptions{DownloadURL: cfg.Tekton.OciFileDownloadURL})
+	n.options.Store(notificationOptions{DownloadURL: cfg.Tekton.OciFileDownloadURL, ImageSyncURL: cfg.Lark.ImageSyncURL})
 }
 
 // NewLarkNotifier creates a new LarkNotifier with Lark app credentials and optional channels.
@@ -70,6 +71,7 @@ func (n *LarkNotifier) Notify(ctx context.Context, build *ent.DevBuild) (*schema
 
 	info := buildNotificationInfo(build)
 	options := n.options.Load().(notificationOptions)
+	info.ImageSyncURL = options.ImageSyncURL
 	for i := range info.Binaries {
 		bin := &info.Binaries[i]
 		bin.URL = notificationDownloadURL(options.DownloadURL, bin.OciReference)

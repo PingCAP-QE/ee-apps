@@ -60,10 +60,12 @@ type Tekton struct {
 }
 
 type Lark struct {
-	Enabled   bool          `yaml:"enabled" json:"enabled"`
-	AppID     string        `yaml:"app_id,omitempty" json:"app_id,omitempty"`
-	AppSecret string        `yaml:"app_secret,omitempty" json:"app_secret,omitempty"`
-	Channels  []LarkChannel `yaml:"channels,omitempty" json:"channels,omitempty"`
+	// ImageSyncURL is the image sync form URL. Empty disables card shortcuts.
+	ImageSyncURL string        `yaml:"image_sync_url,omitempty" json:"image_sync_url,omitempty"`
+	Enabled      bool          `yaml:"enabled" json:"enabled"`
+	AppID        string        `yaml:"app_id,omitempty" json:"app_id,omitempty"`
+	AppSecret    string        `yaml:"app_secret,omitempty" json:"app_secret,omitempty"`
+	Channels     []LarkChannel `yaml:"channels,omitempty" json:"channels,omitempty"`
 }
 
 // LarkChannel represents a Lark group chat to send notifications to.
