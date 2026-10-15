@@ -1,0 +1,133 @@
+suite: HTTPRoute
+templates:
+  - templates/httproute.yaml
+tests:
+  - it: should not render when disabled
+    set:
+      httpRoute:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render with default values
+    set:
+      httpRoute:
+        enabled: true
+        parentRefs:
+          - name: gateway
+            sectionName: http
+        hostnames:
+          - example.com
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: PathPrefix
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 80
+
+  - it: should render timeouts in rules
+    set:
+      httpRoute:
+        enabled: true
+        parentRefs:
+          - name: gateway
+            sectionName: http
+        hostnames:
+          - example.com
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+            timeouts:
+              request: 0s
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: spec.rules[0].timeouts.request
+          value: 0s
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 80
+
+  - it: should not include user-specified backendRefs
+    set:
+      httpRoute:
+        enabled: true
+        parentRefs:
+          - name: gateway
+            sectionName: http
+        hostnames:
+          - example.com
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+            backendRefs:
+              - name: should-be-ignored
+                port: 9999
+    asserts:
+      - isKind:
+          of: HTTPRoute
+      - notEqual:
+          path: spec.rules[0].backendRefs[0].name
+          value: should-be-ignored
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 80
+
+  - it: should render extra labels
+    set:
+      httpRoute:
+        enabled: true
+        labels:
+          custom-label: test-value
+        parentRefs:
+          - name: gateway
+            sectionName: http
+        hostnames:
+          - example.com
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+    asserts:
+      - equal:
+          path: metadata.labels.custom-label
+          value: test-value
+
+  - it: should render annotations
+    set:
+      httpRoute:
+        enabled: true
+        annotations:
+          my-annotation: my-value
+        parentRefs:
+          - name: gateway
+            sectionName: http
+        hostnames:
+          - example.com
+        rules:
+          - matches:
+              - path:
+                  type: PathPrefix
+                  value: /
+    asserts:
+      - equal:
+          path: metadata.annotations.my-annotation
+          value: my-value
