@@ -188,7 +188,7 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 	require.Equal(t, "**Request:**\n- **Product:** tiflash\n- **Edition:** nextgen\n- **Version:** v1\n- **Platform:** linux\n- **Repository:** [pingcap/tiflash](https://github.com/pingcap/tiflash)\n- **Git Ref:** [tag/v1](https://github.com/pingcap/tiflash/tree/v1)", elements[2].(map[string]any)["content"])
 	require.Equal(t, "hr", elements[3].(map[string]any)["tag"])
 	report := elements[4].(map[string]any)["content"].(string)
-	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `\n        - **Multi-arch:** ` v1 ` · ` v2 `\n        - **linux/amd64:** ` v1_linux_amd64 `")
+	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `\n        - **Multi-arch:** ` v1 ` "+cardLink("Sync", imageSyncURL("registry/a:v1"))+" · ` v2 ` "+cardLink("Sync", imageSyncURL("registry/a:v2"))+"\n        - **linux/amd64:** ` v1_linux_amd64 `")
 	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)\n        - [b.tar.gz](https://download.example/b.tar.gz)")
 	var rules int
 	walkCard(card, func(el map[string]any) {
@@ -224,4 +224,39 @@ func TestInlineArtifactCode(t *testing.T) {
 	require.Equal(t, "` v1_linux_amd64 `", inlineCardCode("v1_linux_amd64"))
 	require.Equal(t, "`` tag`value ``", inlineCardCode("tag`value"))
 	require.Equal(t, "` first second `", inlineCardCode("first\nsecond"))
+}
+
+func TestImageSyncShortcuts(t *testing.T) {
+	images := []ImageInfo{
+		{URL: "us-docker.pkg.dev/pingcap-testing-account/dev/pingcap/tiflash/image:v1"},
+		{URL: "us-docker.pkg.dev/pingcap-testing-account/dev/pingcap/tiflash/image:v2"},
+		{Platform: "linux/amd64", URL: "registry:5000/team/image:v1_linux_amd64"},
+		{URL: "registry/b:v3"},
+	}
+	for _, hotfix := range []bool{false, true} {
+		card := renderLarkCard(t, &NotificationInfo{Status: "SUCCESS", IsHotfix: hotfix, Images: images})
+		var report string
+		walkCard(card, func(el map[string]any) {
+			if el["tag"] == "markdown" && strings.HasPrefix(el["content"].(string), "**Build Report**") {
+				report = el["content"].(string)
+			}
+		})
+		if hotfix {
+			require.NotContains(t, report, "[Sync]")
+			require.NotContains(t, report, "tcms.pingcap.net")
+			continue
+		}
+		require.Equal(t, len(images), strings.Count(report, "[Sync]("))
+		for _, image := range images {
+			link := imageSyncURL(image.URL)
+			u, err := url.Parse(link)
+			require.NoError(t, err)
+			require.Equal(t, "https", u.Scheme)
+			require.Equal(t, "tcms.pingcap.net", u.Host)
+			require.Equal(t, "/dashboard/image-sync-tasks", u.Path)
+			require.Equal(t, image.URL, u.Query().Get("sourceImage"))
+			require.Contains(t, report, cardLink("Sync", link))
+		}
+	}
+	require.Empty(t, imageSyncURL("not an image"))
 }

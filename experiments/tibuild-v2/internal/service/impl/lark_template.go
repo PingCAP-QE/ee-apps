@@ -61,6 +61,7 @@ func NewLarkCardWithGoTemplate(infos *NotificationInfo) (map[string]any, error) 
 	funcs["Escape"] = escapeCardText
 	funcs["Code"] = inlineCardCode
 	funcs["Link"] = cardLink
+	funcs["ImageSyncURL"] = imageSyncURL
 	var err error
 	tmpl, err = template.New("lark").Funcs(funcs).Parse(larkTemplateBytes)
 	if err != nil {

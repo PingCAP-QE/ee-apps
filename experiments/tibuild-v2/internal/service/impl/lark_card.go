@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/google/go-containerregistry/pkg/name"
+
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 )
 
@@ -44,6 +46,15 @@ func cardLink(label, target string) string {
 	// Parentheses must not terminate Markdown links.
 	target = strings.ReplaceAll(strings.ReplaceAll(u.String(), "(", "%28"), ")", "%29")
 	return "[" + escapeCardText(label) + "](" + target + ")"
+}
+
+// imageSyncURL opens TCMS's confirmation dialog with the exact image reference.
+func imageSyncURL(reference string) string {
+	if _, err := name.ParseReference(reference); err != nil {
+		return ""
+	}
+	query := url.Values{"sourceImage": {reference}}
+	return "https://tcms.pingcap.net/dashboard/image-sync-tasks?" + query.Encode()
 }
 
 func validHTTPURL(raw string) bool {
