@@ -59,6 +59,7 @@ func NewLarkCardWithGoTemplate(infos *NotificationInfo) (map[string]any, error) 
 	funcs["PipelineStatusEmoji"] = PipelineStatusEmoji
 	funcs["GitRefURL"] = gitRefURL
 	funcs["Escape"] = escapeCardText
+	funcs["Code"] = inlineCardCode
 	funcs["Link"] = cardLink
 	var err error
 	tmpl, err = template.New("lark").Funcs(funcs).Parse(larkTemplateBytes)

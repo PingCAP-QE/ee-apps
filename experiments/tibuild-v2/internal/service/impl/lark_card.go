@@ -17,6 +17,25 @@ func escapeCardText(text string) string {
 	return strings.NewReplacer("*", "&#42;", "_", "&#95;", "`", "&#96;", "[", "&#91;", "]", "&#93;", "~", "&#126;").Replace(text)
 }
 
+// inlineCardCode keeps artifact values literal, including underscores. A fence
+// longer than any backtick run prevents malformed values from escaping the span.
+func inlineCardCode(value string) string {
+	value = strings.NewReplacer("\r", " ", "\n", " ").Replace(value)
+	longest, run := 0, 0
+	for _, r := range value {
+		if r == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", longest+1)
+	return fence + " " + value + " " + fence
+}
+
 func cardLink(label, target string) string {
 	if !validHTTPURL(target) {
 		return escapeCardText(label)

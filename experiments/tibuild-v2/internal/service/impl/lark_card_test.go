@@ -64,7 +64,7 @@ func TestNotificationBinaryLinksAndChecksums(t *testing.T) {
 
 	})
 	text := strings.Join(markdown, "\n")
-	require.Less(t, strings.Index(text, "**linux/amd64**"), strings.Index(text, "**linux/arm64**"))
+	require.Less(t, strings.Index(text, "**linux/amd64:**"), strings.Index(text, "**linux/arm64:**"))
 	require.Less(t, strings.Index(text, "a.tar.gz]"), strings.Index(text, "no-checksum.tar.gz]"))
 	require.Contains(t, text, "[SHA256](https://")
 	for _, bin := range info.Binaries {
@@ -109,8 +109,8 @@ func TestNotificationReferencesWithoutCallbacks(t *testing.T) {
 	text := strings.Join(markdown, "\n")
 	for _, image := range info.Images {
 		repo, tag := splitImageReference(image.URL)
-		require.Contains(t, text, escapeCardText(repo))
-		require.Contains(t, text, escapeCardText(tag))
+		require.Contains(t, text, inlineCardCode(repo))
+		require.Contains(t, text, inlineCardCode(tag))
 		require.NotContains(t, text, "]("+image.URL+")")
 	}
 	require.NotContains(t, text, "https://registry/")
@@ -187,91 +187,41 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 	require.Equal(t, "hr", elements[1].(map[string]any)["tag"])
 	require.Equal(t, "**Request:**\n- **Product:** tiflash\n- **Edition:** nextgen\n- **Version:** v1\n- **Platform:** linux\n- **Repository:** [pingcap/tiflash](https://github.com/pingcap/tiflash)\n- **Git Ref:** [tag/v1](https://github.com/pingcap/tiflash/tree/v1)", elements[2].(map[string]any)["content"])
 	require.Equal(t, "hr", elements[3].(map[string]any)["tag"])
-	var imagesFound, binaryFound, noChecksumFound bool
+	report := elements[4].(map[string]any)["content"].(string)
+	require.Contains(t, report, "\n- **Docker Images:**\n    - **Repository:** ` registry/a `\n        - **Multi-arch:** ` v1 ` · ` v2 `\n        - **linux/amd64:** ` v1_linux_amd64 `")
+	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)\n        - [b.tar.gz](https://download.example/b.tar.gz)")
 	var rules int
 	walkCard(card, func(el map[string]any) {
 		require.NotContains(t, el, "background_style")
 		require.NotContains(t, el, "text_size")
+		require.NotEqual(t, "column_set", el["tag"])
 		if el["tag"] == "hr" {
 			rules++
 		}
-		if el["tag"] == "markdown" {
-			content := el["content"].(string)
-			if strings.HasPrefix(content, "**Multi-arch:**") {
-				require.Equal(t, "**Multi-arch:** v1 · v2", content)
-				require.NotContains(t, content, "](registry/")
-				imagesFound = true
-			}
-		}
-		if el["tag"] == "column" {
-			require.Equal(t, "0px 0px 0px 16px", el["padding"])
-			for _, row := range el["elements"].([]any) {
-				if row.(map[string]any)["tag"] != "markdown" {
-					continue
-				}
-				text := row.(map[string]any)["content"].(string)
-				require.NotContains(t, text, "\n")
-				if strings.Contains(text, "a.tar.gz]") {
-					require.Equal(t, "[a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)", text)
-					binaryFound = true
-				}
-				if strings.Contains(text, "b.tar.gz]") {
-					require.Equal(t, "[b.tar.gz](https://download.example/b.tar.gz)", text)
-					noChecksumFound = true
-				}
-			}
-		}
 	})
 	require.Equal(t, 3, rules)
-	require.True(t, imagesFound)
-	require.True(t, binaryFound)
-	require.True(t, noChecksumFound)
 }
 
-// Report hierarchy is expressed with nested indentation, leaving the original
-// message sections, font size and horizontal rules unchanged.
-func TestBuildReportHierarchy(t *testing.T) {
-	info := &NotificationInfo{Status: "SUCCESS", Images: []ImageInfo{{Platform: MultiArch, URL: "registry/a:v1"}, {Platform: "linux/amd64", URL: "registry/a:v1_linux_amd64"}}, Binaries: []BinaryInfo{{Platform: "linux/amd64", FileName: "a.tar.gz", OciReference: "registry/a:v1/a.tar.gz", URL: "https://download.example/a.tar.gz", Sha256URL: "https://download.example/a.tar.gz.sha256"}}}
+func TestBuildReportItems(t *testing.T) {
+	info := &NotificationInfo{Status: "SUCCESS", Images: []ImageInfo{{Platform: MultiArch, URL: "registry/a:v1"}, {Platform: "linux/amd64", URL: "registry/a:v1_linux_amd64"}, {Platform: MultiArch, URL: "registry/b:v2"}}, Binaries: []BinaryInfo{{Platform: "linux/amd64", FileName: "a.tar.gz", OciReference: "registry/a:v1/a.tar.gz", URL: "https://download.example/a.tar.gz", Sha256URL: "https://download.example/a.tar.gz.sha256"}}}
 	card := renderLarkCard(t, info)
-	var inspect func(any, int)
-	var repo, platform, files bool
-	inspect = func(value any, depth int) {
-		switch el := value.(type) {
-		case map[string]any:
-			if el["tag"] == "column" {
-				require.Equal(t, "0px 0px 0px 16px", el["padding"])
-				depth++
-			}
-			if el["tag"] == "markdown" {
-				text := el["content"].(string)
-				if text == "**Repository:** registry/a" {
-					require.Equal(t, 1, depth)
-					repo = true
-				}
-				if text == "**Multi-arch:** v1" || text == "**linux/amd64:** v1&#95;linux&#95;amd64" {
-					require.Equal(t, 2, depth)
-					platform = true
-				}
-				if strings.Contains(text, "[a.tar.gz]") {
-					require.Equal(t, 2, depth)
-					require.Contains(t, text, " · [SHA256]")
-					files = true
-				}
-				if text == "**linux/amd64**" {
-					require.Equal(t, 1, depth)
-				}
-			}
-			for _, child := range el {
-				inspect(child, depth)
-			}
-		case []any:
-			for _, child := range el {
-				inspect(child, depth)
-			}
+	var report string
+	walkCard(card, func(el map[string]any) {
+		if el["tag"] == "markdown" && strings.HasPrefix(el["content"].(string), "**Build Report**") {
+			report = el["content"].(string)
 		}
-	}
-	inspect(card, 0)
-	require.True(t, repo)
-	require.True(t, platform)
-	require.True(t, files)
+	})
+	require.NotEmpty(t, report)
+	require.Contains(t, report, "\n- **Docker Images:**\n    - **Repository:** ` registry/a `")
+	require.Contains(t, report, "\n    - **Repository:** ` registry/b `\n        - **Multi-arch:** ` v2 `")
+	require.Contains(t, report, "\n        - **linux/amd64:** ` v1_linux_amd64 `")
+	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)")
+	require.NotContains(t, report, "](registry/")
+}
+
+func TestInlineArtifactCode(t *testing.T) {
+	require.Equal(t, "` registry:5000/team/image `", inlineCardCode("registry:5000/team/image"))
+	require.Equal(t, "` v1_linux_amd64 `", inlineCardCode("v1_linux_amd64"))
+	require.Equal(t, "`` tag`value ``", inlineCardCode("tag`value"))
+	require.Equal(t, "` first second `", inlineCardCode("first\nsecond"))
 }

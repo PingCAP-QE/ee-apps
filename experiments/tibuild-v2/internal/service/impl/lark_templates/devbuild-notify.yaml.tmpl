@@ -55,80 +55,38 @@ body:
     {{- with .GitSha }}
       {{- $report = printf "%s\n- **Git SHA:** %s" $report (Link . (GitRefURL (printf "commit/%s" .) $.GithubRepo)) }}
     {{- end }}
-    - tag: markdown
-      content: {{ $report | toJson }}
-    {{- end }}
     {{- if .ImageGroups }}
-    - tag: markdown
-      content: "**Docker Images:**"
-    - tag: column_set
-      flex_mode: none
-      columns:
-        - tag: column
-          width: weighted
-          weight: 1
-          padding: "0px 0px 0px 16px"
-          vertical_spacing: 12px
-          elements:
-            {{- range .ImageGroups }}
-            - tag: markdown
-              content: {{ printf "**Repository:** %s" (Escape .Repo) | toJson }}
-            - tag: column_set
-              flex_mode: none
-              columns:
-                - tag: column
-                  width: weighted
-                  weight: 1
-                  padding: "0px 0px 0px 16px"
-                  vertical_spacing: 4px
-                  elements:
-                    {{- range .Platforms }}
-                    {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
-                    {{- $tags := list }}
-                    {{- range .Tags }}
-                      {{- $tags = append $tags (Escape .Tag) }}
-                    {{- end }}
-                    - tag: markdown
-                      content: {{ printf "**%s:** %s" (Escape $platform) (join " · " $tags) | toJson }}
-                    {{- end }}
-            {{- end }}
+      {{- $report = printf "%s\n- **Docker Images:**" $report }}
+      {{- range .ImageGroups }}
+        {{- $report = printf "%s\n    - **Repository:** %s" $report (Code .Repo) }}
+        {{- range .Platforms }}
+          {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
+          {{- $tags := list }}
+          {{- range .Tags }}
+            {{- $tags = append $tags (Code .Tag) }}
+          {{- end }}
+          {{- $report = printf "%s\n        - **%s:** %s" $report (Escape $platform) (join " · " $tags) }}
+        {{- end }}
+      {{- end }}
     {{- end }}
     {{- if .BinaryGroups }}
+      {{- $report = printf "%s\n- **Binaries:**" $report }}
+      {{- range .BinaryGroups }}
+        {{- $report = printf "%s\n    - **%s:**" $report (Escape (default "Unknown platform" .Platform)) }}
+        {{- range .Files }}
+          {{- $file := Link .FileName .URL }}
+          {{- if .HasChecksum }}
+            {{- $file = printf "%s · %s" $file (Link "SHA256" .Sha256URL) }}
+          {{- end }}
+          {{- if not .Downloadable }}
+            {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}
+          {{- end }}
+          {{- $report = printf "%s\n        - %s" $report $file }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
     - tag: markdown
-      content: "**Binaries:**"
-    - tag: column_set
-      flex_mode: none
-      columns:
-        - tag: column
-          width: weighted
-          weight: 1
-          padding: "0px 0px 0px 16px"
-          vertical_spacing: 12px
-          elements:
-            {{- range .BinaryGroups }}
-            - tag: markdown
-              content: {{ printf "**%s**" (Escape (default "Unknown platform" .Platform)) | toJson }}
-            - tag: column_set
-              flex_mode: none
-              columns:
-                - tag: column
-                  width: weighted
-                  weight: 1
-                  padding: "0px 0px 0px 16px"
-                  vertical_spacing: 4px
-                  elements:
-                    {{- range .Files }}
-                    {{- $file := Link .FileName .URL }}
-                    {{- if .HasChecksum }}
-                      {{- $file = printf "%s · %s" $file (Link "SHA256" .Sha256URL) }}
-                    {{- end }}
-                    {{- if not .Downloadable }}
-                      {{- $file = printf "%s\n<font color='grey'>Download service is not configured</font>" $file }}
-                    {{- end }}
-                    - tag: markdown
-                      content: {{ $file | toJson }}
-                    {{- end }}
-            {{- end }}
+      content: {{ $report | toJson }}
     {{- end }}
     {{- if .PipelineRuns }}
     - tag: hr
