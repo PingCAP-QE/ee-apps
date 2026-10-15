@@ -7,18 +7,33 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/name"
-
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 )
-
-type cardElement = map[string]any
 
 // escapeCardText also protects Lark's Markdown extensions (mentions, tags and
 // links) when values originate in build results or user-provided git refs.
 func escapeCardText(text string) string {
 	text = html.EscapeString(text)
 	return strings.NewReplacer("*", "&#42;", "_", "&#95;", "`", "&#96;", "[", "&#91;", "]", "&#93;", "~", "&#126;").Replace(text)
+}
+
+// inlineCardCode keeps artifact values literal, including underscores. A fence
+// longer than any backtick run prevents malformed values from escaping the span.
+func inlineCardCode(value string) string {
+	value = strings.NewReplacer("\r", " ", "\n", " ").Replace(value)
+	longest, run := 0, 0
+	for _, r := range value {
+		if r == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", longest+1)
+	return fence + " " + value + " " + fence
 }
 
 func cardLink(label, target string) string {
@@ -29,16 +44,6 @@ func cardLink(label, target string) string {
 	// Parentheses must not terminate Markdown links.
 	target = strings.ReplaceAll(strings.ReplaceAll(u.String(), "(", "%28"), ")", "%29")
 	return "[" + escapeCardText(label) + "](" + target + ")"
-}
-
-// imageCardLink keeps the original Docker reference as the link target. The
-// receiving Lark client was verified to allow copying this bare reference.
-// Validate without using the parser's normalized form, which can add a registry.
-func imageCardLink(label, reference string) string {
-	if _, err := name.ParseReference(reference); err != nil {
-		return escapeCardText(label)
-	}
-	return "[" + escapeCardText(label) + "](" + reference + ")"
 }
 
 func validHTTPURL(raw string) bool {

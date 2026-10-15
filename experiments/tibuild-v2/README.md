@@ -76,10 +76,8 @@ go test ./...
 
 Notifications use Card JSON 2.0 (Lark client 7.20 or newer). Image results are
 grouped by repository, then platform, then tag. Multi-architecture tags appear
-first within each repository. Each tag links to the original complete Docker
-reference, without adding a protocol prefix. Binary results are grouped by
-platform and filename; available SHA256 files are attached to
-their corresponding binary.
+first within each repository. Each platform shows its tags inline as code-styled text. Binary results are grouped by platform and filename; each file and its SHA256 download link share a row,
+indented beneath the platform.
 
 Card text is uniformly English and maintained in
 `internal/service/impl/lark_templates/devbuild-notify.yaml.tmpl`. Artifact
@@ -89,8 +87,13 @@ Binary links use `tekton.oci_file_download_url`, with the same repository, tag
 and file query parameters as the DevBuild API. Without a download service URL,
 notifications display filenames without a download hyperlink.
 
-Users can right-click an image tag link to copy its full `repository:tag`
-reference, or a binary filename / SHA256 hyperlink to copy its download URL.
-Bare Docker reference links were verified in the receiving Lark client; they
-are intended for copying and do not represent HTTP download endpoints.
-No buttons, callbacks, or extra HTTP routes are needed.
+Build Report uses nested Markdown list items: artifact type, repository or
+platform, and platform/tag or binary/checksum entries. Image repositories and
+tags use inline code spans so underscores and other identifier characters stay
+literal. Tags remain on the platform line; each binary filename and SHA256 link
+share a list item. Lists wrap naturally on narrow clients.
+
+Binary filename and SHA256 hyperlinks can be right-clicked to copy download
+addresses. Status and Request retain their original field/list layout and
+horizontal-rule section separators. Report text uses the default font size,
+with bold labels and no shaded background blocks.

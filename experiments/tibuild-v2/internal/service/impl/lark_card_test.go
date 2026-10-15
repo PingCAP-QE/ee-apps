@@ -64,7 +64,7 @@ func TestNotificationBinaryLinksAndChecksums(t *testing.T) {
 
 	})
 	text := strings.Join(markdown, "\n")
-	require.Less(t, strings.Index(text, "**linux/amd64**"), strings.Index(text, "**linux/arm64**"))
+	require.Less(t, strings.Index(text, "**linux/amd64:**"), strings.Index(text, "**linux/arm64:**"))
 	require.Less(t, strings.Index(text, "a.tar.gz]"), strings.Index(text, "no-checksum.tar.gz]"))
 	require.Contains(t, text, "[SHA256](https://")
 	for _, bin := range info.Binaries {
@@ -108,10 +108,13 @@ func TestNotificationReferencesWithoutCallbacks(t *testing.T) {
 	})
 	text := strings.Join(markdown, "\n")
 	for _, image := range info.Images {
-		require.Contains(t, text, "]("+image.URL+")")
+		repo, tag := splitImageReference(image.URL)
+		require.Contains(t, text, inlineCardCode(repo))
+		require.Contains(t, text, inlineCardCode(tag))
+		require.NotContains(t, text, "]("+image.URL+")")
 	}
 	require.NotContains(t, text, "https://registry/")
-	require.Contains(t, text, "**Multi-arch**")
+	require.Contains(t, text, "**Multi-arch:**")
 }
 
 func TestMultipleMultiArchTagsArePreserved(t *testing.T) {
@@ -157,20 +160,68 @@ func TestLarkEnglishText(t *testing.T) {
 		}
 	})
 	text := strings.Join(contents, "\n")
-	for _, expected := range []string{"**Multi-arch**", "**Docker Images**", "**Binaries**", "Checksum:", "**Created By:**", "**Hotfix:**", "**Pipeline Runs**", "**Error**"} {
+	for _, expected := range []string{"**Multi-arch:**", "**Docker Images:**", "**Binaries:**", "SHA256", "**Created By:**", "**Hotfix:**", "**Pipeline Runs:**", "**Error:**"} {
 		require.Contains(t, text, expected)
 	}
 	require.NotContains(t, text, "<at id=all>")
 }
 
-func TestImageCardLinkPreservesReference(t *testing.T) {
-	for _, ref := range []string{
-		"us-docker.pkg.dev/pingcap-testing-account/dev/pingcap/tiflash/image:v26.3.13-c6401b9-nextgen",
-		"registry.example.com:5000/team/image:v1_linux_amd64",
-		"team/image:v1",
-	} {
-		_, tag := splitImageReference(ref)
-		require.Equal(t, "["+escapeCardText(tag)+"]("+ref+")", imageCardLink(tag, ref))
+func TestCompactCardKeepsOriginalSections(t *testing.T) {
+	info := &NotificationInfo{Status: "SUCCESS", CreatedBy: "ci-bot", CreatedAt: "2026-10-15T01:00:00Z", CompletedAt: "2026-10-15T01:10:00Z", Product: "tiflash", Edition: "nextgen", Version: "v1", Platform: "linux", GitRef: "tag/v1", GithubRepo: "pingcap/tiflash", GitSha: "abcdef", Images: []ImageInfo{
+		{Platform: MultiArch, URL: "registry/a:v1"},
+		{Platform: MultiArch, URL: "registry/a:v2"},
+		{Platform: "linux/amd64", URL: "registry/a:v1_linux_amd64"},
+	}, Binaries: []BinaryInfo{{Platform: "linux/amd64", FileName: "a.tar.gz", OciReference: "registry/a:v1/a.tar.gz", URL: "https://download.example/a.tar.gz", Sha256URL: "https://download.example/a.tar.gz.sha256"}, {Platform: "linux/amd64", FileName: "b.tar.gz", OciReference: "registry/a:v1/b.tar.gz", URL: "https://download.example/b.tar.gz"}}, PipelineRuns: []PipelineRunInfo{{Name: "build", Status: "Succeeded", URL: "https://tekton.example/run"}}}
+	card := renderLarkCard(t, info)
+	elements := card["body"].(map[string]any)["elements"].([]any)
+	status := elements[0].(map[string]any)
+	require.Equal(t, "div", status["tag"])
+	fields := status["fields"].([]any)
+	require.Len(t, fields, 4)
+	expected := []string{"**Status:**\t✅SUCCESS", "🧑‍💻 **Created By:**\tci-bot", "🛫 **Created at:**\t2026-10-15T01:00:00Z", "🛬 **Completed time:**\t2026-10-15T01:10:00Z"}
+	for i, f := range fields {
+		field := f.(map[string]any)
+		require.Equal(t, false, field["is_short"])
+		require.Equal(t, expected[i], field["text"].(map[string]any)["content"])
 	}
-	require.Equal(t, "tag", imageCardLink("tag", "registry/a:v1) [injection](https://example.com"))
+	require.Equal(t, "hr", elements[1].(map[string]any)["tag"])
+	require.Equal(t, "**Request:**\n- **Product:** tiflash\n- **Edition:** nextgen\n- **Version:** v1\n- **Platform:** linux\n- **Repository:** [pingcap/tiflash](https://github.com/pingcap/tiflash)\n- **Git Ref:** [tag/v1](https://github.com/pingcap/tiflash/tree/v1)", elements[2].(map[string]any)["content"])
+	require.Equal(t, "hr", elements[3].(map[string]any)["tag"])
+	report := elements[4].(map[string]any)["content"].(string)
+	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `\n        - **Multi-arch:** ` v1 ` · ` v2 `\n        - **linux/amd64:** ` v1_linux_amd64 `")
+	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)\n        - [b.tar.gz](https://download.example/b.tar.gz)")
+	var rules int
+	walkCard(card, func(el map[string]any) {
+		require.NotContains(t, el, "background_style")
+		require.NotContains(t, el, "text_size")
+		require.NotEqual(t, "column_set", el["tag"])
+		if el["tag"] == "hr" {
+			rules++
+		}
+	})
+	require.Equal(t, 3, rules)
+}
+
+func TestBuildReportItems(t *testing.T) {
+	info := &NotificationInfo{Status: "SUCCESS", Images: []ImageInfo{{Platform: MultiArch, URL: "registry/a:v1"}, {Platform: "linux/amd64", URL: "registry/a:v1_linux_amd64"}, {Platform: MultiArch, URL: "registry/b:v2"}}, Binaries: []BinaryInfo{{Platform: "linux/amd64", FileName: "a.tar.gz", OciReference: "registry/a:v1/a.tar.gz", URL: "https://download.example/a.tar.gz", Sha256URL: "https://download.example/a.tar.gz.sha256"}}}
+	card := renderLarkCard(t, info)
+	var report string
+	walkCard(card, func(el map[string]any) {
+		if el["tag"] == "markdown" && strings.HasPrefix(el["content"].(string), "**Build Report**") {
+			report = el["content"].(string)
+		}
+	})
+	require.NotEmpty(t, report)
+	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `")
+	require.Contains(t, report, "\n    - ` registry/b `\n        - **Multi-arch:** ` v2 `")
+	require.Contains(t, report, "\n        - **linux/amd64:** ` v1_linux_amd64 `")
+	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)")
+	require.NotContains(t, report, "](registry/")
+}
+
+func TestInlineArtifactCode(t *testing.T) {
+	require.Equal(t, "` registry:5000/team/image `", inlineCardCode("registry:5000/team/image"))
+	require.Equal(t, "` v1_linux_amd64 `", inlineCardCode("v1_linux_amd64"))
+	require.Equal(t, "`` tag`value ``", inlineCardCode("tag`value"))
+	require.Equal(t, "` first second `", inlineCardCode("first\nsecond"))
 }

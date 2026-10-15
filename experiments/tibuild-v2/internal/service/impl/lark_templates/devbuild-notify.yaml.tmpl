@@ -1,9 +1,4 @@
 {{/* All dynamic YAML scalars are JSON-quoted to prevent data changing layout. */}}
-{{- define "markdown" -}}
-tag: markdown
-content: {{ . | toJson }}
-{{- end -}}
-
 schema: "2.0"
 config:
   width_mode: default
@@ -12,144 +7,98 @@ header:
   title:
     tag: plain_text
     {{- $hotfix := ternary " 🔥HOTFIX" "" .IsHotfix }}
-    {{- $title := printf "%s%s DevBuild #%d - %s %s" (StatusEmoji .Status) $hotfix .BuildID .Product .Edition }}
-    content: {{ $title | toJson }}
+    content: {{ printf "%s%s DevBuild #%d - %s %s" (StatusEmoji .Status) $hotfix .BuildID .Product .Edition | toJson }}
 body:
-  padding: 12px
-  vertical_spacing: 12px
   elements:
-    - tag: column_set
-      flex_mode: none
-      columns:
-        - tag: column
-          width: weighted
-          weight: 1
-          padding: 12px
-          background_style: grey-50
-          vertical_spacing: 8px
-          elements:
-            {{- $text := "" }}
-            {{- with .Status }}
-              {{- $text = printf "%s**Status:** %s%s\n" $text (StatusEmoji .) (Escape .) }}
-            {{- end }}
-            {{- with .CreatedBy }}
-              {{- $text = printf "%s**Created By:** %s\n" $text (Escape .) }}
-            {{- end }}
-            {{- with .CreatedAt }}
-              {{- $text = printf "%s**Created at:** %s\n" $text (Escape .) }}
-            {{- end }}
-            {{- with .CompletedAt }}
-              {{- $text = printf "%s**Completed time:** %s\n" $text (Escape .) }}
-            {{- end }}
-            -{{ include "markdown" $text | nindent 14 }}
-            {{- $text = printf "**Request**\n- **Product:** %s\n- **Edition:** %s\n- **Version:** %s\n- **Platform:** %s" (Escape .Product) (Escape .Edition) (Escape .Version) (Escape .Platform) }}
-            {{- if .IsHotfix }}
-              {{- $text = printf "%s\n- **Hotfix:** 🔥 Yes" $text }}
-            {{- end }}
-            {{- with .GithubRepo }}
-              {{- $repo := Link . (printf "https://github.com/%s" .) }}
-              {{- $text = printf "%s\n- **Repository:** %s" $text $repo }}
-            {{- end }}
-            {{- $ref := Link .GitRef (GitRefURL .GitRef .GithubRepo) }}
-            {{- $text = printf "%s\n- **Git Ref:** %s" $text $ref }}
-            -{{ include "markdown" $text | nindent 14 }}
+    - tag: div
+      fields:
+        {{- with .Status }}
+        - is_short: false
+          text:
+            tag: lark_md
+            content: {{ printf "**Status:**\t%s%s" (StatusEmoji .) (Escape .) | toJson }}
+        {{- end }}
+        {{- with .CreatedBy }}
+        - is_short: false
+          text:
+            tag: lark_md
+            content: {{ printf "🧑‍💻 **Created By:**\t%s" (Escape .) | toJson }}
+        {{- end }}
+        {{- with .CreatedAt }}
+        - is_short: false
+          text:
+            tag: lark_md
+            content: {{ printf "🛫 **Created at:**\t%s" (Escape .) | toJson }}
+        {{- end }}
+        {{- with .CompletedAt }}
+        - is_short: false
+          text:
+            tag: lark_md
+            content: {{ printf "🛬 **Completed time:**\t%s" (Escape .) | toJson }}
+        {{- end }}
+    - tag: hr
+    {{- $request := printf "**Request:**\n- **Product:** %s\n- **Edition:** %s\n- **Version:** %s" (Escape .Product) (Escape .Edition) (Escape .Version) }}
+    {{- if .IsHotfix }}
+      {{- $request = printf "%s\n- **Hotfix:** 🔥 Yes" $request }}
+    {{- end }}
+    {{- $request = printf "%s\n- **Platform:** %s" $request (Escape .Platform) }}
+    {{- with .GithubRepo }}
+      {{- $request = printf "%s\n- **Repository:** %s" $request (Link . (printf "https://github.com/%s" .)) }}
+    {{- end }}
+    {{- $request = printf "%s\n- **Git Ref:** %s" $request (Link .GitRef (GitRefURL .GitRef .GithubRepo)) }}
+    - tag: markdown
+      content: {{ $request | toJson }}
 
     {{- if or .GitSha .ImageGroups .BinaryGroups }}
-    {{- $text := "**Build Report**" }}
+    - tag: hr
+    {{- $report := "**Build Report**" }}
     {{- with .GitSha }}
-      {{- $sha := Link . (GitRefURL (printf "commit/%s" .) $.GithubRepo) }}
-      {{- $text = printf "%s\n**Git SHA:** %s" $text $sha }}
-    {{- end }}
-    -{{ include "markdown" $text | nindent 6 }}
-      text_size: heading-2
+      {{- $report = printf "%s\n- **Git SHA:** %s" $report (Link . (GitRefURL (printf "commit/%s" .) $.GithubRepo)) }}
     {{- end }}
     {{- if .ImageGroups }}
-    -{{ include "markdown" "**Docker Images**" | nindent 6 }}
-    {{- end }}
-    {{- range .ImageGroups }}
-    - tag: column_set
-      flex_mode: none
-      columns:
-        - tag: column
-          width: weighted
-          weight: 1
-          padding: 12px
-          background_style: grey-50
-          vertical_spacing: 8px
-          elements:
-            - tag: markdown
-              content: {{ Escape .Repo | toJson }}
-            {{- range .Platforms }}
-            {{- if eq .Platform "multi-arch" }}
-            -{{ include "markdown" "**Multi-arch**" | nindent 14 }}
-            {{- else }}
-            - tag: markdown
-              content: {{ printf "**%s**" (Escape .Platform) | toJson }}
-            {{- end }}
-            {{- range .Tags }}
-            - tag: markdown
-              content: {{ ImageLink .Tag .Reference | toJson }}
-            {{- end }}
-            {{- end }}
+      {{- $report = printf "%s\n- **Docker Images:**" $report }}
+      {{- range .ImageGroups }}
+        {{- $report = printf "%s\n    - %s" $report (Code .Repo) }}
+        {{- range .Platforms }}
+          {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
+          {{- $tags := list }}
+          {{- range .Tags }}
+            {{- $tags = append $tags (Code .Tag) }}
+          {{- end }}
+          {{- $report = printf "%s\n        - **%s:** %s" $report (Escape $platform) (join " · " $tags) }}
+        {{- end }}
+      {{- end }}
     {{- end }}
     {{- if .BinaryGroups }}
-    - tag: column_set
-      flex_mode: none
-      columns:
-        - tag: column
-          width: weighted
-          weight: 1
-          padding: 12px
-          background_style: grey-50
-          vertical_spacing: 8px
-          elements:
-            -{{ include "markdown" "**Binaries**" | nindent 14 }}
-            {{- range .BinaryGroups }}
-            {{- if .Platform }}
-            - tag: markdown
-              content: {{ printf "**%s**" (Escape .Platform) | toJson }}
-            {{- else }}
-            -{{ include "markdown" "**Unknown platform**" | nindent 14 }}
-            {{- end }}
-            {{- range .Files }}
-            {{- $text := Link .FileName .URL }}
-            {{- if not .Downloadable }}
-              {{- $text = printf "%s\n<font color='grey'>Download service is not configured</font>" $text }}
-            {{- end }}
-            -{{ include "markdown" $text | nindent 14 }}
-            {{- if .HasChecksum }}
-            {{- $sha := Link "SHA256" .Sha256URL }}
-            -{{ include "markdown" (printf "<font color='grey'>Checksum:</font> %s" $sha) | nindent 14 }}
-            {{- end }}
-            {{- end }}
-            {{- end }}
+      {{- $report = printf "%s\n- **Binaries:**" $report }}
+      {{- range .BinaryGroups }}
+        {{- $report = printf "%s\n    - **%s:**" $report (Escape (default "Unknown platform" .Platform)) }}
+        {{- range .Files }}
+          {{- $file := Link .FileName .URL }}
+          {{- if .HasChecksum }}
+            {{- $file = printf "%s · %s" $file (Link "SHA256" .Sha256URL) }}
+          {{- end }}
+          {{- if not .Downloadable }}
+            {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}
+          {{- end }}
+          {{- $report = printf "%s\n        - %s" $report $file }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    - tag: markdown
+      content: {{ $report | toJson }}
     {{- end }}
     {{- if .PipelineRuns }}
-    {{- $text := "**Pipeline Runs**" }}
+    - tag: hr
+    {{- $pipelines := "**Pipeline Runs:**" }}
     {{- range .PipelineRuns }}
-      {{- $line := printf "\n- %s **%s:** %s" (PipelineStatusEmoji .Status) (Escape .Name) (Link .Status .URL) }}
-      {{- $text = printf "%s%s" $text $line }}
+      {{- $pipelines = printf "%s\n- %s **%s:** %s" $pipelines (PipelineStatusEmoji .Status) (Escape .Name) (Link .Status .URL) }}
     {{- end }}
-    - tag: column_set
-      flex_mode: none
-      columns:
-        - tag: column
-          width: weighted
-          weight: 1
-          padding: 12px
-          background_style: grey-50
-          elements:
-            -{{ include "markdown" $text | nindent 14 }}
+    - tag: markdown
+      content: {{ $pipelines | toJson }}
     {{- end }}
     {{- with .ErrMsg }}
-    - tag: column_set
-      flex_mode: none
-      columns:
-        - tag: column
-          width: weighted
-          weight: 1
-          padding: 12px
-          background_style: grey-50
-          elements:
-            -{{ include "markdown" (printf "**Error**\n%s" (Escape .)) | nindent 14 }}
+    - tag: hr
+    - tag: markdown
+      content: {{ printf "**Error:**\n%s" (Escape .) | toJson }}
     {{- end }}
