@@ -24,6 +24,7 @@ type BinaryInfo struct {
 
 // NotificationInfo contains information for building a notification card.
 type NotificationInfo struct {
+	ImageSyncURL string // Configured image sync form URL; empty disables shortcuts.
 	BuildID      int
 	Product      string
 	Edition      string

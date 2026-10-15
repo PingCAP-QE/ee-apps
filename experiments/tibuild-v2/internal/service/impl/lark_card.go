@@ -49,12 +49,18 @@ func cardLink(label, target string) string {
 }
 
 // imageSyncURL opens TCMS's confirmation dialog with the exact image reference.
-func imageSyncURL(reference string) string {
+func imageSyncURL(base, reference string) string {
+	if !validHTTPURL(base) {
+		return ""
+	}
 	if _, err := name.ParseReference(reference); err != nil {
 		return ""
 	}
-	query := url.Values{"sourceImage": {reference}}
-	return "https://tcms.pingcap.net/dashboard/image-sync-tasks?" + query.Encode()
+	u, _ := url.Parse(base)
+	query := u.Query()
+	query.Set("sourceImage", reference)
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 func validHTTPURL(raw string) bool {

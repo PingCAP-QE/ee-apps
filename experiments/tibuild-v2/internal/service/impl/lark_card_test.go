@@ -7,6 +7,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/stretchr/testify/require"
 	tknv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 )
@@ -188,7 +189,7 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 	require.Equal(t, "**Request:**\n- **Product:** tiflash\n- **Edition:** nextgen\n- **Version:** v1\n- **Platform:** linux\n- **Repository:** [pingcap/tiflash](https://github.com/pingcap/tiflash)\n- **Git Ref:** [tag/v1](https://github.com/pingcap/tiflash/tree/v1)", elements[2].(map[string]any)["content"])
 	require.Equal(t, "hr", elements[3].(map[string]any)["tag"])
 	report := elements[4].(map[string]any)["content"].(string)
-	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `\n        - **Multi-arch:** ` v1 ` "+cardLink("Sync", imageSyncURL("registry/a:v1"))+" · ` v2 ` "+cardLink("Sync", imageSyncURL("registry/a:v2"))+"\n        - **linux/amd64:** ` v1_linux_amd64 `")
+	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `\n        - **Multi-arch:** ` v1 ` · ` v2 `\n        - **linux/amd64:** ` v1_linux_amd64 `")
 	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)\n        - [b.tar.gz](https://download.example/b.tar.gz)")
 	var rules int
 	walkCard(card, func(el map[string]any) {
@@ -234,7 +235,7 @@ func TestImageSyncShortcuts(t *testing.T) {
 		{URL: "registry/b:v3"},
 	}
 	for _, hotfix := range []bool{false, true} {
-		card := renderLarkCard(t, &NotificationInfo{Status: "SUCCESS", IsHotfix: hotfix, Images: images})
+		card := renderLarkCard(t, &NotificationInfo{Status: "SUCCESS", IsHotfix: hotfix, Images: images, ImageSyncURL: "https://sync.example.com/custom/form"})
 		var report string
 		walkCard(card, func(el map[string]any) {
 			if el["tag"] == "markdown" && strings.HasPrefix(el["content"].(string), "**Build Report**") {
@@ -243,20 +244,48 @@ func TestImageSyncShortcuts(t *testing.T) {
 		})
 		if hotfix {
 			require.NotContains(t, report, "[Sync]")
-			require.NotContains(t, report, "tcms.pingcap.net")
+			require.NotContains(t, report, "sync.example.com")
 			continue
 		}
 		require.Equal(t, len(images), strings.Count(report, "[Sync]("))
 		for _, image := range images {
-			link := imageSyncURL(image.URL)
+			link := imageSyncURL("https://sync.example.com/custom/form", image.URL)
 			u, err := url.Parse(link)
 			require.NoError(t, err)
 			require.Equal(t, "https", u.Scheme)
-			require.Equal(t, "tcms.pingcap.net", u.Host)
-			require.Equal(t, "/dashboard/image-sync-tasks", u.Path)
+			require.Equal(t, "sync.example.com", u.Host)
+			require.Equal(t, "/custom/form", u.Path)
 			require.Equal(t, image.URL, u.Query().Get("sourceImage"))
 			require.Contains(t, report, cardLink("Sync", link))
 		}
 	}
-	require.Empty(t, imageSyncURL("not an image"))
+	require.Empty(t, imageSyncURL("https://sync.example.com/form", "not an image"))
+}
+
+func TestImageSyncURLConfiguration(t *testing.T) {
+	for _, base := range []string{"", "/relative", "javascript:alert(1)", "https://user:password@example.com/form"} {
+		require.Empty(t, imageSyncURL(base, "registry/a:v1"))
+	}
+	link := imageSyncURL("https://sync.example.com/form?target=ecr&sourceImage=old#section", "registry:5000/team/image:v1")
+	u, err := url.Parse(link)
+	require.NoError(t, err)
+	require.Equal(t, "ecr", u.Query().Get("target"))
+	require.Equal(t, "registry:5000/team/image:v1", u.Query().Get("sourceImage"))
+	require.Equal(t, "section", u.Fragment)
+
+	card := renderLarkCard(t, &NotificationInfo{Status: "SUCCESS", Images: []ImageInfo{{URL: "registry/a:v1"}}})
+	walkCard(card, func(el map[string]any) {
+		if text, ok := el["content"].(string); ok {
+			require.NotContains(t, text, "[Sync]")
+		}
+	})
+
+	n := &LarkNotifier{}
+	cfg := &config.Service{}
+	cfg.Lark.ImageSyncURL = "https://sync.example.com/form"
+	n.configureArtifacts(cfg)
+	require.Equal(t, cfg.Lark.ImageSyncURL, n.options.Load().(notificationOptions).ImageSyncURL)
+	cfg.Lark.ImageSyncURL = ""
+	n.configureArtifacts(cfg)
+	require.Empty(t, n.options.Load().(notificationOptions).ImageSyncURL)
 }

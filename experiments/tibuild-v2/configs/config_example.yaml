@@ -35,6 +35,9 @@ tekton:
 # Lark notifications (devbuild status changes). Disabled by default.
 lark:
   enabled: false
+  # Optional image sync form URL. Empty disables per-tag Sync shortcuts.
+  # Configure the full page URL in each environment; hotfix cards always omit it.
+  image_sync_url: ""
   app_id: "cli_xxxxxxxxxxxxxxxx"
   app_secret: "your-app-secret"
   channels:

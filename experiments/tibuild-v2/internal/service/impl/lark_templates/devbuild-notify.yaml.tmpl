@@ -65,7 +65,7 @@ body:
           {{- range .Tags }}
             {{- $tag := Code .Tag }}
             {{- if not $.IsHotfix }}
-              {{- with ImageSyncURL .Reference }}
+              {{- with ImageSyncURL $.ImageSyncURL .Reference }}
                 {{- $tag = printf "%s %s" $tag (Link "Sync" .) }}
               {{- end }}
             {{- end }}
