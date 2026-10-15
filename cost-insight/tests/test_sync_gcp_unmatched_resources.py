@@ -1,9 +1,11 @@
 import hashlib
 import json
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.dialects import mysql
 
 import cost_insight.jobs.sync_gcp_unmatched_resources as gcp_unmatched_resources
 from cost_insight.common.config import GcpBillingSettings
@@ -611,6 +613,254 @@ def test_unmatched_resource_sync_replaces_prior_summary_hash_when_usedby_is_adde
                 )
             ).all()
         assert rows == [(new_row["source_row_hash"], new_row["source_summary_row_hash"], 7.0)]
+    finally:
+        engine.dispose()
+
+
+def test_resource_cleanup_batches_duplicate_predicates_and_preserves_other_rows() -> None:
+    engine = _sqlite_engine()
+    cleanup_calls = []
+    base = _resource_row()
+    legacy = _normalize_resource_row(base)
+    # Historical hashes need not match today's hash fields (region/summary lineage).
+    legacy["source_row_hash"] = "a" * 64
+    unrelated = _normalize_resource_row({**base, "resource_name": "another-resource"})
+    labeled_existing = _normalize_resource_row({**base, "vendor_tags_json": {"pool": "existing"}})
+    rows = [
+        _normalize_resource_row({**base, "vendor_tags_json": {"pool": str(i)}})
+        for i in range(25)
+    ]
+
+    def record(_conn, _cursor, statement, parameters, _context, executemany):
+        if statement.lstrip().startswith("DELETE FROM cost_unmatched_resource_daily"):
+            cleanup_calls.append((statement, parameters, executemany))
+
+    try:
+        write_unmatched_resource_rows(
+            engine, [legacy, unrelated, labeled_existing], dry_run=False,
+        )
+        event.listen(engine, "before_cursor_execute", record)
+        assert write_unmatched_resource_rows(engine, rows, dry_run=False) == 25
+        with engine.connect() as connection:
+            stored = connection.execute(text(
+                "SELECT source_row_hash FROM cost_unmatched_resource_daily"
+            )).scalars().all()
+        assert legacy["source_row_hash"] not in stored
+        assert set(stored) == {
+            unrelated["source_row_hash"], labeled_existing["source_row_hash"],
+            *(row["source_row_hash"] for row in rows),
+        }
+        assert len(cleanup_calls) == 1
+        statement, _params, executemany = cleanup_calls[0]
+        assert not executemany
+        assert "id IN" in statement
+    finally:
+        engine.dispose()
+
+
+def test_resource_cleanup_skips_delete_when_no_legacy_candidates_exist() -> None:
+    engine = _sqlite_engine()
+    cleanup_calls = []
+
+    def record(_conn, _cursor, statement, _params, _context, executemany):
+        if statement.lstrip().startswith("DELETE FROM cost_unmatched_resource_daily"):
+            cleanup_calls.append(statement)
+
+    rows = [_normalize_resource_row({
+        **_resource_row(), "resource_name": f"resource-{i}", "vendor_tags_json": {"pool": "p"},
+    }) for i in range(25)]
+    try:
+        event.listen(engine, "before_cursor_execute", record)
+        for _ in range(2):
+            assert write_unmatched_resource_rows(engine, rows, dry_run=False) == 25
+        assert cleanup_calls == []
+        with engine.connect() as connection:
+            assert connection.execute(text(
+                "SELECT COUNT(*) FROM cost_unmatched_resource_daily"
+            )).scalar_one() == 25
+    finally:
+        engine.dispose()
+
+
+def test_full_labeled_page_keeps_insert_cap_and_avoids_per_row_cleanup() -> None:
+    engine = _sqlite_engine()
+    operations = {"candidate_probes": 0, "resource_deletes": 0, "insert_sizes": []}
+    rows = [_normalize_resource_row({
+        **_resource_row(), "resource_name": f"resource-{i}", "vendor_tags_json": {"pool": "p"},
+    }) for i in range(5_000)]
+
+    def record(_conn, _cursor, statement, parameters, _context, executemany):
+        sql = statement.lstrip().replace("`", "")
+        if sql.startswith("SELECT cost_unmatched_resource_daily.id"):
+            operations["candidate_probes"] += 1
+            assert len(parameters) <= 804
+        elif sql.startswith("DELETE FROM cost_unmatched_resource_daily"):
+            operations["resource_deletes"] += 1
+        elif sql.startswith("INSERT INTO cost_unmatched_resource_daily"):
+            operations["insert_sizes"].append(len(parameters) if executemany else 1)
+
+    try:
+        event.listen(engine, "before_cursor_execute", record)
+        assert write_unmatched_resource_rows(engine, rows, dry_run=False) == 5_000
+        assert operations["candidate_probes"] == 13
+        assert operations["resource_deletes"] == 0
+        assert operations["insert_sizes"] == [10] * 500
+        with engine.connect() as connection:
+            count, net_cost = connection.execute(text(
+                "SELECT COUNT(*), ROUND(SUM(net_cost), 2) FROM cost_unmatched_resource_daily"
+            )).one()
+        assert (count, net_cost) == (5_000, 35_000.0)
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("same_identity", [False, True])
+def test_resource_cleanup_bounds_candidate_ids_and_predicates(monkeypatch, same_identity) -> None:
+    engine = _sqlite_engine()
+    monkeypatch.setattr(gcp_unmatched_resources, "_RESOURCE_CLEANUP_ID_BATCH_SIZE", 2)
+    monkeypatch.setattr(gcp_unmatched_resources, "_RESOURCE_CLEANUP_PREDICATE_BATCH_SIZE", 2)
+    legacy = [
+        {
+            **_normalize_resource_row({
+                **_resource_row(),
+                "resource_name": "shared" if same_identity else f"resource-{i}",
+            }),
+            "source_row_hash": f"{i:064x}",
+        }
+        for i in range(9)
+    ]
+    labeled = [
+        _normalize_resource_row({
+            **_resource_row(), "resource_name": row["resource_name"],
+            "vendor_tags_json": {"pool": str(i)},
+        })
+        for i, row in enumerate(legacy)
+    ]
+    cleanup_calls = []
+
+    def record(_conn, _cursor, statement, parameters, _context, executemany):
+        if statement.lstrip().startswith("DELETE FROM cost_unmatched_resource_daily"):
+            cleanup_calls.append((parameters, executemany))
+
+    try:
+        write_unmatched_resource_rows(engine, legacy, dry_run=False)
+        event.listen(engine, "before_cursor_execute", record)
+        write_unmatched_resource_rows(engine, labeled, dry_run=False)
+        assert len(cleanup_calls) == 5
+        assert all(not many and len(params) <= 30 for params, many in cleanup_calls)
+        with engine.connect() as connection:
+            stored = connection.execute(text(
+                "SELECT source_row_hash FROM cost_unmatched_resource_daily"
+            )).scalars().all()
+        assert set(stored) == {row["source_row_hash"] for row in labeled}
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("vendor", ["gcp", "aws"])
+def test_resource_cleanup_gate_omits_empty_in_branches(monkeypatch, vendor) -> None:
+    monkeypatch.setattr(gcp_unmatched_resources, "_RESOURCE_CLEANUP_PROBE_BATCH_SIZE", 2)
+    statements = []
+
+    class Connection:
+        def execute(self, statement, parameters=None):
+            if parameters is not None:
+                statement = statement.params(**parameters)
+            statements.append(statement.compile(
+                dialect=mysql.dialect(paramstyle="pyformat"),
+                compile_kwargs={"render_postcompile": True},
+            ))
+            return SimpleNamespace(first=lambda: None)
+
+    rows = [_normalize_resource_row({
+        **_resource_row(), "vendor": vendor, "vendor_tags_json": {"pool": "p"},
+        "summary_vendor_tags_json": {"cluster": str(i), "usedby": "test-infra"},
+    }) for i in range(3)]
+    gcp_unmatched_resources._delete_superseded_resource_rows(Connection(), rows)
+    assert len(statements) == (1 if vendor == "gcp" else 2)
+    for compiled in statements:
+        sql = str(compiled)
+        # SQLAlchemy's empty expanding-IN uses a SELECT subquery on MySQL,
+        # which TiDB can turn into a costly Cartesian hash join.
+        assert sql.count("SELECT") == 1
+        assert len(compiled.params) <= 9  # four scope fields + bounded lists + LIMIT
+        assert ("source_summary_row_hash IN" in sql) == (vendor == "aws")
+    assert "resource_name IN" in str(statements[0])
+    if vendor == "aws":
+        assert "resource_name IN" not in str(statements[1])
+
+
+def test_resource_cleanup_id_select_keeps_source_scope_outside_or() -> None:
+    statements = []
+
+    class Connection:
+        def execute(self, statement, parameters=None):
+            statements.append(statement)
+            if "id_1" in statement.compile().params:
+                return SimpleNamespace(scalars=lambda: SimpleNamespace(all=list))
+            return SimpleNamespace(first=lambda: (1,))
+
+    rows = [_normalize_resource_row({
+        **_resource_row(), "resource_name": f"resource-{i}", "vendor_tags_json": {"pool": "p"},
+    }) for i in range(2)]
+    gcp_unmatched_resources._delete_superseded_resource_rows(Connection(), rows)
+    assert len(statements) == 2
+    sql = " ".join(str(statements[1]).split())
+    outer_scope = sql.split(" WHERE ", 1)[1].split(" AND (", 1)[0]
+    assert outer_scope.startswith("vendor = :vendor_")
+    for field in ("vendor", "account_id", "export_partition_date", "usage_date"):
+        assert f"{field} = :{field}_" in outer_scope
+    assert " OR " in sql
+    assert "id > :id_1" in sql
+
+
+def test_resource_cleanup_progresses_when_guarded_delete_matches_nothing() -> None:
+    after_ids = []
+    deletes = []
+
+    class Connection:
+        def execute(self, statement, parameters=None):
+            if getattr(statement, "is_select", False):
+                params = statement.compile().params
+                if "id_1" not in params:
+                    return SimpleNamespace(first=lambda: (1,))
+                after_id = params["id_1"]
+                after_ids.append(after_id)
+                # Model a repeatable-read snapshot whose candidate has been
+                # concurrently relabeled, so the current-read DELETE affects 0.
+                return SimpleNamespace(scalars=lambda: SimpleNamespace(
+                    all=lambda: [1] if after_id == 0 else [],
+                ))
+            if getattr(statement, "is_delete", False):
+                deletes.append(statement)
+                return SimpleNamespace(rowcount=0)
+            return SimpleNamespace(first=lambda: (1,))
+
+    row = _normalize_resource_row({**_resource_row(), "vendor_tags_json": {"pool": "p"}})
+    gcp_unmatched_resources._delete_superseded_resource_rows(Connection(), [row])
+    assert after_ids == [0, 1]
+    assert len(deletes) == 1
+
+
+def test_resource_cleanup_rolls_back_with_failed_insert(monkeypatch) -> None:
+    engine = _sqlite_engine()
+    legacy = _normalize_resource_row(_resource_row())
+    labeled = _normalize_resource_row({
+        **_resource_row(), "vendor_tags_json": {"pool": "p"},
+    })
+    try:
+        write_unmatched_resource_rows(engine, [legacy], dry_run=False)
+
+        def fail(*_args, **_kwargs):
+            raise ConnectionError("insert failed")
+
+        monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", fail)
+        with pytest.raises(ConnectionError, match="insert failed"):
+            write_unmatched_resource_rows(engine, [labeled], dry_run=False)
+        with engine.connect() as connection:
+            assert connection.execute(text(
+                "SELECT source_row_hash FROM cost_unmatched_resource_daily"
+            )).scalars().all() == [legacy["source_row_hash"]]
     finally:
         engine.dispose()
 

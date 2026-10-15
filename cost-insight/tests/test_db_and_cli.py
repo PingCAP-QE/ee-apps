@@ -843,6 +843,58 @@ def test_cli_runs_sync_unmatched_resources_command(monkeypatch, capsys) -> None:
     assert '"rows_seen": 3' in output
 
 
+@pytest.mark.parametrize("fail_main_account", [False, True])
+def test_gcp_resource_sync_runs_small_accounts_before_main_account(
+    monkeypatch, fail_main_account, capsys,
+) -> None:
+    accounts = ["pingcap-testing-account", "qa-infra-dev", "qa-kernel-test"]
+    settings = SimpleNamespace(gcp_billing=GcpBillingSettings(), log_level="INFO")
+    visited = []
+    disposed = []
+    engine = SimpleNamespace(dispose=lambda: disposed.append(True))
+    monkeypatch.setattr(cli, "get_settings", lambda **_kwargs: settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _settings: engine)
+    monkeypatch.setattr(
+        cli, "_list_sources",
+        lambda _engine, *, vendor: [SimpleNamespace(account_id=a) for a in accounts],
+    )
+
+    def sync(_engine, **kwargs):
+        account = kwargs["settings"].account_id
+        visited.append(account)
+        if fail_main_account and account == "pingcap-testing-account":
+            raise RuntimeError("main account exceeded its deadline")
+        return SyncGcpUnmatchedResourcesSummary(
+            account_id=account,
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            export_partition_start=date(2026, 9, 28),
+            export_partition_end=date(2026, 10, 9),
+            rows_seen=1,
+            rows_written=1,
+            dry_run=False,
+        )
+
+    monkeypatch.setattr(cli, "run_sync_gcp_unmatched_resources", sync)
+    # Shared resolution (billing summary and workload allocation) must retain its order.
+    assert [s.account_id for s in cli._resolve_gcp_sources(
+        engine, settings=settings.gcp_billing,
+    )] == accounts
+    argv = [
+        "sync-gcp-unmatched-resources",
+        "--usage-start-date", "2026-09-28", "--usage-end-date", "2026-10-04",
+    ]
+    if fail_main_account:
+        with pytest.raises(RuntimeError, match="exceeded its deadline"):
+            cli.main(argv)
+    else:
+        assert cli.main(argv) == 0
+        assert '"rows_written": 1' in capsys.readouterr().out
+    assert visited == ["qa-infra-dev", "qa-kernel-test", "pingcap-testing-account"]
+    assert disposed == [True]
+
+
 def test_cli_runs_sync_gcp_kubernetes_workload_allocations_command(monkeypatch, capsys) -> None:
     disposed = []
     captured = {}
