@@ -61,26 +61,6 @@ body:
     {{- if .ImageGroups }}
     - tag: markdown
       content: "**Docker Images:**"
-    {{- end }}
-    {{- range .ImageGroups }}
-    {{- $images := Escape .Repo }}
-    {{- range .Platforms }}
-      {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
-      {{- $tags := list }}
-      {{- range .Tags }}
-        {{- $tags = append $tags (Escape .Tag) }}
-      {{- end }}
-      {{- $images = printf "%s\n**%s:** %s" $images (Escape $platform) (join " · " $tags) }}
-    {{- end }}
-    - tag: markdown
-      content: {{ $images | toJson }}
-    {{- end }}
-    {{- if .BinaryGroups }}
-    - tag: markdown
-      content: "**Binaries:**"
-    {{- range .BinaryGroups }}
-    - tag: markdown
-      content: {{ printf "**%s**" (Escape (default "Unknown platform" .Platform)) | toJson }}
     - tag: column_set
       flex_mode: none
       columns:
@@ -88,19 +68,67 @@ body:
           width: weighted
           weight: 1
           padding: "0px 0px 0px 16px"
+          vertical_spacing: 12px
           elements:
-            {{- range .Files }}
-            {{- $file := Link .FileName .URL }}
-            {{- if .HasChecksum }}
-              {{- $file = printf "%s · %s" $file (Link "SHA256" .Sha256URL) }}
-            {{- end }}
-            {{- if not .Downloadable }}
-              {{- $file = printf "%s\n<font color='grey'>Download service is not configured</font>" $file }}
-            {{- end }}
+            {{- range .ImageGroups }}
             - tag: markdown
-              content: {{ $file | toJson }}
+              content: {{ printf "**Repository:** %s" (Escape .Repo) | toJson }}
+            - tag: column_set
+              flex_mode: none
+              columns:
+                - tag: column
+                  width: weighted
+                  weight: 1
+                  padding: "0px 0px 0px 16px"
+                  vertical_spacing: 4px
+                  elements:
+                    {{- range .Platforms }}
+                    {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
+                    {{- $tags := list }}
+                    {{- range .Tags }}
+                      {{- $tags = append $tags (Escape .Tag) }}
+                    {{- end }}
+                    - tag: markdown
+                      content: {{ printf "**%s:** %s" (Escape $platform) (join " · " $tags) | toJson }}
+                    {{- end }}
             {{- end }}
     {{- end }}
+    {{- if .BinaryGroups }}
+    - tag: markdown
+      content: "**Binaries:**"
+    - tag: column_set
+      flex_mode: none
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: "0px 0px 0px 16px"
+          vertical_spacing: 12px
+          elements:
+            {{- range .BinaryGroups }}
+            - tag: markdown
+              content: {{ printf "**%s**" (Escape (default "Unknown platform" .Platform)) | toJson }}
+            - tag: column_set
+              flex_mode: none
+              columns:
+                - tag: column
+                  width: weighted
+                  weight: 1
+                  padding: "0px 0px 0px 16px"
+                  vertical_spacing: 4px
+                  elements:
+                    {{- range .Files }}
+                    {{- $file := Link .FileName .URL }}
+                    {{- if .HasChecksum }}
+                      {{- $file = printf "%s · %s" $file (Link "SHA256" .Sha256URL) }}
+                    {{- end }}
+                    {{- if not .Downloadable }}
+                      {{- $file = printf "%s\n<font color='grey'>Download service is not configured</font>" $file }}
+                    {{- end }}
+                    - tag: markdown
+                      content: {{ $file | toJson }}
+                    {{- end }}
+            {{- end }}
     {{- end }}
     {{- if .PipelineRuns }}
     - tag: hr

@@ -197,8 +197,8 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 		}
 		if el["tag"] == "markdown" {
 			content := el["content"].(string)
-			if strings.HasPrefix(content, "registry/a\n") {
-				require.Contains(t, content, "**Multi-arch:** v1 · v2\n**linux/amd64:** v1&#95;linux&#95;amd64")
+			if strings.HasPrefix(content, "**Multi-arch:**") {
+				require.Equal(t, "**Multi-arch:** v1 · v2", content)
 				require.NotContains(t, content, "](registry/")
 				imagesFound = true
 			}
@@ -206,6 +206,9 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 		if el["tag"] == "column" {
 			require.Equal(t, "0px 0px 0px 16px", el["padding"])
 			for _, row := range el["elements"].([]any) {
+				if row.(map[string]any)["tag"] != "markdown" {
+					continue
+				}
 				text := row.(map[string]any)["content"].(string)
 				require.NotContains(t, text, "\n")
 				if strings.Contains(text, "a.tar.gz]") {
@@ -223,4 +226,52 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 	require.True(t, imagesFound)
 	require.True(t, binaryFound)
 	require.True(t, noChecksumFound)
+}
+
+// Report hierarchy is expressed with nested indentation, leaving the original
+// message sections, font size and horizontal rules unchanged.
+func TestBuildReportHierarchy(t *testing.T) {
+	info := &NotificationInfo{Status: "SUCCESS", Images: []ImageInfo{{Platform: MultiArch, URL: "registry/a:v1"}, {Platform: "linux/amd64", URL: "registry/a:v1_linux_amd64"}}, Binaries: []BinaryInfo{{Platform: "linux/amd64", FileName: "a.tar.gz", OciReference: "registry/a:v1/a.tar.gz", URL: "https://download.example/a.tar.gz", Sha256URL: "https://download.example/a.tar.gz.sha256"}}}
+	card := renderLarkCard(t, info)
+	var inspect func(any, int)
+	var repo, platform, files bool
+	inspect = func(value any, depth int) {
+		switch el := value.(type) {
+		case map[string]any:
+			if el["tag"] == "column" {
+				require.Equal(t, "0px 0px 0px 16px", el["padding"])
+				depth++
+			}
+			if el["tag"] == "markdown" {
+				text := el["content"].(string)
+				if text == "**Repository:** registry/a" {
+					require.Equal(t, 1, depth)
+					repo = true
+				}
+				if text == "**Multi-arch:** v1" || text == "**linux/amd64:** v1&#95;linux&#95;amd64" {
+					require.Equal(t, 2, depth)
+					platform = true
+				}
+				if strings.Contains(text, "[a.tar.gz]") {
+					require.Equal(t, 2, depth)
+					require.Contains(t, text, " · [SHA256]")
+					files = true
+				}
+				if text == "**linux/amd64**" {
+					require.Equal(t, 1, depth)
+				}
+			}
+			for _, child := range el {
+				inspect(child, depth)
+			}
+		case []any:
+			for _, child := range el {
+				inspect(child, depth)
+			}
+		}
+	}
+	inspect(card, 0)
+	require.True(t, repo)
+	require.True(t, platform)
+	require.True(t, files)
 }

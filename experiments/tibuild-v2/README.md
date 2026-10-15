@@ -93,4 +93,7 @@ line. Multiple tags are separated by a middle dot and wrap naturally on narrow
 clients. Binary filename and SHA256 hyperlinks can be right-clicked to copy
 their download addresses. Status and Request retain their original field/list
 layout and horizontal-rule section separators. Report text uses the default
-font size, with bold labels and no shaded background blocks.
+font size, with bold labels and no shaded background blocks. Within the report,
+repositories and binary platforms are indented one level; image platform/tag
+rows and binary/checksum rows are indented one further level. Extra spacing
+separates repositories and platforms, while their child rows remain compact.
