@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+import pytest
 from sqlalchemy import text
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
@@ -35,7 +36,7 @@ def _settings(batch_size: int = 100) -> Settings:
 def _insert_build(
     sqlite_engine,
     *,
-    source_prow_row_id: int = 1,
+    source_prow_row_id: int | None = 1,
     source_prow_job_id: str = "prow-job-1",
     repo_full_name: str = "pingcap/tidb",
     pr_number: int = 101,
@@ -219,6 +220,112 @@ def test_sync_pr_events_refreshes_tracked_prs_when_ticket_changes(sqlite_engine)
 
     assert row is not None
     assert row[0] == "release-8.6"
+
+
+@pytest.mark.parametrize("source_prow_row_id", [1, None], ids=["prow", "jenkins-only"])
+@pytest.mark.parametrize("ticket_updated_at", ["2026-04-13 11:00:00", "2026-04-15 11:00:00"])
+def test_sync_pr_events_recovers_late_ticket_without_new_build(
+    sqlite_engine,
+    source_prow_row_id: int | None,
+    ticket_updated_at: str,
+) -> None:
+    _insert_build(sqlite_engine, source_prow_row_id=source_prow_row_id)
+    _insert_build(
+        sqlite_engine,
+        source_prow_row_id=10,
+        source_prow_job_id="tracked-build",
+        repo_full_name="pingcap/tiflash",
+    )
+    _insert_ticket(
+        sqlite_engine,
+        repo="pingcap/tiflash",
+        updated_at="2026-04-14 11:00:00",
+        branches={"base": {"ref": "master"}},
+    )
+
+    first_summary = run_sync_pr_events(sqlite_engine, _settings())
+
+    assert first_summary.ticket_rows_fetched == 1
+    assert first_summary.events_written == 1
+    assert first_summary.last_build_source_prow_row_id_seen == 10
+    assert first_summary.last_ticket_updated_at == "2026-04-14 11:00:00"
+    with sqlite_engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT repo, pr_number FROM ci_l1_pr_events")
+        ).all() == [("pingcap/tiflash", 101)]
+
+    _insert_ticket(
+        sqlite_engine,
+        updated_at=ticket_updated_at,
+        timeline=[
+            {
+                "event": "commented",
+                "id": 55,
+                "body": "/retest",
+                "created_at": "2026-04-13T09:05:00Z",
+            },
+        ],
+        branches={"base": {"ref": "release-8.5"}},
+    )
+
+    second_summary = run_sync_pr_events(sqlite_engine, _settings(batch_size=1))
+    repeat_summary = run_sync_pr_events(sqlite_engine, _settings())
+
+    assert second_summary.candidate_prs == 1
+    assert second_summary.ticket_rows_fetched == 1
+    assert second_summary.events_written == 2
+    assert second_summary.last_build_source_prow_row_id_seen == 10
+    assert second_summary.last_ticket_updated_at == max(
+        "2026-04-14 11:00:00", ticket_updated_at
+    )
+    assert repeat_summary.candidate_prs == 0
+    assert repeat_summary.events_written == 0
+    with sqlite_engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT repo, pr_number, event_key, target_branch
+                FROM ci_l1_pr_events
+                ORDER BY repo, event_key
+                """
+            )
+        ).all()
+        state = get_job_state(connection, "ci-sync-pr-events")
+
+    assert rows == [
+        ("pingcap/tidb", 101, "pr_snapshot", "release-8.5"),
+        ("pingcap/tidb", 101, "retest_comment:55", "release-8.5"),
+        ("pingcap/tiflash", 101, "pr_snapshot", "master"),
+    ]
+    assert state is not None
+    assert state.watermark == {
+        "last_build_source_prow_row_id_seen": 10,
+        "last_ticket_updated_at": max("2026-04-14 11:00:00", ticket_updated_at),
+    }
+
+
+def test_sync_pr_events_retries_until_snapshot_exists(sqlite_engine) -> None:
+    _insert_build(sqlite_engine)
+    _insert_ticket(sqlite_engine)
+    run_sync_pr_events(sqlite_engine, _settings())
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE ci_l1_pr_events
+                SET event_key = 'committed:old', event_type = 'committed'
+                """
+            )
+        )
+
+    summary = run_sync_pr_events(sqlite_engine, _settings())
+
+    assert summary.candidate_prs == 1
+    assert summary.events_written == 1
+    with sqlite_engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT event_key FROM ci_l1_pr_events ORDER BY event_key")
+        ).scalars().all() == ["committed:old", "pr_snapshot"]
 
 
 def test_extract_branch_metadata_and_timeline_helpers() -> None:

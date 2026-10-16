@@ -26,11 +26,20 @@ JOB_NAME = "ci-sync-pr-events"
 
 SELECT_NEW_BUILD_LINKED_PRS = text(
     """
-    SELECT DISTINCT repo_full_name, pr_number
-    FROM ci_l1_builds
-    WHERE is_pr_build = 1
-      AND pr_number IS NOT NULL
-      AND source_prow_row_id > :last_build_source_prow_row_id_seen
+    SELECT DISTINCT b.repo_full_name, b.pr_number
+    FROM ci_l1_builds b
+    WHERE b.is_pr_build = 1
+      AND b.pr_number IS NOT NULL
+      AND (
+        b.source_prow_row_id > :last_build_source_prow_row_id_seen
+        OR NOT EXISTS (
+          SELECT 1
+          FROM ci_l1_pr_events e
+          WHERE e.repo = b.repo_full_name
+            AND e.pr_number = b.pr_number
+            AND e.event_key = 'pr_snapshot'
+        )
+      )
     """
 )
 

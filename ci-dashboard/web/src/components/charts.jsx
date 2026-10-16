@@ -1707,11 +1707,12 @@ export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
                 <td>{row.total.cell}</td>
                 {row.metrics.map((metric, index) => {
                   const isRecentWeek = index >= highlightStartIndex;
+                  const hasRate = metric.total_runs_est > 0 && metric.flaky_rate_pct != null;
                   const recentTone = metric.flaky_rate_pct > 0 ? "hot" : "cool";
                   return (
                     <td
                       key={`${row.issue_number}-${weeks[index]}`}
-                      className={isRecentWeek ? `metric-cell metric-cell--${recentTone}` : undefined}
+                      className={isRecentWeek && hasRate ? `metric-cell metric-cell--${recentTone}` : undefined}
                     >
                       {metric.cell}
                     </td>
@@ -1763,13 +1764,13 @@ function buildIssueTotalMetric(metrics) {
   );
   const flakyRatePct = totals.totalRunsEst
     ? (totals.flakyRuns * 100) / totals.totalRunsEst
-    : 0;
+    : null;
 
   return {
     flaky_runs: totals.flakyRuns,
     total_runs_est: totals.totalRunsEst,
     flaky_rate_pct: flakyRatePct,
-    cell: `${flakyRatePct.toFixed(2)}% (${totals.flakyRuns}/${totals.totalRunsEst})`,
+    cell: `${flakyRatePct == null ? "N/A" : `${flakyRatePct.toFixed(2)}%`} (${totals.flakyRuns}/${totals.totalRunsEst})`,
   };
 }
 
@@ -1790,6 +1791,11 @@ function sortIssueWeeklyRows(rows, sort) {
 
     const leftMetric = issueMetricForColumn(left, sort.column);
     const rightMetric = issueMetricForColumn(right, sort.column);
+    const leftUnknown = !(leftMetric.total_runs_est > 0) || leftMetric.flaky_rate_pct == null;
+    const rightUnknown = !(rightMetric.total_runs_est > 0) || rightMetric.flaky_rate_pct == null;
+    if (leftUnknown !== rightUnknown) {
+      return leftUnknown ? 1 : -1;
+    }
     const difference =
       Number(leftMetric.flaky_rate_pct || 0) - Number(rightMetric.flaky_rate_pct || 0);
     if (difference) {

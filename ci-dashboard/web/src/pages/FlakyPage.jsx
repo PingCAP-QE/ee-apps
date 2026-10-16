@@ -166,10 +166,13 @@ export default function FlakyPage({ filters }) {
     (row) => String(row.issue_status || "").toLowerCase() === "open",
   ).length;
   const reopenedIssueCount = issueRows.filter((row) => Number(row.reopen_count || 0) > 0).length;
-  const noFlakyPastTwoWeeksCases = issueRows.filter((row) => {
-    const recentMetrics = (row.metrics || []).slice(-2);
-    return recentMetrics.length > 0 && recentMetrics.every((metric) => Number(metric.flaky_rate_pct || 0) === 0);
-  }).length;
+  const recentIssueWeeks = issueWeeks.slice(-2);
+  const noFlakyPastTwoWeeksCases = issueRows.filter((row) => (
+    recentIssueWeeks.length === 2 && recentIssueWeeks.every((week) => {
+      const metric = row.metrics?.find((item) => item.week_start === week);
+      return metric?.total_runs_est > 0 && metric.flaky_runs === 0 && metric.flaky_rate_pct === 0;
+    })
+  )).length;
   const latestIssueWeekLabel = issueWeeks[issueWeeks.length - 1] || "latest bucket";
   const failureLikeBuildCount = Number(currentPeriod?.failure_like_build_count || 0);
   const totalPrCount = Number(currentPeriod?.total_pr_count || 0);
@@ -277,7 +280,7 @@ export default function FlakyPage({ filters }) {
 
       <Panel
         title="Distinct flaky case number"
-        subtitle="Weekly distinct flaky testcase count derived from problem_case_runs, aligned by PR target branch."
+        subtitle="Weekly distinct flaky testcase count derived from problem_case_runs, aligned by CI build branch (PR and postsubmit)."
         loading={page.loading}
         error={page.error}
         actions={showPanelActions ? (
@@ -361,7 +364,7 @@ export default function FlakyPage({ filters }) {
 
       <Panel
         title="Filtered-issue weekly case table"
-        subtitle="Each row keeps the issue link. Weekly cells and Total use rate (flaky runs / estimated runs), with Total aggregated across the selected range."
+        subtitle="Weekly cells and Total show rate (flaky runs / estimated job builds), not fresh testcase execution counts. N/A means no estimated job builds; Total aggregates the selected range."
         loading={page.loading}
         error={page.error}
         actions={showPanelActions ? (
@@ -392,7 +395,8 @@ export default function FlakyPage({ filters }) {
             <span>
               The progress cards, lifecycle chart, and filtered case table use tracked flaky
               issues and linked fix PRs. The snapshot cards are repo and branch scoped, as of
-              the selected end date.
+              the selected end date. Case evidence includes PR and postsubmit CI builds. The case
+              table ignores the branch filter and uses each issue's own branch.
             </span>
           </div>
           <div className="scope-note__block">

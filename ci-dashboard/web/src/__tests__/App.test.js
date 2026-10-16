@@ -239,6 +239,126 @@ test("filtered issue weekly table aggregates selected weeks and sorts each colum
   }
 });
 
+test("flaky case rates keep unknown weeks and totals neutral without hiding observed zero rates", async () => {
+  const originalFetch = globalThis.fetch;
+  const weeks = ["2026-06-01", "2026-06-08"];
+  const unknown = weeks.map((week_start) => ({
+    week_start, flaky_runs: 0, total_runs_est: 0, flaky_rate_pct: null, cell: "N/A (0/0)",
+  }));
+  const observedZero = weeks.map((week_start) => ({
+    week_start, flaky_runs: 0, total_runs_est: 10, flaky_rate_pct: 0, cell: "0.00% (0/10)",
+  }));
+  let renderer;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      issue_case_weekly_rates: {
+        weeks,
+        rows: [
+          { case_name: "Unknown", issue_number: 1, metrics: unknown, cells: unknown.map((metric) => metric.cell) },
+          { case_name: "Observed zero", issue_number: 2, metrics: observedZero },
+          { case_name: "Mixed", issue_number: 3, metrics: [unknown[0], observedZero[1]] },
+        ],
+      },
+      issue_filtered_weekly_trend: {
+        series: [{ key: "issue_filtered_flaky_rate_pct", type: "line", points: [[weeks[0], null], [weeks[1], 0]] }],
+      },
+    }),
+  });
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(FlakyPage, { filters: {} }));
+      await Promise.resolve();
+    });
+    const table = renderer.root.findByProps({ className: "data-table data-table--issue-weekly" });
+    const cells = table.findByType("tbody").findAllByType("tr").map((row) => row.findAllByType("td"));
+    assert.deepEqual(cells[0].map((cell) => cell.children.join("")), ["N/A (0/0)", "N/A (0/0)", "N/A (0/0)"]);
+    assert.ok(cells[0].every((cell) => !/metric-cell--(?:hot|cool)/.test(cell.props.className || "")));
+    assert.deepEqual(cells[1].map((cell) => cell.children.join("")), ["0.00% (0/20)", "0.00% (0/10)", "0.00% (0/10)"]);
+    assert.ok(cells[1].slice(1).every((cell) => cell.props.className === "metric-cell metric-cell--cool"));
+    assert.equal(cells[2][0].children.join(""), "0.00% (0/10)");
+    assert.equal(renderer.root.findAllByType("circle").length, 1);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("flaky case rate sorting puts unknown rates last in either direction", async () => {
+  const week = "2026-06-08";
+  const renderer = TestRenderer.create(React.createElement(IssueWeeklyRateTable, {
+    weeks: [week],
+    rows: [
+      { case_name: "A unknown", issue_number: 1, metrics: [{ week_start: week, flaky_runs: 0, total_runs_est: 0, flaky_rate_pct: null, cell: "N/A (0/0)" }] },
+      { case_name: "B zero", issue_number: 2, metrics: [{ week_start: week, flaky_runs: 0, total_runs_est: 10, flaky_rate_pct: 0, cell: "0.00% (0/10)" }] },
+      { case_name: "C flaky", issue_number: 3, metrics: [{ week_start: week, flaky_runs: 1, total_runs_est: 10, flaky_rate_pct: 10, cell: "10.00% (1/10)" }] },
+    ],
+  }));
+  const caseNames = () => renderer.root.findByType("tbody").findAllByType("tr")
+    .map((row) => row.findByType("a").children.join("").replace(/^\[#\d+\] /, ""));
+
+  try {
+    for (const column of ["Total", week]) {
+      await act(async () => renderer.root.findByProps({ "aria-label": `Sort ${column} descending` }).props.onClick());
+      assert.deepEqual(caseNames(), ["C flaky", "B zero", "A unknown"]);
+      await act(async () => renderer.root.findByProps({ "aria-label": `Sort ${column} ascending` }).props.onClick());
+      assert.deepEqual(caseNames(), ["B zero", "C flaky", "A unknown"]);
+    }
+  } finally {
+    renderer.unmount();
+  }
+});
+
+test("the flaky-free badge requires known zero evidence in both latest weeks", async () => {
+  const originalFetch = globalThis.fetch;
+  const weeks = ["2026-06-01", "2026-06-08", "2026-06-15"];
+  const zeroMetrics = weeks.map((week_start) => ({
+    week_start, flaky_runs: 0, total_runs_est: 10, flaky_rate_pct: 0, cell: "0.00% (0/10)",
+  }));
+  const unknownMetrics = weeks.map((week_start) => ({
+    week_start, flaky_runs: 0, total_runs_est: 0, flaky_rate_pct: null, cell: "N/A (0/0)",
+  }));
+  let report = {
+    issue_case_weekly_rates: {
+      weeks,
+      rows: [
+        { case_name: "Observed zero", issue_number: 1, metrics: zeroMetrics },
+        { case_name: "Unknown", issue_number: 2, metrics: unknownMetrics },
+        { case_name: "Mixed", issue_number: 3, metrics: [unknownMetrics[1], zeroMetrics[2]] },
+        { case_name: "Only one week", issue_number: 4, metrics: zeroMetrics.slice(-1) },
+        { case_name: "Missing latest week", issue_number: 5, metrics: zeroMetrics.slice(0, 2) },
+        { case_name: "Unknown rate", issue_number: 6, metrics: zeroMetrics.map((metric) => ({ ...metric, flaky_rate_pct: null })) },
+        { case_name: "Rounded positive", issue_number: 7, metrics: zeroMetrics.map((metric) => ({ ...metric, flaky_runs: 1, total_runs_est: 1000000, cell: "0.00% (1/1000000)" })) },
+      ],
+    },
+  };
+  let renderer;
+  globalThis.fetch = async () => ({ ok: true, json: async () => report });
+  const badgeCount = () => renderer.root.findAllByProps({ className: "panel-badge" })
+    .find((badge) => badge.findAllByType("span").some((label) => label.children.join("") === "cases no flaky in past 2 weeks"))
+    .findByType("strong").children.join("");
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(FlakyPage, { filters: {} }));
+      await Promise.resolve();
+    });
+    assert.equal(badgeCount(), "1");
+
+    await act(async () => renderer.unmount());
+    report = { issue_case_weekly_rates: { weeks: weeks.slice(-1), rows: [{ case_name: "One selected week", issue_number: 1, metrics: zeroMetrics.slice(-1) }] } };
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(FlakyPage, { filters: {} }));
+      await Promise.resolve();
+    });
+    assert.equal(badgeCount(), "0");
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("flaky issue progress displays the current open-issue backlog", async () => {
   const originalFetch = globalThis.fetch;
   let renderer;
