@@ -57,76 +57,51 @@ body:
     {{- end }}
     {{- if .ImageGroups }}
       {{- $report = printf "%s\n- **Docker Images:**" $report }}
-      {{- range .ImageGroups }}
-        {{- $report = printf "%s\n    - %s" $report (Code .Repo) }}
-        {{- range .Platforms }}
-          {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
-          {{- $tags := list }}
-          {{- range .Tags }}
-            {{- $tag := Code .Tag }}
-            {{- if not $.IsHotfix }}
-              {{- with ImageSyncURL $.ImageSyncURL .Reference }}
-                {{- $tag = printf "%s %s" $tag (Link "🧪 Sync" .) }}
-              {{- end }}
-            {{- end }}
-            {{- $tags = append $tags $tag }}
-          {{- end }}
-          {{- $report = printf "%s\n        - **%s:** %s" $report (Escape $platform) (join " · " $tags) }}
-        {{- end }}
-      {{- end }}
     {{- end }}
     - tag: markdown
       content: {{ $report | toJson }}
+    {{- $showSync := and (not .IsHotfix) (ValidHTTPURL .ImageSyncURL) }}
+    {{- range .ImageGroups }}
+      {{- $table := printf "%s\n\n| Platform | Tag |" (TableCell (Code .Repo)) }}
+      {{- if $showSync }}
+        {{- $table = printf "%s Action |\n| --- | --- | --- |" $table }}
+      {{- else }}
+        {{- $table = printf "%s\n| --- | --- |" $table }}
+      {{- end }}
+      {{- range .Platforms }}
+        {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
+        {{- range .Tags }}
+          {{- $table = printf "%s\n| %s | %s |" $table (TableCell (Escape $platform)) (TableCell (Code .Tag)) }}
+          {{- if $showSync }}
+            {{- $action := "—" }}
+            {{- with ImageSyncURL $.ImageSyncURL .Reference }}
+              {{- $action = Link "🧪 Sync" . }}
+            {{- end }}
+            {{- $table = printf "%s %s |" $table (TableCell $action) }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    - tag: markdown
+      content: {{ $table | toJson }}
+    {{- end }}
     {{- if .BinaryGroups }}
-    - tag: column_set
-      flex_mode: none
-      margin: 0px
-      columns:
-        - tag: column
-          width: weighted
-          weight: 1
-          padding: 0px
-          vertical_spacing: 4px
-          elements:
-            - tag: markdown
-              content: "- **Binaries:**"
-              margin: 0px
-            {{- range .BinaryGroups }}
-            - tag: markdown
-              content: {{ printf "<font color='blue'>◦</font> **%s:**" (Escape (default "Unknown platform" .Platform)) | toJson }}
-              margin: 0px 0px 0px 16px
-            {{- range .Files }}
-            - tag: column_set
-              flex_mode: none
-              horizontal_spacing: 8px
-              margin: 0px 0px 0px 32px
-              columns:
-                - tag: column
-                  width: weighted
-                  weight: 1
-                  vertical_align: top
-                  padding: 0px
-                  elements:
-                    {{- $file := printf "<font color='blue'>▪</font> %s" (Link .FileName .URL) }}
-                    {{- if not .Downloadable }}
-                      {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}
-                    {{- end }}
-                    - tag: markdown
-                      content: {{ $file | toJson }}
-                      margin: 0px
-                {{- if .HasChecksum }}
-                - tag: column
-                  width: auto
-                  vertical_align: top
-                  padding: 0px
-                  elements:
-                    - tag: markdown
-                      content: {{ Link "sha256" .Sha256URL | toJson }}
-                      text_size: notation
-                      margin: 0px
-                {{- end }}
-            {{- end }}
-            {{- end }}
+      {{- $table := "- **Binaries:**\n\n| Platform | File | Checksum |\n| --- | --- | --- |" }}
+      {{- range .BinaryGroups }}
+        {{- $platform := default "Unknown platform" .Platform }}
+        {{- range .Files }}
+          {{- $file := Link .FileName .URL }}
+          {{- if not .Downloadable }}
+            {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}
+          {{- end }}
+          {{- $checksum := "—" }}
+          {{- if .HasChecksum }}
+            {{- $checksum = Link "sha256" .Sha256URL }}
+          {{- end }}
+          {{- $table = printf "%s\n| %s | %s | %s |" $table (TableCell (Escape $platform)) (TableCell $file) (TableCell $checksum) }}
+        {{- end }}
+      {{- end }}
+    - tag: markdown
+      content: {{ $table | toJson }}
     {{- end }}
     {{- end }}
     {{- if .PipelineRuns }}
