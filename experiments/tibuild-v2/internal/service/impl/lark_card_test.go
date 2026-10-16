@@ -101,7 +101,8 @@ func TestNotificationReferencesWithoutCallbacks(t *testing.T) {
 	for _, image := range info.Images {
 		repo, tag := splitImageReference(image.URL)
 		require.Contains(t, text, inlineCardCode(repo))
-		require.Contains(t, text, inlineCardCode(tag))
+		require.Contains(t, text, tag)
+		require.NotContains(t, text, inlineCardCode(tag))
 		require.NotContains(t, text, "]("+image.URL+")")
 	}
 	require.NotContains(t, text, "https://registry/")
@@ -174,7 +175,7 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 	require.Equal(t, "hr", elements[3].(map[string]any)["tag"])
 	report := elements[4].(map[string]any)["content"].(string)
 	require.Contains(t, report, "**Build Report**\n- **Git SHA:** [abcdef](https://github.com/pingcap/tiflash/commit/abcdef)\n- **Docker Images:**")
-	require.Contains(t, cardText(card), "linux/amd64\t` v1_linux_amd64 `")
+	require.Contains(t, cardText(card), "linux/amd64\tv1_linux_amd64")
 	assertBinaryTable(t, card, 2)
 	var rules int
 	walkCard(card, func(el map[string]any) {
@@ -201,8 +202,8 @@ func TestBuildReportTables(t *testing.T) {
 	})
 	require.NotEmpty(t, report)
 	require.Contains(t, report, "\n- **Docker Images:**")
-	require.Contains(t, cardText(card), "- ` registry/b `\nMulti-arch\t` v2 `")
-	require.Contains(t, cardText(card), "linux/amd64\t` v1_linux_amd64 `")
+	require.Contains(t, cardText(card), "- ` registry/b `\nMulti-arch\tv2")
+	require.Contains(t, cardText(card), "linux/amd64\tv1_linux_amd64")
 	assertBinaryTable(t, card, 1)
 	require.NotContains(t, report, "](registry/")
 }
@@ -353,7 +354,7 @@ func TestArtifactTablesKeepAllRepositoriesAndTags(t *testing.T) {
 		for tag, row := range rows {
 			cells := row.(map[string]any)
 			require.Equal(t, "Multi-arch", cells["platform"])
-			require.Equal(t, fmt.Sprintf("` v%d `", tag), cells["tag"])
+			require.Equal(t, fmt.Sprintf("v%d", tag), cells["tag"])
 			require.Contains(t, cells["action"], "[🧪 Sync](")
 		}
 	}
@@ -386,8 +387,25 @@ func TestArtifactTablesAlignWithParentItems(t *testing.T) {
 		require.Equal(t, 5, table["page_size"])
 		for _, column := range table["columns"].([]any) {
 			col := column.(map[string]any)
-			require.Equal(t, "auto", col["width"])
+			expectedWidth := map[string]string{"platform": "20%", "tag": "80%", "file": "62%", "checksum": "18%"}
+			require.Equal(t, expectedWidth[col["name"].(string)], col["width"])
+			if col["name"] == "tag" {
+				require.Equal(t, "text", col["data_type"])
+			}
 			require.Equal(t, "top", col["vertical_align"])
 		}
 	}
+}
+
+func TestImageTableColumnWidthsWithSync(t *testing.T) {
+	card := renderLarkCard(t, &NotificationInfo{Status: "SUCCESS", ImageSyncURL: "https://sync.example.com/form", Images: []ImageInfo{{URL: "registry/team/image:v1_linux_amd64", Platform: "linux/amd64"}}})
+	tables := nativeArtifactTables(card)
+	require.Len(t, tables, 1)
+	columns := tables[0]["columns"].([]any)
+	require.Len(t, columns, 3)
+	for i, width := range []string{"20%", "65%", "15%"} {
+		require.Equal(t, width, columns[i].(map[string]any)["width"])
+	}
+	require.Equal(t, "text", columns[1].(map[string]any)["data_type"])
+	require.Equal(t, "v1_linux_amd64", tables[0]["rows"].([]any)[0].(map[string]any)["tag"])
 }

@@ -78,18 +78,18 @@ body:
       columns:
         - name: platform
           display_name: Platform
-          width: auto
+          width: "20%"
           data_type: text
           vertical_align: top
         - name: tag
           display_name: Tag
-          width: auto
-          data_type: markdown
+          width: {{ ternary "65%" "80%" $showSync | toJson }}
+          data_type: text
           vertical_align: top
         {{- if $showSync }}
         - name: action
           display_name: Action
-          width: auto
+          width: "15%"
           data_type: markdown
           vertical_align: top
         {{- end }}
@@ -98,7 +98,7 @@ body:
         {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
         {{- range .Tags }}
         - platform: {{ $platform | toJson }}
-          tag: {{ Code .Tag | toJson }}
+          tag: {{ .Tag | toJson }}
           {{- if $showSync }}
             {{- $action := "—" }}
             {{- with ImageSyncURL $.ImageSyncURL .Reference }}
@@ -125,17 +125,17 @@ body:
       columns:
         - name: platform
           display_name: Platform
-          width: auto
+          width: "20%"
           data_type: text
           vertical_align: top
         - name: file
           display_name: File
-          width: auto
+          width: "62%"
           data_type: markdown
           vertical_align: top
         - name: checksum
           display_name: Checksum
-          width: auto
+          width: "18%"
           data_type: markdown
           vertical_align: top
       rows:
