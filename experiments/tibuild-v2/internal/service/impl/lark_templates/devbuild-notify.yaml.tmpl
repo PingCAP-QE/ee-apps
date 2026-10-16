@@ -75,24 +75,59 @@ body:
         {{- end }}
       {{- end }}
     {{- end }}
-    {{- if .BinaryGroups }}
-      {{- $report = printf "%s\n- **Binaries:**" $report }}
-      {{- range .BinaryGroups }}
-        {{- $report = printf "%s\n    - **%s:**" $report (Escape (default "Unknown platform" .Platform)) }}
-        {{- range .Files }}
-          {{- $file := Link .FileName .URL }}
-          {{- if .HasChecksum }}
-            {{- $file = printf "%s · %s" $file (Link "sha256" .Sha256URL) }}
-          {{- end }}
-          {{- if not .Downloadable }}
-            {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}
-          {{- end }}
-          {{- $report = printf "%s\n        - %s" $report $file }}
-        {{- end }}
-      {{- end }}
-    {{- end }}
     - tag: markdown
       content: {{ $report | toJson }}
+    {{- if .BinaryGroups }}
+    - tag: column_set
+      flex_mode: none
+      margin: 0px
+      columns:
+        - tag: column
+          width: weighted
+          weight: 1
+          padding: 0px
+          vertical_spacing: 4px
+          elements:
+            - tag: markdown
+              content: "- **Binaries:**"
+              margin: 0px
+            {{- range .BinaryGroups }}
+            - tag: markdown
+              content: {{ printf "<font color='blue'>◦</font> **%s:**" (Escape (default "Unknown platform" .Platform)) | toJson }}
+              margin: 0px 0px 0px 16px
+            {{- range .Files }}
+            - tag: column_set
+              flex_mode: none
+              horizontal_spacing: 8px
+              margin: 0px 0px 0px 32px
+              columns:
+                - tag: column
+                  width: weighted
+                  weight: 1
+                  vertical_align: top
+                  padding: 0px
+                  elements:
+                    {{- $file := printf "<font color='blue'>▪</font> %s" (Link .FileName .URL) }}
+                    {{- if not .Downloadable }}
+                      {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}
+                    {{- end }}
+                    - tag: markdown
+                      content: {{ $file | toJson }}
+                      margin: 0px
+                {{- if .HasChecksum }}
+                - tag: column
+                  width: auto
+                  vertical_align: top
+                  padding: 0px
+                  elements:
+                    - tag: markdown
+                      content: {{ Link "sha256" .Sha256URL | toJson }}
+                      text_size: notation
+                      margin: 0px
+                {{- end }}
+            {{- end }}
+            {{- end }}
+    {{- end }}
     {{- end }}
     {{- if .PipelineRuns }}
     - tag: hr

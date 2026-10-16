@@ -190,12 +190,14 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 	require.Equal(t, "hr", elements[3].(map[string]any)["tag"])
 	report := elements[4].(map[string]any)["content"].(string)
 	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `\n        - **Multi-arch:** ` v1 ` · ` v2 `\n        - **linux/amd64:** ` v1_linux_amd64 `")
-	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [sha256](https://download.example/a.tar.gz.sha256)\n        - [b.tar.gz](https://download.example/b.tar.gz)")
+	assertBinaryRows(t, card, 2)
 	var rules int
 	walkCard(card, func(el map[string]any) {
 		require.NotContains(t, el, "background_style")
-		require.NotContains(t, el, "text_size")
-		require.NotEqual(t, "column_set", el["tag"])
+		if size, ok := el["text_size"]; ok {
+			require.Equal(t, "notation", size)
+			require.Contains(t, el["content"], "[sha256](")
+		}
 		if el["tag"] == "hr" {
 			rules++
 		}
@@ -216,7 +218,7 @@ func TestBuildReportItems(t *testing.T) {
 	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `")
 	require.Contains(t, report, "\n    - ` registry/b `\n        - **Multi-arch:** ` v2 `")
 	require.Contains(t, report, "\n        - **linux/amd64:** ` v1_linux_amd64 `")
-	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [sha256](https://download.example/a.tar.gz.sha256)")
+	assertBinaryRows(t, card, 1)
 	require.NotContains(t, report, "](registry/")
 }
 
@@ -288,4 +290,35 @@ func TestImageSyncURLConfiguration(t *testing.T) {
 	cfg.Lark.ImageSyncURL = ""
 	n.configureArtifacts(cfg)
 	require.Empty(t, n.options.Load().(notificationOptions).ImageSyncURL)
+}
+
+func assertBinaryRows(t *testing.T, card map[string]any, count int) {
+	t.Helper()
+	var rows []map[string]any
+	walkCard(card, func(el map[string]any) {
+		if el["tag"] == "column_set" && el["margin"] == "0px 0px 0px 32px" {
+			rows = append(rows, el)
+		}
+	})
+	require.Len(t, rows, count)
+	for _, row := range rows {
+		require.Equal(t, "none", row["flex_mode"])
+		require.Equal(t, "0px 0px 0px 32px", row["margin"])
+		columns := row["columns"].([]any)
+		fileColumn := columns[0].(map[string]any)
+		require.Equal(t, "weighted", fileColumn["width"])
+		file := fileColumn["elements"].([]any)[0].(map[string]any)
+		require.NotContains(t, file, "text_size")
+		require.Contains(t, file["content"], ".tar.gz](https://download.example/")
+		if strings.Contains(file["content"].(string), "b.tar.gz]") {
+			require.Len(t, columns, 1)
+			continue
+		}
+		require.Len(t, columns, 2)
+		checksumColumn := columns[1].(map[string]any)
+		require.Equal(t, "auto", checksumColumn["width"])
+		checksum := checksumColumn["elements"].([]any)[0].(map[string]any)
+		require.Equal(t, "notation", checksum["text_size"])
+		require.Equal(t, "[sha256](https://download.example/a.tar.gz.sha256)", checksum["content"])
+	}
 }
