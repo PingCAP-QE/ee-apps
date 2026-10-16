@@ -57,42 +57,105 @@ body:
     {{- end }}
     {{- if .ImageGroups }}
       {{- $report = printf "%s\n- **Docker Images:**" $report }}
-      {{- range .ImageGroups }}
-        {{- $report = printf "%s\n    - %s" $report (Code .Repo) }}
-        {{- range .Platforms }}
-          {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
-          {{- $tags := list }}
-          {{- range .Tags }}
-            {{- $tag := Code .Tag }}
-            {{- if not $.IsHotfix }}
-              {{- with ImageSyncURL $.ImageSyncURL .Reference }}
-                {{- $tag = printf "%s %s" $tag (Link "Sync" .) }}
-              {{- end }}
-            {{- end }}
-            {{- $tags = append $tags $tag }}
-          {{- end }}
-          {{- $report = printf "%s\n        - **%s:** %s" $report (Escape $platform) (join " · " $tags) }}
-        {{- end }}
-      {{- end }}
-    {{- end }}
-    {{- if .BinaryGroups }}
-      {{- $report = printf "%s\n- **Binaries:**" $report }}
-      {{- range .BinaryGroups }}
-        {{- $report = printf "%s\n    - **%s:**" $report (Escape (default "Unknown platform" .Platform)) }}
-        {{- range .Files }}
-          {{- $file := Link .FileName .URL }}
-          {{- if .HasChecksum }}
-            {{- $file = printf "%s · %s" $file (Link "SHA256" .Sha256URL) }}
-          {{- end }}
-          {{- if not .Downloadable }}
-            {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}
-          {{- end }}
-          {{- $report = printf "%s\n        - %s" $report $file }}
-        {{- end }}
-      {{- end }}
     {{- end }}
     - tag: markdown
       content: {{ $report | toJson }}
+    {{- $showSync := and (not .IsHotfix) (ValidHTTPURL .ImageSyncURL) }}
+    {{- range .ImageGroups }}
+    - tag: markdown
+      content: {{ printf "- %s" (Code .Repo) | toJson }}
+      margin: 0px 0px 0px 22px
+    - tag: table
+      margin: 0px 0px 0px 44px
+      page_size: 5
+      row_height: auto
+      row_max_height: 999px
+      header_style:
+        text_align: left
+        text_size: normal
+        background_style: none
+        bold: true
+      columns:
+        - name: platform
+          display_name: Platform
+          width: "20%"
+          data_type: text
+          vertical_align: top
+        - name: tag
+          display_name: Tag
+          width: {{ ternary "65%" "80%" $showSync | toJson }}
+          data_type: text
+          vertical_align: top
+        {{- if $showSync }}
+        - name: action
+          display_name: Action
+          width: "15%"
+          data_type: markdown
+          vertical_align: top
+        {{- end }}
+      rows:
+        {{- range .Platforms }}
+        {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
+        {{- range .Tags }}
+        - platform: {{ $platform | toJson }}
+          tag: {{ .Tag | toJson }}
+          {{- if $showSync }}
+            {{- $action := "—" }}
+            {{- with ImageSyncURL $.ImageSyncURL .Reference }}
+              {{- $action = Link "🧪 Sync" . }}
+            {{- end }}
+          action: {{ $action | toJson }}
+          {{- end }}
+        {{- end }}
+        {{- end }}
+    {{- end }}
+    {{- if .BinaryGroups }}
+    - tag: markdown
+      content: "- **Binaries:**"
+    - tag: table
+      margin: 0px 0px 0px 22px
+      page_size: 5
+      row_height: auto
+      row_max_height: 999px
+      header_style:
+        text_align: left
+        text_size: normal
+        background_style: none
+        bold: true
+      columns:
+        - name: platform
+          display_name: Platform
+          width: "20%"
+          data_type: text
+          vertical_align: top
+        - name: file
+          display_name: File
+          width: "62%"
+          data_type: markdown
+          vertical_align: top
+        - name: checksum
+          display_name: Checksum
+          width: "18%"
+          data_type: markdown
+          vertical_align: top
+      rows:
+        {{- range .BinaryGroups }}
+        {{- $platform := default "Unknown platform" .Platform }}
+        {{- range .Files }}
+          {{- $file := Link .FileName .URL }}
+          {{- if not .Downloadable }}
+            {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}
+          {{- end }}
+          {{- $checksum := "—" }}
+          {{- if .HasChecksum }}
+            {{- $checksum = Link "sha256" .Sha256URL }}
+          {{- end }}
+        - platform: {{ $platform | toJson }}
+          file: {{ $file | toJson }}
+          checksum: {{ $checksum | toJson }}
+        {{- end }}
+        {{- end }}
+    {{- end }}
     {{- end }}
     {{- if .PipelineRuns }}
     - tag: hr
