@@ -66,7 +66,7 @@ body:
             {{- $tag := Code .Tag }}
             {{- if not $.IsHotfix }}
               {{- with ImageSyncURL $.ImageSyncURL .Reference }}
-                {{- $tag = printf "%s %s" $tag (Link "Sync" .) }}
+                {{- $tag = printf "%s %s" $tag (Link "🧪 Sync" .) }}
               {{- end }}
             {{- end }}
             {{- $tags = append $tags $tag }}
@@ -82,7 +82,7 @@ body:
         {{- range .Files }}
           {{- $file := Link .FileName .URL }}
           {{- if .HasChecksum }}
-            {{- $file = printf "%s · %s" $file (Link "SHA256" .Sha256URL) }}
+            {{- $file = printf "%s · %s" $file (Link "sha256" .Sha256URL) }}
           {{- end }}
           {{- if not .Downloadable }}
             {{- $file = printf "%s · <font color='grey'>Download service is not configured</font>" $file }}

@@ -67,7 +67,7 @@ func TestNotificationBinaryLinksAndChecksums(t *testing.T) {
 	text := strings.Join(markdown, "\n")
 	require.Less(t, strings.Index(text, "**linux/amd64:**"), strings.Index(text, "**linux/arm64:**"))
 	require.Less(t, strings.Index(text, "a.tar.gz]"), strings.Index(text, "no-checksum.tar.gz]"))
-	require.Contains(t, text, "[SHA256](https://")
+	require.Contains(t, text, "[sha256](https://")
 	for _, bin := range info.Binaries {
 		require.Contains(t, text, bin.URL)
 		if bin.Sha256URL != "" {
@@ -161,7 +161,7 @@ func TestLarkEnglishText(t *testing.T) {
 		}
 	})
 	text := strings.Join(contents, "\n")
-	for _, expected := range []string{"**Multi-arch:**", "**Docker Images:**", "**Binaries:**", "SHA256", "**Created By:**", "**Hotfix:**", "**Pipeline Runs:**", "**Error:**"} {
+	for _, expected := range []string{"**Multi-arch:**", "**Docker Images:**", "**Binaries:**", "sha256", "**Created By:**", "**Hotfix:**", "**Pipeline Runs:**", "**Error:**"} {
 		require.Contains(t, text, expected)
 	}
 	require.NotContains(t, text, "<at id=all>")
@@ -190,7 +190,7 @@ func TestCompactCardKeepsOriginalSections(t *testing.T) {
 	require.Equal(t, "hr", elements[3].(map[string]any)["tag"])
 	report := elements[4].(map[string]any)["content"].(string)
 	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `\n        - **Multi-arch:** ` v1 ` · ` v2 `\n        - **linux/amd64:** ` v1_linux_amd64 `")
-	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)\n        - [b.tar.gz](https://download.example/b.tar.gz)")
+	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [sha256](https://download.example/a.tar.gz.sha256)\n        - [b.tar.gz](https://download.example/b.tar.gz)")
 	var rules int
 	walkCard(card, func(el map[string]any) {
 		require.NotContains(t, el, "background_style")
@@ -216,7 +216,7 @@ func TestBuildReportItems(t *testing.T) {
 	require.Contains(t, report, "\n- **Docker Images:**\n    - ` registry/a `")
 	require.Contains(t, report, "\n    - ` registry/b `\n        - **Multi-arch:** ` v2 `")
 	require.Contains(t, report, "\n        - **linux/amd64:** ` v1_linux_amd64 `")
-	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [SHA256](https://download.example/a.tar.gz.sha256)")
+	require.Contains(t, report, "\n- **Binaries:**\n    - **linux/amd64:**\n        - [a.tar.gz](https://download.example/a.tar.gz) · [sha256](https://download.example/a.tar.gz.sha256)")
 	require.NotContains(t, report, "](registry/")
 }
 
@@ -243,11 +243,11 @@ func TestImageSyncShortcuts(t *testing.T) {
 			}
 		})
 		if hotfix {
-			require.NotContains(t, report, "[Sync]")
+			require.NotContains(t, report, "[🧪 Sync]")
 			require.NotContains(t, report, "sync.example.com")
 			continue
 		}
-		require.Equal(t, len(images), strings.Count(report, "[Sync]("))
+		require.Equal(t, len(images), strings.Count(report, "[🧪 Sync]("))
 		for _, image := range images {
 			link := imageSyncURL("https://sync.example.com/custom/form", image.URL)
 			u, err := url.Parse(link)
@@ -256,7 +256,7 @@ func TestImageSyncShortcuts(t *testing.T) {
 			require.Equal(t, "sync.example.com", u.Host)
 			require.Equal(t, "/custom/form", u.Path)
 			require.Equal(t, image.URL, u.Query().Get("sourceImage"))
-			require.Contains(t, report, cardLink("Sync", link))
+			require.Contains(t, report, cardLink("🧪 Sync", link))
 		}
 	}
 	require.Empty(t, imageSyncURL("https://sync.example.com/form", "not an image"))
@@ -276,7 +276,7 @@ func TestImageSyncURLConfiguration(t *testing.T) {
 	card := renderLarkCard(t, &NotificationInfo{Status: "SUCCESS", Images: []ImageInfo{{URL: "registry/a:v1"}}})
 	walkCard(card, func(el map[string]any) {
 		if text, ok := el["content"].(string); ok {
-			require.NotContains(t, text, "[Sync]")
+			require.NotContains(t, text, "[🧪 Sync]")
 		}
 	})
 
