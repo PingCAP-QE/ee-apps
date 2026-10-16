@@ -21,6 +21,7 @@ from ci_dashboard.api.queries.base import (
 
 DEFAULT_DISTINCT_CASE_REPO = "pingcap/tidb"
 UNKNOWN_ISSUE_BRANCH = "__unknown__"
+_CASE_BUILD_BRANCH_EXPR = "COALESCE(p.target_branch, NULLIF(b.target_branch, ''), NULLIF(b.base_ref, ''))"
 
 
 def get_flaky_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
@@ -256,46 +257,12 @@ def get_distinct_flaky_case_counts_by_branch(
     filters: CommonFilters,
 ) -> dict[str, Any]:
     effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
-    job_scope_clause, _ = build_multi_value_clause(
-        "b.job_name",
-        filters.job_names,
-        bind_prefix="job_name",
-    )
-    job_scope_sql = f"AND {job_scope_clause}" if job_scope_clause else ""
 
     with engine.begin() as connection:
         rows = connection.execute(
             text(
                 f"""
-                WITH target_prs AS (
-                  SELECT DISTINCT repo, pr_number, target_branch
-                  FROM ci_l1_pr_events
-                  WHERE repo = :repo
-                    AND pr_number IS NOT NULL
-                    AND target_branch IS NOT NULL
-                    AND target_branch <> ''
-                    {_optional_clause(filters.branch, "AND target_branch = :branch")}
-                ),
-                build_scope AS (
-                  SELECT DISTINCT
-                    p.target_branch AS branch,
-                    {bucket_expr(connection, "b.start_time", "week")} AS week_start,
-                    b.start_time,
-                    NULLIF(b.normalized_build_url, '') AS normalized_build_url,
-                    {_legacy_tencent_build_key_expr("NULLIF(b.normalized_build_url, '')")} AS build_match_key,
-                    UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
-                  FROM ci_l1_builds b
-                  JOIN target_prs p
-                    ON p.repo = b.repo_full_name
-                   AND p.pr_number = b.pr_number
-                  WHERE b.repo_full_name = :repo
-                    AND b.pr_number IS NOT NULL
-                    AND NULLIF(b.normalized_build_url, '') IS NOT NULL
-                    {job_scope_sql}
-                    {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
-                    {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
-                    {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
-                ),
+                WITH {_case_build_scope_ctes(connection, filters)},
                 case_runs_raw AS (
                   SELECT
                     pcr.branch,
@@ -1058,52 +1025,65 @@ def _fetch_issue_cases(
     return [dict(row) for row in rows]
 
 
+def _case_build_scope_ctes(
+    connection: Connection,
+    filters: CommonFilters,
+) -> str:
+    # PR metadata remains authoritative; stored build refs also cover postsubmits
+    # and builds whose PR snapshot has not been synchronized yet.
+    branch = _CASE_BUILD_BRANCH_EXPR
+    job_clause, _ = build_multi_value_clause(
+        "b.job_name", filters.job_names, bind_prefix="job_name"
+    )
+    return f"""
+        target_prs AS (
+          SELECT DISTINCT repo, pr_number, target_branch
+          FROM ci_l1_pr_events
+          WHERE repo = :repo
+            AND pr_number IS NOT NULL
+            AND target_branch IS NOT NULL
+            AND target_branch <> ''
+        ),
+        build_scope AS (
+          SELECT DISTINCT
+            {branch} AS branch,
+            {bucket_expr(connection, "b.start_time", "week")} AS week_start,
+            b.start_time,
+            NULLIF(b.normalized_build_url, '') AS normalized_build_url,
+            {_legacy_tencent_build_key_expr("NULLIF(b.normalized_build_url, '')")} AS build_match_key,
+            b.job_name,
+            UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
+          FROM {builds_table_expr(connection, filters, alias="b")}
+          LEFT JOIN target_prs p
+            ON p.repo = b.repo_full_name
+           AND p.pr_number = b.pr_number
+          WHERE b.repo_full_name = :repo
+            AND {branch} IS NOT NULL
+            AND b.start_time IS NOT NULL
+            AND NULLIF(b.normalized_build_url, '') IS NOT NULL
+            {f"AND {job_clause}" if job_clause else ""}
+            {_optional_clause(filters.branch, f"AND {branch} = :branch")}
+            {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
+            {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
+            {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
+        )
+    """
+
+
 def _fetch_issue_weekly_rate_rows(
     connection: Connection,
     filters: CommonFilters,
     effective_repo: str,
 ) -> list[dict[str, Any]]:
     issue_scope_ctes, issue_params = _build_issue_scope_ctes(filters, effective_repo)
-    job_scope_clause, _ = build_multi_value_clause(
-        "b.job_name",
-        filters.job_names,
-        bind_prefix="job_name",
+    job_clause, _ = build_multi_value_clause(
+        "b.job_name", filters.job_names, bind_prefix="job_name"
     )
-    job_scope_sql = f"AND {job_scope_clause}" if job_scope_clause else ""
     rows = connection.execute(
         text(
             f"""
             WITH {issue_scope_ctes},
-            target_prs AS (
-              SELECT DISTINCT repo, pr_number, target_branch
-              FROM ci_l1_pr_events
-              WHERE repo = :repo
-                AND pr_number IS NOT NULL
-                AND target_branch IS NOT NULL
-                AND target_branch <> ''
-                {_optional_clause(filters.branch, "AND target_branch = :branch")}
-            ),
-            build_scope AS (
-              SELECT DISTINCT
-                p.target_branch AS branch,
-                {bucket_expr(connection, "b.start_time", "week")} AS week_start,
-                b.start_time,
-                NULLIF(b.normalized_build_url, '') AS normalized_build_url,
-                {_legacy_tencent_build_key_expr("NULLIF(b.normalized_build_url, '')")} AS build_match_key,
-                b.job_name,
-                UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
-              FROM ci_l1_builds b
-              JOIN target_prs p
-                ON p.repo = b.repo_full_name
-               AND p.pr_number = b.pr_number
-              WHERE b.repo_full_name = :repo
-                AND b.pr_number IS NOT NULL
-                AND NULLIF(b.normalized_build_url, '') IS NOT NULL
-                {job_scope_sql}
-                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
-                {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
-                {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
-            ),
+            {_case_build_scope_ctes(connection, filters)},
             case_runs_raw AS (
               SELECT
                 pcr.branch,
@@ -1125,7 +1105,6 @@ def _fetch_issue_weekly_rate_rows(
                 AND pcr.case_name IS NOT NULL
                 AND pcr.case_name <> ''
                 {_optional_clause(filters.branch, "AND pcr.branch = :branch")}
-                {_optional_clause(filters.start_date, "AND pcr.report_time >= :case_report_time_from")}
                 {_optional_clause(filters.end_date, "AND pcr.report_time < :case_report_time_to")}
                 AND EXISTS (
                   SELECT 1
@@ -1146,22 +1125,38 @@ def _fetch_issue_weekly_rate_rows(
               FROM case_runs_raw
               GROUP BY branch, case_name, build_key, cloud_phase, report_time
             ),
-            -- Cloud-guard job discovery and numerators to avoid legacy cross-cloud key collisions.
+            -- Keep the historical build join an indexed URL equality on both hosts.
+            case_job_build_keys AS (
+              SELECT branch, case_name, cloud_phase, report_time, build_match_key AS build_lookup_key
+              FROM case_runs
+              UNION ALL
+              SELECT branch, case_name, cloud_phase, report_time,
+                REPLACE(build_match_key, 'https://prow.tidb.net/', 'https://do.pingcap.net/')
+              FROM case_runs
+            ),
+            -- Historical evidence discovers jobs independently of the window start.
             case_job_scope AS (
               SELECT
                 ic.case_name,
                 ic.issue_branch,
-                bs.job_name
+                b.job_name
               FROM issue_cases ic
-              JOIN case_runs cr
+              JOIN case_job_build_keys cr
                 ON cr.case_name = ic.case_name
                AND cr.branch = ic.issue_branch
-              JOIN build_scope bs
-                ON bs.build_match_key = cr.build_match_key
-               AND bs.branch = ic.issue_branch
-               AND bs.cloud_phase = cr.cloud_phase
-               AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
-              GROUP BY ic.case_name, ic.issue_branch, bs.job_name
+              JOIN ci_l1_builds b
+                ON b.repo_full_name = :repo
+               AND b.normalized_build_url = cr.build_lookup_key
+               AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = cr.cloud_phase
+               AND {_case_build_time_match_expr(connection, "cr.report_time", "b.start_time")}
+              LEFT JOIN target_prs p
+                ON p.repo = b.repo_full_name
+               AND p.pr_number = b.pr_number
+              WHERE {_CASE_BUILD_BRANCH_EXPR} = ic.issue_branch
+                {f"AND {job_clause}" if job_clause else ""}
+                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
+                {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
+              GROUP BY ic.case_name, ic.issue_branch, b.job_name
             ),
             case_weekly_flaky AS (
               SELECT
@@ -1241,44 +1236,10 @@ def _fetch_weekly_flaky_case_presence(
     filters: CommonFilters,
     effective_repo: str,
 ) -> list[dict[str, Any]]:
-    job_scope_clause, _ = build_multi_value_clause(
-        "b.job_name",
-        filters.job_names,
-        bind_prefix="job_name",
-    )
-    job_scope_sql = f"AND {job_scope_clause}" if job_scope_clause else ""
     rows = connection.execute(
         text(
             f"""
-            WITH target_prs AS (
-              SELECT DISTINCT repo, pr_number, target_branch
-              FROM ci_l1_pr_events
-              WHERE repo = :repo
-                AND pr_number IS NOT NULL
-                AND target_branch IS NOT NULL
-                AND target_branch <> ''
-                {_optional_clause(filters.branch, "AND target_branch = :branch")}
-            ),
-            build_scope AS (
-              SELECT DISTINCT
-                p.target_branch AS branch,
-                {bucket_expr(connection, "b.start_time", "week")} AS week_start,
-                b.start_time,
-                NULLIF(b.normalized_build_url, '') AS normalized_build_url,
-                {_legacy_tencent_build_key_expr("NULLIF(b.normalized_build_url, '')")} AS build_match_key,
-                UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
-              FROM ci_l1_builds b
-              JOIN target_prs p
-                ON p.repo = b.repo_full_name
-               AND p.pr_number = b.pr_number
-              WHERE b.repo_full_name = :repo
-                AND b.pr_number IS NOT NULL
-                AND NULLIF(b.normalized_build_url, '') IS NOT NULL
-                {job_scope_sql}
-                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
-                {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
-                {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
-            ),
+            WITH {_case_build_scope_ctes(connection, filters)},
             case_runs_raw AS (
               SELECT
                 pcr.branch,
@@ -1803,11 +1764,12 @@ def _build_rate_metric(
     flaky_runs: int,
     total_runs_est: int,
 ) -> dict[str, Any]:
-    flaky_rate_pct = rate_pct(flaky_runs, total_runs_est)
+    flaky_rate_pct = rate_pct(flaky_runs, total_runs_est) if total_runs_est else None
+    rate_label = f"{flaky_rate_pct:.2f}%" if flaky_rate_pct is not None else "N/A"
     return {
         "week_start": week_start,
         "flaky_runs": flaky_runs,
         "total_runs_est": total_runs_est,
         "flaky_rate_pct": flaky_rate_pct,
-        "cell": f"{flaky_rate_pct:.2f}% ({flaky_runs}/{total_runs_est})",
+        "cell": f"{rate_label} ({flaky_runs}/{total_runs_est})",
     }

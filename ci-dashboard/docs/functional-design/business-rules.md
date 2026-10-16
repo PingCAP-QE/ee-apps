@@ -68,6 +68,8 @@ Explicit exclusion:
   - `head_ref` from `branches.head.ref`
   - `head_sha` from `branches.head.sha`
 - allow missing `github_tickets` rows without failing the job
+- retry build-linked PRs without a `pr_snapshot` independently of the build/ticket watermarks, including Jenkins-only builds without a `source_prow_row_id`
+- use the existing idempotent upsert when a previously missing ticket becomes available; no new build or newer ticket timestamp is required
 - when the source PR ticket row is missing, keep build-side PR metadata incomplete rather than fabricating fallback values
 - V1 does not require PR-event completeness for `pingcap/docs`, `pingcap/docs-cn`, or `PingCAP-QE/ci`
 - short source lag on `github_tickets` is acceptable in V1
@@ -120,7 +122,7 @@ Status:
 All jobs must:
 
 - read watermark at job start
-- process only incremental data above the watermark or touched since the watermark
+- process incremental data above the watermark or touched since the watermark, plus explicit completeness retries such as build-linked PRs missing a snapshot
 - upsert by logical unique key
 - update watermark only after successful write transaction
 - never mutate upstream source tables
@@ -132,3 +134,14 @@ The data-layer implementation must support local unit tests without TiDB Cloud b
 - sqlite-backed local tests
 - deterministic fixtures for `prow_jobs`, `ci_l1_builds`, and `ci_job_state`
 - local execution via `PYTHONPATH=src ./.venv/bin/python -m pytest`
+
+## BR-11: Flaky Case Weekly Metrics
+
+- Case evidence queries include PR and postsubmit CI builds, without requiring a PR event row.
+- Use PR-event branch metadata when available; otherwise use the stored build `target_branch`, then `base_ref`. Do not infer a missing build branch from a problem record.
+- Preserve repository, branch, normalized URL, cloud phase, and the 24-hour report/start-time attribution guards.
+- Discover case-to-job membership from attributable historical problem records through the query end, independently of the selected start date. Explicit job/cloud filters still apply to discovery.
+- Count weekly flaky evidence and estimated job builds only inside the selected build-time window.
+- `total_runs_est` is a job-build estimate, not a complete testcase execution ledger: it cannot distinguish fresh executions, cached results, or attempts.
+- When `total_runs_est = 0`, return `flaky_rate_pct = null` and `N/A (0/0)`, not an observed zero percent. Unknown weeks must not qualify as evidence of two flaky-free weeks.
+- Preserve the issue table's existing `ignores_branch=true` contract; match each row's metrics to its own issue branch.

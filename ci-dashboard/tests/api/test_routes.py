@@ -287,7 +287,7 @@ def _insert_build(
     queue_wait_seconds: int = 0,
     run_seconds: int = 0,
     total_seconds: int = 0,
-    pr_number: int = 100,
+    pr_number: int | None = 100,
     normalized_build_url: str | None = None,
     build_id: str = "1",
     author: str = "alice",
@@ -1742,6 +1742,298 @@ def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: Tes
     assert summary_by_week["2026-03-30"]["net_case_count"] == -1
 
 
+@pytest.mark.parametrize("pr_number", [None, 9800])
+@pytest.mark.parametrize("target_branch", [None, "master"])
+def test_flaky_case_queries_include_postsubmit_and_snapshotless_builds(
+    sqlite_engine, api_client: TestClient, pr_number: int | None, target_branch: str | None
+) -> None:
+    build_url = "https://prow.tidb.net/jenkins/job/merged_unit_test/9800/"
+    _insert_build(
+        sqlite_engine,
+        source_prow_row_id=9800,
+        source_prow_job_id="without-pr-snapshot",
+        repo_full_name="pingcap/tidb",
+        target_branch=target_branch,
+        base_ref="master",
+        job_name="merged_unit_test",
+        state="success",
+        cloud_phase="GCP",
+        is_flaky=0,
+        is_retry_loop=0,
+        failure_category=None,
+        start_time="2026-09-15 09:00:00",
+        pr_number=pr_number,
+        normalized_build_url=build_url,
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                "UPDATE ci_l1_builds SET is_pr_build = :is_pr_build WHERE source_prow_row_id = 9800"
+            ),
+            {"is_pr_build": int(pr_number is not None)},
+        )
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="master",
+        case_name="TestSnapshotless",
+        build_url=build_url,
+        flaky=1,
+        report_time="2026-09-15 09:10:00",
+    )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=70000,
+        case_name="TestSnapshotless",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-09-01 08:00:00",
+    )
+    params = {
+        "repo": "pingcap/tidb",
+        "branch": "master",
+        "start_date": "2026-09-14",
+        "end_date": "2026-09-20",
+    }
+    rates = api_client.get("/api/v1/flaky/issue-weekly-rates", params=params)
+    assert rates.status_code == 200
+    rows = {row["case_name"]: row for row in rates.json()["rows"]}
+    assert rows["TestSnapshotless"]["cells"] == ["100.00% (1/1)"]
+    counts = api_client.get("/api/v1/flaky/distinct-case-counts", params=params)
+    assert counts.status_code == 200
+    assert counts.json()["rows"] == [{"branch": "master", "values": [1]}]
+    flow = api_client.get("/api/v1/flaky/case-flow-v2", params=params)
+    assert flow.status_code == 200
+    assert flow.json()["meta"]["case_count_in_scope"] == 1
+
+
+@pytest.mark.parametrize(
+    ("target_branch", "base_ref", "snapshot_branch"),
+    [("master", "master", "release-8.5"), (None, None, None)],
+)
+def test_flaky_case_queries_do_not_override_or_invent_build_branches(
+    sqlite_engine,
+    api_client: TestClient,
+    target_branch: str | None,
+    base_ref: str | None,
+    snapshot_branch: str | None,
+) -> None:
+    build_url = "https://prow.tidb.net/jenkins/job/merged_unit_test/9800/"
+    _insert_build(
+        sqlite_engine,
+        source_prow_row_id=9800,
+        source_prow_job_id="branch-guard",
+        repo_full_name="pingcap/tidb",
+        target_branch=target_branch,
+        base_ref=base_ref,
+        job_name="merged_unit_test",
+        state="success",
+        cloud_phase="GCP",
+        is_flaky=0,
+        is_retry_loop=0,
+        failure_category=None,
+        start_time="2026-09-15 09:00:00",
+        pr_number=9800,
+        normalized_build_url=build_url,
+    )
+    if snapshot_branch:
+        _insert_pr_event(
+            sqlite_engine,
+            repo="pingcap/tidb",
+            pr_number=9800,
+            target_branch=snapshot_branch,
+            event_key="pr_snapshot",
+            event_time="2026-09-15 09:00:00",
+        )
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="master",
+        case_name="TestBranchGuard",
+        build_url=build_url,
+        flaky=1,
+        report_time="2026-09-15 09:10:00",
+    )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=70000,
+        case_name="TestBranchGuard",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-09-01 08:00:00",
+    )
+    params = {
+        "repo": "pingcap/tidb",
+        "branch": "master",
+        "start_date": "2026-09-14",
+        "end_date": "2026-09-20",
+    }
+    rates = api_client.get("/api/v1/flaky/issue-weekly-rates", params=params)
+    assert rates.status_code == 200
+    row = next(row for row in rates.json()["rows"] if row["case_name"] == "TestBranchGuard")
+    assert row["cells"] == ["N/A (0/0)"]
+    counts = api_client.get("/api/v1/flaky/distinct-case-counts", params=params)
+    assert counts.status_code == 200
+    assert counts.json()["rows"] == [{"branch": "master", "values": [0]}]
+    flow = api_client.get("/api/v1/flaky/case-flow-v2", params=params)
+    assert flow.status_code == 200
+    assert flow.json()["meta"]["case_count_in_scope"] == 0
+
+
+@pytest.mark.parametrize("historical_flaky", [0, 1])
+def test_issue_weekly_job_discovery_is_independent_of_window_start(
+    sqlite_engine, api_client: TestClient, historical_flaky: int
+) -> None:
+    for build_id, start_time, cloud_phase in [
+        (9800, "2026-09-03 09:00:00", "GCP"),
+        (9801, "2026-09-15 09:00:00", "GCP"),
+        (9802, "2026-09-23 09:00:00", "TENCENT"),
+    ]:
+        host = "prow.tidb.net" if cloud_phase == "GCP" else "do.pingcap.net"
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=build_id,
+            source_prow_job_id=f"historical-job-{build_id}",
+            repo_full_name="pingcap/tidb",
+            target_branch="master",
+            base_ref="master",
+            job_name="merged_unit_test",
+            state="success",
+            cloud_phase=cloud_phase,
+            is_flaky=0,
+            is_retry_loop=0,
+            failure_category=None,
+            start_time=start_time,
+            normalized_build_url=f"https://{host}/jenkins/job/merged_unit_test/{build_id}/",
+        )
+        _insert_pr_event(
+            sqlite_engine,
+            repo="pingcap/tidb",
+            pr_number=100,
+            target_branch="master",
+            event_key=f"historical-{build_id}",
+            event_time=start_time,
+        )
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="master",
+        case_name="TestHistorical",
+        build_url="https://prow.tidb.net/jenkins/job/merged_unit_test/9800/",
+        flaky=historical_flaky,
+        report_time="2026-09-03 09:10:00",
+    )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=70000,
+        case_name="TestHistorical",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-09-01 08:00:00",
+    )
+    params = {"repo": "pingcap/tidb", "start_date": "2026-09-14", "end_date": "2026-09-27"}
+    narrow = api_client.get("/api/v1/flaky/issue-weekly-rates", params=params)
+    assert narrow.status_code == 200
+    narrow_row = next(row for row in narrow.json()["rows"] if row["case_name"] == "TestHistorical")
+    assert narrow_row["cells"] == ["0.00% (0/1)", "0.00% (0/1)"]
+    broad = api_client.get(
+        "/api/v1/flaky/issue-weekly-rates", params={**params, "start_date": "2026-09-01"}
+    )
+    assert broad.status_code == 200
+    broad_row = next(row for row in broad.json()["rows"] if row["case_name"] == "TestHistorical")
+    assert broad_row["metrics"][-2:] == narrow_row["metrics"]
+    # Without a historical case run in Tencent, the Tencent denominator is unknown.
+    unknown = api_client.get(
+        "/api/v1/flaky/issue-weekly-rates", params={**params, "cloud_phase": "TENCENT"}
+    )
+    assert unknown.status_code == 200
+    unknown_row = next(
+        row for row in unknown.json()["rows"] if row["case_name"] == "TestHistorical"
+    )
+    assert unknown_row["cells"] == ["N/A (0/0)", "N/A (0/0)"]
+    assert unknown.json()["trend"]["series"][0]["points"] == [
+        ["2026-09-14", None],
+        ["2026-09-21", None],
+    ]
+
+
+@pytest.mark.parametrize("mismatch", ["repo", "branch", "cloud", "time", "job", "future"])
+def test_historical_job_discovery_preserves_attribution_guards(
+    sqlite_engine, api_client: TestClient, mismatch: str
+) -> None:
+    for build_id, start_time in [(9800, "2026-09-03 09:00:00"), (9801, "2026-09-15 09:00:00")]:
+        historical = build_id == 9800
+        if historical and mismatch == "future":
+            start_time = "2026-09-21 09:00:00"
+        branch = "release-8.5" if historical and mismatch == "branch" else "master"
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=build_id,
+            source_prow_job_id=f"guarded-job-{build_id}",
+            repo_full_name="pingcap/tiflash"
+            if historical and mismatch == "repo"
+            else "pingcap/tidb",
+            target_branch=branch,
+            base_ref=branch,
+            job_name="other_job" if historical and mismatch == "job" else "merged_unit_test",
+            state="success",
+            cloud_phase="TENCENT" if historical and mismatch == "cloud" else "GCP",
+            is_flaky=0,
+            is_retry_loop=0,
+            failure_category=None,
+            start_time=start_time,
+            pr_number=build_id,
+            normalized_build_url=f"https://prow.tidb.net/jenkins/job/merged_unit_test/{build_id}/",
+        )
+        _insert_pr_event(
+            sqlite_engine,
+            repo="pingcap/tidb",
+            pr_number=build_id,
+            target_branch=branch,
+            event_key=f"guarded-{build_id}",
+            event_time=start_time,
+        )
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="master",
+        case_name="TestGuarded",
+        build_url="https://prow.tidb.net/jenkins/job/merged_unit_test/9800/",
+        flaky=1,
+        report_time={
+            "time": "2025-09-03 09:10:00",
+            "future": "2026-09-21 09:10:00",
+        }.get(mismatch, "2026-09-03 09:10:00"),
+    )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=70000,
+        case_name="TestGuarded",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-09-01 08:00:00",
+    )
+    response = api_client.get(
+        "/api/v1/flaky/issue-weekly-rates",
+        params={
+            "repo": "pingcap/tidb",
+            "job_name": "merged_unit_test",
+            "start_date": "2026-09-14",
+            "end_date": "2026-09-20",
+        },
+    )
+    assert response.status_code == 200
+    row = next(row for row in response.json()["rows"] if row["case_name"] == "TestGuarded")
+    metric = row["metrics"][0]
+    assert metric["total_runs_est"] == 0
+    assert metric["flaky_rate_pct"] is None
+    assert metric["cell"] == "N/A (0/0)"
+
+
 @pytest.mark.parametrize("tencent_flaky_run", [False, True])
 def test_issue_weekly_rates_follow_job_across_cloud_migration(
     sqlite_engine, tencent_flaky_run: bool
@@ -1857,7 +2149,7 @@ def test_issue_weekly_rates_follow_job_across_cloud_migration(
             assert gcp_response.status_code == 200
             assert gcp_response.json()["rows"][0]["cells"] == [
                 "100.00% (1/1)",
-                "0.00% (0/0)",
+                "N/A (0/0)",
             ]
 
             tencent_response = client.get(
@@ -1875,7 +2167,7 @@ def test_issue_weekly_rates_follow_job_across_cloud_migration(
             assert tencent_response.json()["rows"][0]["cells"] == (
                 ["0.00% (0/1)", "100.00% (1/1)"]
                 if tencent_flaky_run
-                else ["0.00% (0/0)", "0.00% (0/0)"]
+                else ["N/A (0/0)", "N/A (0/0)"]
             )
     finally:
         app.dependency_overrides.clear()
@@ -2052,8 +2344,8 @@ def test_case_tables_exclude_cross_cloud_and_stale_case_run_attribution(sqlite_e
             }
             # Attribution excludes ghost runs; the denominator spans all three job builds/clouds.
             assert rows["TestLive"]["cells"] == ["33.33% (1/3)"]
-            assert rows["TestGhostCloud"]["cells"] == ["0.00% (0/0)"]
-            assert rows["TestGhostTime"]["cells"] == ["0.00% (0/0)"]
+            assert rows["TestGhostCloud"]["cells"] == ["N/A (0/0)"]
+            assert rows["TestGhostTime"]["cells"] == ["N/A (0/0)"]
             assert issue_weekly_rates.json()["trend"]["series"] == [
                 {
                     "key": "issue_filtered_flaky_rate_pct",
