@@ -63,11 +63,6 @@ func imageSyncURL(base, reference string) string {
 	return u.String()
 }
 
-// tableCardCell keeps artifact text inside a single Markdown table cell.
-func tableCardCell(text string) string {
-	return strings.NewReplacer("\r\n", " ", "\n", " ", "\r", " ", "|", "\\|").Replace(text)
-}
-
 func validHTTPURL(raw string) bool {
 	u, err := url.Parse(raw)
 	return err == nil && u.Host != "" && (u.Scheme == "https" || u.Scheme == "http") && u.User == nil

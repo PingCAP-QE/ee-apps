@@ -62,31 +62,84 @@ body:
       content: {{ $report | toJson }}
     {{- $showSync := and (not .IsHotfix) (ValidHTTPURL .ImageSyncURL) }}
     {{- range .ImageGroups }}
-      {{- $table := printf "%s\n\n| Platform | Tag |" (TableCell (Code .Repo)) }}
-      {{- if $showSync }}
-        {{- $table = printf "%s Action |\n| --- | --- | --- |" $table }}
-      {{- else }}
-        {{- $table = printf "%s\n| --- | --- |" $table }}
-      {{- end }}
-      {{- range .Platforms }}
+    - tag: markdown
+      content: {{ printf "- %s" (Code .Repo) | toJson }}
+      margin: 0px 0px 0px 22px
+    - tag: table
+      margin: 0px 0px 0px 44px
+      page_size: 5
+      row_height: auto
+      row_max_height: 999px
+      header_style:
+        text_align: left
+        text_size: normal
+        background_style: none
+        bold: true
+      columns:
+        - name: platform
+          display_name: Platform
+          width: auto
+          data_type: text
+          vertical_align: top
+        - name: tag
+          display_name: Tag
+          width: auto
+          data_type: markdown
+          vertical_align: top
+        {{- if $showSync }}
+        - name: action
+          display_name: Action
+          width: auto
+          data_type: markdown
+          vertical_align: top
+        {{- end }}
+      rows:
+        {{- range .Platforms }}
         {{- $platform := ternary "Multi-arch" .Platform (eq .Platform "multi-arch") }}
         {{- range .Tags }}
-          {{- $table = printf "%s\n| %s | %s |" $table (TableCell (Escape $platform)) (TableCell (Code .Tag)) }}
+        - platform: {{ $platform | toJson }}
+          tag: {{ Code .Tag | toJson }}
           {{- if $showSync }}
             {{- $action := "—" }}
             {{- with ImageSyncURL $.ImageSyncURL .Reference }}
               {{- $action = Link "🧪 Sync" . }}
             {{- end }}
-            {{- $table = printf "%s %s |" $table (TableCell $action) }}
+          action: {{ $action | toJson }}
           {{- end }}
         {{- end }}
-      {{- end }}
-    - tag: markdown
-      content: {{ $table | toJson }}
+        {{- end }}
     {{- end }}
     {{- if .BinaryGroups }}
-      {{- $table := "- **Binaries:**\n\n| Platform | File | Checksum |\n| --- | --- | --- |" }}
-      {{- range .BinaryGroups }}
+    - tag: markdown
+      content: "- **Binaries:**"
+    - tag: table
+      margin: 0px 0px 0px 22px
+      page_size: 5
+      row_height: auto
+      row_max_height: 999px
+      header_style:
+        text_align: left
+        text_size: normal
+        background_style: none
+        bold: true
+      columns:
+        - name: platform
+          display_name: Platform
+          width: auto
+          data_type: text
+          vertical_align: top
+        - name: file
+          display_name: File
+          width: auto
+          data_type: markdown
+          vertical_align: top
+        - name: checksum
+          display_name: Checksum
+          width: auto
+          data_type: markdown
+          vertical_align: top
+      rows:
+        {{- range .BinaryGroups }}
         {{- $platform := default "Unknown platform" .Platform }}
         {{- range .Files }}
           {{- $file := Link .FileName .URL }}
@@ -97,11 +150,11 @@ body:
           {{- if .HasChecksum }}
             {{- $checksum = Link "sha256" .Sha256URL }}
           {{- end }}
-          {{- $table = printf "%s\n| %s | %s | %s |" $table (TableCell (Escape $platform)) (TableCell $file) (TableCell $checksum) }}
+        - platform: {{ $platform | toJson }}
+          file: {{ $file | toJson }}
+          checksum: {{ $checksum | toJson }}
         {{- end }}
-      {{- end }}
-    - tag: markdown
-      content: {{ $table | toJson }}
+        {{- end }}
     {{- end }}
     {{- end }}
     {{- if .PipelineRuns }}
