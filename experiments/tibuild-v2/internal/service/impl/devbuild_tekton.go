@@ -89,7 +89,7 @@ func (s *devbuildsrvc) newDevBuildCloudEvents(record *ent.DevBuild) ([]*cloudeve
 
 func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform string) (*cloudevents.Event, error) {
 	var ref, sha string
-	if isHex(record.GitHash) {
+	if isServerlessProduct(record.Product) && isHex(record.GitHash) {
 		sha = record.GitHash
 		switch {
 		case strings.HasPrefix(record.GitRef, "branch/"):

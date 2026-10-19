@@ -391,6 +391,11 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
 					})
 					hasData = true
 				}
+			case "git-revision":
+				if isHex(r.Value.StringVal) {
+					report.GitHash = r.Value.StringVal
+					hasData = true
+				}
 			case "printed-version", "release-version":
 				if report.PrintedVersion == "" {
 					report.PrintedVersion = r.Value.StringVal
@@ -472,7 +477,7 @@ func determineBuildStatus(build *ent.DevBuild, runs []tknv1.PipelineRun) string 
 			return "FAILURE"
 		}
 		for _, image := range images {
-			if image.URL == ":" {
+			if at := strings.LastIndex(image.URL, ":"); at <= 0 || at <= strings.LastIndex(image.URL, "/") || at == len(image.URL)-1 {
 				return "FAILURE"
 			}
 		}
@@ -484,10 +489,17 @@ func determineBuildStatus(build *ent.DevBuild, runs []tknv1.PipelineRun) string 
 			for _, file := range binary.Files {
 				files[file] = true
 			}
+			hasPayload := false
 			for _, file := range binary.Files {
+				if file != "" && !strings.HasSuffix(file, ".sha256") {
+					hasPayload = true
+				}
 				if !strings.HasSuffix(file, ".sha256") && !files[file+".sha256"] {
 					return "FAILURE"
 				}
+			}
+			if !hasPayload {
+				return "FAILURE"
 			}
 		}
 	}
