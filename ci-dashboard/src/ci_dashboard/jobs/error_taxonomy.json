@@ -148,6 +148,15 @@
       ]
     },
     {
+      "name": "build_integration_test_missing_command",
+      "l1": "BUILD",
+      "l2": "PIPELINE_CONFIG",
+      "text_patterns": [
+        "^[^\\s:]*tests/integration_tests/[^\\r\\n:]+\\.sh: line [0-9]+: [^\\s:]+: command not found[ \\t]*\\r?$[\\s\\S]*\\bscript returned exit code 127\\b",
+        "\\bscript returned exit code 127\\b[\\s\\S]*^[^\\s:]*tests/integration_tests/[^\\r\\n:]+\\.sh: line [0-9]+: [^\\s:]+: command not found[ \\t]*\\r?$"
+      ]
+    },
+    {
       "name": "unit_mysql_test_failure",
       "l1": "UT",
       "l2": "TEST_FAILURE",

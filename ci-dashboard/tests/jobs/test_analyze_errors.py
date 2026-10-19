@@ -954,6 +954,58 @@ def test_run_analyze_errors_reclassifies_remoting_archive_with_live_oom_excerpt(
     assert row["error_l2_subcategory"] == "OOMKILLED"
 
 
+def test_run_analyze_errors_reclassifies_missing_test_command_without_llm(sqlite_engine) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=452,
+        job_name="pull_cdc_kafka_integration_light",
+        log_gcs_uri="gcs://ci-dashboard-test/2610/452.log",
+        error_l1_category="INFRA",
+        error_l2_subcategory="NETWORK",
+    )
+    reader = _FakeReader(
+        {
+            ("ci-dashboard-test", "2610/452.log"): (
+                "/workspace/ticdc/tests/integration_tests/check_payload/run.sh: "
+                "line 12: kafka_dump: command not found\n"
+                "Failed in branch Matrix - TEST_GROUP = 'G02'\n"
+                "rpc error: connection reset by peer\n"
+                "ERROR: script returned exit code 127\n"
+            ),
+        }
+    )
+    classifier = _FakeClassifier(
+        ErrorClassification(
+            l1_category="OTHERS",
+            l2_subcategory="UNCLASSIFIED",
+            source="llm:test",
+        )
+    )
+    jenkins_fetcher = _FakeJenkinsFetcher({})
+
+    summary = run_analyze_errors(
+        sqlite_engine,
+        _settings(),
+        force=True,
+        reader=reader,
+        jenkins_fetcher=jenkins_fetcher,
+        rule_engine=RuleEngine.from_file(),
+        llm_classifier=classifier,
+    )
+
+    assert summary.builds_scanned == 1
+    assert summary.builds_rule_classified == 1
+    assert summary.builds_llm_classified == 0
+    assert classifier.calls == []
+    assert jenkins_fetcher.calls == []
+    with sqlite_engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT error_l1_category, error_l2_subcategory FROM ci_l1_builds WHERE id = 452")
+        ).mappings().one()
+    assert row["error_l1_category"] == "BUILD"
+    assert row["error_l2_subcategory"] == "PIPELINE_CONFIG"
+
+
 def test_review_error_classification_updates_revise_fields(sqlite_engine) -> None:
     _insert_build(
         sqlite_engine,
