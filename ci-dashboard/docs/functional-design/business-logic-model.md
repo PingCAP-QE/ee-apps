@@ -55,8 +55,8 @@ Watermarks:
 
 Candidate PR set:
 
-1. newly seen build-linked PRs from `ci_l1_builds`
-2. already tracked PRs whose `github_tickets.updated_at` advanced
+1. newly seen build-linked PRs from `ci_l1_builds`, plus build-linked PRs still missing a snapshot
+2. already tracked PRs whose `github_tickets.updated_at` is newer than that PR's `pr_snapshot.event_time` after parsing both as UTC-naive timestamps and truncating to whole seconds, regardless of the global ticket timestamp; this catches updates published late by another repository's import batch
 
 Execution model:
 
@@ -64,7 +64,7 @@ Execution model:
 2. build candidate PR key set
 3. fetch matching `github_tickets` rows
 4. for each ticket:
-   - emit one `pr_snapshot` row
+   - emit one `pr_snapshot` row with a UTC-naive timestamp truncated to whole seconds before writing, avoiding database rounding
    - emit `committed` rows
    - emit exact `retest_comment` rows
 5. bulk upsert by `(repo, pr_number, event_key)`
@@ -72,8 +72,8 @@ Execution model:
 
 Implementation status:
 
-- planned
-- placeholder exists in [sync_pr_events.py](/Users/dillon/workspace/ee-apps-worktrees/ci-dashboard-v1/ci-dashboard/src/ci_dashboard/jobs/sync_pr_events.py)
+- implemented in [sync_pr_events.py](../../src/ci_dashboard/jobs/sync_pr_events.py)
+- covered by [test_sync_pr_events.py](../../tests/jobs/test_sync_pr_events.py), including late updates behind the global ticket timestamp, fractional seconds, and positive/negative UTC offsets
 
 ## Job 3: `ci-refresh-build-derived`
 
@@ -84,7 +84,11 @@ Source and target:
 
 Watermarks:
 
-- `{"last_processed_build_id": N, "last_processed_pr_event_updated_at": T, "last_processed_case_report_time": T}`
+- `{"last_processed_build_id": N, "last_processed_pr_event_updated_at": T, "last_processed_case_report_time": T, "last_processed_case_run_derived_id": N, "pending_refresh": false, "pending_after_build_id": null, "pending_target_build_id": null, "pending_target_pr_event_updated_at": null, "pending_target_case_report_time": null}`
+- on a limited historical refresh, advance `pending_after_build_id` without moving the completed new-build high-water mark backward
+- continue the pending sweep against frozen source targets; new-build selection starts above both the completed high-water mark and the sweep cursor, while historical PR/case selection uses only the sweep cursor
+- after the sweep finishes, clear pending state and advance the source targets; changes arriving beyond the frozen targets are picked up by the next sweep
+- when loading legacy pending JSON without the separate cursor, finish the existing sweep using its old build cursor before clearing pending state
 
 Impacted build set:
 
@@ -116,8 +120,8 @@ Execution phases:
 
 Implementation status:
 
-- planned
-- placeholder exists in [refresh_build_derived.py](/Users/dillon/workspace/ee-apps-worktrees/ci-dashboard-v1/ci-dashboard/src/ci_dashboard/jobs/refresh_build_derived.py)
+- implemented in [refresh_build_derived.py](../../src/ci_dashboard/jobs/refresh_build_derived.py)
+- covered by [test_refresh_build_derived.py](../../tests/jobs/test_refresh_build_derived.py), including historical PR/case slices, concurrent arrivals beyond frozen targets, and legacy pending state
 
 ## Shared Execution Conventions
 

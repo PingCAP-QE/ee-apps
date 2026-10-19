@@ -6,15 +6,19 @@ import pytest
 from sqlalchemy import text
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
+from ci_dashboard.jobs import refresh_build_derived
 from ci_dashboard.jobs.refresh_build_derived import (
+    ImpactedBuildSelection,
+    _build_success_watermark,
     _execute_statement_in_batches,
     _fetch_group_builds_for_groups,
+    _load_watermark,
     _resolve_refresh_group_chunk_size,
     run_refresh_flaky_signals_for_time_window,
     run_refresh_build_derived,
     run_refresh_build_derived_for_time_window,
 )
-from ci_dashboard.jobs.state_store import get_job_state
+from ci_dashboard.jobs.state_store import get_job_state, mark_job_succeeded
 
 
 def _settings(*, batch_size: int = 100, refresh_build_limit: int = 5000) -> Settings:
@@ -145,6 +149,64 @@ def _insert_problem_case_run(
                 "build_url": build_url,
             },
         )
+
+
+def _capture_refresh_slices(monkeypatch) -> list[list[int]]:
+    selected_slices = []
+    apply_refresh_phases = refresh_build_derived._apply_refresh_phases
+
+    def record_refresh_phases(engine, impacted_build_ids, summary, **kwargs):
+        selected_slices.append(list(impacted_build_ids))
+        apply_refresh_phases(engine, impacted_build_ids, summary, **kwargs)
+
+    monkeypatch.setattr(refresh_build_derived, "_apply_refresh_phases", record_refresh_phases)
+    return selected_slices
+
+
+def test_load_watermark_defaults(sqlite_engine) -> None:
+    with sqlite_engine.begin() as connection:
+        assert _load_watermark(connection) == {
+            "last_processed_build_id": 0,
+            "last_processed_pr_event_updated_at": None,
+            "last_processed_case_report_time": None,
+            "last_processed_case_run_derived_id": 0,
+            "pending_refresh": False,
+            "pending_after_build_id": None,
+            "pending_target_build_id": None,
+            "pending_target_pr_event_updated_at": None,
+            "pending_target_case_report_time": None,
+        }
+
+
+def test_success_watermark_does_not_regress_completed_build_hwm_on_empty_selection() -> None:
+    watermark = {
+        "last_processed_build_id": 10,
+        "last_processed_pr_event_updated_at": "2026-04-13 09:00:00",
+        "last_processed_case_report_time": None,
+        "pending_refresh": True,
+        "pending_after_build_id": 2,
+    }
+    target_watermarks = {
+        "last_processed_build_id": 5,
+        "last_processed_pr_event_updated_at": "2026-04-13 10:00:00",
+        "last_processed_case_report_time": "2026-04-13 10:05:00",
+    }
+    assert _build_success_watermark(
+        watermark,
+        target_watermarks,
+        ImpactedBuildSelection(build_ids=[], has_more=False),
+        case_run_derived_watermark=7,
+    ) == {
+        "last_processed_build_id": 10,
+        "last_processed_pr_event_updated_at": "2026-04-13 10:00:00",
+        "last_processed_case_report_time": "2026-04-13 10:05:00",
+        "last_processed_case_run_derived_id": 7,
+        "pending_refresh": False,
+        "pending_after_build_id": None,
+        "pending_target_build_id": None,
+        "pending_target_pr_event_updated_at": None,
+        "pending_target_case_report_time": None,
+    }
 
 
 def test_execute_statement_in_batches_splits_large_payload() -> None:
@@ -461,6 +523,183 @@ def test_refresh_build_derived_slices_large_backlog_and_freezes_selection_window
     assert final_row["target_branch"] == "master"
     assert final_state is not None
     assert final_state.watermark["last_processed_build_id"] == fourth_id
+
+
+@pytest.mark.parametrize("impact_source", ["pr", "case"])
+@pytest.mark.parametrize("new_build_count", [0, 3])
+def test_refresh_build_derived_historical_slices_do_not_rescan_completed_builds(
+    sqlite_engine, monkeypatch, impact_source: str, new_build_count: int
+) -> None:
+    build_ids = [
+        _insert_build(
+            sqlite_engine,
+            source_prow_job_id=f"prow-job-{index}",
+            pr_number=101 if index <= 3 else 102,
+        )
+        for index in range(1, 11)
+    ]
+    run_refresh_build_derived(sqlite_engine, _settings())
+
+    if impact_source == "pr":
+        _insert_pr_snapshot(sqlite_engine, updated_at="2026-04-13 10:30:00")
+    else:
+        for index in range(1, 4):
+            _insert_problem_case_run(
+                sqlite_engine,
+                build_url=f"https://prow.tidb.net/jenkins/job/prow-job-{index}/display/redirect",
+                report_time="2026-04-13 10:30:00",
+            )
+    new_build_ids = [
+        _insert_build(
+            sqlite_engine,
+            source_prow_job_id=f"prow-job-{index}",
+            pr_number=102,
+        )
+        for index in range(11, 11 + new_build_count)
+    ]
+
+    selected_slices = _capture_refresh_slices(monkeypatch)
+    completed_build_ids = [build_ids[-1]]
+    first_pending_watermark = None
+    for _ in range(10):
+        summary = run_refresh_build_derived(sqlite_engine, _settings(refresh_build_limit=2))
+        completed_build_ids.append(summary.last_processed_build_id)
+        with sqlite_engine.begin() as connection:
+            state = get_job_state(connection, "ci-refresh-build-derived")
+        assert state is not None
+        if len(completed_build_ids) == 2:
+            first_pending_watermark = state.watermark
+        if not state.watermark["pending_refresh"]:
+            break
+    else:
+        pytest.fail("historical refresh did not finish")
+
+    target_build_id = new_build_ids[-1] if new_build_ids else build_ids[-1]
+    target_pr_time = "2026-04-13 10:30:00" if impact_source == "pr" else None
+    target_case_time = "2026-04-13 10:30:00" if impact_source == "case" else None
+    case_run_derived_id = 3 if impact_source == "case" else 0
+    assert first_pending_watermark == {
+        "last_processed_build_id": build_ids[-1],
+        "last_processed_pr_event_updated_at": None,
+        "last_processed_case_report_time": None,
+        "last_processed_case_run_derived_id": case_run_derived_id,
+        "pending_refresh": True,
+        "pending_after_build_id": build_ids[1],
+        "pending_target_build_id": target_build_id,
+        "pending_target_pr_event_updated_at": target_pr_time,
+        "pending_target_case_report_time": target_case_time,
+    }
+    assert state.watermark == {
+        "last_processed_build_id": target_build_id,
+        "last_processed_pr_event_updated_at": target_pr_time,
+        "last_processed_case_report_time": target_case_time,
+        "last_processed_case_run_derived_id": case_run_derived_id,
+        "pending_refresh": False,
+        "pending_after_build_id": None,
+        "pending_target_build_id": None,
+        "pending_target_pr_event_updated_at": None,
+        "pending_target_case_report_time": None,
+    }
+    expected_ids = build_ids[:3] + new_build_ids
+    assert selected_slices == [expected_ids[index:index + 2] for index in range(0, len(expected_ids), 2)]
+    assert completed_build_ids == sorted(completed_build_ids)
+    assert completed_build_ids[-1] == target_build_id
+    assert run_refresh_build_derived(sqlite_engine, _settings(refresh_build_limit=2)).impacted_builds == 0
+
+
+def test_refresh_build_derived_defers_arrivals_until_frozen_sweep_finishes(
+    sqlite_engine, monkeypatch
+) -> None:
+    build_ids = [
+        _insert_build(
+            sqlite_engine,
+            source_prow_job_id=f"prow-job-{index}",
+            pr_number=101 if index <= 3 else 102,
+        )
+        for index in range(1, 11)
+    ]
+    run_refresh_build_derived(sqlite_engine, _settings())
+    _insert_pr_snapshot(sqlite_engine, updated_at="2026-04-13 10:30:00")
+    for index in range(1, 4):
+        _insert_problem_case_run(
+            sqlite_engine,
+            build_url=f"https://prow.tidb.net/jenkins/job/prow-job-{index}/display/redirect",
+            report_time="2026-04-13 10:35:00",
+        )
+
+    selected_slices = _capture_refresh_slices(monkeypatch)
+    settings = _settings(refresh_build_limit=2)
+    run_refresh_build_derived(sqlite_engine, settings)
+
+    new_build_id = _insert_build(sqlite_engine, source_prow_job_id="prow-job-11", pr_number=102)
+    _insert_pr_snapshot(sqlite_engine, pr_number=102, updated_at="2026-04-13 11:00:00")
+    _insert_problem_case_run(
+        sqlite_engine,
+        build_url="https://prow.tidb.net/jenkins/job/prow-job-1/display/redirect",
+        report_time="2026-04-13 11:05:00",
+    )
+
+    summary = run_refresh_build_derived(sqlite_engine, settings)
+    assert selected_slices == [build_ids[:2], build_ids[2:3]]
+    assert summary.last_processed_build_id == build_ids[-1]
+    assert summary.last_processed_pr_event_updated_at == "2026-04-13 10:30:00"
+    assert summary.last_processed_case_report_time == "2026-04-13 10:35:00"
+    with sqlite_engine.begin() as connection:
+        state = get_job_state(connection, "ci-refresh-build-derived")
+    assert state is not None
+    assert state.watermark["pending_refresh"] is False
+
+    summary = run_refresh_build_derived(sqlite_engine, _settings())
+    assert selected_slices[-1] == [build_ids[0], *build_ids[3:], new_build_id]
+    assert summary.last_processed_build_id == new_build_id
+    assert summary.last_processed_pr_event_updated_at == "2026-04-13 11:00:00"
+    assert summary.last_processed_case_report_time == "2026-04-13 11:05:00"
+    assert run_refresh_build_derived(sqlite_engine, settings).impacted_builds == 0
+
+
+def test_refresh_build_derived_finishes_legacy_pending_sweep_without_skipping_builds(
+    sqlite_engine, monkeypatch
+) -> None:
+    build_ids = [
+        _insert_build(
+            sqlite_engine,
+            source_prow_job_id=f"prow-job-{index}",
+            pr_number=101 if index <= 3 else 102,
+        )
+        for index in range(1, 11)
+    ]
+    _insert_pr_snapshot(sqlite_engine, updated_at="2026-04-13 10:30:00")
+    with sqlite_engine.begin() as connection:
+        mark_job_succeeded(connection, "ci-refresh-build-derived", {
+            "last_processed_build_id": build_ids[1],
+            "last_processed_pr_event_updated_at": None,
+            "last_processed_case_report_time": None,
+            "pending_refresh": True,
+            "pending_target_build_id": build_ids[-1],
+            "pending_target_pr_event_updated_at": "2026-04-13 10:30:00",
+            "pending_target_case_report_time": None,
+        })
+
+    selected_slices = _capture_refresh_slices(monkeypatch)
+    settings = _settings(refresh_build_limit=2)
+    for _ in range(4):
+        run_refresh_build_derived(sqlite_engine, settings)
+    assert selected_slices == [build_ids[2:4], build_ids[4:6], build_ids[6:8], build_ids[8:10]]
+    with sqlite_engine.begin() as connection:
+        state = get_job_state(connection, "ci-refresh-build-derived")
+    assert state is not None
+    assert state.watermark == {
+        "last_processed_build_id": build_ids[-1],
+        "last_processed_pr_event_updated_at": "2026-04-13 10:30:00",
+        "last_processed_case_report_time": None,
+        "last_processed_case_run_derived_id": 0,
+        "pending_refresh": False,
+        "pending_after_build_id": None,
+        "pending_target_build_id": None,
+        "pending_target_pr_event_updated_at": None,
+        "pending_target_case_report_time": None,
+    }
+    assert run_refresh_build_derived(sqlite_engine, settings).impacted_builds == 0
 
 
 def test_refresh_build_derived_updates_stale_target_branch(sqlite_engine) -> None:

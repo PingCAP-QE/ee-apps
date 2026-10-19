@@ -198,6 +198,7 @@ def _load_watermark(connection: Connection) -> dict[str, Any]:
             "last_processed_case_report_time": None,
             CASE_RUN_DERIVED_WATERMARK_KEY: 0,
             "pending_refresh": False,
+            "pending_after_build_id": None,
             "pending_target_build_id": None,
             "pending_target_pr_event_updated_at": None,
             "pending_target_case_report_time": None,
@@ -219,6 +220,9 @@ def _load_watermark(connection: Connection) -> dict[str, Any]:
                 default=0,
             ),
             "pending_refresh": bool(state.watermark.get("pending_refresh", False)),
+            "pending_after_build_id": _normalize_optional_int(
+                state.watermark.get("pending_after_build_id")
+            ),
             "pending_target_build_id": _normalize_optional_int(
                 state.watermark.get("pending_target_build_id")
             ),
@@ -286,11 +290,21 @@ def _get_impacted_build_ids(
         watermark.get("last_processed_build_id"),
         default=0,
     )
+    # Legacy pending state stored only the sweep cursor in last_processed_build_id.
+    # Keep scanning above that cursor until its frozen sweep finishes.
+    after_build_id = (
+        _normalize_optional_int(
+            watermark.get("pending_after_build_id"),
+            default=last_processed_build_id,
+        )
+        if pending_refresh
+        else 0
+    )
     has_more = False
 
     new_build_ids = _fetch_new_build_ids(
         connection,
-        lower_build_id=last_processed_build_id,
+        lower_build_id=max(last_processed_build_id, after_build_id),
         upper_build_id=_normalize_optional_int(
             selection_watermarks.get("last_processed_build_id"),
             default=last_processed_build_id,
@@ -313,7 +327,7 @@ def _get_impacted_build_ids(
             selection_watermarks.get("last_processed_build_id"),
             default=last_processed_build_id,
         ),
-        after_build_id=last_processed_build_id if pending_refresh else 0,
+        after_build_id=after_build_id,
         selection_limit=selection_limit,
     )
     if len(pr_event_build_ids) == selection_limit:
@@ -332,7 +346,7 @@ def _get_impacted_build_ids(
             selection_watermarks.get("last_processed_build_id"),
             default=last_processed_build_id,
         ),
-        after_build_id=last_processed_build_id if pending_refresh else 0,
+        after_build_id=after_build_id,
         selection_limit=selection_limit,
     )
     if len(case_build_ids) == selection_limit:
@@ -587,9 +601,14 @@ def _build_success_watermark(
     *,
     case_run_derived_watermark: int,
 ) -> dict[str, Any]:
+    last_processed_build_id = _normalize_optional_int(
+        watermark.get("last_processed_build_id"), default=0
+    )
     if impacted_selection.has_more and impacted_selection.build_ids:
+        # Historical impacts advance the sweep cursor, not the completed-build HWM.
+        after_build_id = impacted_selection.build_ids[-1]
         return {
-            "last_processed_build_id": impacted_selection.build_ids[-1],
+            "last_processed_build_id": max(last_processed_build_id, after_build_id),
             "last_processed_pr_event_updated_at": _normalize_optional_string(
                 watermark.get("last_processed_pr_event_updated_at")
             ),
@@ -597,6 +616,7 @@ def _build_success_watermark(
                 watermark.get("last_processed_case_report_time")
             ),
             "pending_refresh": True,
+            "pending_after_build_id": after_build_id,
             "pending_target_build_id": _normalize_optional_int(
                 selection_watermarks.get("last_processed_build_id")
             ),
@@ -610,9 +630,9 @@ def _build_success_watermark(
         }
 
     return {
-        "last_processed_build_id": _normalize_optional_int(
-            selection_watermarks.get("last_processed_build_id"),
-            default=0,
+        "last_processed_build_id": max(
+            last_processed_build_id,
+            _normalize_optional_int(selection_watermarks.get("last_processed_build_id"), default=0),
         ),
         "last_processed_pr_event_updated_at": _normalize_optional_string(
             selection_watermarks.get("last_processed_pr_event_updated_at")
@@ -621,6 +641,7 @@ def _build_success_watermark(
             selection_watermarks.get("last_processed_case_report_time")
         ),
         "pending_refresh": False,
+        "pending_after_build_id": None,
         "pending_target_build_id": None,
         "pending_target_pr_event_updated_at": None,
         "pending_target_case_report_time": None,
