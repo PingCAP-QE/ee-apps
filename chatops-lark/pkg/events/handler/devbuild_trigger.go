@@ -54,6 +54,21 @@ type devbuildSpecInput struct {
 
 // Verify required params
 func (p triggerParams) Verify() error {
+	switch p.product {
+	case "tidb-cse", "pd-cse", "tidb-operator-cse", "cassandra-on-mysql", "qdrant-on-tidb":
+		if p.platform != "" && p.platform != "linux" && p.platform != "linux/amd64" && p.platform != "linux/arm64" {
+			return fmt.Errorf("Serverless supports linux, linux/amd64 and linux/arm64 only")
+		}
+		if p.engine != "" && p.engine != "tekton" {
+			return fmt.Errorf("Serverless requires the tekton engine")
+		}
+		if p.edition != "community" {
+			return fmt.Errorf("Serverless supports the community (release) profile only")
+		}
+		if p.hotfix || p.pluginGitRef != "" {
+			return fmt.Errorf("Serverless devbuild does not use hotfix or enterprise plugins")
+		}
+	}
 	missingFlags := []string{}
 	if p.product == "" {
 		missingFlags = append(missingFlags, "--product")

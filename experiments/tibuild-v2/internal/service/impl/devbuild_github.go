@@ -44,7 +44,22 @@ func getGhRefAndSha(ctx context.Context, ghClient *github.Client, fullRepo, reqG
 		if err != nil {
 			return "", ""
 		}
-		return strings.Join([]string{"refs", "tags", tagName}, "/"), ref.Object.GetSHA()
+		// Annotated tags point at tag objects rather than commits. Peel them.
+		object := ref.Object
+		for depth := 0; object != nil && object.GetType() == "tag"; depth++ {
+			if depth >= 8 {
+				return "", ""
+			}
+			tag, _, err := ghClient.Git.GetTag(ctx, owner, repo, object.GetSHA())
+			if err != nil {
+				return "", ""
+			}
+			object = tag.Object
+		}
+		if object == nil {
+			return "", ""
+		}
+		return strings.Join([]string{"refs", "tags", tagName}, "/"), object.GetSHA()
 
 	case strings.HasPrefix(reqGitRef, "commit/"):
 		sha := strings.TrimPrefix(reqGitRef, "commit/")

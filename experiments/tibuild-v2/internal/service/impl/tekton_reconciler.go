@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
+	"strings"
 	"time"
 
 	tknv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -140,8 +142,10 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 	}
 
 	// Determine overall status from PipelineRuns
-	newStatus := determineStatus(pipelineRuns)
-	if newStatus == "" || newStatus == build.Status {
+	newStatus := determineBuildStatus(build, pipelineRuns)
+	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus, s.dashboardURL)
+	buildReport := buildBuildReport(pipelineRuns)
+	if newStatus == "" || (newStatus == build.Status && reflect.DeepEqual(tektonStatus, build.TektonStatus) && (buildReport == nil || reflect.DeepEqual(*buildReport, build.BuildReport))) {
 		return nil
 	}
 
@@ -159,11 +163,9 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 		SetUpdatedAt(time.Now())
 
 	// Update tekton status with pipeline info
-	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus, s.dashboardURL)
 	updater.SetTektonStatus(tektonStatus)
 
 	// Build report from pipeline runs
-	buildReport := buildBuildReport(pipelineRuns)
 	if buildReport != nil {
 		updater.SetBuildReport(*buildReport)
 	}
@@ -172,7 +174,7 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 	if startTime := getEarliestStartTime(pipelineRuns); startTime != nil {
 		updater.SetPipelineStartAt(startTime.Time)
 	}
-	if endTime := getLatestCompletionTime(pipelineRuns); endTime != nil {
+	if endTime := getLatestCompletionTime(pipelineRuns); endTime != nil && isTerminalStatus(newStatus) {
 		updater.SetPipelineEndAt(endTime.Time)
 	}
 
@@ -389,7 +391,7 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
 					})
 					hasData = true
 				}
-			case "printed-version":
+			case "printed-version", "release-version":
 				if report.PrintedVersion == "" {
 					report.PrintedVersion = r.Value.StringVal
 					hasData = true
@@ -447,4 +449,47 @@ func getLatestCompletionTime(pipelineRuns []tknv1.PipelineRun) *metav1.Time {
 		}
 	}
 	return latest
+}
+
+// Serverless requests finish only after every requested platform has a run.
+func determineBuildStatus(build *ent.DevBuild, runs []tknv1.PipelineRun) string {
+	status := determineStatus(runs)
+	if !isServerlessProduct(build.Product) || status != "SUCCESS" {
+		return status
+	}
+	seen := map[string]bool{}
+	for _, run := range runs {
+		seen[parsePlatformFromParams(run.Spec.Params)] = true
+	}
+	for _, platform := range parsePlatforms(build.Platform) {
+		if !seen[platform] {
+			return "PROCESSING"
+		}
+	}
+	for _, run := range runs {
+		bins, images := extractArtifactsFromResults(run.Status.Results, run.Spec.Params)
+		if len(images) == 0 || len(bins) == 0 {
+			return "FAILURE"
+		}
+		for _, image := range images {
+			if image.URL == ":" {
+				return "FAILURE"
+			}
+		}
+		for _, binary := range bins {
+			if binary.Repo == "" || binary.Tag == "" || len(binary.Files) == 0 {
+				return "FAILURE"
+			}
+			files := map[string]bool{}
+			for _, file := range binary.Files {
+				files[file] = true
+			}
+			for _, file := range binary.Files {
+				if !strings.HasSuffix(file, ".sha256") && !files[file+".sha256"] {
+					return "FAILURE"
+				}
+			}
+		}
+	}
+	return status
 }

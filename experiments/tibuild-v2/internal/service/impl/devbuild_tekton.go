@@ -88,7 +88,25 @@ func (s *devbuildsrvc) newDevBuildCloudEvents(record *ent.DevBuild) ([]*cloudeve
 }
 
 func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform string) (*cloudevents.Event, error) {
-	ref, sha := getGhRefAndSha(context.TODO(), s.ghClient, record.GithubRepo, record.GitRef)
+	var ref, sha string
+	if isHex(record.GitHash) {
+		sha = record.GitHash
+		switch {
+		case strings.HasPrefix(record.GitRef, "branch/"):
+			ref = "refs/heads/" + strings.TrimPrefix(record.GitRef, "branch/")
+		case strings.HasPrefix(record.GitRef, "tag/"):
+			ref = "refs/tags/" + strings.TrimPrefix(record.GitRef, "tag/")
+		case strings.HasPrefix(record.GitRef, "pull/"):
+			ref = record.GitRef
+		default:
+			ref = sha
+		}
+	} else if isServerlessProduct(record.Product) {
+		return nil, fmt.Errorf("Serverless devbuild requires a resolved commit SHA")
+	} else {
+		// Compatibility for records created before revisions were persisted.
+		ref, sha = getGhRefAndSha(context.TODO(), s.ghClient, record.GithubRepo, record.GitRef)
+	}
 	event := cloudevents.NewEvent()
 	var eventData any
 	switch {
@@ -136,6 +154,14 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 	event.SetSubject(fmt.Sprint(record.ID))
 	event.SetSource("tibuild.pingcap.net/api/v2/devbuilds/" + fmt.Sprint(record.ID))
 	event.SetExtension("user", record.CreatedBy)
+	event.SetExtension("paramProduct", record.Product)
+	if isHex(sha) {
+		event.SetExtension("paramGitRevision", sha)
+	}
+	// Compatibility metadata only: the build version is always derived from Git.
+	if record.Version != "" {
+		event.SetExtension("paramVersion", record.Version)
+	}
 	event.SetExtension("paramProfile", normalizeEdition(string(record.Edition)))
 	event.SetExtension("paramIsHotfix", record.IsHotfix)
 	event.SetExtension("paramIsPushGcr", record.IsPushGCR)

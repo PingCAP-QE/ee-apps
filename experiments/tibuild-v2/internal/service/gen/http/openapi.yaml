@@ -829,7 +829,7 @@ definitions:
                 pipelineEngine: tekton
                 platform: linux
                 pluginGitRef: Sed est nihil non quia quia.
-                product: tidb-lightning
+                product: dm
                 productBaseImg: Vero accusantium neque odio ratione nam ut.
                 productDockerfile: Quia tempora ut et id.
                 targetImg: Sed error et.
@@ -1296,7 +1296,7 @@ definitions:
                 example: Natus reprehenderit.
             product:
                 type: string
-                example: tidb-lightning
+                example: tidb-cse
                 enum:
                     - dm
                     - enterprise-plugin
@@ -1318,6 +1318,11 @@ definitions:
                     - tiflash
                     - tikv
                     - tiproxy
+                    - tidb-cse
+                    - pd-cse
+                    - tidb-operator-cse
+                    - cassandra-on-mysql
+                    - qdrant-on-tidb
             productBaseImg:
                 type: string
                 example: Rerum aspernatur aspernatur qui.
@@ -1343,7 +1348,7 @@ definitions:
             pipelineEngine: tekton
             platform: darwin/arm64
             pluginGitRef: Saepe laborum vel.
-            product: pump
+            product: cassandra-on-mysql
             productBaseImg: Ea nulla.
             productDockerfile: Enim commodi.
             targetImg: Voluptate id.
@@ -1589,7 +1594,7 @@ definitions:
                 pipelineEngine: jenkins
                 platform: linux
                 pluginGitRef: Sit enim itaque.
-                product: tidb-lightning
+                product: tidb-cse
                 productBaseImg: Dolorem voluptates.
                 productDockerfile: Non suscipit veniam laboriosam voluptas asperiores ad.
                 targetImg: Adipisci voluptatem dicta at.

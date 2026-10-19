@@ -18,6 +18,10 @@ const (
 )
 
 func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePayload) (*ent.DevBuild, error) {
+	if err := validateServerlessRequest(p.Request); err != nil {
+		return nil, err
+	}
+
 	// NoNeed: guess enterprise plugin ref.
 	// fill for fips
 	// set for default pipeline engine.
@@ -34,6 +38,16 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 
 	// 2. get the commit sha
 	_, commitSha := getGhRefAndSha(ctx, s.ghClient, githubFullRepo, p.Request.GitRef)
+	if isServerlessProduct(p.Request.Product) {
+		if !isHex(commitSha) {
+			return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "cannot resolve gitRef in the requested repository; check the ref and GitHub access"}
+		}
+		if isHex(p.Request.GitRef) || strings.HasPrefix(p.Request.GitRef, "commit/") {
+			if _, _, err := s.ghClient.Git.GetCommit(ctx, strings.Split(githubFullRepo, "/")[0], strings.Split(githubFullRepo, "/")[1], commitSha); err != nil {
+				return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "commit is not accessible in the requested repository"}
+			}
+		}
+	}
 
 	// Normalize raw hex SHA to "commit/<sha>" for consistent storage.
 	gitRef := p.Request.GitRef
@@ -43,6 +57,9 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 
 	// 3. create the entity
 	edition := normalizeEdition(p.Request.Edition)
+	if isServerlessProduct(p.Request.Product) && edition == "" {
+		edition = "community"
+	}
 	create := s.dbClient.DevBuild.Create().
 		SetProduct(p.Request.Product).
 		SetEdition(edition).
@@ -56,6 +73,7 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetNillablePluginGitRef(p.Request.PluginGitRef).
 		SetNillablePipelineEngine(p.Request.PipelineEngine).
 		SetPlatform(p.Request.Platform).
+		SetNillableBuilderImg(p.Request.BuilderImg).
 		SetStatus("PENDING")
 
 	return create.Save(ctx)

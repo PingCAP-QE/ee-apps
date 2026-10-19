@@ -163,6 +163,7 @@ func notificationDownloadURL(base, reference string) string {
 // notificationCardData contains artifact data and links for the card template.
 type notificationCardData struct {
 	*NotificationInfo
+	Serverless   bool
 	ImageGroups  []imageRepository
 	BinaryGroups []notificationBinaryGroup
 }
@@ -178,7 +179,7 @@ type notificationBinary struct {
 }
 
 func prepareNotificationCard(info *NotificationInfo) notificationCardData {
-	data := notificationCardData{NotificationInfo: info, ImageGroups: groupNotificationImages(info.Images)}
+	data := notificationCardData{NotificationInfo: info, Serverless: isServerlessProduct(info.Product), ImageGroups: groupNotificationImages(info.Images)}
 	bins := append([]BinaryInfo(nil), info.Binaries...)
 	sort.SliceStable(bins, func(i, j int) bool {
 		a, b := artifactPlatform(bins[i].Platform, bins[i].OciReference), artifactPlatform(bins[j].Platform, bins[j].OciReference)

@@ -46,6 +46,11 @@ lark:
 
 # Map product name -> GitHub repo (<org>/<repo>)
 product_repo_map:
+  tidb-cse: tidbcloud/tidb-cse
+  pd-cse: tidbcloud/pd-cse
+  tidb-operator-cse: tidbcloud/tidb-operator-cse
+  cassandra-on-mysql: tidbcloud/cassandra-on-mysql
+  qdrant-on-tidb: tidbcloud/qdrant-on-tidb
   pd: pingcap/pd
   tidb: pingcap/tidb
 

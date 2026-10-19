@@ -172,11 +172,15 @@ func (s *devbuildsrvc) Capabilities(context.Context) (*devbuild.DevBuildCapabili
 		DefaultPipelineEngine: tektonEngine,
 	}
 	for _, product := range products {
+		platforms := supportedPlatforms
+		if isServerlessProduct(product) {
+			platforms = []string{"linux", LinuxAmd64, LinuxArm64}
+		}
 		result.Products = append(result.Products, &devbuild.DevBuildProductCapability{
 			ID:              product,
 			Label:           productLabel(product),
 			Editions:        []string{"community"},
-			Platforms:       supportedPlatforms,
+			Platforms:       platforms,
 			DefaultEdition:  "community",
 			DefaultPlatform: "linux",
 		})
@@ -348,6 +352,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetPluginGitRef(existingBuild.PluginGitRef).
 		SetIsHotfix(existingBuild.IsHotfix).
 		SetIsPushGCR(existingBuild.IsPushGCR).
+		SetBuilderImg(existingBuild.BuilderImg).
 		SetPlatform(existingBuild.Platform).
 		SetStatus("PENDING").
 		SetCreatedAt(time.Now()).
@@ -376,6 +381,9 @@ func (s *devbuildsrvc) applyPermissions(ctx context.Context, build *devbuild.Dev
 }
 
 func productLabel(product string) string {
+	if label, ok := serverlessProductLabels[product]; ok {
+		return label
+	}
 	labels := map[string]string{
 		"tidb": "TiDB", "tikv": "TiKV", "tiflash": "TiFlash", "pd": "PD", "ticdc": "TiCDC",
 		"dm": "DM", "br": "BR", "tiproxy": "TiProxy", "tidb-operator": "TiDB Operator",

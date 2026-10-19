@@ -413,12 +413,13 @@ var DevBuildSpec = Type("DevBuildSpec", func() {
 			"tici",                                     // from pingcap-inc/tici repo.
 			"tidb", "br", "dumpling", "tidb-lightning", // from pingcap/tidb repo.
 			"tidb-binlog", "drainer", "pump", // from pingcap/tidb-binlog repo.
-			"tidb-dashboard", // from pingcap/tidb-dashboard repo.
-			"tidb-operator",  // from pingcap/tidb-operator repo.
-			"tidb-tools",     // from pingcap/tidb-tools repo.
-			"tiflash",        // from pingcap/tiflash repo.
-			"tikv",           // from tikv/tikv repo.
-			"tiproxy",        // from pingcap/tiproxy repo.
+			"tidb-dashboard",                                                                  // from pingcap/tidb-dashboard repo.
+			"tidb-operator",                                                                   // from pingcap/tidb-operator repo.
+			"tidb-tools",                                                                      // from pingcap/tidb-tools repo.
+			"tiflash",                                                                         // from pingcap/tiflash repo.
+			"tikv",                                                                            // from tikv/tikv repo.
+			"tiproxy",                                                                         // from pingcap/tiproxy repo.
+			"tidb-cse", "pd-cse", "tidb-operator-cse", "cassandra-on-mysql", "qdrant-on-tidb", // Serverless components.
 		)
 	})
 	Attribute("productBaseImg", String)
