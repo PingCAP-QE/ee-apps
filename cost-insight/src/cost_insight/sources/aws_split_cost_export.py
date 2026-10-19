@@ -588,6 +588,7 @@ parent_direct AS (
     MIN(raw.service_exec_id) AS service_exec_id,
     MIN(raw.author_fallback) AS author_fallback,
     MIN(raw.org) AS org,
+    COUNT(DISTINCT raw.org) AS org_count,
     MIN(raw.cluster) AS cluster,
     MIN(raw.shared_pool) AS shared_pool,
     MIN(raw.vendor_tags_json) AS vendor_tags_json,
@@ -807,7 +808,8 @@ branch_rows AS (
     child.service_exec_id,
     COALESCE(child.author_fallback, parent.author_fallback) AS usedby,
     COALESCE(child.owner, child.author_fallback) AS author,
-    child.org,
+    -- Do not choose an arbitrary tenant when a parent's tags changed within the day.
+    COALESCE(child.org, CASE WHEN parent.org_count = 1 THEN parent.org END) AS org,
     parent.pricing_unit,
     child.split_usage_amount AS usage_amount,
     -- AWS split children can omit either routing tag; retain their own value

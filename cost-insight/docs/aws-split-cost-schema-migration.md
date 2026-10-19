@@ -343,6 +343,19 @@ missing tags from the matched parent. This allows an unlabeled or partially
 labeled child to retain its parent pool's TCMS attribution, while explicit
 child business labels still take precedence.
 
+A split child with no native `org` inherits its parent's tenant only when that
+parent has exactly one distinct non-null tenant within the same account, usage
+date, and parent resource. An explicit child tenant always wins; absent or
+conflicting parent tenants do not fill a missing child tenant. This fallback
+applies to both summary and resource queries, without inheriting parent
+owner/project/service labels or changing costs, TCMS rule precedence, or author
+fallback policy.
+
+Because `org` participates in source-summary identity, repairing historical
+windows requires bounded replacement of summary and resource imports, followed
+by attribution refresh and resource-serving republication. Ordinary upserts or
+attribution-only refreshes cannot remove the old missing-tenant identities.
+
 ### 5.2 Three Output Branches
 
 The split adapter operates first at this grain:

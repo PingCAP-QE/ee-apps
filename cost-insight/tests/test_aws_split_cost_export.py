@@ -1,3 +1,6 @@
+import re
+import sqlite3
+from contextlib import closing
 from datetime import date
 
 import pytest
@@ -77,6 +80,116 @@ def test_split_child_inherits_each_missing_parent_routing_tag() -> None:
     assert "COALESCE(child.author_fallback, parent.author_fallback) AS usedby" in query
     assert "COALESCE(child.cluster, parent.cluster) AS cluster" in query
     assert "COALESCE(child.shared_pool, parent.shared_pool) AS shared_pool" in query
+
+
+def _execute_split_branches(query: str, rows: list[dict]) -> list[dict]:
+    # Execute the generated normalization branches, before BQ-only final JSON/usage aggregation.
+    ctes = "parent_keys AS (" + query.split("parent_keys AS (", maxsplit=1)[1].split(
+        "\nSELECT\n  'aws' AS vendor,", maxsplit=1
+    )[0]
+    ctes = ctes.replace("r'(^|:)pod/'", "'(^|:)pod/'")
+    columns = sorted(set(re.findall(r"\braw\.(\w+)", ctes)))
+    with closing(sqlite3.connect(":memory:")) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.create_function("STARTS_WITH", 2, lambda value, prefix: value.startswith(prefix))
+        connection.create_function("REGEXP_CONTAINS", 2, lambda value, pattern: bool(re.search(pattern, value)))
+        connection.create_function("GREATEST", 2, max)
+        connection.execute(f"CREATE TABLE raw ({', '.join(columns)})")
+        connection.executemany(
+            f"INSERT INTO raw VALUES ({', '.join('?' for _ in columns)})",
+            [[row.get(column) for column in columns] for row in rows],
+        )
+        return [dict(row) for row in connection.execute(f"WITH {ctes} SELECT * FROM branch_rows")]
+
+
+@pytest.mark.parametrize(
+    "query_builder",
+    (build_aws_split_cost_summary_query, build_aws_split_cost_unmatched_resource_query),
+    ids=("summary", "resource"),
+)
+@pytest.mark.parametrize(
+    ("parent_orgs", "child_org", "expected_org"),
+    (
+        pytest.param(("tenant-a",), None, "tenant-a", id="inherit-missing"),
+        pytest.param(("tenant-a", "tenant-a"), None, "tenant-a", id="same-parent-tenant"),
+        pytest.param((None, "tenant-a"), None, "tenant-a", id="one-non-null-parent-tenant"),
+        pytest.param((None,), None, None, id="no-parent-tenant"),
+        pytest.param(("tenant-a", "tenant-b"), None, None, id="conflicting-parent-tenants"),
+        pytest.param(("tenant-a",), "tenant-b", "tenant-b", id="explicit-child-wins"),
+        pytest.param((None,), "tenant-b", "tenant-b", id="child-without-parent-tenant"),
+        pytest.param(("tenant-a", "tenant-b"), "tenant-c", "tenant-c", id="child-with-conflict"),
+    ),
+)
+def test_split_child_tenant_lineage_preserves_costs_and_business_labels(
+    query_builder, parent_orgs, child_org, expected_org
+) -> None:
+    common = {
+        "account_id": "946646677266",
+        "usage_date": "2026-10-01",
+        "source_export_time": "2026-10-02",
+        "service_name": "AmazonEC2",
+        "direct_list_cost": 0,
+        "direct_effective_cost": 0,
+        "split_list_cost": 0,
+        "split_effective_cost": 0,
+    }
+    rows = [
+        {
+            **common,
+            "resource_id": "i-parent",
+            "resource_name": "i-parent",
+            "org": org,
+            "owner": "parent@example.com",
+            "service": "parent-service",
+            "project": "parent-project",
+            "service_exec_id": "parent-exec",
+            "author_fallback": "dbaas-control-plane-shoot",
+            "direct_list_cost": 100,
+            "direct_effective_cost": 80,
+        }
+        for org in parent_orgs
+    ]
+    rows.extend(
+        (
+            {
+                **common,
+                "resource_id": "arn:aws:eks:pod/child",
+                "resource_name": "arn:aws:eks:pod/child",
+                "parent_resource_name": "i-parent",
+                "namespace": "tidb-test",
+                "org": child_org,
+                "split_list_cost": 30,
+                "split_effective_cost": 20,
+            },
+            {
+                **common,
+                "resource_id": "i-unrelated",
+                "resource_name": "i-unrelated",
+                "org": "unrelated-tenant",
+                "direct_list_cost": 7,
+                "direct_effective_cost": 5,
+            },
+        )
+    )
+    query = query_builder(billing_table="project.dataset.split_cost")
+    result = _execute_split_branches(query, rows)
+    by_scope = {row["source_allocation_scope"]: row for row in result}
+    assert len(result) == 3
+    child = by_scope["eks_pod"]
+    assert child["org"] == expected_org
+    assert child["list_cost"] == 30
+    assert child["effective_cost"] == child["net_cost"] == 20
+    # Only tenant lineage is repaired; parent business labels and author do not leak.
+    assert all(child[column] is None for column in (
+        "owner", "service", "project", "service_exec_id", "author"
+    ))
+    assert child["usedby"] == "dbaas-control-plane-shoot"
+    assert by_scope["direct"]["org"] == "unrelated-tenant"
+    parent_org = min((org for org in parent_orgs if org is not None), default=None)
+    assert by_scope["eks_parent_residual"]["org"] == parent_org
+    assert sum(row["list_cost"] for row in result) == 100 * len(parent_orgs) + 7
+    assert sum(row["effective_cost"] for row in result) == 80 * len(parent_orgs) + 5
+    assert sum(row["net_cost"] for row in result) == 80 * len(parent_orgs) + 5
 
 
 def test_split_resource_query_keeps_parent_and_pod_identity() -> None:
