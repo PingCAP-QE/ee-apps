@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from ci_dashboard.jobs.rule_engine import RuleEngine
 
 
@@ -15,6 +17,92 @@ def test_rule_engine_matches_network_infra_rule() -> None:
     assert classification.l1_category == "INFRA"
     assert classification.l2_subcategory == "NETWORK"
     assert classification.source == "rule:infra_network"
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    [
+        "pingcap/ticdc/pull_cdc_kafka_integration_light",
+        "pingcap/ticdc/pull_cdc_kafka_integration_heavy",
+        "pingcap/ticdc/pull_cdc_storage_integration_light",
+    ],
+)
+@pytest.mark.parametrize("appended_node_log", [False, True])
+def test_rule_engine_classifies_missing_test_command_as_pipeline_config(
+    job_name: str, appended_node_log: bool
+) -> None:
+    missing_command = (
+        "/workspace/ticdc/tests/integration_tests/check_payload/run.sh: "
+        "line 12: kafka_dump: command not found\n"
+    )
+    root_tail = (
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN 'ready'\n"
+        "Failed in branch Matrix - TEST_GROUP = 'G02'\n"
+        "rpc error: connection reset by peer\n"
+        "ERROR: script returned exit code 127\n"
+    )
+    log_text = (
+        root_tail + "===== Failed pipeline node log =====\n" + missing_command
+        if appended_node_log
+        else missing_command + root_tail
+    )
+
+    classification = RuleEngine.from_file().classify(
+        log_text=log_text,
+        build={"job_name": job_name},
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "BUILD"
+    assert classification.l2_subcategory == "PIPELINE_CONFIG"
+    assert classification.source == "rule:build_integration_test_missing_command"
+
+
+@pytest.mark.parametrize(
+    "log_text",
+    [
+        "ERROR: script returned exit code 127\n",
+        "+ echo '/workspace/tests/integration_tests/example/run.sh: "
+        "line 12: kafka_dump: command not found'\nERROR: script returned exit code 127\n",
+        "/workspace/tests/integration_tests/example/run.sh: "
+        "line 12: optional_helper: command not found\n"
+        "run task successfully\nERROR: script returned exit code 1\n",
+    ],
+)
+def test_rule_engine_requires_fatal_missing_test_command_evidence(log_text: str) -> None:
+    classification = RuleEngine.from_file().classify(
+        log_text=log_text + "connection reset by peer\n",
+        build={"job_name": "pingcap/ticdc/pull_cdc_kafka_integration_light"},
+    )
+
+    assert classification is not None
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "NETWORK"
+    assert classification.source == "rule:infra_network"
+
+
+@pytest.mark.parametrize(
+    ("override", "l1", "l2"),
+    [
+        ("Aborted by operator\n", "OTHERS", "ABORT_BY_ADMIN"),
+        ("Container [golang] terminated [OOMKilled]\n", "INFRA", "OOMKILLED"),
+    ],
+)
+def test_rule_engine_preserves_abort_and_oom_over_missing_test_command(
+    override: str, l1: str, l2: str
+) -> None:
+    classification = RuleEngine.from_file().classify(
+        log_text=(
+            "/workspace/tests/integration_tests/check_payload/run.sh: "
+            "line 12: kafka_dump: command not found\n"
+            "ERROR: script returned exit code 127\n" + override
+        ),
+        build={"job_name": "pingcap/ticdc/pull_cdc_kafka_integration_light"},
+    )
+
+    assert classification is not None
+    assert classification.l1_category == l1
+    assert classification.l2_subcategory == l2
 
 
 def test_rule_engine_matches_unit_test_rule_using_job_name_and_log_text() -> None:
