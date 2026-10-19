@@ -43,18 +43,17 @@ SELECT_NEW_BUILD_LINKED_PRS = text(
     """
 )
 
-SELECT_UPDATED_TRACKED_PRS = text(
+# Import batches can arrive out of business-time order across repositories.
+# Compare each ticket with its own snapshot, not the global timestamp watermark.
+# Normalize timestamps in Python with the same parser used for snapshot writes.
+SELECT_TRACKED_PR_TIMESTAMPS = text(
     """
-    SELECT DISTINCT g.repo, g.number
-    FROM github_tickets g
-    JOIN (
-      SELECT DISTINCT repo, pr_number
-      FROM ci_l1_pr_events
-    ) tracked
-      ON tracked.repo = g.repo
-     AND tracked.pr_number = g.number
-    WHERE g.type = 'pull'
-      AND g.updated_at > :last_ticket_updated_at
+    SELECT g.repo, g.number, g.updated_at, snapshot.event_time
+    FROM ci_l1_pr_events snapshot
+    JOIN github_tickets g
+      ON g.repo = snapshot.repo AND g.number = snapshot.pr_number
+    WHERE snapshot.event_key = 'pr_snapshot'
+      AND g.type = 'pull'
     """
 )
 
@@ -229,13 +228,11 @@ def _get_candidate_prs(
     for row in rows:
         candidates.add((str(row["repo_full_name"]), int(row["pr_number"])))
 
-    last_ticket_updated_at = watermark.get("last_ticket_updated_at")
-    if last_ticket_updated_at:
-        rows = connection.execute(
-            SELECT_UPDATED_TRACKED_PRS,
-            {"last_ticket_updated_at": last_ticket_updated_at},
-        ).mappings()
-        for row in rows:
+    rows = connection.execute(SELECT_TRACKED_PR_TIMESTAMPS).mappings()
+    for row in rows:
+        ticket_time = _parse_snapshot_time(row["updated_at"])
+        snapshot_time = _parse_snapshot_time(row["event_time"])
+        if ticket_time is not None and snapshot_time is not None and ticket_time > snapshot_time:
             candidates.add((str(row["repo"]), int(row["number"])))
 
     return candidates
@@ -295,7 +292,9 @@ def _build_snapshot_event(
     pr_number: int,
     branch_meta: Mapping[str, Any],
 ) -> dict[str, Any] | None:
-    event_time = _parse_datetime(ticket.get("updated_at")) or _parse_datetime(ticket.get("created_at"))
+    event_time = _parse_snapshot_time(ticket.get("updated_at")) or _parse_snapshot_time(
+        ticket.get("created_at")
+    )
     if event_time is None:
         return None
     return {
@@ -498,6 +497,12 @@ def _parse_datetime(value: Any) -> datetime | None:
             return None
         return _to_naive_utc(datetime.fromisoformat(raw.replace("Z", "+00:00")))
     return None
+
+
+def _parse_snapshot_time(value: Any) -> datetime | None:
+    # event_time is DATETIME(0); truncate before writing so MySQL cannot round up.
+    parsed = _parse_datetime(value)
+    return parsed.replace(microsecond=0) if parsed is not None else None
 
 
 def _to_naive_utc(value: datetime) -> datetime:

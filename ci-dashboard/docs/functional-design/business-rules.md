@@ -70,6 +70,9 @@ Explicit exclusion:
 - allow missing `github_tickets` rows without failing the job
 - retry build-linked PRs without a `pr_snapshot` independently of the build/ticket watermarks, including Jenkins-only builds without a `source_prow_row_id`
 - use the existing idempotent upsert when a previously missing ticket becomes available; no new build or newer ticket timestamp is required
+- refresh an existing snapshot whenever that PR's source `updated_at` is newer than its snapshot `event_time` after parsing both as UTC-naive timestamps and truncating to whole seconds, even if the update arrives behind another PR's global ticket timestamp; no new build is required
+- truncate snapshot timestamps to whole seconds before writing to the second-precision `event_time` column; unchanged fractional or offset timestamps must not trigger repeated rewrites
+- retain `last_ticket_updated_at` as the maximum observed ticket timestamp for reporting, not as a completeness filter across independently imported repositories
 - when the source PR ticket row is missing, keep build-side PR metadata incomplete rather than fabricating fallback values
 - V1 does not require PR-event completeness for `pingcap/docs`, `pingcap/docs-cn`, or `PingCAP-QE/ci`
 - short source lag on `github_tickets` is acceptable in V1
@@ -125,6 +128,8 @@ All jobs must:
 - process incremental data above the watermark or touched since the watermark, plus explicit completeness retries such as build-linked PRs missing a snapshot
 - upsert by logical unique key
 - update watermark only after successful write transaction
+- keep the completed new-build high-water mark separate from the cursor through a pending historical PR/case refresh; historical work must not move the new-build high-water mark backward or make unrelated old builds appear new
+- freeze a pending refresh's source targets until its selected work is complete; later source changes belong to a subsequent refresh
 - never mutate upstream source tables
 
 ## BR-10: Local Testability

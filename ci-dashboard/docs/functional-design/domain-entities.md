@@ -50,7 +50,7 @@ Key fields:
 | `repo` | normalized repo string such as `pingcap/tidb` |
 | `pr_number` | PR number |
 | `event_key` | idempotent logical event id |
-| `event_time` | normalized event timestamp |
+| `event_time` | normalized event timestamp; snapshots use UTC-naive whole seconds, truncated before writing |
 | `event_type` | `pr_snapshot`, `committed`, or `retest_comment` |
 | `comment_id` | comment id when event is a comment |
 | `comment_body` | raw comment body for auditability |
@@ -92,7 +92,14 @@ Watermark shapes:
 
 - `ci-sync-builds`: `{"last_source_prow_row_id": N}`
 - `ci-sync-pr-events`: `{"last_ticket_updated_at": "...", "last_build_source_prow_row_id_seen": N}`
-- `ci-refresh-build-derived`: `{"last_processed_build_id": N, "last_processed_pr_event_updated_at": "...", "last_processed_case_report_time": "...", "pending_refresh": false, "pending_target_build_id": null, "pending_target_pr_event_updated_at": null, "pending_target_case_report_time": null}`
+- `ci-refresh-build-derived`: `{"last_processed_build_id": N, "last_processed_pr_event_updated_at": "...", "last_processed_case_report_time": "...", "last_processed_case_run_derived_id": N, "pending_refresh": false, "pending_after_build_id": null, "pending_target_build_id": null, "pending_target_pr_event_updated_at": null, "pending_target_case_report_time": null}`
+
+Progress semantics:
+
+- PR sync keeps `last_ticket_updated_at` as the maximum observed source business timestamp; existing PR updates are selected against each PR's own snapshot instead of this global maximum.
+- Derived refresh keeps `last_processed_build_id` monotonic for completed new builds. `pending_after_build_id` is a separate cursor through the pending historical PR/case impact set, bounded by frozen `pending_target_*` values.
+- Legacy pending state without `pending_after_build_id` resumes from its existing build cursor conservatively; it may finish one previously enlarged sweep but does not skip its remaining rows. No schema migration or manual watermark rewrite is required.
+- Do not mix old and new derived-refresh workers or roll back to cursor-unaware code during a pending sweep: the old code cannot interpret the separate historical cursor.
 
 Current implementation status:
 

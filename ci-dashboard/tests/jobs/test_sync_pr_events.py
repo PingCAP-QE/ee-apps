@@ -223,6 +223,91 @@ def test_sync_pr_events_refreshes_tracked_prs_when_ticket_changes(sqlite_engine)
 
 
 @pytest.mark.parametrize("source_prow_row_id", [1, None], ids=["prow", "jenkins-only"])
+@pytest.mark.parametrize(
+    "ticket_updated_at",
+    [
+        "2026-04-14 11:00:00",
+        "2026-04-14 11:00:00.400",
+        "2026-04-14 11:00:00.600",
+        "2026-04-14T19:00:00.400+08:00",
+        "2026-04-14 06:00:00.600-05:00",
+    ],
+    ids=["seconds", "fraction-low", "fraction-high", "positive-offset", "negative-offset"],
+)
+def test_sync_pr_events_refreshes_late_update_behind_global_watermark(
+    sqlite_engine,
+    source_prow_row_id: int | None,
+    ticket_updated_at: str,
+) -> None:
+    _insert_build(sqlite_engine, source_prow_row_id=source_prow_row_id)
+    _insert_ticket(
+        sqlite_engine,
+        updated_at="2026-04-14 10:59:59",
+        branches={"base": {"ref": "master"}, "head": {"sha": "old"}},
+    )
+    _insert_build(
+        sqlite_engine,
+        source_prow_row_id=10,
+        source_prow_job_id="newer-ticket-build",
+        repo_full_name="pingcap/tiflash",
+    )
+    _insert_ticket(sqlite_engine, repo="pingcap/tiflash", updated_at="2026-04-15 11:00:00")
+    first_summary = run_sync_pr_events(sqlite_engine, _settings())
+    assert first_summary.last_ticket_updated_at == "2026-04-15 11:00:00"
+
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE github_tickets
+                SET updated_at = :updated_at,
+                    branches = :branches,
+                    timeline = :timeline
+                WHERE repo = 'pingcap/tidb' AND number = 101
+                """
+            ),
+            {
+                "updated_at": ticket_updated_at,
+                "branches": json.dumps({"base": {"ref": "release-8.5"}, "head": {"sha": "new"}}),
+                "timeline": json.dumps([
+                    {"event": "committed", "sha": "new", "committer": {"date": "2026-04-14T09:00:00Z"}},
+                    {"event": "commented", "id": 55, "body": "/retest", "created_at": "2026-04-14T09:05:00Z"},
+                ]),
+            },
+        )
+
+    second_summary = run_sync_pr_events(sqlite_engine, _settings(batch_size=1))
+    repeat_summary = run_sync_pr_events(sqlite_engine, _settings())
+
+    assert second_summary.candidate_prs == 1
+    assert second_summary.ticket_rows_fetched == 1
+    assert second_summary.events_written == 3
+    assert second_summary.last_ticket_updated_at == "2026-04-15 11:00:00"
+    assert second_summary.last_build_source_prow_row_id_seen == 10
+    assert repeat_summary.candidate_prs == 0
+    assert repeat_summary.events_written == 0
+    with sqlite_engine.begin() as connection:
+        snapshot = connection.execute(
+            text(
+                """
+                SELECT event_time, target_branch, head_sha
+                FROM ci_l1_pr_events
+                WHERE repo = 'pingcap/tidb' AND pr_number = 101 AND event_key = 'pr_snapshot'
+                """
+            )
+        ).one()
+        assert snapshot == ("2026-04-14 11:00:00", "release-8.5", "new")
+        assert set(connection.execute(
+            text(
+                """
+                SELECT event_key FROM ci_l1_pr_events
+                WHERE repo = 'pingcap/tidb' AND pr_number = 101
+                """
+            )
+        ).scalars()) == {"pr_snapshot", "committed:new:2026-04-14T09:00:00", "retest_comment:55"}
+
+
+@pytest.mark.parametrize("source_prow_row_id", [1, None], ids=["prow", "jenkins-only"])
 @pytest.mark.parametrize("ticket_updated_at", ["2026-04-13 11:00:00", "2026-04-15 11:00:00"])
 def test_sync_pr_events_recovers_late_ticket_without_new_build(
     sqlite_engine,
