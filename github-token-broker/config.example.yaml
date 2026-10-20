@@ -1,0 +1,102 @@
+server:
+  address: ":8080"
+  read_timeout: 10s
+  write_timeout: 30s
+  shutdown_timeout: 10s
+
+github:
+  # Set to the GitHub App ID used for this deployment.
+  app_id: 123456
+  private_key_path: /etc/github-token-broker/private-key.pem
+  api_url: https://api.github.com
+  request_timeout: 30s
+  # Optional: used when the App is not installed for a repository.
+  # Prefer mounting the token from a Secret at fallback_pat_file over inlining it.
+  # fallback_pat_file: /etc/github-token-broker/fallback-pat
+
+cache:
+  ttl_margin: 5m
+  max_entries: 1000
+
+rate_limit:
+  # Per-caller fixed window; 0 disables the limit.
+  per_minute: 120
+
+reload:
+  # Poll interval for configuration/policy file changes. Set disabled: true to turn off.
+  interval: 5s
+
+auth:
+  # Empty kubernetes_api_url means in-cluster discovery.
+  # kubernetes_api_url: https://kubernetes.default.svc
+  token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+  ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  request_timeout: 10s
+
+# Access is denied by default. Each rule matches one Kubernetes
+# namespace/serviceaccount and lists the owners/repositories it may use.
+# The policy can also be read from a separate file (for example a mounted
+# Secret) to keep it out of the GitOps repository:
+#   file: /etc/github-token-broker/policy/policy.yaml
+# When `file` is set it takes precedence over the inline rules below.
+policy:
+  rules:
+    # Tekton checkout + build steps (read-only, may cover submodules).
+    - caller:
+        namespace: ci
+        service_account: checkout
+      allow:
+        - owner: example-org
+          repositories: ["*"]
+          max_permissions:
+            contents: read
+    # Build steps (read-only; may cover submodules).
+    - caller:
+        namespace: ci
+        service_account: builder
+      allow:
+        - owner: example-org
+          repositories: ["*"]
+          max_permissions:
+            contents: read
+    # Build service: ref resolution and pull requests.
+    - caller:
+        namespace: ci
+        service_account: build-service
+      allow:
+        - owner: example-org
+          repositories: ["example-repo", "another-repo", "tools-repo"]
+          max_permissions:
+            contents: write
+            pull_requests: write
+    # Chatops: Actions dispatch and read-only lookups.
+    - caller:
+        namespace: ci
+        service_account: chatops
+      allow:
+        - owner: example-org
+          repositories: ["tools-repo"]
+          max_permissions:
+            actions: write
+        - owner: "*"
+          repositories: ["*"]
+          max_permissions:
+            members: read
+    # Dashboard: issue sync.
+    - caller:
+        namespace: ci
+        service_account: dashboard
+      allow:
+        - owner: "*"
+          repositories: ["*"]
+          max_permissions:
+            issues: write
+    # Jenkins agents run in their own namespace; adjust namespace/name to match.
+    - caller:
+        namespace: jenkins
+        service_account: jenkins-agent
+      allow:
+        - owner: example-org
+          repositories: ["example-repo"]
+          max_permissions:
+            contents: read
