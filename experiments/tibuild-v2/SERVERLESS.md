@@ -15,7 +15,9 @@ Use the existing `/devbuild trigger` command and build ID queries:
 The compatibility `version` value is received, saved, passed to CloudEvents and
 shown as request metadata. It never overrides Git version inference or image
 tags. Actual version, fixed commit SHA, image tags, platform artifacts and
-checksum file addresses are reported from pipeline results.
+checksum file addresses reuse existing PipelineRun parameters and artifact results.
+The actual version is read from the existing `get-release-ver` TaskRun `version`
+result; the Pipeline results contract is unchanged.
 
 Supported platforms: `linux` (two events: amd64 and arm64), `linux/amd64`,
 `linux/arm64`. Empty platform defaults to Linux on both architectures. Unsupported

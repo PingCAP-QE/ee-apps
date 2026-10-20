@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 	"github.com/google/go-github/v69/github"
@@ -188,13 +190,14 @@ func TestServerlessProcessingStillRefreshesReports(t *testing.T) {
 	pr.Spec.Params = tknv1.Params{{Name: "os", Value: *tknv1.NewStructuredValues("linux")}, {Name: "arch", Value: *tknv1.NewStructuredValues("amd64")}, {Name: "git-revision", Value: *tknv1.NewStructuredValues(serverlessTestSHA)}}
 	pr.Status.Conditions = append(pr.Status.Conditions, knative.Condition{Type: knative.ConditionSucceeded, Status: "True"})
 	pr.Status.Results = []tknv1.PipelineRunResult{{Name: "pushed-images", Value: *tknv1.NewStructuredValues("images:\n- repo: registry/image\n  tag: main-0123456_linux_amd64")}}
-	require.NoError(t, s.updateBuildFromPipelineRuns(ctx, build, []tknv1.PipelineRun{pr}))
+	require.NoError(t, s.updateBuildFromPipelineRuns(ctx, build, []tknv1.PipelineRun{pr}, "v8.5.3-alpha.0"))
 	updated, err := db.DevBuild.Get(ctx, build.ID)
 	require.NoError(t, err)
 	require.Equal(t, "PROCESSING", updated.Status)
 	require.Len(t, updated.TektonStatus.Pipelines, 1)
 	require.Len(t, updated.BuildReport.Images, 1)
 	require.Equal(t, serverlessTestSHA, updated.BuildReport.GitHash)
+	require.Equal(t, "v8.5.3-alpha.0", updated.BuildReport.PrintedVersion)
 	require.True(t, updated.PipelineEndAt.IsZero())
 }
 
@@ -203,4 +206,97 @@ func TestServerlessNotificationSeparatesRequestedVersion(t *testing.T) {
 	require.Equal(t, "v99.0.0", info.Version)
 	require.Equal(t, "v8.5.3-pre", info.ActualVersion)
 	require.Equal(t, serverlessTestSHA, info.GitSha)
+}
+
+func TestServerlessVersionUsesExistingTaskResults(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		status    int
+		body      string
+		want      string
+		wantError bool
+	}{
+		{"computed", http.StatusOK, `{"items":[{"status":{"results":[{"name":"version","value":"v8.5.3-alpha.0"}]}},{"status":{"results":[{"name":"version","value":"v8.5.3-alpha.0"}]}}]}`, "v8.5.3-alpha.0", false},
+		{"not ready", http.StatusOK, `{"items":[]}`, "", false},
+		{"different platforms", http.StatusOK, `{"items":[{"status":{"results":[{"name":"version","value":"v8.5.3-alpha.0"}]}},{"status":{"results":[{"name":"version","value":"v8.5.4"}]}}]}`, "", true},
+		{"query failure", http.StatusForbidden, `{}`, "", true},
+		{"invalid response", http.StatusOK, `{`, "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, "/apis/tekton.dev/v1/taskruns/", r.URL.Path)
+				require.Equal(t, "tekton.dev/pipelineTask=get-release-ver,tekton.dev/pipelineRun in (run-amd64,run-arm64)", r.URL.Query().Get("labelSelector"))
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			s := &devbuildsrvc{dashboardURL: server.URL, httpClient: server.Client()}
+			runs := make([]tknv1.PipelineRun, 2)
+			runs[0].Name, runs[1].Name = "run-amd64", "run-arm64"
+			version, err := s.queryReleaseVersion(context.Background(), runs)
+			if tc.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tc.want, version)
+		})
+	}
+}
+
+func TestServerlessReconcileKeepsPipelineResultsUnchanged(t *testing.T) {
+	db := serverlessTestDB(t)
+	ctx := context.Background()
+	build, err := db.DevBuild.Create().SetProduct("tidb-cse").SetPlatform(LinuxAmd64).
+		SetVersion("v99.0.0").SetGitHash(serverlessTestSHA).SetStatus("PROCESSING").
+		SetTektonStatus(schema.TektonStatus{TriggersEventIds: []string{"test-event"}}).Save(ctx)
+	require.NoError(t, err)
+	var pr tknv1.PipelineRun
+	pr.Name = "test-pipeline"
+	pr.Spec.Params = tknv1.Params{
+		{Name: "os", Value: *tknv1.NewStructuredValues("linux")},
+		{Name: "arch", Value: *tknv1.NewStructuredValues("amd64")},
+		{Name: "git-revision", Value: *tknv1.NewStructuredValues(serverlessTestSHA)},
+	}
+	pr.Status.Conditions = append(pr.Status.Conditions, knative.Condition{Type: knative.ConditionSucceeded, Status: "True"})
+	pr.Status.Results = []tknv1.PipelineRunResult{
+		{Name: "pushed-images", Value: *tknv1.NewStructuredValues("images:\n- repo: test/image\n  tag: main-0123456_linux_amd64")},
+		{Name: "pushed-binaries", Value: *tknv1.NewStructuredValues("oci:\n  repo: test/package\n  tag: main-0123456_linux_amd64\nfiles: [binary.tar.gz, binary.tar.gz.sha256]")},
+	}
+	var versionReady atomic.Bool
+	const taskVersion = "v8.5.3-alpha.0"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/apis/tekton.dev/v1/pipelineruns/":
+			_ = json.NewEncoder(w).Encode(tknv1.PipelineRunList{Items: []tknv1.PipelineRun{pr}})
+		case "/apis/tekton.dev/v1/taskruns/":
+			if !versionReady.Load() {
+				_, _ = w.Write([]byte(`{"items":[]}`))
+			} else {
+				_, _ = w.Write([]byte(`{"items":[{"status":{"results":[{"name":"version","value":"` + taskVersion + `"}]}}]}`))
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	logger := zerolog.Nop()
+	s := &devbuildsrvc{dbClient: db, logger: &logger, dashboardURL: server.URL,
+		httpClient: server.Client(), reconcilerSince: time.Hour}
+	s.Reconcile(ctx)
+	updated, err := db.DevBuild.Get(ctx, build.ID)
+	require.NoError(t, err)
+	require.Equal(t, "PROCESSING", updated.Status)
+	require.Len(t, updated.BuildReport.Images, 1)
+	versionReady.Store(true)
+	s.Reconcile(ctx)
+	updated, err = db.DevBuild.Get(ctx, build.ID)
+	require.NoError(t, err)
+	require.Equal(t, "SUCCESS", updated.Status)
+	require.Equal(t, "v99.0.0", updated.Version)
+	require.Equal(t, taskVersion, updated.BuildReport.PrintedVersion)
+	require.Equal(t, serverlessTestSHA, updated.BuildReport.GitHash)
+	require.Len(t, updated.BuildReport.Images, 1)
+	require.Len(t, updated.BuildReport.Binaries, 1)
 }

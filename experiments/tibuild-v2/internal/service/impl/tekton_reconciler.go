@@ -27,8 +27,9 @@ var terminalStatuses = []string{"SUCCESS", "FAILURE", "ERROR", "ABORTED"}
 type (
 	// buildReconcileData holds the data needed to reconcile a single build.
 	buildReconcileData struct {
-		Build        *ent.DevBuild
-		PipelineRuns []tknv1.PipelineRun
+		Build          *ent.DevBuild
+		PipelineRuns   []tknv1.PipelineRun
+		ReleaseVersion string
 	}
 
 	// YAML format types for parsing PipelineRun result values.
@@ -93,13 +94,21 @@ func (s *devbuildsrvc) Reconcile(ctx context.Context) {
 		}
 
 		if len(allRuns) > 0 {
-			pending = append(pending, buildReconcileData{Build: build, PipelineRuns: allRuns})
+			data := buildReconcileData{Build: build, PipelineRuns: allRuns}
+			if isServerlessProduct(build.Product) {
+				version, err := s.queryReleaseVersion(ctx, allRuns)
+				if err != nil {
+					s.logger.Err(err).Int("build_id", build.ID).Msg("failed to query release version")
+				}
+				data.ReleaseVersion = version
+			}
+			pending = append(pending, data)
 		}
 	}
 
 	// Phase 2: Update DB for builds that have PipelineRun data (fast, minimal lock time).
 	for _, data := range pending {
-		if err := s.updateBuildFromPipelineRuns(ctx, data.Build, data.PipelineRuns); err != nil {
+		if err := s.updateBuildFromPipelineRuns(ctx, data.Build, data.PipelineRuns, data.ReleaseVersion); err != nil {
 			s.logger.Err(err).Int("build_id", data.Build.ID).Msg("failed to reconcile build")
 		}
 	}
@@ -135,16 +144,62 @@ func (s *devbuildsrvc) queryPipelineRuns(ctx context.Context, eventID string) ([
 	return pipelineRunList.Items, nil
 }
 
+// queryReleaseVersion reads the existing version Task result without extending Pipeline results.
+func (s *devbuildsrvc) queryReleaseVersion(ctx context.Context, runs []tknv1.PipelineRun) (string, error) {
+	names := make([]string, 0, len(runs))
+	for _, run := range runs {
+		names = append(names, run.Name)
+	}
+	selector := "tekton.dev/pipelineTask=get-release-ver,tekton.dev/pipelineRun in (" + strings.Join(names, ",") + ")"
+	apiURL := fmt.Sprintf("%s/apis/tekton.dev/v1/taskruns/?labelSelector=%s", s.dashboardURL, url.QueryEscape(selector))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("version TaskRun query returned HTTP %d", resp.StatusCode)
+	}
+	var tasks tknv1.TaskRunList
+	if err := json.NewDecoder(resp.Body).Decode(&tasks); err != nil {
+		return "", err
+	}
+	version := ""
+	for _, task := range tasks.Items {
+		for _, result := range task.Status.Results {
+			if result.Name != "version" || result.Value.StringVal == "" {
+				continue
+			}
+			if version != "" && version != result.Value.StringVal {
+				return "", fmt.Errorf("platform version mismatch: %s != %s", version, result.Value.StringVal)
+			}
+			version = result.Value.StringVal
+		}
+	}
+	return version, nil
+}
+
 // updateBuildFromPipelineRuns updates a build's status based on PipelineRun status.
-func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *ent.DevBuild, pipelineRuns []tknv1.PipelineRun) error {
+func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *ent.DevBuild, pipelineRuns []tknv1.PipelineRun, releaseVersion string) error {
 	if len(pipelineRuns) == 0 {
 		return nil
 	}
 
 	// Determine overall status from PipelineRuns
 	newStatus := determineBuildStatus(build, pipelineRuns)
+	// Wait for the existing version Task result while still refreshing artifact reports.
+	if isServerlessProduct(build.Product) && newStatus == "SUCCESS" && releaseVersion == "" {
+		newStatus = "PROCESSING"
+	}
 	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus, s.dashboardURL)
 	buildReport := buildBuildReport(pipelineRuns)
+	if releaseVersion != "" && buildReport != nil {
+		buildReport.PrintedVersion = releaseVersion
+	}
 	if newStatus == "" || (newStatus == build.Status && reflect.DeepEqual(tektonStatus, build.TektonStatus) && (buildReport == nil || reflect.DeepEqual(*buildReport, build.BuildReport))) {
 		return nil
 	}
@@ -391,12 +446,7 @@ func buildBuildReport(pipelineRuns []tknv1.PipelineRun) *schema.BuildReport {
 					})
 					hasData = true
 				}
-			case "git-revision":
-				if isHex(r.Value.StringVal) {
-					report.GitHash = r.Value.StringVal
-					hasData = true
-				}
-			case "printed-version", "release-version":
+			case "printed-version":
 				if report.PrintedVersion == "" {
 					report.PrintedVersion = r.Value.StringVal
 					hasData = true
