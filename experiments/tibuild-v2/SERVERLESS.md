@@ -48,3 +48,36 @@ Docker daemon is unavailable. Before rollout, verify branch/tag/PR/SHA requests,
 single and dual-platform completion, artifact download/checksums and final Lark
 cards against the staged service and Tekton route revisions. Do not enable source
 publisher cutovers or formal distribution on the basis of unit tests alone.
+
+## Isolated native integration test
+
+`TestServerlessStagedDevbuild` is opt-in and uses the generated Goa HTTP client
+and server, an in-memory SQLite database, real GitHub ref resolution, an isolated
+Tekton EventListener, the Dashboard API reconciler and rendered Lark card JSON.
+It creates actual dev artifacts. Configure the listener with copies of the
+Serverless triggers carrying **different `type` labels** from the live listeners,
+a pinned artifacts revision, a validation-only pipeline, local checkout baseline
+tags and delivery disabled. Do not point this test at the production listener.
+No production database or Lark messages are used.
+
+Supply `GH_TOKEN` at runtime and set:
+
+```sh
+export SERVERLESS_STAGE_EVENTLISTENER=http://127.0.0.1:18080
+export SERVERLESS_STAGE_DASHBOARD=http://127.0.0.1:19097
+export SERVERLESS_STAGE_CONFIRM=isolated-dev-only
+export SERVERLESS_STAGE_PRODUCT=cassandra-on-mysql
+export SERVERLESS_STAGE_GIT_REF=branch/master
+export SERVERLESS_STAGE_PLATFORM=linux
+# Optional existing download endpoint and evidence output directory:
+export SERVERLESS_STAGE_DOWNLOAD_URL=https://prow.tidb.net/dl/oci-file
+export SERVERLESS_STAGE_OUTPUT=/tmp/serverless-stage-evidence
+go test ./internal/service/impl -run '^TestServerlessStagedDevbuild$' -count=1 -v -timeout 50m
+```
+
+Repeat with PR, tag and commit inputs after their Git refs exist. The test checks
+fixed SHA, one event/run per requested platform, complete result collection,
+Git-derived version independent of `v99.0.0` request metadata, API artifact URLs
+and rendered card content. Save the evidence before the cluster pruner removes
+runs. Tag creation on merged cutover commits, deployed service/chatops images,
+actual Lark delivery and formal controller distribution remain rollout checks.
