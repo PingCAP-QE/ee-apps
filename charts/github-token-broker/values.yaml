@@ -1,0 +1,133 @@
+# Default values for github-token-broker.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/pingcap-qe/ee-apps/github-token-broker
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# The broker authenticates callers with TokenReview, so its ServiceAccount
+# needs permission to create authentication.k8s.io/tokenreviews.
+rbac:
+  create: true
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 80
+
+server:
+  address: ":8080"
+  readTimeout: 10s
+  writeTimeout: 30s
+  shutdownTimeout: 10s
+
+logLevel: info
+
+github:
+  # Set to the GitHub App ID used for this deployment.
+  appId: 123456
+  apiUrl: https://api.github.com
+  requestTimeout: 30s
+  credentialsSecret:
+    # Secret containing the App private key. Create it with External Secrets.
+    name: github-app-credentials
+    key: privateKey.pem
+  fallback:
+    # Optional PAT used when the App is not installed for an owner.
+    enabled: false
+    secretName: github-token-broker-fallback-pat
+    key: pat
+
+cache:
+  ttlMargin: 5m
+  maxEntries: 1000
+
+auth:
+  # Empty means in-cluster discovery.
+  kubernetesApiUrl: ""
+  tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+  caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+  requestTimeout: 10s
+
+rateLimit:
+  perMinute: 120
+
+reload:
+  # Poll interval for configuration/policy file changes.
+  disabled: false
+  interval: 5s
+
+# Access is denied by default. Keys use the broker configuration names.
+policy:
+  # Inline policy. Ignored when `file` or an existing Secret/ConfigMap is set.
+  rules:
+    - caller:
+        namespace: ci
+        service_account: checkout
+      allow:
+        - owner: example-org
+          repositories: ["*"]
+          max_permissions:
+            contents: read
+  # Optional path to a policy file (top-level `rules:`), e.g. a mounted Secret.
+  # file: /etc/github-token-broker/policy/policy.yaml
+  # Mount an existing Secret/ConfigMap containing the policy file instead of
+  # keeping the rules in this values file. The file is mounted at
+  # /etc/github-token-broker/policy/<key>.
+  existingSecret: ""
+  existingConfigMap: ""
+  key: policy.yaml
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+networkPolicy:
+  enabled: true
+  # Callers are expected to live in these namespaces.
+  ingressNamespaces:
+    - ci
+  # Empty means unrestricted egress. Restrict to the GitHub API in production.
+  egress: []
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  additionalLabels: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
