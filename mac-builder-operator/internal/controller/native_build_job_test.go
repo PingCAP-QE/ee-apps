@@ -302,6 +302,45 @@ func TestCloneAndCheckoutSourceWithRefspecAndGitSha(t *testing.T) {
 	}
 }
 
+func TestCloneAndCheckoutSourceAttachesContainingBranch(t *testing.T) {
+	t.Parallel()
+
+	repoDir := t.TempDir()
+	runGit(t, repoDir, "init", "-b", "master")
+	runGit(t, repoDir, "config", "user.name", "Tester")
+	runGit(t, repoDir, "config", "user.email", "tester@example.com")
+	if err := os.WriteFile(filepath.Join(repoDir, "README.md"), []byte("repo\n"), 0o644); err != nil {
+		t.Fatalf("write repo file: %v", err)
+	}
+	runGit(t, repoDir, "add", ".")
+	runGit(t, repoDir, "commit", "-m", "initial")
+	runGit(t, repoDir, "branch", "release-8.5")
+
+	sha := strings.TrimSpace(runGit(t, repoDir, "rev-parse", "release-8.5"))
+	macBuild := newTestMacBuild()
+	macBuild.Spec.Source = buildv1alpha1.SourceSpec{
+		GitRepository: repoDir,
+		GitRef:        "release-8.5",
+		GitSha:        &sha,
+	}
+
+	job := newNativeBuildJob(context.Background(), macBuild, ArtifactsScriptSourceConfig{})
+	if err := job.setupWorkspace(); err != nil {
+		t.Fatalf("setup workspace: %v", err)
+	}
+	defer job.cleanup()
+
+	if _, err := job.cloneAndCheckoutSource(); err != nil {
+		t.Fatalf("clone and checkout: %v", err)
+	}
+
+	repoCopy := filepath.Join(job.sourceDir, macBuild.Spec.Build.Component)
+	branches := runGit(t, repoCopy, "branch", "--contains", "HEAD")
+	if !strings.Contains(branches, "release-8.5") {
+		t.Fatalf("expected local release-8.5 branch to contain HEAD, got %q", branches)
+	}
+}
+
 func TestCloneAndCheckoutSourceRemovesMaterializedCredentialsOnFailure(t *testing.T) {
 	t.Parallel()
 

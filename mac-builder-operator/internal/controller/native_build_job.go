@@ -301,10 +301,6 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 		return "", fmt.Errorf("failed to checkout source: %w", err)
 	}
 
-	if err := j.initSourceSubmodules(creds, toCloneDir); err != nil {
-		return "", err
-	}
-
 	// Get the final commit hash
 	cmdHash := exec.Command("git", "rev-parse", "HEAD")
 	cmdHash.Dir = toCloneDir
@@ -313,8 +309,52 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 		return "", fmt.Errorf("failed to get commit hash: %w", err)
 	}
 	commitHash := strings.TrimSpace(string(hashBytes))
+
+	if err := j.attachLocalBranch(creds, toCloneDir, commitHash); err != nil {
+		return "", err
+	}
+
+	if err := j.initSourceSubmodules(creds, toCloneDir); err != nil {
+		return "", err
+	}
+
 	j.logger.Info("Source checked out", "commitHash", commitHash)
 	return commitHash, nil
+}
+
+// attachLocalBranch recreates the local branch that Tekton's git-init creates
+// from the trigger's branch refspec. Build scripts use `git branch --contains`
+// to infer the release branch (for example monitoring's prepare_prometheus.sh);
+// with only a detached checkout that list is empty, so they fall back to an
+// empty or default ref. The branch is attached only when it contains the
+// checked-out commit, which excludes PR head commits and tags.
+func (j *nativeBuildJob) attachLocalBranch(creds *gitCredentials, dir, commit string) error {
+	branch := strings.TrimPrefix(j.spec.Source.GitRef, "refs/heads/")
+	if branch == "" || strings.HasPrefix(j.spec.Source.GitRef, "refs/tags/") {
+		return nil
+	}
+
+	// Nothing to do when checkout already landed on a local branch.
+	cmdHead := exec.Command("git", "symbolic-ref", "--quiet", "HEAD")
+	cmdHead.Dir = dir
+	if err := cmdHead.Run(); err == nil {
+		return nil
+	}
+
+	cmdContains := exec.Command("git", "merge-base", "--is-ancestor", commit, "refs/remotes/origin/"+branch)
+	cmdContains.Dir = dir
+	if err := cmdContains.Run(); err != nil {
+		// The ref is not a branch containing this commit (for example a tag or
+		// a PR head), so keep the detached checkout.
+		return nil
+	}
+
+	j.logger.Info("Attaching checked-out commit to local branch", "branch", branch, "commit", commit)
+	cmdBranch := j.gitCommand(creds, "branch", "-f", branch, commit)
+	if err := j.exec(cmdBranch, dir); err != nil {
+		return fmt.Errorf("failed to attach local branch %q: %w", branch, err)
+	}
+	return nil
 }
 
 // initSourceSubmodules initializes the source repo's git submodules. The Tekton
