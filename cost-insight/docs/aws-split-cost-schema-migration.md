@@ -487,6 +487,18 @@ dimensions, and
 unchanged. Thus rows that differ in split allocation scope or parent cannot
 collide during an unmatched-resource upsert.
 
+For AWS resource rows, the hash's `vendor_tags_json` is the compact summary
+routing set (`usedby`, `cluster`, `shared_pool`), not the full provider-label
+object. The final resource query must therefore aggregate at that same compact
+routing/resource grain, summing costs and usage across provider-label changes.
+It retains `MIN(vendor_tags_json)` as deterministic representative metadata and
+`MAX(source_export_time)` as freshness; provider-label variants must not become
+multiple rows that overwrite one storage hash. Explicit tenant, routing,
+workload, and canonical business dimensions still remain separate. Neither
+resource hashes nor source-summary hashes change, so repeated imports replace
+the aggregate rather than adding it again. Historical repair still uses bounded
+usage-date replacement and native-serving republication.
+
 > The raw attribution compatibility path mentioned below was retired after this
 > migration. It is retained here only to explain why the split-cost cutover was
 > designed exclusively around summary attribution.

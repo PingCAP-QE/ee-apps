@@ -1,10 +1,20 @@
+import json
 import re
 import sqlite3
 from contextlib import closing
-from datetime import date
+from datetime import UTC, date, datetime
+from decimal import Decimal
 
 import pytest
+from sqlalchemy import create_engine, text
 
+from cost_insight.jobs.materialize_resource_serving import build_resource_serving_rows
+from cost_insight.jobs.sync_gcp_billing_summary import _normalize_summary_row
+from cost_insight.jobs.sync_gcp_unmatched_resources import (
+    _normalize_resource_row,
+    replace_unmatched_resource_usage_dates,
+    write_unmatched_resource_rows,
+)
 from cost_insight.sources import aws_split_cost_export
 from cost_insight.sources.aws_split_cost_export import (
     _quote_bigquery_table,
@@ -82,24 +92,44 @@ def test_split_child_inherits_each_missing_parent_routing_tag() -> None:
     assert "COALESCE(child.shared_pool, parent.shared_pool) AS shared_pool" in query
 
 
-def _execute_split_branches(query: str, rows: list[dict]) -> list[dict]:
-    # Execute the generated normalization branches, before BQ-only final JSON/usage aggregation.
-    ctes = "parent_keys AS (" + query.split("parent_keys AS (", maxsplit=1)[1].split(
-        "\nSELECT\n  'aws' AS vendor,", maxsplit=1
-    )[0]
-    ctes = ctes.replace("r'(^|:)pod/'", "'(^|:)pod/'")
-    columns = sorted(set(re.findall(r"\braw\.(\w+)", ctes)))
+def _execute_split_branches(
+    query: str, rows: list[dict], *, aggregate: bool = False
+) -> list[dict]:
+    # Start from normalized raw fixtures, but execute the real final projection when requested.
+    sql = "parent_keys AS (" + query.split("parent_keys AS (", maxsplit=1)[1]
+    if not aggregate:
+        sql = sql.split("\nSELECT\n  'aws' AS vendor,", maxsplit=1)[0]
+        sql += " SELECT * FROM branch_rows"
+    sql = sql.replace("r'(^|:)pod/'", "'(^|:)pod/'")
+    columns = sorted(set(re.findall(r"\braw\.(\w+)", sql)))
+
+    class CountIf:
+        def __init__(self):
+            self.count = 0
+
+        def step(self, value):
+            self.count += bool(value)
+
+        def finalize(self):
+            return self.count
+
     with closing(sqlite3.connect(":memory:")) as connection:
         connection.row_factory = sqlite3.Row
         connection.create_function("STARTS_WITH", 2, lambda value, prefix: value.startswith(prefix))
         connection.create_function("REGEXP_CONTAINS", 2, lambda value, pattern: bool(re.search(pattern, value)))
         connection.create_function("GREATEST", 2, max)
+        connection.create_aggregate("COUNTIF", 1, CountIf)
+        connection.create_function("TO_JSON_STRING", 1, lambda value: value)
+        connection.create_function(
+            "JSON_STRIP_NULLS", 1,
+            lambda value: json.dumps({k: v for k, v in json.loads(value).items() if v is not None}),
+        )
         connection.execute(f"CREATE TABLE raw ({', '.join(columns)})")
         connection.executemany(
             f"INSERT INTO raw VALUES ({', '.join('?' for _ in columns)})",
             [[row.get(column) for column in columns] for row in rows],
         )
-        return [dict(row) for row in connection.execute(f"WITH {ctes} SELECT * FROM branch_rows")]
+        return [dict(row) for row in connection.execute(f"WITH {sql}")]
 
 
 @pytest.mark.parametrize(
@@ -190,6 +220,156 @@ def test_split_child_tenant_lineage_preserves_costs_and_business_labels(
     assert sum(row["list_cost"] for row in result) == 100 * len(parent_orgs) + 7
     assert sum(row["effective_cost"] for row in result) == 80 * len(parent_orgs) + 5
     assert sum(row["net_cost"] for row in result) == 80 * len(parent_orgs) + 5
+
+
+def _resource_label_snapshots(scope: str, amounts: tuple[str, str]) -> list[dict]:
+    resource = {
+        "direct": "i-direct", "eks_unallocated": "vol-tag-change",
+        "eks_pod": "arn:aws:eks:pod/tag-change", "split_child": "arn:aws:ecs:task/tag-change",
+    }[scope]
+    common = {
+        "account_id": "946646677266", "billing_account_id": "payer",
+        "usage_date": "2026-09-01", "export_partition_date": "2026-09-01",
+        "service_name": "AmazonEC2", "sku_name": "gp3-throughput", "region": "us-west-2",
+        "resource_id": resource, "resource_name": resource,
+        "org": "tenant-a", "cluster": "cluster-a", "shared_pool": "pool-a",
+        "author_fallback": "dbaas-control-plane-shoot", "pricing_unit": "hour",
+        "direct_list_cost": 0, "direct_effective_cost": 0,
+        "split_list_cost": 0, "split_effective_cost": 0,
+    }
+    is_child = scope in ("eks_pod", "split_child")
+    rows = []
+    for index, amount in enumerate(amounts):
+        tags = {"environment": "staging", "shared_pool": "pool-a"}
+        if index == 0:
+            tags["component"] = "pd"
+        row = {**common, "vendor_tags_json": json.dumps(tags, sort_keys=True),
+               "source_export_time": f"2026-09-01T{21 - 2 * index}:00:00Z"}
+        if is_child:
+            row.update(parent_resource_name="i-parent", org=None,
+                       namespace="tidb-test" if scope == "eks_pod" else None,
+                       split_list_cost=float(amount), split_effective_cost=(10 - index) / 1000,
+                       split_usage_amount=index + 2)
+        else:
+            row.update(direct_list_cost=float(amount), direct_effective_cost=(10 - index) / 1000,
+                       usage_amount=index + 2)
+        rows.append(row)
+    if is_child:
+        rows.append({**common, "resource_id": "i-parent", "resource_name": "i-parent",
+                     "direct_list_cost": 1, "direct_effective_cost": 0.8,
+                     "usage_amount": 24, "vendor_tags_json": '{}',
+                     "source_export_time": "2026-09-01T20:00:00Z"})
+    return rows
+
+
+def _resource_storage_engine():
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE cost_unmatched_resource_daily (
+              id INTEGER PRIMARY KEY, vendor TEXT, account_id TEXT, billing_account_id TEXT,
+              export_partition_date TEXT, usage_date TEXT, region TEXT, service_name TEXT,
+              sku_name TEXT, namespace TEXT, author TEXT, org TEXT, repo TEXT, target_branch TEXT,
+              vendor_tags_json TEXT, resource_name TEXT, resource_id TEXT, parent_resource_name TEXT,
+              source_allocation_scope TEXT, workload_name TEXT, workload_type TEXT, owner TEXT,
+              service TEXT, project TEXT, service_exec_id TEXT, usage_seconds REAL,
+              list_cost REAL, effective_cost REAL, credit_amount REAL, net_cost REAL,
+              source_export_time TEXT, source_row_hash TEXT, source_summary_row_hash TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(vendor, account_id, export_partition_date, source_row_hash)
+            )
+        """))
+    return engine
+
+
+@pytest.mark.parametrize("scope", ("direct", "eks_unallocated", "eks_pod", "split_child"))
+@pytest.mark.parametrize("replacement", (False, True), ids=("upsert", "replace-day"))
+@pytest.mark.parametrize("amounts", (("0.016287809", "0.015277778"), ("0.015277778", "0.015277778")))
+def test_split_resource_label_changes_conserve_cost_through_storage_and_serving(
+    scope: str, replacement: bool, amounts: tuple[str, str]
+) -> None:
+    raw = _resource_label_snapshots(scope, amounts)
+    query = build_aws_split_cost_unmatched_resource_query(billing_table="project.dataset.table")
+    resources = [_normalize_resource_row(row) for row in _execute_split_branches(query, raw, aggregate=True)]
+    summary_query = build_aws_split_cost_summary_query(billing_table="project.dataset.table")
+    summaries = [_normalize_summary_row(row) for row in _execute_split_branches(summary_query, raw, aggregate=True)]
+    metrics = ("list_cost", "effective_cost", "credit_amount", "net_cost")
+    expected = {metric: sum((row[metric] or Decimal() for row in summaries), Decimal()) for metric in metrics}
+    engine = _resource_storage_engine()
+    try:
+        for _ in range(2):
+            if replacement:
+                replace_unmatched_resource_usage_dates(
+                    engine, iter(resources), row_count=len(resources), vendor="aws",
+                    account_id="946646677266", usage_start_date=date(2026, 9, 1),
+                    usage_end_date=date(2026, 9, 1), dry_run=False, batch_size=1,
+                )
+            else:
+                write_unmatched_resource_rows(engine, resources, dry_run=False)
+            with engine.connect() as connection:
+                stored = [dict(row) for row in connection.execute(text(
+                    "SELECT * FROM cost_unmatched_resource_daily"
+                )).mappings()]
+            for metric in metrics:
+                actual = sum((Decimal(str(row[metric] or 0)) for row in stored), Decimal())
+                assert actual.quantize(Decimal("0.000000001")) == expected[metric]
+            assert len(stored) == len(resources)
+
+        assert len({row["source_row_hash"] for row in resources}) == len(resources)
+        summary_hashes = {row["source_row_hash"] for row in summaries}
+        assert {row["source_summary_row_hash"] for row in stored} <= summary_hashes
+        detail = next(row for row in resources if row["source_allocation_scope"] == scope)
+        assert detail["list_cost"] == sum(map(Decimal, amounts))
+        assert detail["usage_seconds"] == Decimal(18000)
+        assert detail["source_export_time"] == datetime(2026, 9, 1, 21, tzinfo=UTC).replace(tzinfo=None)
+        assert json.loads(detail["vendor_tags_json"])["component"] == "pd"
+        reverse = [_normalize_resource_row(row) for row in _execute_split_branches(query, raw[::-1], aggregate=True)]
+        assert sorted((r["source_row_hash"], r["vendor_tags_json"]) for r in reverse) == sorted(
+            (r["source_row_hash"], r["vendor_tags_json"]) for r in resources
+        )
+        sources = [{**row, "source_summary_row_hash": row["source_row_hash"],
+                    "source_fact_hash": row["source_row_hash"]} for row in summaries]
+        serving = build_resource_serving_rows(
+            source_rows=sources, detail_rows=stored, basis_key="native",
+            materialization_version="test", calculated_at=datetime(2026, 9, 2, tzinfo=UTC),
+        )
+        assert sum((row["fallback_list_cost"] for row in serving), Decimal()) == 0
+        for metric in metrics:
+            assert sum((row[metric] or Decimal() for row in serving), Decimal()) == expected[metric]
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("units", "seconds"),
+    ((("hour", "hour"), 18000), (("minute", "minute"), 300),
+     (("second", "second"), 5), (("gb-month", "gb-month"), None),
+     (("hour", "minute"), None), ((None, "hour"), None)),
+)
+def test_split_resource_label_rollup_only_combines_compatible_usage_units(units, seconds):
+    raw = _resource_label_snapshots("direct", ("0.016287809", "0.015277778"))
+    for row, unit in zip(raw, units):
+        row["pricing_unit"] = unit
+    query = build_aws_split_cost_unmatched_resource_query(billing_table="project.dataset.table")
+    result = _execute_split_branches(query, raw, aggregate=True)
+    assert len(result) == 1
+    assert result[0]["usage_seconds"] == seconds
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (("org", "tenant-b"), ("shared_pool", "pool-b"), ("cluster", "cluster-b"),
+     ("author_fallback", "other-author"), ("owner", "owner@example.com"),
+     ("project", "other-project"), ("resource_name", "vol-other")),
+)
+def test_split_resource_aggregation_keeps_routing_and_business_identities_separate(field, value):
+    raw = _resource_label_snapshots("eks_unallocated", ("0.016287809", "0.015277778"))
+    raw[1][field] = value
+    query = build_aws_split_cost_unmatched_resource_query(billing_table="project.dataset.table")
+    resources = [_normalize_resource_row(row) for row in _execute_split_branches(query, raw, aggregate=True)]
+    assert len(resources) == 2
+    assert len({row["source_row_hash"] for row in resources}) == 2
+    assert sum((row["list_cost"] for row in resources), Decimal()) == Decimal("0.031565587")
 
 
 def test_split_resource_query_keeps_parent_and_pod_identity() -> None:
