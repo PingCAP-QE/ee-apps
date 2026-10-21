@@ -159,6 +159,7 @@ type cloudEventSink struct {
 	mu       sync.Mutex
 	requests int
 	lastBody []byte
+	eventID  string
 }
 
 func (s *cloudEventSink) handle(w http.ResponseWriter, r *http.Request) {
@@ -166,8 +167,27 @@ func (s *cloudEventSink) handle(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.requests++
 	s.lastBody = body
+	eventID := s.eventID
 	s.mu.Unlock()
+
+	if eventID != "" {
+		// Return a CloudEvent so the client can capture an event ID.
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("ce-specversion", "1.0")
+		w.Header().Set("ce-id", eventID)
+		w.Header().Set("ce-source", "/test")
+		w.Header().Set("ce-type", "net.pingcap.tibuild.test")
+		_, _ = w.Write([]byte(`{}`))
+		return
+	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// setEventID makes the sink acknowledge events with the given CloudEvent ID.
+func (s *cloudEventSink) setEventID(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.eventID = id
 }
 
 func (s *cloudEventSink) reset() {

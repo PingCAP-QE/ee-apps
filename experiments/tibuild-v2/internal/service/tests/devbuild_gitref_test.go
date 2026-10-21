@@ -234,3 +234,110 @@ func TestRerunResolvesLegacyEmptyGitHash(t *testing.T) {
 	assert.Equal(t, 0, env.cloudEvents.count())
 	assert.Equal(t, 1, env.github.requestCount())
 }
+
+func TestRerunRejectsNonTerminalBuild(t *testing.T) {
+	env := setupTestEnv(t)
+	defer teardownTestEnv(env)
+
+	ctx := context.Background()
+	creator := "rerun-pending@test"
+
+	created, err := env.service.Create(ctx, gitRefCreatePayload(creator, "branch/master", false))
+	require.NoError(t, err)
+
+	_, err = env.service.Rerun(ctx, &devbuild.RerunPayload{ID: created.ID})
+
+	var badRequest *devbuild.DevBuildBadRequestError
+	require.ErrorAs(t, err, &badRequest)
+	assert.Contains(t, badRequest.Message, "only terminal builds")
+	assert.Equal(t, 1, countBuildsByCreator(t, env, creator))
+}
+
+func TestRerunLegacyRefUpstreamFailure(t *testing.T) {
+	env := setupTestEnv(t)
+	defer teardownTestEnv(env)
+
+	ctx := context.Background()
+	creator := "legacy-upstream@test"
+
+	db, err := ent.Open("sqlite3", env.cfg.Store.DSN)
+	require.NoError(t, err)
+	defer db.Close()
+
+	legacy, err := db.DevBuild.Create().
+		SetProduct("pd").
+		SetEdition("community").
+		SetGithubRepo("pingcap/pd").
+		SetGitRef("branch/master").
+		SetGitHash("").
+		SetStatus("SUCCESS").
+		SetCreatedBy(creator).
+		SetPlatform("linux/amd64").
+		SetCreatedAt(time.Now()).
+		Save(ctx)
+	require.NoError(t, err)
+
+	env.github.setFailStatus(500)
+	env.github.reset()
+	env.cloudEvents.reset()
+
+	_, err = env.service.Rerun(ctx, &devbuild.RerunPayload{ID: legacy.ID})
+
+	var internal *devbuild.DevBuildInternalServerError
+	require.ErrorAs(t, err, &internal)
+	assert.Equal(t, 500, internal.Code)
+	assert.Contains(t, internal.Message, "pingcap/pd")
+	assert.Equal(t, 1, countBuildsByCreator(t, env, creator))
+	assert.Equal(t, 0, env.cloudEvents.count())
+}
+
+func TestRerunNotFound(t *testing.T) {
+	env := setupTestEnv(t)
+	defer teardownTestEnv(env)
+
+	_, err := env.service.Rerun(context.Background(), &devbuild.RerunPayload{ID: 999999})
+
+	var notFound *devbuild.DevBuildNotFoundError
+	require.ErrorAs(t, err, &notFound)
+}
+
+func TestRerunReportsTriggerFailure(t *testing.T) {
+	env := setupTestEnv(t)
+	defer teardownTestEnv(env)
+
+	ctx := context.Background()
+	creator := "rerun-trigger-failure@test"
+
+	created, err := env.service.Create(ctx, gitRefCreatePayload(creator, "branch/master", false))
+	require.NoError(t, err)
+
+	terminal := devbuild.BuildStatus("SUCCESS")
+	_, err = env.service.Update(ctx, &devbuild.UpdatePayload{
+		ID:     created.ID,
+		Status: &devbuild.DevBuildStatus{Status: terminal},
+	})
+	require.NoError(t, err)
+
+	// A closed listener forces the CloudEvent delivery to fail.
+	env.cloudEventServer.Close()
+
+	_, err = env.service.Rerun(ctx, &devbuild.RerunPayload{ID: created.ID})
+
+	var internal *devbuild.DevBuildInternalServerError
+	require.ErrorAs(t, err, &internal)
+	assert.Equal(t, 500, internal.Code)
+	assert.Contains(t, internal.Message, "unable to trigger")
+}
+
+func TestCreateStoresTriggerEventIDs(t *testing.T) {
+	env := setupTestEnv(t)
+	defer teardownTestEnv(env)
+
+	env.cloudEvents.setEventID("evt-1")
+	creator := "event-id@test"
+
+	build, err := env.service.Create(context.Background(), gitRefCreatePayload(creator, "branch/master", false))
+	require.NoError(t, err)
+	require.NotNil(t, build.Status.TektonStatus)
+	assert.Contains(t, build.Status.TektonStatus.TriggersEventIDs, "evt-1")
+}
