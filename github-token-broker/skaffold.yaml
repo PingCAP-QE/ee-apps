@@ -8,7 +8,8 @@ build:
   artifacts:
     - image: github-token-broker
       ko:
-        fromImage: gcr.io/distroless/static
+        # Run as UID 65532 by default so Kubernetes runAsNonRoot checks pass.
+        fromImage: gcr.io/distroless/static:nonroot
         main: ./cmd/broker
         dependencies:
           paths:
