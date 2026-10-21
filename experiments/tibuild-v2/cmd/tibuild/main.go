@@ -135,7 +135,7 @@ func main() {
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", hotfix.ServiceName).Logger()
-			ghClient := impl.NewGitHubClient(cfg.Get().Github.Token)
+			ghClient := impl.NewGitHubClientWithConfig(cfg.Get().Github)
 			hotfixSvc = impl.NewHotfix(&logger, ghClient)
 
 			// Register hotfix config hot-reload handler.

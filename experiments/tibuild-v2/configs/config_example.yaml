@@ -10,7 +10,14 @@ store:
   dsn: "root:your-password@tcp(127.0.0.1:3306)/your_db_name?charset=utf8mb4&parseTime=True&loc=Local"
 
 github:
+  # Static fallback token. Keep this only for repositories not covered by the
+  # token broker; leave empty when the broker covers all required repositories.
   token: ""
+  # Optional in-cluster GitHub App token broker. When set, repository-scoped
+  # GitHub API requests use short-lived App installation tokens.
+  broker_url: ""
+  # Projected ServiceAccount token used to authenticate to the broker.
+  broker_token_file: "/var/run/secrets/kubernetes.io/serviceaccount/token"
 
 # Identity headers asserted by the trusted Envoy Gateway. These values are
 # optional; the service defaults to X-User-Id, X-User-Email and X-User-Name.

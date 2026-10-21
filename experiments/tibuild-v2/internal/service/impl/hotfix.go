@@ -37,7 +37,7 @@ func NewHotfix(logger *zerolog.Logger, ghClient *github.Client) hotfix.Service {
 // Reload updates the hotfix service configuration at runtime.
 func (s *hotfixsrvc) Reload(cfg *config.Service) {
 	s.logger.Info().Msg("hot-reloading hotfix configuration")
-	s.ghClient = github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token)
+	s.ghClient = NewGitHubClientWithConfig(cfg.Github)
 	s.logger.Info().Msg("hotfix configuration reloaded successfully")
 }
 
