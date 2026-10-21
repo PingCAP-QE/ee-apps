@@ -37,6 +37,9 @@ type ImageSync struct {
 
 type Github struct {
 	Token string `yaml:"token,omitempty" json:"token,omitempty"`
+	// APIURL overrides the GitHub API base URL (for tests or GitHub Enterprise).
+	// An empty value keeps the default https://api.github.com.
+	APIURL string `yaml:"api_url,omitempty" json:"api_url,omitempty"`
 	// BrokerURL enables repository-scoped tokens from the in-cluster broker.
 	// The static token is used as a fallback when the broker denies a request.
 	BrokerURL string `yaml:"broker_url,omitempty" json:"broker_url,omitempty"`

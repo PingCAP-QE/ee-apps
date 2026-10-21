@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -27,10 +28,24 @@ func NewGitHubClientWithConfig(cfg config.Github) *github.Client {
 		TokenFile:     cfg.BrokerTokenFile,
 		FallbackToken: cfg.Token,
 	})
-	return github.NewClient(&http.Client{
+	client := github.NewClient(&http.Client{
 		Transport: transport,
 		Timeout:   30 * time.Second,
 	})
+
+	// An explicit API base URL lets tests point at an httptest server and
+	// supports GitHub Enterprise deployments. Invalid values fall back to the
+	// default endpoint.
+	if cfg.APIURL != "" {
+		if u, err := url.Parse(cfg.APIURL); err == nil && u.Scheme != "" && u.Host != "" {
+			if !strings.HasSuffix(u.Path, "/") {
+				u.Path += "/"
+			}
+			client.BaseURL = u
+		}
+	}
+
+	return client
 }
 
 func getGhRefAndSha(ctx context.Context, ghClient *github.Client, fullRepo, reqGitRef string) (string, string) {
