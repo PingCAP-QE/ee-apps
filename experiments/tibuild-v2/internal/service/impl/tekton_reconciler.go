@@ -522,33 +522,12 @@ func determineBuildStatus(build *ent.DevBuild, runs []tknv1.PipelineRun) string 
 		}
 	}
 	for _, run := range runs {
-		bins, images := extractArtifactsFromResults(run.Status.Results, run.Spec.Params)
-		if len(images) == 0 || len(bins) == 0 {
+		_, images := extractArtifactsFromResults(run.Status.Results, run.Spec.Params)
+		if len(images) == 0 {
 			return "FAILURE"
 		}
 		for _, image := range images {
 			if at := strings.LastIndex(image.URL, ":"); at <= 0 || at <= strings.LastIndex(image.URL, "/") || at == len(image.URL)-1 {
-				return "FAILURE"
-			}
-		}
-		for _, binary := range bins {
-			if binary.Repo == "" || binary.Tag == "" || len(binary.Files) == 0 {
-				return "FAILURE"
-			}
-			files := map[string]bool{}
-			for _, file := range binary.Files {
-				files[file] = true
-			}
-			hasPayload := false
-			for _, file := range binary.Files {
-				if file != "" && !strings.HasSuffix(file, ".sha256") {
-					hasPayload = true
-				}
-				if !strings.HasSuffix(file, ".sha256") && !files[file+".sha256"] {
-					return "FAILURE"
-				}
-			}
-			if !hasPayload {
 				return "FAILURE"
 			}
 		}

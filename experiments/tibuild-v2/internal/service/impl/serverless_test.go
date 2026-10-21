@@ -113,6 +113,13 @@ func TestServerlessCompletionWaitsForAllRequestedPlatforms(t *testing.T) {
 	build := &ent.DevBuild{Product: "tidb-cse", Platform: "linux"}
 	require.Equal(t, "PROCESSING", determineBuildStatus(build, []tknv1.PipelineRun{am}))
 	require.Equal(t, "SUCCESS", determineBuildStatus(build, []tknv1.PipelineRun{am, ar}))
+	// Images can be built directly without separately published binaries.
+	am.Status.Results = am.Status.Results[:1]
+	ar.Status.Results = ar.Status.Results[:1]
+	require.Equal(t, "SUCCESS", determineBuildStatus(build, []tknv1.PipelineRun{am, ar}))
+	// The existing Task also represents skipped binaries as a quoted empty object.
+	am.Status.Results = append(am.Status.Results, tknv1.PipelineRunResult{Name: "pushed-binaries", Value: *tknv1.NewStructuredValues(`"{}"`)})
+	require.Equal(t, "SUCCESS", determineBuildStatus(build, []tknv1.PipelineRun{am, ar}))
 	ar.Status.Results = nil
 	require.Equal(t, "FAILURE", determineBuildStatus(build, []tknv1.PipelineRun{am, ar}))
 	build.Platform = LinuxAmd64
