@@ -11,7 +11,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/github-token-broker/client/githubauth"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 )
 
 // NewGitHubClient creates a new GitHub client with the provided static token.
@@ -28,21 +28,27 @@ func NewGitHubClientWithConfig(cfg config.Github) *github.Client {
 		TokenFile:     cfg.BrokerTokenFile,
 		FallbackToken: cfg.Token,
 	})
-	client := github.NewClient(&http.Client{
+	httpClient := &http.Client{
 		Transport: transport,
 		Timeout:   30 * time.Second,
-	})
+	}
+	opts := []github.ClientOptionsFunc{github.WithHTTPClient(httpClient)}
 
 	// An explicit API base URL lets tests point at an httptest server and
 	// supports GitHub Enterprise deployments. Invalid values fall back to the
 	// default endpoint.
 	if cfg.APIURL != "" {
 		if u, err := url.Parse(cfg.APIURL); err == nil && u.Scheme != "" && u.Host != "" {
-			if !strings.HasSuffix(u.Path, "/") {
-				u.Path += "/"
-			}
-			client.BaseURL = u
+			baseURL := u.String()
+			opts = append(opts, github.WithURLs(&baseURL, nil))
 		}
+	}
+
+	client, err := github.NewClient(opts...)
+	if err != nil {
+		// The options above are pre-validated; retry with the public endpoint
+		// so a bad override cannot take the service down.
+		client, _ = github.NewClient(github.WithHTTPClient(httpClient))
 	}
 
 	return client

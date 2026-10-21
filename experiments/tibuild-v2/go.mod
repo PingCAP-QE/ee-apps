@@ -13,7 +13,7 @@ require (
 	github.com/go-co-op/gocron/v2 v2.21.2
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/go-containerregistry v0.21.6
-	github.com/google/go-github/v69 v69.2.0
+	github.com/google/go-github/v93 v93.0.0
 	github.com/larksuite/oapi-sdk-go/v3 v3.9.7
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/migueleliasweb/go-github-mock v1.5.0
@@ -81,7 +81,7 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v73 v73.0.0 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect

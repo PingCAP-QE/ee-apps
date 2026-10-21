@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	"golang.org/x/mod/semver"
 )
 
@@ -358,7 +358,7 @@ func (s *hotfixsrvc) getLatestNextgenReleaseBranchForCommit(ctx context.Context,
 
 func (s *hotfixsrvc) getBranchesContainingCommit(ctx context.Context, owner, repo, commitSHA string) ([]string, error) {
 	u := fmt.Sprintf("https://%s/%s/%s/branch_commits/%s", "github.com", owner, repo, commitSHA)
-	req, err := s.ghClient.NewRequest("GET", u, nil)
+	req, err := s.ghClient.NewRequest(ctx, "GET", u, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +369,7 @@ func (s *hotfixsrvc) getBranchesContainingCommit(ctx context.Context, owner, rep
 			Branch string `json:"branch,omitempty"`
 		}
 	}
-	if _, err := s.ghClient.Do(ctx, req, &ret); err != nil {
+	if _, err := s.ghClient.Do(req, &ret); err != nil {
 		s.logger.Err(err).Msg("fetch branches which contains the given commit failed")
 		return nil, err
 	}

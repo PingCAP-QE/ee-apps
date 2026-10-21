@@ -8,13 +8,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/migueleliasweb/go-github-mock/src/mock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
+
+func newTestGithubClient(httpClient *http.Client) *github.Client {
+	client, err := github.NewClient(github.WithHTTPClient(httpClient))
+	if err != nil {
+		panic(err)
+	}
+	return client
+}
 
 func refHandler(reference *github.Reference) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
@@ -41,7 +49,7 @@ func TestGetGitRefInfo_Branch(t *testing.T) {
 		),
 	)
 
-	info, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "owner/repo", "branch/main")
+	info, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "owner/repo", "branch/main")
 	require.NoError(t, err)
 	assert.Equal(t, "refs/heads/main", info.Ref)
 	assert.Equal(t, "abc123def456", info.SHA)
@@ -58,7 +66,7 @@ func TestGetGitRefInfo_Tag(t *testing.T) {
 		),
 	)
 
-	info, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "owner/repo", "tag/v1.0.0")
+	info, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "owner/repo", "tag/v1.0.0")
 	require.NoError(t, err)
 	assert.Equal(t, "refs/tags/v1.0.0", info.Ref)
 	assert.Equal(t, "tag123sha456", info.SHA)
@@ -75,7 +83,7 @@ func TestGetGitRefInfo_PullRequest(t *testing.T) {
 		),
 	)
 
-	info, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "owner/repo", "pull/42")
+	info, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "owner/repo", "pull/42")
 	require.NoError(t, err)
 	assert.Equal(t, "refs/heads/main", info.Ref)
 	assert.Equal(t, "main", info.BaseRef)
@@ -92,7 +100,7 @@ func TestGetGitRefInfo_Commit(t *testing.T) {
 	)
 
 	for _, ref := range []string{"commit/" + sha, sha} {
-		info, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "owner/repo", ref)
+		info, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "owner/repo", ref)
 		require.NoError(t, err, "ref %q", ref)
 		assert.Equal(t, sha, info.Ref)
 		assert.Equal(t, sha, info.SHA)
@@ -138,7 +146,7 @@ func TestGetGitRefInfo_NotFound(t *testing.T) {
 				mock.WithRequestMatchHandler(tt.pattern, statusHandler(http.StatusNotFound)),
 			)
 
-			_, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "owner/repo", tt.ref)
+			_, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "owner/repo", tt.ref)
 			var notFound *gitRefNotFoundError
 			require.ErrorAs(t, err, &notFound)
 			assert.Contains(t, notFound.Error(), tt.wantSubstr)
@@ -153,7 +161,7 @@ func TestGetGitRefInfo_UpstreamFailure(t *testing.T) {
 				mock.WithRequestMatchHandler(mock.GetReposGitRefByOwnerByRepoByRef, statusHandler(status)),
 			)
 
-			_, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "owner/repo", "branch/main")
+			_, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "owner/repo", "branch/main")
 			var upstream *githubUpstreamError
 			require.ErrorAs(t, err, &upstream)
 			assert.Equal(t, status, upstream.status)
@@ -171,21 +179,21 @@ func TestGetGitRefInfo_InvalidInput(t *testing.T) {
 
 	t.Run("invalid repo format", func(t *testing.T) {
 		httpClient := mock.NewMockedHTTPClient()
-		_, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "invalid-repo", "branch/main")
+		_, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "invalid-repo", "branch/main")
 		var notFound *gitRefNotFoundError
 		require.ErrorAs(t, err, &notFound)
 	})
 
 	t.Run("invalid pull number", func(t *testing.T) {
 		httpClient := mock.NewMockedHTTPClient()
-		_, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "owner/repo", "pull/abc")
+		_, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "owner/repo", "pull/abc")
 		var notFound *gitRefNotFoundError
 		require.ErrorAs(t, err, &notFound)
 	})
 
 	t.Run("unknown ref format", func(t *testing.T) {
 		httpClient := mock.NewMockedHTTPClient()
-		_, err := getGitRefInfo(context.Background(), github.NewClient(httpClient), "owner/repo", "unknown/format")
+		_, err := getGitRefInfo(context.Background(), newTestGithubClient(httpClient), "owner/repo", "unknown/format")
 		var notFound *gitRefNotFoundError
 		require.ErrorAs(t, err, &notFound)
 	})

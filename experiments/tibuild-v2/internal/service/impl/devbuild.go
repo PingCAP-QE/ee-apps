@@ -12,7 +12,7 @@ import (
 
 	"github.com/bndr/gojenkins"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
