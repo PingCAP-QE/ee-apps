@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PingCAP-QE/ee-apps/tibuild/internal/githubauth"
+	"github.com/PingCAP-QE/ee-apps/github-token-broker/client/githubauth"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/google/go-github/v69/github"
 )
