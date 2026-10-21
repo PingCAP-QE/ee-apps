@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "github-token-broker.fullname" . }}
+  labels:
+    {{- include "github-token-broker.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server:
+      address: {{ .Values.server.address | quote }}
+      read_timeout: {{ .Values.server.readTimeout | quote }}
+      write_timeout: {{ .Values.server.writeTimeout | quote }}
+      shutdown_timeout: {{ .Values.server.shutdownTimeout | quote }}
+    github:
+      app_id: {{ .Values.github.appId }}
+      private_key_path: /etc/github-token-broker/credentials/{{ .Values.github.credentialsSecret.key }}
+      api_url: {{ .Values.github.apiUrl | quote }}
+      request_timeout: {{ .Values.github.requestTimeout | quote }}
+      {{- if .Values.github.fallback.enabled }}
+      fallback_pat_file: /etc/github-token-broker/fallback/{{ .Values.github.fallback.key }}
+      {{- end }}
+    cache:
+      ttl_margin: {{ .Values.cache.ttlMargin | quote }}
+      max_entries: {{ .Values.cache.maxEntries }}
+    auth:
+      {{- if .Values.auth.kubernetesApiUrl }}
+      kubernetes_api_url: {{ .Values.auth.kubernetesApiUrl | quote }}
+      {{- end }}
+      token_file: {{ .Values.auth.tokenFile | quote }}
+      ca_file: {{ .Values.auth.caFile | quote }}
+      request_timeout: {{ .Values.auth.requestTimeout | quote }}
+    rate_limit:
+      per_minute: {{ .Values.rateLimit.perMinute }}
+    reload:
+      disabled: {{ .Values.reload.disabled }}
+      interval: {{ .Values.reload.interval | quote }}
+    policy:
+      {{- if or .Values.policy.existingSecret .Values.policy.existingConfigMap }}
+      file: /etc/github-token-broker/policy/{{ .Values.policy.key }}
+      {{- else if .Values.policy.file }}
+      file: {{ .Values.policy.file | quote }}
+      {{- else }}
+      rules:
+        {{- toYaml .Values.policy.rules | nindent 8 }}
+      {{- end }}

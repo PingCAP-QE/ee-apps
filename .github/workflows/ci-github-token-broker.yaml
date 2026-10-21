@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Test and Build - github-token-broker
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/ci-github-token-broker.yaml
+      - "github-token-broker/**/*.go"
+      - "github-token-broker/go.mod"
+      - "github-token-broker/go.sum"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and Build github-token-broker
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: "0"
+          fetch-tags: "true"
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version-file: github-token-broker/go.mod
+
+      - name: Cache Go modules
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Run tests
+        working-directory: github-token-broker
+        run: |
+          go test -race ./...
+
+      - name: Run vet
+        working-directory: github-token-broker
+        run: |
+          go vet ./...
+
+      - name: Run builds
+        working-directory: github-token-broker
+        run: |
+          go build ./...

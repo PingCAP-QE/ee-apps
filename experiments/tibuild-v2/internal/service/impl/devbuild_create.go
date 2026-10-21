@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -17,9 +18,9 @@ const (
 	jenkinsEngine = "jenkins"
 )
 
-func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePayload) (*ent.DevBuild, error) {
+func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePayload) (*ent.DevBuild, gitRefInfo, error) {
 	if err := validateServerlessRequest(p.Request); err != nil {
-		return nil, err
+		return nil, gitRefInfo{}, err
 	}
 
 	// NoNeed: guess enterprise plugin ref.
@@ -30,23 +31,17 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	// and fall back to the product default only when it is not provided.
 	githubFullRepo, err := resolveGithubRepo(derefString(p.Request.GithubRepo), s.productRepoMap, p.Request.Product)
 	if err != nil {
-		return nil, err
+		return nil, gitRefInfo{}, err
 	}
 	if !validGitRef(p.Request.GitRef) {
-		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "gitRef must use branch/<name>, tag/<name>, pull/<number>, commit/<40-char SHA>, or a raw 40-char SHA"}
+		return nil, gitRefInfo{}, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "gitRef must use branch/<name>, tag/<name>, pull/<number>, commit/<40-char SHA>, or a raw 40-char SHA"}
 	}
 
-	// 2. get the commit sha
-	_, commitSha := getGhRefAndSha(ctx, s.ghClient, githubFullRepo, p.Request.GitRef)
-	if isServerlessProduct(p.Request.Product) {
-		if !isHex(commitSha) {
-			return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "cannot resolve gitRef in the requested repository; check the ref and GitHub access"}
-		}
-		if isHex(p.Request.GitRef) || strings.HasPrefix(p.Request.GitRef, "commit/") {
-			if _, _, err := s.ghClient.Git.GetCommit(ctx, strings.Split(githubFullRepo, "/")[0], strings.Split(githubFullRepo, "/")[1], commitSha); err != nil {
-				return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "commit is not accessible in the requested repository"}
-			}
-		}
+	// 2. resolve the ref against GitHub before persisting anything. A missing
+	// ref or an upstream failure must not leave a DevBuild row behind.
+	refInfo, err := getGitRefInfo(ctx, s.ghClient, githubFullRepo, p.Request.GitRef)
+	if err != nil {
+		return nil, gitRefInfo{}, s.refResolutionError(err, githubFullRepo, p.Request.GitRef)
 	}
 
 	// Normalize raw hex SHA to "commit/<sha>" for consistent storage.
@@ -66,7 +61,7 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetVersion(derefString(p.Request.Version)).
 		SetGithubRepo(githubFullRepo).
 		SetGitRef(gitRef).
-		SetGitHash(commitSha).
+		SetGitHash(refInfo.SHA).
 		SetNillableIsHotfix(p.Request.IsHotfix).
 		SetCreatedAt(time.Now()).
 		SetCreatedBy(derefString(p.CreatedBy)).
@@ -76,7 +71,41 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetNillableBuilderImg(p.Request.BuilderImg).
 		SetStatus("PENDING")
 
-	return create.Save(ctx)
+	record, err := create.Save(ctx)
+	if err != nil {
+		return nil, gitRefInfo{}, err
+	}
+	return record, refInfo, nil
+}
+
+// refResolutionError maps a ref resolution failure to the public API error:
+// 400 when GitHub says the ref does not exist, 500 for upstream failures.
+func (s *devbuildsrvc) refResolutionError(err error, repo, ref string) error {
+	var notFound *gitRefNotFoundError
+	if errors.As(err, &notFound) {
+		return &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: notFound.Error()}
+	}
+
+	s.logger.Err(err).Str("github_repo", repo).Str("git_ref", ref).Msg("failed to resolve devbuild git ref")
+	return &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: err.Error()}
+}
+
+// gitRefInfoFromRecord rebuilds the resolved ref from persisted fields without
+// calling GitHub. Pull request base refs are not persisted; the PR trigger
+// binding derives its refspec from the PR number, so BaseRef stays empty.
+func gitRefInfoFromRecord(record *ent.DevBuild) gitRefInfo {
+	info := gitRefInfo{SHA: record.GitHash}
+	switch {
+	case strings.HasPrefix(record.GitRef, "branch/"):
+		info.Ref = "refs/heads/" + strings.TrimPrefix(record.GitRef, "branch/")
+	case strings.HasPrefix(record.GitRef, "tag/"):
+		info.Ref = "refs/tags/" + strings.TrimPrefix(record.GitRef, "tag/")
+	case strings.HasPrefix(record.GitRef, "commit/"):
+		info.Ref = record.GitHash
+	case isHex(record.GitRef):
+		info.Ref = record.GitRef
+	}
+	return info
 }
 
 // resolveGithubRepo returns the repository a build should use. An explicit
@@ -116,10 +145,10 @@ func validGitRef(ref string) bool {
 	return false
 }
 
-func (s *devbuildsrvc) triggerBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
+func (s *devbuildsrvc) triggerBuild(ctx context.Context, record *ent.DevBuild, refInfo gitRefInfo) (*ent.DevBuild, error) {
 	switch record.PipelineEngine {
 	case tektonEngine:
-		return s.triggerTknBuild(ctx, record)
+		return s.triggerTknBuild(ctx, record, refInfo)
 	case jenkinsEngine:
 		return s.triggerJenkinsBuild(ctx, record)
 	default:

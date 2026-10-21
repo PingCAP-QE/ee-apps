@@ -1,29 +1,35 @@
 package impl
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	tknv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewDevBuildCloudEvent_PluginGitRef(t *testing.T) {
 	s := &devbuildsrvc{}
 	record := &ent.DevBuild{
-		ID:          1,
-		CreatedBy:   "test@pingcap.com",
-		Product:     "tidb",
-		Edition:     "community",
-		GithubRepo:  "pingcap/tidb",
-		GitRef:      "branch/master",
+		ID:           1,
+		CreatedBy:    "test@pingcap.com",
+		Product:      "tidb",
+		Edition:      "community",
+		GithubRepo:   "pingcap/tidb",
+		GitRef:       "branch/master",
 		PluginGitRef: "release-8.5.4",
 	}
 
-	event, err := s.newDevBuildCloudEvent(record, LinuxAmd64)
+	event, err := s.newDevBuildCloudEvent(record, LinuxAmd64, gitRefInfo{Ref: "refs/heads/master", SHA: "0123456789abcdef0123456789abcdef01234567"})
 	require.NoError(t, err)
 	require.Equal(t, "release-8.5.4", event.Extensions()["paramplugingitref"])
 }
@@ -31,16 +37,16 @@ func TestNewDevBuildCloudEvent_PluginGitRef(t *testing.T) {
 func TestNewDevBuildCloudEvent_PluginGitRefEmpty(t *testing.T) {
 	s := &devbuildsrvc{}
 	record := &ent.DevBuild{
-		ID:          1,
-		CreatedBy:   "test@pingcap.com",
-		Product:     "tidb",
-		Edition:     "community",
-		GithubRepo:  "pingcap/tidb",
-		GitRef:      "branch/master",
+		ID:           1,
+		CreatedBy:    "test@pingcap.com",
+		Product:      "tidb",
+		Edition:      "community",
+		GithubRepo:   "pingcap/tidb",
+		GitRef:       "branch/master",
 		PluginGitRef: "",
 	}
 
-	event, err := s.newDevBuildCloudEvent(record, LinuxAmd64)
+	event, err := s.newDevBuildCloudEvent(record, LinuxAmd64, gitRefInfo{Ref: "refs/heads/master", SHA: "0123456789abcdef0123456789abcdef01234567"})
 	require.NoError(t, err)
 	_, ok := event.Extensions()["paramplugingitref"]
 	require.False(t, ok)
@@ -169,4 +175,114 @@ func TestBuildBuildReport_MultiArchDedup(t *testing.T) {
 	}
 	require.Len(t, multiArch, 1)
 	require.Equal(t, "us-docker.pkg.dev/pingcap-testing-account/hotfix/pingcap/tidb/images/tidb-server:v8.5.7-20260819-5bc0f93", multiArch[0].URL)
+}
+
+func TestNewDevBuildCloudEvent_RefKinds(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+
+	tests := []struct {
+		name     string
+		gitRef   string
+		info     gitRefInfo
+		wantType string
+		wantData []string
+	}{
+		{
+			name:     "branch",
+			gitRef:   "branch/master",
+			info:     gitRefInfo{Ref: "refs/heads/master", SHA: sha},
+			wantType: ceTypeFakeGHPushDevBuild,
+			wantData: []string{`"ref":"refs/heads/master"`, `"after":"` + sha + `"`},
+		},
+		{
+			name:     "tag",
+			gitRef:   "tag/v9.0.0",
+			info:     gitRefInfo{Ref: "refs/tags/v9.0.0", SHA: sha},
+			wantType: ceTypeFakeGHCreateDevBuild,
+			wantData: []string{`"ref":"v9.0.0"`, `"ref_type":"tag"`},
+		},
+		{
+			name:     "pull",
+			gitRef:   "pull/42",
+			info:     gitRefInfo{Ref: "refs/heads/main", SHA: sha, BaseRef: "main"},
+			wantType: ceTypeFakeGHPrDevBuild,
+			wantData: []string{`"number":42`, `"head":{"sha":"` + sha + `"`, `"base":{"ref":"main"`},
+		},
+		{
+			name:     "commit",
+			gitRef:   "commit/" + sha,
+			info:     gitRefInfo{Ref: sha, SHA: sha},
+			wantType: ceTypeFakeGHPushDevBuild,
+			wantData: []string{`"ref":"` + sha + `"`, `"after":"` + sha + `"`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &devbuildsrvc{}
+			record := &ent.DevBuild{
+				ID:         7,
+				CreatedBy:  "test@pingcap.com",
+				Product:    "pd",
+				Edition:    "community",
+				GithubRepo: "pingcap/pd",
+				GitRef:     tt.gitRef,
+			}
+
+			event, err := s.newDevBuildCloudEvent(record, LinuxAmd64, tt.info)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantType, event.Type())
+			for _, want := range tt.wantData {
+				require.Contains(t, string(event.Data()), want)
+			}
+			require.Equal(t, "7", event.Subject())
+		})
+	}
+}
+
+func TestGitRefInfoFromRecord(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+
+	tests := []struct {
+		name   string
+		gitRef string
+		hash   string
+		want   gitRefInfo
+	}{
+		{name: "branch", gitRef: "branch/master", hash: sha, want: gitRefInfo{Ref: "refs/heads/master", SHA: sha}},
+		{name: "tag", gitRef: "tag/v9.0.0", hash: sha, want: gitRefInfo{Ref: "refs/tags/v9.0.0", SHA: sha}},
+		{name: "commit", gitRef: "commit/" + sha, hash: sha, want: gitRefInfo{Ref: sha, SHA: sha}},
+		{name: "raw sha", gitRef: sha, hash: sha, want: gitRefInfo{Ref: sha, SHA: sha}},
+		{name: "pull keeps no base ref", gitRef: "pull/42", hash: sha, want: gitRefInfo{SHA: sha}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := gitRefInfoFromRecord(&ent.DevBuild{GitRef: tt.gitRef, GitHash: tt.hash})
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestTriggerTknBuild_CloudEventFailure(t *testing.T) {
+	// A closed listener forces a transport error, which the client reports as a
+	// non-ACK result.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	target := server.URL
+	server.Close()
+
+	client, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(target))
+	require.NoError(t, err)
+
+	logger := zerolog.New(io.Discard)
+	s := &devbuildsrvc{logger: &logger, tektonCloudEventClient: client}
+	record := &ent.DevBuild{
+		ID:         9,
+		GithubRepo: "pingcap/pd",
+		GitRef:     "branch/master",
+		Platform:   LinuxAmd64,
+	}
+
+	_, err = s.triggerTknBuild(context.Background(), record, gitRefInfo{Ref: "refs/heads/master", SHA: "sha"})
+	require.Error(t, err)
 }

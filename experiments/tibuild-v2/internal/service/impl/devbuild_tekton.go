@@ -28,9 +28,9 @@ const (
 	DarwinArm64 = "darwin/arm64"
 )
 
-func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild) (*ent.DevBuild, error) {
+func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild, refInfo gitRefInfo) (*ent.DevBuild, error) {
 	// 1. Compose a cloud event from the record.
-	events, err := s.newDevBuildCloudEvents(record)
+	events, err := s.newDevBuildCloudEvents(record, refInfo)
 	if err != nil {
 		s.logger.Err(err).Msg("failed to create cloud events")
 		return nil, err
@@ -74,10 +74,10 @@ func (s *devbuildsrvc) triggerTknBuild(ctx context.Context, record *ent.DevBuild
 	return record, nil
 }
 
-func (s *devbuildsrvc) newDevBuildCloudEvents(record *ent.DevBuild) ([]*cloudevents.Event, error) {
+func (s *devbuildsrvc) newDevBuildCloudEvents(record *ent.DevBuild, refInfo gitRefInfo) ([]*cloudevents.Event, error) {
 	events := []*cloudevents.Event{}
 	for _, platform := range parsePlatforms(record.Platform) {
-		event, err := s.newDevBuildCloudEvent(record, platform)
+		event, err := s.newDevBuildCloudEvent(record, platform, refInfo)
 		if err != nil {
 			return nil, err
 		}
@@ -87,25 +87,9 @@ func (s *devbuildsrvc) newDevBuildCloudEvents(record *ent.DevBuild) ([]*cloudeve
 	return events, nil
 }
 
-func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform string) (*cloudevents.Event, error) {
-	var ref, sha string
-	if isServerlessProduct(record.Product) && isHex(record.GitHash) {
-		sha = record.GitHash
-		switch {
-		case strings.HasPrefix(record.GitRef, "branch/"):
-			ref = "refs/heads/" + strings.TrimPrefix(record.GitRef, "branch/")
-		case strings.HasPrefix(record.GitRef, "tag/"):
-			ref = "refs/tags/" + strings.TrimPrefix(record.GitRef, "tag/")
-		case strings.HasPrefix(record.GitRef, "pull/"):
-			ref = record.GitRef
-		default:
-			ref = sha
-		}
-	} else if isServerlessProduct(record.Product) {
+func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform string, refInfo gitRefInfo) (*cloudevents.Event, error) {
+	if isServerlessProduct(record.Product) && !isHex(refInfo.SHA) {
 		return nil, fmt.Errorf("Serverless devbuild requires a resolved commit SHA")
-	} else {
-		// Compatibility for records created before revisions were persisted.
-		ref, sha = getGhRefAndSha(context.TODO(), s.ghClient, record.GithubRepo, record.GitRef)
 	}
 	event := cloudevents.NewEvent()
 	var eventData any
@@ -117,7 +101,7 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 			event.SetType(ceTypeFakeGHPushDevBuild)
 		}
 
-		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, ref, sha)
+		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, refInfo.Ref, refInfo.SHA)
 	case strings.HasPrefix(record.GitRef, "tag/"):
 		if record.IsHotfix {
 			event.SetType(ceTypeFakeGHCreateHotfixBuild)
@@ -125,7 +109,7 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 			event.SetType(ceTypeFakeGHCreateDevBuild)
 		}
 
-		eventData = newFakeGitHubTagCreateEventPayload(record.GithubRepo, ref)
+		eventData = newFakeGitHubTagCreateEventPayload(record.GithubRepo, refInfo.Ref)
 	case strings.HasPrefix(record.GitRef, "pull/"):
 		if record.IsHotfix {
 			event.SetType(ceTypeFakeGHPrHotfixBuild)
@@ -138,14 +122,14 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 			return nil, fmt.Errorf("invalid PR number: %s", prNumberStr)
 		}
 
-		eventData = newFakeGitHubPullRequestPayload(record.GithubRepo, ref, sha, prNumber)
+		eventData = newFakeGitHubPullRequestPayload(record.GithubRepo, refInfo.BaseRef, refInfo.SHA, prNumber)
 	case strings.HasPrefix(record.GitRef, "commit/"):
 		if record.IsHotfix {
 			event.SetType(ceTypeFakeGHPushHotfixBuild)
 		} else {
 			event.SetType(ceTypeFakeGHPushDevBuild)
 		}
-		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, ref, sha)
+		eventData = newFakeGitHubPushEventPayload(record.GithubRepo, refInfo.Ref, refInfo.SHA)
 	default:
 		return nil, fmt.Errorf("unknown git ref format")
 	}
@@ -155,8 +139,8 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 	event.SetSource("tibuild.pingcap.net/api/v2/devbuilds/" + fmt.Sprint(record.ID))
 	event.SetExtension("user", record.CreatedBy)
 	event.SetExtension("paramProduct", record.Product)
-	if isHex(sha) {
-		event.SetExtension("paramGitRevision", sha)
+	if isHex(refInfo.SHA) {
+		event.SetExtension("paramGitRevision", refInfo.SHA)
 	}
 	// Compatibility metadata only: the build version is always derived from Git.
 	if record.Version != "" {

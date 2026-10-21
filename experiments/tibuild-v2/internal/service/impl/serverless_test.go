@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -56,7 +55,7 @@ func TestServerlessEventsPinRevisionAndKeepCompatibilityVersion(t *testing.T) {
 	for product := range serverlessProductLabels {
 		for _, ref := range []string{"branch/feature/test", "tag/v1.2.3", "pull/42", "commit/" + serverlessTestSHA} {
 			record := &ent.DevBuild{ID: 7, Product: product, GithubRepo: "my-fork/custom-name", Edition: "community", GitRef: ref, GitHash: serverlessTestSHA, Version: "v99.0.0", Platform: "linux"}
-			events, err := s.newDevBuildCloudEvents(record)
+			events, err := s.newDevBuildCloudEvents(record, gitRefInfoFromRecord(record))
 			require.NoError(t, err)
 			require.Len(t, events, 2)
 			for _, event := range events {
@@ -72,12 +71,12 @@ func TestServerlessEventsPinRevisionAndKeepCompatibilityVersion(t *testing.T) {
 				}
 			}
 			record.Platform = LinuxArm64
-			events, err = s.newDevBuildCloudEvents(record)
+			events, err = s.newDevBuildCloudEvents(record, gitRefInfoFromRecord(record))
 			require.NoError(t, err)
 			require.Len(t, events, 1)
 		}
 	}
-	_, err := s.newDevBuildCloudEvent(&ent.DevBuild{Product: "tidb-cse", GitRef: "branch/main"}, LinuxAmd64)
+	_, err := s.newDevBuildCloudEvent(&ent.DevBuild{Product: "tidb-cse", GitRef: "branch/main"}, LinuxAmd64, gitRefInfo{})
 	require.ErrorContains(t, err, "resolved commit SHA")
 }
 
@@ -93,10 +92,11 @@ func TestServerlessAnnotatedTagResolvesCommit(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	client := github.NewClient(server.Client())
-	client.BaseURL, _ = url.Parse(server.URL + "/")
-	_, sha := getGhRefAndSha(context.Background(), client, "owner/repo", "tag/v1.2.3")
-	require.Equal(t, serverlessTestSHA, sha)
+	client, err := github.NewClient(github.WithHTTPClient(server.Client()), github.WithURLs(new(server.URL+"/"), nil))
+	require.NoError(t, err)
+	info, err := getGitRefInfo(context.Background(), client, "owner/repo", "tag/v1.2.3")
+	require.NoError(t, err)
+	require.Equal(t, serverlessTestSHA, info.SHA)
 }
 
 func TestServerlessCompletionWaitsForAllRequestedPlatforms(t *testing.T) {
@@ -150,36 +150,37 @@ func TestServerlessCreateResolvesRefsAndRejectsUnresolvableRefs(t *testing.T) {
 			_, _ = w.Write([]byte(`{"object":{"type":"commit","sha":"` + serverlessTestSHA + `"}}`))
 		case strings.Contains(r.URL.Path, "/pulls/"):
 			_, _ = w.Write([]byte(`{"base":{"ref":"main"},"head":{"sha":"` + serverlessTestSHA + `"}}`))
-		case strings.Contains(r.URL.Path, "/git/commits/"):
+		case strings.Contains(r.URL.Path, "/commits/"):
 			_, _ = w.Write([]byte(`{"sha":"` + serverlessTestSHA + `"}`))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
-	gh := github.NewClient(server.Client())
-	gh.BaseURL, _ = url.Parse(server.URL + "/")
+	gh, err := github.NewClient(github.WithHTTPClient(server.Client()), github.WithURLs(new(server.URL+"/"), nil))
+	require.NoError(t, err)
 	s := &devbuildsrvc{dbClient: db, ghClient: gh, productRepoMap: map[string]string{}}
 	for product := range serverlessProductLabels {
 		s.productRepoMap[product] = "tidbcloud/" + product
 		for _, ref := range []string{"branch/main", "tag/v1.2.3", "pull/42", "commit/" + serverlessTestSHA, serverlessTestSHA} {
 			p := &devbuild.CreatePayload{Request: &devbuild.DevBuildSpec{Product: product, GitRef: ref, Platform: "linux", Version: new("v99.0.0")}}
-			record, err := s.newBuildEntity(context.Background(), p)
+			record, refInfo, err := s.newBuildEntity(context.Background(), p)
 			require.NoError(t, err)
 			require.Equal(t, serverlessTestSHA, record.GitHash)
+			require.Equal(t, record.GitHash, refInfo.SHA)
 			require.Equal(t, "v99.0.0", record.Version)
 			require.Equal(t, "tekton", record.PipelineEngine)
 			require.Equal(t, "tidbcloud/"+product, record.GithubRepo)
 		}
 	}
 	p := &devbuild.CreatePayload{Request: &devbuild.DevBuildSpec{Product: "tidb-cse", GitRef: "branch/missing", Platform: "linux"}}
-	_, err := s.newBuildEntity(context.Background(), p)
+	_, _, err = s.newBuildEntity(context.Background(), p)
 	var bad *devbuild.DevBuildBadRequestError
 	require.ErrorAs(t, err, &bad)
-	require.Contains(t, bad.Message, "cannot resolve")
+	require.Contains(t, bad.Message, `branch "missing" not found`)
 	p.Request.GitRef = "branch/main"
 	p.Request.GithubRepo = new("custom-owner/custom-name")
-	record, err := s.newBuildEntity(context.Background(), p)
+	record, _, err := s.newBuildEntity(context.Background(), p)
 	require.NoError(t, err)
 	require.Equal(t, "custom-owner/custom-name", record.GithubRepo)
 	require.Equal(t, "tidb-cse", record.Product)

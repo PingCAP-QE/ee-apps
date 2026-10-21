@@ -475,6 +475,7 @@ def _build_split_cost_query(
     WHEN COUNTIF(pricing_unit = 'second') = COUNT(*) THEN SUM(usage_amount)
     ELSE NULL
   END AS usage_seconds,"""
+    # Storage hashes use compact routing tags, not full provider-label revisions.
     resource_grouping = """,
   resource_id,
   resource_name,
@@ -486,7 +487,6 @@ def _build_split_cost_query(
         resource_grouping = ""
         resource_ordering = ""
         resource_name_filter = ""
-    vendor_tags_grouping = ",\n  vendor_tags_json" if resource_level else ""
     vendor_tags_json = _flattened_vendor_tags_json_sql()
 
     return f"""
@@ -588,6 +588,7 @@ parent_direct AS (
     MIN(raw.service_exec_id) AS service_exec_id,
     MIN(raw.author_fallback) AS author_fallback,
     MIN(raw.org) AS org,
+    COUNT(DISTINCT raw.org) AS org_count,
     MIN(raw.cluster) AS cluster,
     MIN(raw.shared_pool) AS shared_pool,
     MIN(raw.vendor_tags_json) AS vendor_tags_json,
@@ -807,7 +808,8 @@ branch_rows AS (
     child.service_exec_id,
     COALESCE(child.author_fallback, parent.author_fallback) AS usedby,
     COALESCE(child.owner, child.author_fallback) AS author,
-    child.org,
+    -- Do not choose an arbitrary tenant when a parent's tags changed within the day.
+    COALESCE(child.org, CASE WHEN parent.org_count = 1 THEN parent.org END) AS org,
     parent.pricing_unit,
     child.split_usage_amount AS usage_amount,
     -- AWS split children can omit either routing tag; retain their own value
@@ -863,7 +865,7 @@ SELECT
       'shared_pool', shared_pool
     )))
   END AS {"summary_vendor_tags_json" if resource_level else "vendor_tags_json"},
-  {"vendor_tags_json," if resource_level else ""}
+  {"MIN(vendor_tags_json) AS vendor_tags_json," if resource_level else ""}
   {resource_columns}
   {"CAST(NULL AS STRING) AS summary_resource_name," if resource_level else ""}
   ROUND(SUM(list_cost), 9) AS list_cost,
@@ -893,7 +895,7 @@ GROUP BY
   author,
   org,
   cluster,
-  shared_pool{vendor_tags_grouping}{resource_grouping}
+  shared_pool{resource_grouping}
 ORDER BY usage_date, service_name, sku_name, source_allocation_scope{resource_ordering}{limit_clause}
 """.strip()
 

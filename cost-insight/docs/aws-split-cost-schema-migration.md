@@ -343,6 +343,19 @@ missing tags from the matched parent. This allows an unlabeled or partially
 labeled child to retain its parent pool's TCMS attribution, while explicit
 child business labels still take precedence.
 
+A split child with no native `org` inherits its parent's tenant only when that
+parent has exactly one distinct non-null tenant within the same account, usage
+date, and parent resource. An explicit child tenant always wins; absent or
+conflicting parent tenants do not fill a missing child tenant. This fallback
+applies to both summary and resource queries, without inheriting parent
+owner/project/service labels or changing costs, TCMS rule precedence, or author
+fallback policy.
+
+Because `org` participates in source-summary identity, repairing historical
+windows requires bounded replacement of summary and resource imports, followed
+by attribution refresh and resource-serving republication. Ordinary upserts or
+attribution-only refreshes cannot remove the old missing-tenant identities.
+
 ### 5.2 Three Output Branches
 
 The split adapter operates first at this grain:
@@ -473,6 +486,18 @@ dimensions, and
 `vendor_tags_json`, while the existing GCP unmatched `HASH_FIELDS` remain
 unchanged. Thus rows that differ in split allocation scope or parent cannot
 collide during an unmatched-resource upsert.
+
+For AWS resource rows, the hash's `vendor_tags_json` is the compact summary
+routing set (`usedby`, `cluster`, `shared_pool`), not the full provider-label
+object. The final resource query must therefore aggregate at that same compact
+routing/resource grain, summing costs and usage across provider-label changes.
+It retains `MIN(vendor_tags_json)` as deterministic representative metadata and
+`MAX(source_export_time)` as freshness; provider-label variants must not become
+multiple rows that overwrite one storage hash. Explicit tenant, routing,
+workload, and canonical business dimensions still remain separate. Neither
+resource hashes nor source-summary hashes change, so repeated imports replace
+the aggregate rather than adding it again. Historical repair still uses bounded
+usage-date replacement and native-serving republication.
 
 > The raw attribution compatibility path mentioned below was retired after this
 > migration. It is retained here only to explain why the split-cost cutover was

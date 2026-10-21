@@ -281,7 +281,11 @@ The parent table intentionally does **not** store one `sku_name`, `namespace`,
 resource/day. `representative_labels_json` is selected deterministically from
 the largest-cost contributing source row (then source hash for ties), and
 `metadata_variant_count` tells the client that more than one label set exists.
-It is display context only; it is never used for matching or filtering.
+It is display context only; it is never used for matching or filtering. The
+variant count describes label sets retained in the resource ledger, not every
+billing-time label revision: AWS split imports aggregate provider-label changes
+within one compact routing/resource identity and retain a deterministic
+representative label set.
 
 The serving and resource-detail monetary columns use `DECIMAL(16,9)`, matching
 the current summary and allocation precision. Resource imports retain

@@ -7,12 +7,13 @@ toolchain go1.26.1
 require (
 	entgo.io/ent v0.14.6
 	github.com/Masterminds/sprig/v3 v3.3.0
+	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261021084326-e9272d6d4726
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/go-co-op/gocron/v2 v2.21.2
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/go-containerregistry v0.21.6
-	github.com/google/go-github/v69 v69.2.0
+	github.com/google/go-github/v93 v93.0.0
 	github.com/larksuite/oapi-sdk-go/v3 v3.9.7
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/migueleliasweb/go-github-mock v1.5.0
@@ -80,7 +81,7 @@ require (
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-github/v73 v73.0.0 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect

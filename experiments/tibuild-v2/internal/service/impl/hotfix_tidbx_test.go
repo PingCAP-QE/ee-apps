@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/migueleliasweb/go-github-mock/src/mock"
 	"github.com/rs/zerolog"
 
@@ -214,7 +214,7 @@ func TestComputeNewTagNameForTidbx(t *testing.T) {
 				},
 			)
 
-			ghClient := github.NewClient(mock.NewMockedHTTPClient(resp, compareMock))
+			ghClient := newTestGithubClient(mock.NewMockedHTTPClient(resp, compareMock))
 			svc := newServiceWithClient(ghClient)
 
 			tag, err := svc.computeNewTagNameForTidbx(context.Background(), "owner", "repo", testCommitSHA, tc.branch)
@@ -402,7 +402,7 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 			)
 
 			httpClient := mock.NewMockedHTTPClient(mockOpts...)
-			svc := newServiceWithClient(github.NewClient(httpClient))
+			svc := newServiceWithClient(newTestGithubClient(httpClient))
 
 			// prepare api payload
 			apiCallPayload := &hotfix.BumpTagForTidbxPayload{
@@ -476,7 +476,7 @@ func TestBumpTagForTidbx_BootstrapFromReleaseBranch(t *testing.T) {
 			},
 		),
 	)
-	svc := newServiceWithClient(github.NewClient(httpClient))
+	svc := newServiceWithClient(newTestGithubClient(httpClient))
 
 	res, err := svc.BumpTagForTidbx(context.Background(), &hotfix.BumpTagForTidbxPayload{
 		Repo:   fullRepo,
@@ -530,7 +530,7 @@ func TestBumpTagForTidbx_FailWhenCommitAlreadyTagged(t *testing.T) {
 			},
 		),
 	)
-	svc := newServiceWithClient(github.NewClient(httpClient))
+	svc := newServiceWithClient(newTestGithubClient(httpClient))
 
 	apiCallPayload := &hotfix.BumpTagForTidbxPayload{
 		Repo:   fullRepo,
@@ -601,7 +601,7 @@ func TestQueryTagOfTidbx_ParseJSONMetadata(t *testing.T) {
 		),
 	)
 
-	svc := newServiceWithClient(github.NewClient(httpClient))
+	svc := newServiceWithClient(newTestGithubClient(httpClient))
 
 	res, qerr := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
 		Repo: fullRepo,
@@ -664,7 +664,7 @@ func TestQueryTagOfTidbx_InvalidMetadataDoesNotFail(t *testing.T) {
 		),
 	)
 
-	svc := newServiceWithClient(github.NewClient(httpClient))
+	svc := newServiceWithClient(newTestGithubClient(httpClient))
 
 	res, qerr := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
 		Repo: fullRepo,
@@ -706,7 +706,7 @@ func TestQueryTagOfTidbx_ResolvesCalendarImageTag(t *testing.T) {
 		),
 	)
 
-	svc := newServiceWithClient(github.NewClient(httpClient))
+	svc := newServiceWithClient(newTestGithubClient(httpClient))
 
 	res, err := svc.QueryTagOfTidbx(context.Background(), &hotfix.QueryTagOfTidbxPayload{
 		Repo: fullRepo,

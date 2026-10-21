@@ -5,6 +5,7 @@ ERROR_CLASSIFICATION_GUIDANCE = """Decision guidance:
 - If a real test/build failure appears before Jenkins remoting, agent disconnect, post-step, or pod-event noise, prefer the test/build category.
 - Failed pipeline node log excerpts are higher-signal than the root console tail when matrix branches are interrupted.
 - Stage names or wrapper steps such as "prepare depends", "build", or generic pipeline/config steps are weak hints; classify the underlying compiler, dependency, test, or merge evidence instead.
+- An integration-test shell script reporting `command not found` and exiting with code 127 is BUILD/PIPELINE_CONFIG (missing test tooling), not IT/TEST_FAILURE or downstream INFRA/NETWORK. Exit code 127 alone is not enough; require the concrete missing-command diagnostic.
 - In this autoscaled CI environment, FailedScheduling/Unschedulable/Insufficient resources/taints/PVC waits during pod Pending are normal scheduling pressure, not an error by themselves.
 - Only classify Kubernetes as INFRA when there is final pod/container failure evidence such as TerminationByKubelet, OOMKilled, or Evicted.
 - Do not classify K8S_MEMORY_EVICTION from partial memory-usage snippets alone; require final kubelet pod-failure evidence such as `Pod [Failed][TerminationByKubelet] The node was low on resource: memory`.

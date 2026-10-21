@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "github-token-broker.fullname" . }}
+  labels:
+    {{- include "github-token-broker.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "github-token-broker.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "github-token-broker.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "github-token-broker.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - -config
+            - /etc/github-token-broker/config.yaml
+          env:
+            - name: LOG_LEVEL
+              value: {{ .Values.logLevel | quote }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/github-token-broker
+              readOnly: true
+            - name: github-app-credentials
+              mountPath: /etc/github-token-broker/credentials
+              readOnly: true
+            {{- if .Values.github.fallback.enabled }}
+            - name: github-fallback-pat
+              mountPath: /etc/github-token-broker/fallback
+              readOnly: true
+            {{- end }}
+            {{- if or .Values.policy.existingSecret .Values.policy.existingConfigMap }}
+            - name: policy
+              mountPath: /etc/github-token-broker/policy
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "github-token-broker.fullname" . }}
+        - name: github-app-credentials
+          secret:
+            secretName: {{ .Values.github.credentialsSecret.name }}
+        {{- if .Values.github.fallback.enabled }}
+        - name: github-fallback-pat
+          secret:
+            secretName: {{ .Values.github.fallback.secretName }}
+        {{- end }}
+        {{- if .Values.policy.existingSecret }}
+        - name: policy
+          secret:
+            secretName: {{ .Values.policy.existingSecret }}
+        {{- else if .Values.policy.existingConfigMap }}
+        - name: policy
+          configMap:
+            name: {{ .Values.policy.existingConfigMap }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

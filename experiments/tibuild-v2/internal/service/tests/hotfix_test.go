@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 
@@ -57,7 +57,8 @@ func TestBumpForTidbx_Integration(t *testing.T) {
 // TestBumpTagForTidbx_Validation tests input validation
 func TestBumpTagForTidbx_Validation(t *testing.T) {
 	logger := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
-	ghClient := github.NewClient(nil)
+	ghClient, clientErr := github.NewClient()
+	assert.NoError(t, clientErr)
 	service := impl.NewHotfix(&logger, ghClient)
 
 	ctx := context.Background()

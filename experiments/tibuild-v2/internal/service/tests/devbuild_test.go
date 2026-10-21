@@ -22,20 +22,26 @@ import (
 type testEnv struct {
 	cfg              *config.Service
 	cloudEventServer *httptest.Server
+	cloudEvents      *cloudEventSink
 	jenkinsServer    *httptest.Server
+	github           *fakeGithub
 	service          devbuild.Service
 }
 
 func setupTestEnv(t *testing.T) *testEnv {
+	t.Helper()
+
 	// Setup fake cloudevent server
-	cloudEventServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	cloudEvents := &cloudEventSink{}
+	cloudEventServer := httptest.NewServer(http.HandlerFunc(cloudEvents.handle))
 
 	// Setup fake jenkins server
 	jenkinsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
+
+	// Setup fake GitHub API so tests never reach api.github.com.
+	github := newFakeGithub(t)
 
 	// Setup config
 	cfg := &config.Service{
@@ -47,7 +53,8 @@ func setupTestEnv(t *testing.T) *testEnv {
 			CloudeventEndpoint: cloudEventServer.URL,
 		},
 		Github: config.Github{
-			Token: "fake-token",
+			Token:  "fake-token",
+			APIURL: github.server.URL,
 		},
 		Jenkins: config.Jenkins{
 			URL:      jenkinsServer.URL,
@@ -70,7 +77,9 @@ func setupTestEnv(t *testing.T) *testEnv {
 	return &testEnv{
 		cfg:              cfg,
 		cloudEventServer: cloudEventServer,
+		cloudEvents:      cloudEvents,
 		jenkinsServer:    jenkinsServer,
+		github:           github,
 		service:          service,
 	}
 }

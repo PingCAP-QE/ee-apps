@@ -13,7 +13,7 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	goahttp "goa.design/goa/v3/http"
@@ -48,13 +48,15 @@ func TestServerlessStagedDevbuild(t *testing.T) {
 	}
 	require.True(t, isServerlessProduct(product))
 
+	gh, err := github.NewClient(github.WithAuthToken(token))
+	require.NoError(t, err)
 	logger := zerolog.Nop()
 	ce, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(listener))
 	require.NoError(t, err)
 	s := &devbuildsrvc{
 		logger: &logger, dbClient: serverlessTestDB(t),
 		productRepoMap:         map[string]string{product: "tidbcloud/" + product},
-		ghClient:               github.NewClient(nil).WithAuthToken(token),
+		ghClient:               gh,
 		tektonCloudEventClient: ce, dashboardURL: dashboard,
 		httpClient: &http.Client{Timeout: 30 * time.Second}, reconcilerSince: time.Hour,
 		ociFileDownloadURL: os.Getenv("SERVERLESS_STAGE_DOWNLOAD_URL"),

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
@@ -37,7 +37,7 @@ func NewHotfix(logger *zerolog.Logger, ghClient *github.Client) hotfix.Service {
 // Reload updates the hotfix service configuration at runtime.
 func (s *hotfixsrvc) Reload(cfg *config.Service) {
 	s.logger.Info().Msg("hot-reloading hotfix configuration")
-	s.ghClient = github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token)
+	s.ghClient = NewGitHubClientWithConfig(cfg.Github)
 	s.logger.Info().Msg("hotfix configuration reloaded successfully")
 }
 
@@ -110,16 +110,12 @@ func (s *hotfixsrvc) verifyAndGetCommit(ctx context.Context, owner, repo string,
 // createTag creates a git tag with the specified name, commit SHA, and message.
 func (s *hotfixsrvc) createTag(ctx context.Context, owner, repo, tagName, commitSHA, message string) error {
 	// Create a tag object (annotated tag)
-	tagObject := &github.Tag{
-		Tag:     new(tagName),
-		Message: new(message),
-		Object: &github.GitObject{
-			Type: new("commit"),
-			SHA:  new(commitSHA),
-		},
-	}
-
-	createdTag, _, err := s.ghClient.Git.CreateTag(ctx, owner, repo, tagObject)
+	createdTag, _, err := s.ghClient.Git.CreateTag(ctx, owner, repo, github.CreateTag{
+		Tag:     tagName,
+		Message: message,
+		Object:  commitSHA,
+		Type:    "commit",
+	})
 	if err != nil {
 		return &hotfix.HTTPError{
 			Code:    http.StatusInternalServerError,
@@ -128,11 +124,9 @@ func (s *hotfixsrvc) createTag(ctx context.Context, owner, repo, tagName, commit
 	}
 
 	// Create a reference to the tag
-	ref := &github.Reference{
-		Ref: new(fmt.Sprintf("refs/tags/%s", tagName)),
-		Object: &github.GitObject{
-			SHA: createdTag.SHA,
-		},
+	ref := github.CreateRef{
+		Ref: fmt.Sprintf("refs/tags/%s", tagName),
+		SHA: createdTag.GetSHA(),
 	}
 
 	_, _, err = s.ghClient.Git.CreateRef(ctx, owner, repo, ref)

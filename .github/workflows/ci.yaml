@@ -74,6 +74,8 @@ jobs:
               - 'chatops-lark/**'
             ee-portal:
               - 'experiments/portal/**'
+            github-token-broker:
+              - 'github-token-broker/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -167,6 +169,15 @@ jobs:
       - name: Build images - ee-portal
         if: steps.changes.outputs.ee-portal == 'true'
         working-directory: experiments/portal
+        run: |
+          skaffold build \
+            --push=false \
+            --platform ${{ matrix.platform }} \
+            --default-repo ghcr.io/pingcap-qe/ee-apps
+
+      - name: Build image - github-token-broker
+        if: steps.changes.outputs.github-token-broker == 'true'
+        working-directory: github-token-broker
         run: |
           skaffold build \
             --push=false \
