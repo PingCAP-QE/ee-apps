@@ -3,14 +3,18 @@
 A small Go client library for the in-cluster GitHub App token broker.
 
 The library only depends on the Go standard library. It does not import
-`go-github`, so callers can use any `go-github` version:
+`go-github`, so callers can use any `go-github` version. The example below uses
+the latest `go-github/v92` API (`NewClient` returns a client and an error); for
+older versions, use that version's `NewClient` signature:
 
 ```go
 import (
+    "log"
     "net/http"
+    "os"
 
     "github.com/PingCAP-QE/ee-apps/github-token-broker/client/githubauth"
-    "github.com/google/go-github/v69/github"
+    "github.com/google/go-github/v92/github"
 )
 
 transport := githubauth.NewTransport(githubauth.Config{
@@ -19,7 +23,10 @@ transport := githubauth.NewTransport(githubauth.Config{
     FallbackToken: os.Getenv("GITHUB_TOKEN"),
 })
 
-client := github.NewClient(&http.Client{Transport: transport})
+client, err := github.NewClient(github.WithHTTPClient(&http.Client{Transport: transport}))
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 For requests to `api.github.com/repos/{owner}/{repo}/...`, the transport asks
