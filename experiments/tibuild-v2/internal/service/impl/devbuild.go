@@ -71,7 +71,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		dbClient:               dbClient,
 		productRepoMap:         cfg.ProductRepoMap,
 		imageMirrorURLMap:      cfg.ImageMirrorURLMap,
-		ghClient:               github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token),
+		ghClient:               NewGitHubClientWithConfig(cfg.Github),
 		tektonCloudEventClient: client,
 		dashboardURL:           cfg.Tekton.ViewURL,
 		ociFileDownloadURL:     strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/"),

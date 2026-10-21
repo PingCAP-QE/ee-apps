@@ -9,7 +9,6 @@ import (
 
 	"github.com/bndr/gojenkins"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/google/go-github/v69/github"
 )
 
 // Reload updates the service configuration at runtime. It is called by the
@@ -18,7 +17,7 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	s.logger.Info().Msg("hot-reloading devbuild configuration")
 
 	// Update GitHub client with new token.
-	s.ghClient = github.NewClientWithEnvProxy().WithAuthToken(cfg.Github.Token)
+	s.ghClient = NewGitHubClientWithConfig(cfg.Github)
 
 	// Update product repo and image mirror maps.
 	s.productRepoMap = cfg.ProductRepoMap

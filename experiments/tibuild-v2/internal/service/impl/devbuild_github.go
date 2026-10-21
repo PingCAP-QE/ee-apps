@@ -3,18 +3,34 @@ package impl
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/githubauth"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/google/go-github/v69/github"
 )
 
-// NewGitHubClient creates a new GitHub client with the provided token.
+// NewGitHubClient creates a new GitHub client with the provided static token.
+// It is kept for callers that do not have a full config object.
 func NewGitHubClient(token string) *github.Client {
-	if token == "" {
-		return github.NewClient(nil)
-	}
-	return github.NewClient(nil).WithAuthToken(token)
+	return NewGitHubClientWithConfig(config.Github{Token: token})
+}
+
+// NewGitHubClientWithConfig creates a GitHub client that prefers
+// repository-scoped tokens from the broker and falls back to the static token.
+func NewGitHubClientWithConfig(cfg config.Github) *github.Client {
+	transport := githubauth.NewTransport(githubauth.Config{
+		BrokerURL:     cfg.BrokerURL,
+		TokenFile:     cfg.BrokerTokenFile,
+		FallbackToken: cfg.Token,
+	})
+	return github.NewClient(&http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	})
 }
 
 func getGhRefAndSha(ctx context.Context, ghClient *github.Client, fullRepo, reqGitRef string) (string, string) {
