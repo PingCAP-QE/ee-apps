@@ -2,15 +2,17 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/github-token-broker/client/githubauth"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 )
 
 // NewGitHubClient creates a new GitHub client with the provided static token.
@@ -27,67 +29,211 @@ func NewGitHubClientWithConfig(cfg config.Github) *github.Client {
 		TokenFile:     cfg.BrokerTokenFile,
 		FallbackToken: cfg.Token,
 	})
-	return github.NewClient(&http.Client{
+	httpClient := &http.Client{
 		Transport: transport,
 		Timeout:   30 * time.Second,
-	})
+	}
+	opts := []github.ClientOptionsFunc{github.WithHTTPClient(httpClient)}
+
+	// An explicit API base URL lets tests point at an httptest server and
+	// supports GitHub Enterprise deployments. Invalid values fall back to the
+	// default endpoint.
+	if cfg.APIURL != "" {
+		if u, err := url.Parse(cfg.APIURL); err == nil && u.Scheme != "" && u.Host != "" {
+			baseURL := u.String()
+			opts = append(opts, github.WithURLs(&baseURL, nil))
+		}
+	}
+
+	client, err := github.NewClient(opts...)
+	if err != nil {
+		// The options above are pre-validated; retry with the public endpoint
+		// so a bad override cannot take the service down.
+		client, _ = github.NewClient(github.WithHTTPClient(httpClient))
+	}
+
+	return client
 }
 
-func getGhRefAndSha(ctx context.Context, ghClient *github.Client, fullRepo, reqGitRef string) (string, string) {
+// gitRefInfo is the resolved form of a devbuild gitRef.
+type gitRefInfo struct {
+	// Ref is the fully qualified git ref carried by the synthetic event:
+	// refs/heads/<branch>, refs/tags/<tag>, or the commit SHA.
+	Ref string
+	// SHA is the commit the build must check out.
+	SHA string
+	// BaseRef is the base branch of a pull request (pull/<n> only).
+	BaseRef string
+}
+
+// gitRefNotFoundError reports a ref GitHub says does not exist. It maps to HTTP
+// 400 because the request body references a nonexistent object.
+type gitRefNotFoundError struct {
+	message string
+}
+
+func (e *gitRefNotFoundError) Error() string { return e.message }
+
+// githubUpstreamError reports a GitHub failure that is not a "not found"
+// (auth, rate limit, 5xx, network). It maps to HTTP 500 and must never degrade
+// to an empty revision.
+type githubUpstreamError struct {
+	repo   string
+	ref    string
+	status int
+	err    error
+}
+
+func (e *githubUpstreamError) Error() string {
+	if e.status != 0 {
+		return fmt.Sprintf("github error %d while resolving %q in %s: %v", e.status, e.ref, e.repo, e.err)
+	}
+	return fmt.Sprintf("failed to resolve %q in %s: %v", e.ref, e.repo, e.err)
+}
+
+func (e *githubUpstreamError) Unwrap() error { return e.err }
+
+// getGitRefInfo resolves a devbuild gitRef against GitHub exactly once and
+// returns the ref, the commit SHA and (for pull requests) the base branch.
+// A missing ref is reported as *gitRefNotFoundError; every other failure is
+// reported as *githubUpstreamError so callers can pick 400 vs 500.
+func getGitRefInfo(ctx context.Context, ghClient *github.Client, fullRepo, reqGitRef string) (gitRefInfo, error) {
 	if ghClient == nil {
-		return "", ""
+		return gitRefInfo{}, &githubUpstreamError{
+			repo: fullRepo,
+			ref:  reqGitRef,
+			err:  errors.New("github client is not configured"),
+		}
 	}
 
 	parts := strings.SplitN(fullRepo, "/", 2)
-	if len(parts) != 2 {
-		return "", ""
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return gitRefInfo{}, &gitRefNotFoundError{
+			message: fmt.Sprintf("invalid github repo %q", fullRepo),
+		}
 	}
-
 	owner, repo := parts[0], parts[1]
 
 	switch {
 	case strings.HasPrefix(reqGitRef, "branch/"):
 		branchName := strings.TrimPrefix(reqGitRef, "branch/")
-		branch, _, err := ghClient.Repositories.GetBranch(ctx, owner, repo, branchName, 10)
-		if err != nil {
-			return "", ""
+		if branchName == "" {
+			return gitRefInfo{}, &gitRefNotFoundError{
+				message: fmt.Sprintf("branch name is empty in %s", fullRepo),
+			}
 		}
-		return strings.Join([]string{"refs", "heads", branchName}, "/"), branch.Commit.GetSHA()
+
+		// Use git/ref instead of Repositories.GetBranch: the latter surfaces a
+		// plain "unexpected status code" error without a *github.ErrorResponse,
+		// which makes 404 and upstream failures indistinguishable.
+		ref, _, err := ghClient.Git.GetRef(ctx, owner, repo, "refs/heads/"+branchName)
+		if err != nil {
+			return gitRefInfo{}, classifyGitRefError(
+				err, fullRepo, reqGitRef,
+				fmt.Sprintf("branch %q not found in %s", branchName, fullRepo),
+			)
+		}
+		sha := ref.GetObject().GetSHA()
+		if sha == "" {
+			return gitRefInfo{}, emptySHAError(fullRepo, reqGitRef)
+		}
+		return gitRefInfo{Ref: "refs/heads/" + branchName, SHA: sha}, nil
 
 	case strings.HasPrefix(reqGitRef, "tag/"):
 		tagName := strings.TrimPrefix(reqGitRef, "tag/")
+		if tagName == "" {
+			return gitRefInfo{}, &gitRefNotFoundError{
+				message: fmt.Sprintf("tag name is empty in %s", fullRepo),
+			}
+		}
+
 		ref, _, err := ghClient.Git.GetRef(ctx, owner, repo, "refs/tags/"+tagName)
 		if err != nil {
-			return "", ""
+			return gitRefInfo{}, classifyGitRefError(
+				err, fullRepo, reqGitRef,
+				fmt.Sprintf("tag %q not found in %s", tagName, fullRepo),
+			)
 		}
-		return strings.Join([]string{"refs", "tags", tagName}, "/"), ref.Object.GetSHA()
-
-	case strings.HasPrefix(reqGitRef, "commit/"):
-		sha := strings.TrimPrefix(reqGitRef, "commit/")
-		if len(sha) != 40 || !isHex(sha) {
-			return "", ""
+		sha := ref.GetObject().GetSHA()
+		if sha == "" {
+			return gitRefInfo{}, emptySHAError(fullRepo, reqGitRef)
 		}
-		return sha, sha
+		return gitRefInfo{Ref: "refs/tags/" + tagName, SHA: sha}, nil
 
 	case strings.HasPrefix(reqGitRef, "pull/"):
-		prNumberStr := strings.TrimPrefix(reqGitRef, "pull/")
-		prNumber, err := strconv.Atoi(prNumberStr)
-		if err != nil {
-			return "", ""
+		numberStr := strings.TrimPrefix(reqGitRef, "pull/")
+		number, err := strconv.Atoi(numberStr)
+		if err != nil || number <= 0 {
+			return gitRefInfo{}, &gitRefNotFoundError{
+				message: fmt.Sprintf("invalid pull request number %q in %s", numberStr, fullRepo),
+			}
 		}
-		pr, _, err := ghClient.PullRequests.Get(ctx, owner, repo, prNumber)
+
+		pr, _, err := ghClient.PullRequests.Get(ctx, owner, repo, number)
 		if err != nil {
-			return "", ""
+			return gitRefInfo{}, classifyGitRefError(
+				err, fullRepo, reqGitRef,
+				fmt.Sprintf("pull request #%d not found in %s", number, fullRepo),
+			)
 		}
-		return *pr.Base.Ref, pr.Head.GetSHA()
+		sha := pr.GetHead().GetSHA()
+		if sha == "" {
+			return gitRefInfo{}, emptySHAError(fullRepo, reqGitRef)
+		}
+		base := pr.GetBase().GetRef()
+		return gitRefInfo{Ref: "refs/heads/" + base, SHA: sha, BaseRef: base}, nil
+
+	case strings.HasPrefix(reqGitRef, "commit/"), isHex(reqGitRef):
+		sha := strings.TrimPrefix(reqGitRef, "commit/")
+		if !isHex(sha) {
+			return gitRefInfo{}, &gitRefNotFoundError{
+				message: fmt.Sprintf("commit %q is not a 40-character SHA in %s", sha, fullRepo),
+			}
+		}
+
+		commit, _, err := ghClient.Repositories.GetCommit(ctx, owner, repo, sha, nil)
+		if err != nil {
+			return gitRefInfo{}, classifyGitRefError(
+				err, fullRepo, reqGitRef,
+				fmt.Sprintf("commit %q not found in %s", sha, fullRepo),
+			)
+		}
+		resolved := commit.GetSHA()
+		if resolved == "" {
+			resolved = sha
+		}
+		return gitRefInfo{Ref: resolved, SHA: resolved}, nil
 	}
 
-	// Fallback: treat raw 40-char hex as a commit SHA for convenience.
-	if isHex(reqGitRef) {
-		return reqGitRef, reqGitRef
+	return gitRefInfo{}, &gitRefNotFoundError{
+		message: fmt.Sprintf("unsupported git ref %q", reqGitRef),
 	}
+}
 
-	return "", ""
+// classifyGitRefError turns a go-github error into a not-found or upstream
+// error. Only an explicit HTTP 404 is treated as "does not exist".
+func classifyGitRefError(err error, repo, ref, notFoundMessage string) error {
+	var responseErr *github.ErrorResponse
+	if errors.As(err, &responseErr) && responseErr.Response != nil && responseErr.Response.StatusCode == http.StatusNotFound {
+		return &gitRefNotFoundError{message: notFoundMessage}
+	}
+	return &githubUpstreamError{repo: repo, ref: ref, status: githubStatusCode(err), err: err}
+}
+
+func githubStatusCode(err error) int {
+	var responseErr *github.ErrorResponse
+	if errors.As(err, &responseErr) && responseErr.Response != nil {
+		return responseErr.Response.StatusCode
+	}
+	return 0
+}
+
+func emptySHAError(repo, ref string) error {
+	return &githubUpstreamError{
+		repo: repo,
+		ref:  ref,
+		err:  errors.New("github returned an empty commit sha"),
+	}
 }
 
 func newFakeGitHubPushEventPayload(fullRepo, ref, sha string) *github.PushEvent {

@@ -12,7 +12,7 @@ import (
 
 	"github.com/bndr/gojenkins"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/google/go-github/v69/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
@@ -202,9 +202,12 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*
 	}
 
 	// 1. insert a new record into the database
-	record, err := s.newBuildEntity(ctx, p)
+	record, refInfo, err := s.newBuildEntity(ctx, p)
 	if err != nil {
-		if _, ok := err.(*devbuild.DevBuildBadRequestError); ok {
+		// API errors from ref resolution are already specific (400 vs 500) and
+		// must reach the client unchanged.
+		switch err.(type) {
+		case *devbuild.DevBuildBadRequestError, *devbuild.DevBuildInternalServerError:
 			return nil, err
 		}
 		s.logger.Err(err).Msg("failed to create build")
@@ -218,7 +221,7 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*
 
 	// 2. trigger the actual build process according to the record.
 	recordID := record.ID
-	record, err = s.triggerBuild(ctx, record)
+	record, err = s.triggerBuild(ctx, record, refInfo)
 	if err != nil {
 		s.logger.Err(err).Int("build_id", recordID).Msg("failed to trigger build")
 		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to trigger build"}
@@ -336,6 +339,16 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "only terminal builds can be rerun"}
 	}
 
+	// Reuse the stored SHA when possible; legacy rows with an empty gitHash are
+	// resolved once here so a rerun never triggers an empty revision.
+	refInfo := gitRefInfoFromRecord(existingBuild)
+	if refInfo.SHA == "" {
+		refInfo, err = getGitRefInfo(ctx, s.ghClient, existingBuild.GithubRepo, existingBuild.GitRef)
+		if err != nil {
+			return nil, s.refResolutionError(err, existingBuild.GithubRepo, existingBuild.GitRef)
+		}
+	}
+
 	// Create a new build with the same parameters
 	newBuild, err := s.dbClient.DevBuild.Create().
 		SetCreatedBy(existingBuild.CreatedBy).
@@ -344,7 +357,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetVersion(existingBuild.Version).
 		SetGithubRepo(existingBuild.GithubRepo).
 		SetGitRef(existingBuild.GitRef).
-		SetGitHash(existingBuild.GitHash).
+		SetGitHash(refInfo.SHA).
 		SetPluginGitRef(existingBuild.PluginGitRef).
 		SetIsHotfix(existingBuild.IsHotfix).
 		SetIsPushGCR(existingBuild.IsPushGCR).
@@ -357,7 +370,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to rerun build"}
 	}
 
-	if _, err := s.triggerTknBuild(ctx, newBuild); err != nil {
+	if _, err := s.triggerTknBuild(ctx, newBuild, refInfo); err != nil {
 		s.logger.Err(err).Int("build_id", newBuild.ID).Msg("failed to trigger rerun build")
 		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to trigger rerun build"}
 	}
