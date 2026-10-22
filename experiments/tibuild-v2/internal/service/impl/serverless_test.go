@@ -253,7 +253,7 @@ func TestReconcileDoesNotRequireVersionOrArtifacts(t *testing.T) {
 				}))
 				defer server.Close()
 				logger := zerolog.Nop()
-				s := &devbuildsrvc{dbClient: db, logger: &logger, dashboardURL: server.URL,
+				s := &devbuildsrvc{dbClient: db, logger: &logger, dashboardAPIURL: server.URL, dashboardViewURL: server.URL,
 					httpClient: server.Client(), reconcilerSince: time.Hour}
 				s.Reconcile(ctx)
 				updated, err := db.DevBuild.Get(ctx, build.ID)

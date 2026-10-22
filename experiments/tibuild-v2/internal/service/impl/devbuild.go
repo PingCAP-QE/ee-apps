@@ -33,7 +33,8 @@ type devbuildsrvc struct {
 	imageMirrorURLMap      map[string]string
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
-	dashboardURL           string
+	dashboardAPIURL        string
+	dashboardViewURL       string
 	ociFileDownloadURL     string
 	reconcilerSince        time.Duration
 	httpClient             *http.Client
@@ -73,7 +74,8 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		imageMirrorURLMap:      cfg.ImageMirrorURLMap,
 		ghClient:               NewGitHubClientWithConfig(cfg.Github),
 		tektonCloudEventClient: client,
-		dashboardURL:           cfg.Tekton.ViewURL,
+		dashboardAPIURL:        cfg.Tekton.APIBaseURL(),
+		dashboardViewURL:       cfg.Tekton.ViewBaseURL(),
 		ociFileDownloadURL:     strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/"),
 		reconcilerSince:        reconcilerSince,
 		httpClient:             &http.Client{Timeout: 30 * time.Second},
@@ -89,7 +91,26 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		logger.Info().Msg("lark notification hook registered")
 	}
 
+	logTektonURLs(logger, cfg)
+
 	return &srvc
+}
+
+// logTektonURLs records the effective Tekton Dashboard URLs and warns about
+// fallback or disabled configurations.
+func logTektonURLs(logger *zerolog.Logger, cfg *config.Service) {
+	apiURL := cfg.Tekton.APIBaseURL()
+	viewURL := cfg.Tekton.ViewBaseURL()
+	logger.Info().Str("api_url", apiURL).Str("view_url", viewURL).Msg("tekton dashboard URLs configured")
+	if apiURL == "" {
+		logger.Warn().Msg("tekton api url is empty; the reconciler is disabled")
+	}
+	if cfg.Tekton.APIURL == "" && cfg.Tekton.ViewURL != "" {
+		logger.Warn().Msg("tekton.api_url is empty; falling back to view_url for server-side API calls")
+	}
+	if cfg.Tekton.ViewURL == "" && cfg.Tekton.APIURL != "" {
+		logger.Warn().Msg("tekton.view_url is empty; falling back to api_url for pipeline view links")
+	}
 }
 
 // List devbuild with pagination support

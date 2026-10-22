@@ -34,7 +34,12 @@ jenkins:
 
 tekton:
   cloudevent_endpoint: "http://localhost:8000"
-  view_url: "https://<tekton-dashboard-url>/#/namespaces/ee-cd/pipelineruns"
+  # Server-side Tekton Dashboard API base URL (usually the in-cluster Service).
+  # Falls back to view_url when empty.
+  api_url: "http://tekton-dashboard.tekton-pipelines.svc:9097"
+  # Browser-facing Tekton Dashboard base URL, optionally protected by OIDC.
+  # Falls back to api_url when empty. Do not append /#/... here.
+  view_url: "https://<tekton-dashboard-url>"
   oci_file_download_url: "https://<download-service-url>/oci-file"
   reconciler_interval: "15s"
   reconciler_since: "24h"
