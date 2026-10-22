@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 type Service struct {
 	Store           Store           `yaml:"store" json:"store"`
 	Github          Github          `yaml:"github" json:"github"`
@@ -61,10 +63,41 @@ type Jenkins struct {
 
 type Tekton struct {
 	CloudeventEndpoint string `yaml:"cloudevent_endpoint,omitempty" json:"cloudevent_endpoint,omitempty"`
+	// APIURL is the Tekton Dashboard base URL used by server-side API calls
+	// (for example the PipelineRun reconciler). It usually points at an
+	// in-cluster Service and must not require browser/OIDC authentication.
+	// An empty value falls back to ViewURL for backward compatibility.
+	APIURL string `yaml:"api_url,omitempty" json:"api_url,omitempty"`
+	// ViewURL is the Tekton Dashboard base URL used for user-facing pipeline
+	// links. It may point at an externally exposed, OIDC-protected route.
+	// An empty value falls back to APIURL for backward compatibility.
 	ViewURL            string `yaml:"view_url,omitempty" json:"view_url,omitempty"`
 	OciFileDownloadURL string `yaml:"oci_file_download_url,omitempty" json:"oci_file_download_url,omitempty"`
 	ReconcilerInterval string `yaml:"reconciler_interval,omitempty" json:"reconciler_interval,omitempty"`
 	ReconcilerSince    string `yaml:"reconciler_since,omitempty" json:"reconciler_since,omitempty"`
+}
+
+// APIBaseURL returns the base URL for server-side Tekton Dashboard API calls.
+// It prefers api_url and falls back to view_url so existing deployments that
+// only configure view_url keep working.
+func (t Tekton) APIBaseURL() string {
+	return strings.TrimRight(firstNonEmpty(t.APIURL, t.ViewURL), "/")
+}
+
+// ViewBaseURL returns the base URL for user-facing pipeline view links.
+// It prefers view_url and falls back to api_url so deployments that only
+// configure api_url still get links.
+func (t Tekton) ViewBaseURL() string {
+	return strings.TrimRight(firstNonEmpty(t.ViewURL, t.APIURL), "/")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 type Lark struct {

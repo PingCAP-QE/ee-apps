@@ -99,7 +99,7 @@ func main() {
 
 			// Start Tekton reconciler
 			initialCfg := cfg.Get()
-			if initialCfg.Tekton.ViewURL != "" {
+			if initialCfg.Tekton.APIBaseURL() != "" {
 				interval := 1 * time.Minute // default
 				if initialCfg.Tekton.ReconcilerInterval != "" {
 					if d, err := time.ParseDuration(initialCfg.Tekton.ReconcilerInterval); err == nil {

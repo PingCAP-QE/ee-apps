@@ -104,11 +104,14 @@ func (s *devbuildsrvc) Reconcile(ctx context.Context) {
 	}
 }
 
-// queryPipelineRuns queries PipelineRuns from Tekton Dashboard API by event ID.
+// queryPipelineRuns queries PipelineRuns from the Tekton Dashboard API by event ID.
 func (s *devbuildsrvc) queryPipelineRuns(ctx context.Context, eventID string) ([]tknv1.PipelineRun, error) {
+	if s.dashboardAPIURL == "" {
+		return nil, fmt.Errorf("tekton api url is not configured")
+	}
 	labelSelector := fmt.Sprintf("triggers.tekton.dev/triggers-eventid=%s", eventID)
 	apiURL := fmt.Sprintf("%s/apis/tekton.dev/v1/pipelineruns/?labelSelector=%s",
-		s.dashboardURL, url.QueryEscape(labelSelector))
+		s.dashboardAPIURL, url.QueryEscape(labelSelector))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
@@ -142,7 +145,7 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 
 	// Determine overall status from PipelineRuns
 	newStatus := determineBuildStatus(build, pipelineRuns)
-	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus, s.dashboardURL)
+	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus, s.dashboardViewURL)
 	buildReport := buildBuildReport(pipelineRuns)
 	if newStatus == "" || (newStatus == build.Status && reflect.DeepEqual(tektonStatus, build.TektonStatus) && (buildReport == nil || reflect.DeepEqual(*buildReport, build.BuildReport))) {
 		return nil
@@ -231,7 +234,7 @@ func getSucceededCondition(pr tknv1.PipelineRun) *knative.Condition {
 }
 
 // buildTektonStatus builds the tekton_status from PipelineRuns.
-func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonStatus, dashboardURL string) schema.TektonStatus {
+func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonStatus, viewURL string) schema.TektonStatus {
 	var pipelines []schema.TektonPipeline
 	for _, pr := range pipelineRuns {
 		pipeline := schema.TektonPipeline{
@@ -262,9 +265,9 @@ func buildTektonStatus(pipelineRuns []tknv1.PipelineRun, existing schema.TektonS
 		pipeline.Platform = parsePlatformFromParams(pr.Spec.Params)
 
 		// Build dashboard view URL
-		if dashboardURL != "" {
+		if viewURL != "" {
 			pipeline.URL = fmt.Sprintf("%s/#/namespaces/%s/pipelineruns/%s",
-				dashboardURL, pr.GetNamespace(), pr.GetName())
+				viewURL, pr.GetNamespace(), pr.GetName())
 		}
 
 		// Extract results (OCI artifacts + images)

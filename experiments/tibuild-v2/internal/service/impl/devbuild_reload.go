@@ -23,9 +23,11 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	s.productRepoMap = cfg.ProductRepoMap
 	s.imageMirrorURLMap = cfg.ImageMirrorURLMap
 
-	// Update Tekton dashboard URL.
-	s.dashboardURL = cfg.Tekton.ViewURL
+	// Update Tekton dashboard URLs used for server-side API calls and user-facing links.
+	s.dashboardAPIURL = cfg.Tekton.APIBaseURL()
+	s.dashboardViewURL = cfg.Tekton.ViewBaseURL()
 	s.ociFileDownloadURL = strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/")
+	logTektonURLs(s.logger, cfg)
 
 	// Update reconciler lookback duration.
 	if cfg.Tekton.ReconcilerSince != "" {

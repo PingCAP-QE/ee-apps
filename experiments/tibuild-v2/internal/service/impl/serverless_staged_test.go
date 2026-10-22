@@ -58,7 +58,7 @@ func TestServerlessStagedDevbuild(t *testing.T) {
 		logger: &logger, dbClient: serverlessTestDB(t),
 		productRepoMap:         map[string]string{product: "tidbcloud/" + product},
 		ghClient:               gh,
-		tektonCloudEventClient: ce, dashboardURL: dashboard,
+		tektonCloudEventClient: ce, dashboardAPIURL: dashboard, dashboardViewURL: dashboard,
 		httpClient: &http.Client{Timeout: 30 * time.Second}, reconcilerSince: time.Hour,
 		ociFileDownloadURL: os.Getenv("SERVERLESS_STAGE_DOWNLOAD_URL"),
 	}
