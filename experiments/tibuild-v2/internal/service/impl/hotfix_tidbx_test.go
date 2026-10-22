@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/go-github/v93/github"
@@ -292,28 +293,6 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 		},
 	}
 
-	// Helper to create a branch_commits mock handler.
-	// The custom branch_commits endpoint does not use the standard /repos/ prefix.
-	branchCommitsHandler := mock.WithRequestMatchHandler(
-		mock.EndpointPattern{
-			Pattern: "/{owner}/{repo}/branch_commits/{sha}",
-			Method:  "GET",
-		},
-		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write(mock.MustMarshal(struct {
-				Branches []struct {
-					Branch string `json:"branch,omitempty"`
-				} `json:"branches"`
-			}{
-				Branches: []struct {
-					Branch string `json:"branch,omitempty"`
-				}{
-					{Branch: branch},
-				},
-			}))
-		}),
-	)
-
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
 			var mockOpts []mock.MockBackendOption
@@ -333,6 +312,16 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 						&github.CommitsComparison{Status: new("ahead")},
 					),
 				)
+			} else if test.args.commit != "" {
+				// getLatestNextgenReleaseBranchForCommit and
+				// computeNextTagByCompareCommits each call CompareCommits.
+				mockOpts = append(mockOpts,
+					mock.WithRequestMatch(
+						mock.GetReposCompareByOwnerByRepoByBasehead,
+						&github.CommitsComparison{Status: new("ahead")},
+						&github.CommitsComparison{Status: new("ahead")},
+					),
+				)
 			} else {
 				// Only computeNextTagByCompareCommits calls CompareCommits.
 				mockOpts = append(mockOpts,
@@ -343,10 +332,23 @@ func TestBumpTagForTidbx_PaginationFlow(t *testing.T) {
 				)
 			}
 
-			// If only commit is provided (no branch), computeNewTagNameForTidbx will
-			// call getBranchesContainingCommit, which hits the custom branch_commits endpoint.
+			// If only commit is provided (no branch), computeNewTagNameForTidbx
+			// enumerates release-nextgen branches and checks whether each contains
+			// the commit via the compare API.
 			if test.args.commit != "" && test.args.branch == "" {
-				mockOpts = append(mockOpts, branchCommitsHandler)
+				mockOpts = append(mockOpts,
+					mock.WithRequestMatchHandler(
+						mock.EndpointPattern{
+							Pattern: "/repos/{owner}/{repo}/git/matching-refs/{ref:.+}",
+							Method:  "GET",
+						},
+						http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+							_, _ = w.Write(mock.MustMarshal([]*github.Reference{
+								{Ref: new("refs/heads/" + branch)},
+							}))
+						}),
+					),
+				)
 			}
 
 			// Common mocks for all subtests.
@@ -717,5 +719,51 @@ func TestQueryTagOfTidbx_ResolvesCalendarImageTag(t *testing.T) {
 	}
 	if res.Tag != gitTag {
 		t.Fatalf("expected resolved tag %s, got %s", gitTag, res.Tag)
+	}
+}
+
+func TestGetLatestNextgenReleaseBranchForCommit(t *testing.T) {
+	const (
+		owner  = "owner"
+		repo   = "repo"
+		commit = "abc123"
+	)
+	httpClient := mock.NewMockedHTTPClient(
+		mock.WithRequestMatchHandler(
+			mock.EndpointPattern{
+				Pattern: "/repos/{owner}/{repo}/git/matching-refs/{ref:.+}",
+				Method:  "GET",
+			},
+			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write(mock.MustMarshal([]*github.Reference{
+					{Ref: new("refs/heads/release-nextgen-202601")},
+					{Ref: new("refs/heads/release-nextgen-202602")},
+					{Ref: new("refs/heads/release-nextgen-202603")},
+					{Ref: new("refs/heads/main")},
+				}))
+			}),
+		),
+		mock.WithRequestMatchHandler(
+			mock.GetReposCompareByOwnerByRepoByBasehead,
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				status := "diverged"
+				switch {
+				case strings.Contains(r.URL.Path, "release-nextgen-202601"):
+					status = "identical"
+				case strings.Contains(r.URL.Path, "release-nextgen-202602"):
+					status = "ahead"
+				}
+				_, _ = w.Write(mock.MustMarshal(&github.CommitsComparison{Status: new(status)}))
+			}),
+		),
+	)
+	svc := newServiceWithClient(newTestGithubClient(httpClient))
+
+	branch, err := svc.getLatestNextgenReleaseBranchForCommit(context.Background(), owner, repo, commit)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if branch != "release-nextgen-202602" {
+		t.Fatalf("branch = %q, want release-nextgen-202602", branch)
 	}
 }
