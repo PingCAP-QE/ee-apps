@@ -172,16 +172,16 @@ func (s *devbuildsrvc) Capabilities(context.Context) (*devbuild.DevBuildCapabili
 		DefaultPipelineEngine: tektonEngine,
 	}
 	for _, product := range products {
-		platforms := supportedPlatforms
-		if isServerlessProduct(product) {
-			platforms = []string{"linux", LinuxAmd64, LinuxArm64}
+		capability, ok := productBuildCapabilities[product]
+		if !ok {
+			capability = productBuildCapability{Platforms: supportedPlatforms, Editions: []string{"community"}, PipelineEngines: []string{tektonEngine}}
 		}
 		result.Products = append(result.Products, &devbuild.DevBuildProductCapability{
 			ID:              product,
 			Label:           productLabel(product),
-			Editions:        []string{"community"},
-			Platforms:       platforms,
-			DefaultEdition:  "community",
+			Editions:        capability.Editions,
+			Platforms:       capability.Platforms,
+			DefaultEdition:  capability.Editions[0],
 			DefaultPlatform: "linux",
 		})
 	}
@@ -394,8 +394,8 @@ func (s *devbuildsrvc) applyPermissions(ctx context.Context, build *devbuild.Dev
 }
 
 func productLabel(product string) string {
-	if label, ok := serverlessProductLabels[product]; ok {
-		return label
+	if capability, ok := productBuildCapabilities[product]; ok {
+		return capability.Label
 	}
 	labels := map[string]string{
 		"tidb": "TiDB", "tikv": "TiKV", "tiflash": "TiFlash", "pd": "PD", "ticdc": "TiCDC",

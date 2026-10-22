@@ -19,7 +19,7 @@ const (
 )
 
 func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePayload) (*ent.DevBuild, gitRefInfo, error) {
-	if err := validateServerlessRequest(p.Request); err != nil {
+	if err := validateProductRequest(p.Request); err != nil {
 		return nil, gitRefInfo{}, err
 	}
 
@@ -52,8 +52,8 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 
 	// 3. create the entity
 	edition := normalizeEdition(p.Request.Edition)
-	if isServerlessProduct(p.Request.Product) && edition == "" {
-		edition = "community"
+	if capability, ok := productBuildCapabilities[p.Request.Product]; ok && edition == "" {
+		edition = capability.Editions[0]
 	}
 	create := s.dbClient.DevBuild.Create().
 		SetProduct(p.Request.Product).

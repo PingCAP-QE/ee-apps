@@ -46,7 +46,8 @@ func TestServerlessStagedDevbuild(t *testing.T) {
 	if value := os.Getenv("SERVERLESS_STAGE_PLATFORM"); value != "" {
 		platform = value
 	}
-	require.True(t, isServerlessProduct(product))
+	_, supported := productBuildCapabilities[product]
+	require.True(t, supported)
 
 	gh, err := github.NewClient(github.WithAuthToken(token))
 	require.NoError(t, err)
@@ -109,8 +110,6 @@ func TestServerlessStagedDevbuild(t *testing.T) {
 	require.Len(t, record.TektonStatus.Pipelines, len(parsePlatforms(platform)), "no duplicate PipelineRuns")
 	require.Equal(t, requestedVersion, record.Version)
 	require.Equal(t, record.GitHash, record.BuildReport.GitHash)
-	require.NotEmpty(t, record.BuildReport.PrintedVersion)
-	require.NotEqual(t, requestedVersion, record.BuildReport.PrintedVersion)
 	for _, image := range record.BuildReport.Images {
 		require.Contains(t, image.URL, "/dev/tidbcloud/"+product+"/")
 		require.NotContains(t, image.URL, requestedVersion)
@@ -134,7 +133,6 @@ func TestServerlessStagedDevbuild(t *testing.T) {
 	card, err := NewLarkCardJSON(info)
 	require.NoError(t, err)
 	require.Contains(t, card, record.GitHash)
-	require.Contains(t, card, record.BuildReport.PrintedVersion)
 	if output := os.Getenv("SERVERLESS_STAGE_OUTPUT"); output != "" {
 		require.NoError(t, os.MkdirAll(output, 0755))
 		report, err := json.MarshalIndent(record, "", "  ")

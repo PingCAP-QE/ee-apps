@@ -14,10 +14,11 @@ Use the existing `/devbuild trigger` command and build ID queries:
 
 The compatibility `version` value is received, saved, passed to CloudEvents and
 shown as request metadata. It never overrides Git version inference or image
-tags. Actual version, fixed commit SHA, image tags, platform artifacts and
-checksum file addresses reuse existing PipelineRun parameters and artifact results.
-The actual version is read from the existing `get-release-ver` TaskRun `version`
-result; the Pipeline results contract is unchanged.
+tags. Fixed commit SHA, image tags, platform artifacts and checksum file addresses
+reuse existing PipelineRun parameters and artifact results. If a pipeline already
+reports `printed-version`, it is saved in the existing build report field. There
+is no extra TaskRun query or required version result; Pipeline results and the
+Lark card structure are unchanged.
 
 Supported platforms: `linux` (two events: amd64 and arm64), `linux/amd64`,
 `linux/arm64`. Empty platform defaults to Linux on both architectures. Unsupported
@@ -26,7 +27,8 @@ an event is submitted. Existing products retain their platform and command rules
 
 `branch/name`, `tag/name`, `pull/N`, `commit/<40-character SHA>` and a raw SHA are
 accepted. Creation resolves and stores the actual commit; annotated tags are
-peeled to the commit. Resolution/access errors return HTTP 400. The same stored
+peeled to the commit. Missing refs return HTTP 400; GitHub authentication and upstream failures return
+HTTP 500. The same stored
 SHA is sent for every platform and reused on reruns. `githubRepo` can select a
 fork; `paramProduct` keeps component and artifact paths independent of its name.
 
@@ -34,14 +36,15 @@ Events add `paramProduct`, `paramGitRevision` and compatibility `paramVersion`
 without removing existing extensions or GitHub-shaped payloads. CI uses a
 single-platform template per event, with the existing CloudEvent context retained
 for result collection. Legacy canonical events remain routable. Devbuild writes
-only `us-docker.pkg.dev/pingcap-testing-account/dev/tidbcloud/<product>/...` and
-never invokes TiUP, image delivery or environment deployment.
+only `us-docker.pkg.dev/pingcap-testing-account/dev/tidbcloud/<product>/...`.
+Publisher/delivery rules exclude these repositories from distribution and TiUP;
+this API does not deploy environments.
 
 Reconciliation refreshes pipelines and artifact reports even while the overall
-status stays `PROCESSING`. A request succeeds only after all requested platforms
-succeed with non-empty image and package/checksum results. Missing platforms keep
-it incomplete; an empty result cannot turn a successful Tekton run into build
-success. Request `version` remains distinct from the Git-derived build version.
+status stays `PROCESSING`. All products use the same completion rule: every requested platform must have a
+successful run. Missing platforms keep a request incomplete. Reports collect
+available artifacts without requiring images, binary packages or a version result.
+Request `version` remains compatibility metadata and does not affect image tags.
 
 Validation: regenerate `go generate ./internal/`; run `go test ./...` and build
 both commands in this module, then independently test/build `chatops-lark`.
@@ -79,7 +82,7 @@ go test ./internal/service/impl -run '^TestServerlessStagedDevbuild$' -count=1 -
 
 Repeat with PR, tag and commit inputs after their Git refs exist. The test checks
 fixed SHA, one event/run per requested platform, complete result collection,
-Git-derived version independent of `v99.0.0` request metadata, API artifact URLs
-and rendered card content. Save the evidence before the cluster pruner removes
+unchanged `v99.0.0` request metadata, API artifact URLs and the existing rendered
+card structure. Save the evidence before the cluster pruner removes
 runs. Tag creation on merged cutover commits, deployed service/chatops images,
 actual Lark delivery and formal controller distribution remain rollout checks.

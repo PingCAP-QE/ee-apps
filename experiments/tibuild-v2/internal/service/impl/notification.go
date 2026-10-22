@@ -40,10 +40,9 @@ type NotificationInfo struct {
 	ErrMsg       string
 	PipelineRuns []PipelineRunInfo
 	// Build report fields (populated on success)
-	ActualVersion string
-	GitSha        string
-	Images        []ImageInfo
-	Binaries      []BinaryInfo
+	GitSha   string
+	Images   []ImageInfo
+	Binaries []BinaryInfo
 }
 
 // PipelineRunInfo contains information about a single pipeline run.
@@ -73,11 +72,6 @@ func buildNotificationInfo(build *ent.DevBuild) *NotificationInfo {
 		GithubRepo:  build.GithubRepo,
 		Platform:    build.Platform,
 		ErrMsg:      build.ErrMsg,
-	}
-
-	if isServerlessProduct(build.Product) {
-		info.GitSha = build.GitHash
-		info.ActualVersion = build.BuildReport.PrintedVersion
 	}
 
 	// Extract pipeline run info from TektonStatus

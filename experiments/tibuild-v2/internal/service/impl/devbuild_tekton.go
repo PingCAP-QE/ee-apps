@@ -88,9 +88,6 @@ func (s *devbuildsrvc) newDevBuildCloudEvents(record *ent.DevBuild, refInfo gitR
 }
 
 func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform string, refInfo gitRefInfo) (*cloudevents.Event, error) {
-	if isServerlessProduct(record.Product) && !isHex(refInfo.SHA) {
-		return nil, fmt.Errorf("Serverless devbuild requires a resolved commit SHA")
-	}
 	event := cloudevents.NewEvent()
 	var eventData any
 	switch {

@@ -38,9 +38,6 @@ body:
         {{- end }}
     - tag: hr
     {{- $request := printf "**Request:**\n- **Product:** %s\n- **Edition:** %s\n- **Version:** %s" (Escape .Product) (Escape .Edition) (Escape .Version) }}
-    {{- if .Serverless }}
-      {{- $request = printf "%s\n- Version is request metadata; build version and image tags come from Git." $request }}
-    {{- end }}
     {{- if .IsHotfix }}
       {{- $request = printf "%s\n- **Hotfix:** 🔥 Yes" $request }}
     {{- end }}
@@ -55,9 +52,6 @@ body:
     {{- if or .GitSha .ImageGroups .BinaryGroups }}
     - tag: hr
     {{- $report := "**Build Report**" }}
-    {{- if and .Serverless .ActualVersion }}
-      {{- $report = printf "%s\n- **Build version (Git):** %s" $report (Escape .ActualVersion) }}
-    {{- end }}
     {{- with .GitSha }}
       {{- $report = printf "%s\n- **Git SHA:** %s" $report (Link . (GitRefURL (printf "commit/%s" .) $.GithubRepo)) }}
     {{- end }}
