@@ -135,6 +135,14 @@ func (s *devbuildsrvc) newDevBuildCloudEvent(record *ent.DevBuild, platform stri
 	event.SetSubject(fmt.Sprint(record.ID))
 	event.SetSource("tibuild.pingcap.net/api/v2/devbuilds/" + fmt.Sprint(record.ID))
 	event.SetExtension("user", record.CreatedBy)
+	event.SetExtension("paramProduct", record.Product)
+	if isHex(refInfo.SHA) {
+		event.SetExtension("paramGitRevision", refInfo.SHA)
+	}
+	// Compatibility metadata only: the build version is always derived from Git.
+	if record.Version != "" {
+		event.SetExtension("paramVersion", record.Version)
+	}
 	event.SetExtension("paramProfile", normalizeEdition(string(record.Edition)))
 	event.SetExtension("paramIsHotfix", record.IsHotfix)
 	event.SetExtension("paramIsPushGcr", record.IsPushGCR)

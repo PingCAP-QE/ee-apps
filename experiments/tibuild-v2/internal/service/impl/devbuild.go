@@ -172,12 +172,16 @@ func (s *devbuildsrvc) Capabilities(context.Context) (*devbuild.DevBuildCapabili
 		DefaultPipelineEngine: tektonEngine,
 	}
 	for _, product := range products {
+		capability, ok := productBuildCapabilities[product]
+		if !ok {
+			capability = productBuildCapability{Platforms: supportedPlatforms, Editions: []string{"community"}, PipelineEngines: []string{tektonEngine}}
+		}
 		result.Products = append(result.Products, &devbuild.DevBuildProductCapability{
 			ID:              product,
 			Label:           productLabel(product),
-			Editions:        []string{"community"},
-			Platforms:       supportedPlatforms,
-			DefaultEdition:  "community",
+			Editions:        capability.Editions,
+			Platforms:       capability.Platforms,
+			DefaultEdition:  capability.Editions[0],
 			DefaultPlatform: "linux",
 		})
 	}
@@ -361,6 +365,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetPluginGitRef(existingBuild.PluginGitRef).
 		SetIsHotfix(existingBuild.IsHotfix).
 		SetIsPushGCR(existingBuild.IsPushGCR).
+		SetBuilderImg(existingBuild.BuilderImg).
 		SetPlatform(existingBuild.Platform).
 		SetStatus("PENDING").
 		SetCreatedAt(time.Now()).
@@ -389,6 +394,9 @@ func (s *devbuildsrvc) applyPermissions(ctx context.Context, build *devbuild.Dev
 }
 
 func productLabel(product string) string {
+	if capability, ok := productBuildCapabilities[product]; ok {
+		return capability.Label
+	}
 	labels := map[string]string{
 		"tidb": "TiDB", "tikv": "TiKV", "tiflash": "TiFlash", "pd": "PD", "ticdc": "TiCDC",
 		"dm": "DM", "br": "BR", "tiproxy": "TiProxy", "tidb-operator": "TiDB Operator",

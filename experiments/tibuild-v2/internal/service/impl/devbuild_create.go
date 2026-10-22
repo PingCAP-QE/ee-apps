@@ -19,6 +19,10 @@ const (
 )
 
 func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePayload) (*ent.DevBuild, gitRefInfo, error) {
+	if err := validateProductRequest(p.Request); err != nil {
+		return nil, gitRefInfo{}, err
+	}
+
 	// NoNeed: guess enterprise plugin ref.
 	// fill for fips
 	// set for default pipeline engine.
@@ -48,6 +52,9 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 
 	// 3. create the entity
 	edition := normalizeEdition(p.Request.Edition)
+	if capability, ok := productBuildCapabilities[p.Request.Product]; ok && edition == "" {
+		edition = capability.Editions[0]
+	}
 	create := s.dbClient.DevBuild.Create().
 		SetProduct(p.Request.Product).
 		SetEdition(edition).
@@ -61,6 +68,7 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 		SetNillablePluginGitRef(p.Request.PluginGitRef).
 		SetNillablePipelineEngine(p.Request.PipelineEngine).
 		SetPlatform(p.Request.Platform).
+		SetNillableBuilderImg(p.Request.BuilderImg).
 		SetStatus("PENDING")
 
 	record, err := create.Save(ctx)

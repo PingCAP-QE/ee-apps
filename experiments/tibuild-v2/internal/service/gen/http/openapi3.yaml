@@ -411,7 +411,7 @@ paths:
                                         pipelineEngine: tekton
                                         platform: linux
                                         pluginGitRef: Sed est nihil non quia quia.
-                                        product: tidb-lightning
+                                        product: dm
                                         productBaseImg: Vero accusantium neque odio ratione nam ut.
                                         productDockerfile: Quia tempora ut et id.
                                         targetImg: Sed error et.
@@ -582,7 +582,7 @@ paths:
                                         pipelineEngine: tekton
                                         platform: linux
                                         pluginGitRef: Sed est nihil non quia quia.
-                                        product: tidb-lightning
+                                        product: dm
                                         productBaseImg: Vero accusantium neque odio ratione nam ut.
                                         productDockerfile: Quia tempora ut et id.
                                         targetImg: Sed error et.
@@ -753,7 +753,7 @@ paths:
                                         pipelineEngine: tekton
                                         platform: linux
                                         pluginGitRef: Sed est nihil non quia quia.
-                                        product: tidb-lightning
+                                        product: dm
                                         productBaseImg: Vero accusantium neque odio ratione nam ut.
                                         productDockerfile: Quia tempora ut et id.
                                         targetImg: Sed error et.
@@ -924,7 +924,7 @@ paths:
                                         pipelineEngine: tekton
                                         platform: linux
                                         pluginGitRef: Sed est nihil non quia quia.
-                                        product: tidb-lightning
+                                        product: dm
                                         productBaseImg: Vero accusantium neque odio ratione nam ut.
                                         productDockerfile: Quia tempora ut et id.
                                         targetImg: Sed error et.
@@ -1096,7 +1096,7 @@ paths:
                                     pipelineEngine: tekton
                                     platform: linux
                                     pluginGitRef: Sed est nihil non quia quia.
-                                    product: tidb-lightning
+                                    product: dm
                                     productBaseImg: Vero accusantium neque odio ratione nam ut.
                                     productDockerfile: Quia tempora ut et id.
                                     targetImg: Sed error et.
@@ -1267,7 +1267,7 @@ paths:
                                     pipelineEngine: tekton
                                     platform: linux
                                     pluginGitRef: Sed est nihil non quia quia.
-                                    product: tidb-lightning
+                                    product: dm
                                     productBaseImg: Vero accusantium neque odio ratione nam ut.
                                     productDockerfile: Quia tempora ut et id.
                                     targetImg: Sed error et.
@@ -1438,7 +1438,7 @@ paths:
                                     pipelineEngine: tekton
                                     platform: linux
                                     pluginGitRef: Sed est nihil non quia quia.
-                                    product: tidb-lightning
+                                    product: dm
                                     productBaseImg: Vero accusantium neque odio ratione nam ut.
                                     productDockerfile: Quia tempora ut et id.
                                     targetImg: Sed error et.
@@ -1609,7 +1609,7 @@ paths:
                                     pipelineEngine: tekton
                                     platform: linux
                                     pluginGitRef: Sed est nihil non quia quia.
-                                    product: tidb-lightning
+                                    product: dm
                                     productBaseImg: Vero accusantium neque odio ratione nam ut.
                                     productDockerfile: Quia tempora ut et id.
                                     targetImg: Sed error et.
@@ -1825,7 +1825,7 @@ paths:
                                 pipelineEngine: jenkins
                                 platform: linux
                                 pluginGitRef: Sit enim itaque.
-                                product: tidb-lightning
+                                product: tidb-cse
                                 productBaseImg: Dolorem voluptates.
                                 productDockerfile: Non suscipit veniam laboriosam voluptas asperiores ad.
                                 targetImg: Adipisci voluptatem dicta at.
@@ -1858,7 +1858,7 @@ paths:
                                     pipelineEngine: tekton
                                     platform: darwin/arm64
                                     pluginGitRef: Iste ex.
-                                    product: tikv
+                                    product: cassandra-on-mysql
                                     productBaseImg: Alias facere voluptas.
                                     productDockerfile: Porro odio qui repellendus.
                                     targetImg: Amet ipsum nemo qui ea molestiae.
@@ -2050,7 +2050,7 @@ paths:
                                     pipelineEngine: tekton
                                     platform: darwin/arm64
                                     pluginGitRef: Iste ex.
-                                    product: tikv
+                                    product: cassandra-on-mysql
                                     productBaseImg: Alias facere voluptas.
                                     productDockerfile: Porro odio qui repellendus.
                                     targetImg: Amet ipsum nemo qui ea molestiae.
@@ -2380,7 +2380,7 @@ paths:
                                     pipelineEngine: tekton
                                     platform: darwin/arm64
                                     pluginGitRef: Iste ex.
-                                    product: tikv
+                                    product: cassandra-on-mysql
                                     productBaseImg: Alias facere voluptas.
                                     productDockerfile: Porro odio qui repellendus.
                                     targetImg: Amet ipsum nemo qui ea molestiae.
@@ -2573,7 +2573,7 @@ paths:
                                     pipelineEngine: tekton
                                     platform: darwin/arm64
                                     pluginGitRef: Iste ex.
-                                    product: tikv
+                                    product: cassandra-on-mysql
                                     productBaseImg: Alias facere voluptas.
                                     productDockerfile: Porro odio qui repellendus.
                                     targetImg: Amet ipsum nemo qui ea molestiae.
@@ -3234,7 +3234,7 @@ components:
                     pipelineEngine: jenkins
                     platform: linux
                     pluginGitRef: Sit enim itaque.
-                    product: tidb-lightning
+                    product: tidb-cse
                     productBaseImg: Dolorem voluptates.
                     productDockerfile: Non suscipit veniam laboriosam voluptas asperiores ad.
                     targetImg: Adipisci voluptatem dicta at.
@@ -3277,7 +3277,7 @@ components:
                     pipelineEngine: jenkins
                     platform: darwin/arm64
                     pluginGitRef: Quidem doloribus nam sed consequatur voluptatum.
-                    product: dm
+                    product: tidb-operator
                     productBaseImg: Excepturi libero.
                     productDockerfile: Nisi fugit in voluptates voluptates eveniet.
                     targetImg: Repellendus omnis consequatur aspernatur enim.
@@ -3716,7 +3716,7 @@ components:
                     example: Nihil doloremque quisquam similique nulla aut qui.
                 product:
                     type: string
-                    example: ticdc-newarch
+                    example: tidb-operator
                     enum:
                         - dm
                         - enterprise-plugin
@@ -3738,6 +3738,11 @@ components:
                         - tiflash
                         - tikv
                         - tiproxy
+                        - tidb-cse
+                        - pd-cse
+                        - tidb-operator-cse
+                        - cassandra-on-mysql
+                        - qdrant-on-tidb
                 productBaseImg:
                     type: string
                     example: Quas et eos occaecati ipsam magnam.
@@ -3763,7 +3768,7 @@ components:
                 pipelineEngine: jenkins
                 platform: linux/amd64
                 pluginGitRef: Aut quis eos.
-                product: pump
+                product: br
                 productBaseImg: Voluptatem ea sit placeat cum provident aut.
                 productDockerfile: Porro accusantium illo temporibus voluptatem.
                 targetImg: Animi quia eligendi quia explicabo veniam.

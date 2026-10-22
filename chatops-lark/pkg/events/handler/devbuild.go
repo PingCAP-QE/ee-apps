@@ -21,6 +21,11 @@ Examples:
   /devbuild trigger --product tikv --version v6.5.0 --gitRef branch/master --features failpoint
   /devbuild trigger --product tiflash --version v6.5.0 --gitRef branch/master
 
+Serverless products: tidb-cse, pd-cse, tidb-operator-cse, cassandra-on-mysql, qdrant-on-tidb.
+Serverless uses Tekton and linux (both architectures), linux/amd64 or linux/arm64.
+Example: /devbuild trigger --product tidb-cse --version v8.5.3 --gitRef branch/main-8.5-keyspace --platform linux
+The --version option is retained for compatibility; actual versions and tags are derived from Git.
+
 Required options for trigger:
   --product string          Product to build (tidb, tikv, pd, etc.)
   --version string          Version to build (v1.2.3)

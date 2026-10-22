@@ -154,7 +154,19 @@ func getGitRefInfo(ctx context.Context, ghClient *github.Client, fullRepo, reqGi
 				fmt.Sprintf("tag %q not found in %s", tagName, fullRepo),
 			)
 		}
-		sha := ref.GetObject().GetSHA()
+		// Annotated tags point at tag objects rather than commits. Peel them.
+		object := ref.GetObject()
+		for depth := 0; object != nil && object.GetType() == "tag"; depth++ {
+			if depth >= 8 {
+				return gitRefInfo{}, &githubUpstreamError{repo: fullRepo, ref: reqGitRef, err: errors.New("annotated tag nesting exceeds 8 levels")}
+			}
+			tag, _, err := ghClient.Git.GetTag(ctx, owner, repo, object.GetSHA())
+			if err != nil {
+				return gitRefInfo{}, classifyGitRefError(err, fullRepo, reqGitRef, fmt.Sprintf("tag %q not found in %s", tagName, fullRepo))
+			}
+			object = tag.GetObject()
+		}
+		sha := object.GetSHA()
 		if sha == "" {
 			return gitRefInfo{}, emptySHAError(fullRepo, reqGitRef)
 		}

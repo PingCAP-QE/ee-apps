@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"time"
 
 	tknv1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
@@ -140,8 +141,10 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 	}
 
 	// Determine overall status from PipelineRuns
-	newStatus := determineStatus(pipelineRuns)
-	if newStatus == "" || newStatus == build.Status {
+	newStatus := determineBuildStatus(build, pipelineRuns)
+	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus, s.dashboardURL)
+	buildReport := buildBuildReport(pipelineRuns)
+	if newStatus == "" || (newStatus == build.Status && reflect.DeepEqual(tektonStatus, build.TektonStatus) && (buildReport == nil || reflect.DeepEqual(*buildReport, build.BuildReport))) {
 		return nil
 	}
 
@@ -159,11 +162,9 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 		SetUpdatedAt(time.Now())
 
 	// Update tekton status with pipeline info
-	tektonStatus := buildTektonStatus(pipelineRuns, build.TektonStatus, s.dashboardURL)
 	updater.SetTektonStatus(tektonStatus)
 
 	// Build report from pipeline runs
-	buildReport := buildBuildReport(pipelineRuns)
 	if buildReport != nil {
 		updater.SetBuildReport(*buildReport)
 	}
@@ -172,7 +173,7 @@ func (s *devbuildsrvc) updateBuildFromPipelineRuns(ctx context.Context, build *e
 	if startTime := getEarliestStartTime(pipelineRuns); startTime != nil {
 		updater.SetPipelineStartAt(startTime.Time)
 	}
-	if endTime := getLatestCompletionTime(pipelineRuns); endTime != nil {
+	if endTime := getLatestCompletionTime(pipelineRuns); endTime != nil && isTerminalStatus(newStatus) {
 		updater.SetPipelineEndAt(endTime.Time)
 	}
 
@@ -447,4 +448,26 @@ func getLatestCompletionTime(pipelineRuns []tknv1.PipelineRun) *metav1.Time {
 		}
 	}
 	return latest
+}
+
+// Requests finish only after every requested platform has a successful run.
+func determineBuildStatus(build *ent.DevBuild, runs []tknv1.PipelineRun) string {
+	status := determineStatus(runs)
+	if status != "SUCCESS" {
+		return status
+	}
+	seen := map[string]bool{}
+	for _, run := range runs {
+		seen[parsePlatformFromParams(run.Spec.Params)] = true
+	}
+	platforms := parsePlatforms(build.Platform)
+	if build.Platform == "all" {
+		platforms = []string{LinuxAmd64, LinuxArm64, DarwinAmd64, DarwinArm64}
+	}
+	for _, platform := range platforms {
+		if !seen[platform] {
+			return "PROCESSING"
+		}
+	}
+	return status
 }
