@@ -30,10 +30,19 @@ if err != nil {
 ```
 
 For requests to `api.github.com/repos/{owner}/{repo}/...`, the transport asks
-the broker for a repository-scoped installation token:
+the broker for a repository-scoped installation token. The requested permission
+is derived from the API resource and HTTP method:
 
-- `GET`/`HEAD`: `contents: read`, `pull_requests: read`
-- other methods: `contents: write`, `pull_requests: write`
+- `/git/*`, `/branches`, `/commits`, `/compare`, `/contents`, `/tags` → `contents`
+- `/pulls` → `pull_requests`
+- `/issues` → `issues`
+- `/actions` → `actions`
+- unknown repository endpoints → `contents`
+- `GET`/`HEAD` request `read`; other methods request `write`
+
+For example, creating a git tag (`POST /git/tags`) requests only
+`contents: write`, while creating a pull request requests
+`pull_requests: write`.
 
 Tokens are cached by repository and permission set until five minutes before
 expiry. Requests without a repository path, requests to other hosts, and

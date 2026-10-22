@@ -91,7 +91,7 @@ func NewTransport(cfg Config) *Transport {
 // RoundTrip implements http.RoundTripper.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	repo, scoped := repositoryFromPath(req.URL.Path)
-	perms := permissionsForMethod(req.Method)
+	perms := permissionsForRequest(req.Method, req.URL.Path)
 	token, err := t.tokenFor(req.Context(), req, repo, scoped, perms)
 	if err != nil {
 		return nil, err
@@ -196,17 +196,40 @@ func repositoryFromPath(path string) (string, bool) {
 	return parts[1] + "/" + parts[2], true
 }
 
-func permissionsForMethod(method string) map[string]string {
-	switch method {
-	case http.MethodGet, http.MethodHead:
-		return map[string]string{
-			"contents":      "read",
-			"pull_requests": "read",
-		}
+// permissionsForRequest selects the narrowest GitHub App permission needed
+// for a repository-scoped API request.
+func permissionsForRequest(method, path string) map[string]string {
+	level := "write"
+	if method == http.MethodGet || method == http.MethodHead {
+		level = "read"
+	}
+
+	resource := repositoryResource(path)
+	switch {
+	case hasPathSegment(resource, "pulls"):
+		return map[string]string{"pull_requests": level}
+	case hasPathSegment(resource, "issues"):
+		return map[string]string{"issues": level}
+	case hasPathSegment(resource, "actions"):
+		return map[string]string{"actions": level}
 	default:
-		return map[string]string{
-			"contents":      "write",
-			"pull_requests": "write",
+		return map[string]string{"contents": level}
+	}
+}
+
+func repositoryResource(path string) string {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 3 || parts[0] != "repos" {
+		return ""
+	}
+	return strings.Join(parts[3:], "/")
+}
+
+func hasPathSegment(resource, segment string) bool {
+	for _, part := range strings.Split(resource, "/") {
+		if part == segment {
+			return true
 		}
 	}
+	return false
 }
