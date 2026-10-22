@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -96,8 +97,8 @@ func TestTransportMintsScopedTokenAndCaches(t *testing.T) {
 	if lastRepo != "tidbcloud/cloud-storage-engine" {
 		t.Fatalf("broker repo = %q", lastRepo)
 	}
-	if lastPerm["contents"] != "read" || lastPerm["pull_requests"] != "read" {
-		t.Fatalf("broker permissions = %#v", lastPerm)
+	if len(lastPerm) != 1 || lastPerm["contents"] != "read" {
+		t.Fatalf("broker permissions = %#v, want contents=read only", lastPerm)
 	}
 }
 
@@ -128,8 +129,8 @@ func TestTransportUsesWritePermissionsForMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
-	if lastPerm["contents"] != "write" || lastPerm["pull_requests"] != "write" {
-		t.Fatalf("broker permissions = %#v", lastPerm)
+	if len(lastPerm) != 1 || lastPerm["contents"] != "write" {
+		t.Fatalf("broker permissions = %#v, want contents=write only", lastPerm)
 	}
 }
 
@@ -197,5 +198,37 @@ func TestTransportReturnsErrorWithoutFallback(t *testing.T) {
 	client := &http.Client{Transport: testTransport(t, broker.URL, "", base)}
 	if _, err := client.Get("https://api.github.com/repos/pingcap/tidb"); err == nil {
 		t.Fatal("expected broker error")
+	}
+}
+
+func TestPermissionsForRequest(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		want   map[string]string
+	}{
+		{"git ref read", http.MethodGet, "/repos/o/r/git/ref/heads/main", map[string]string{"contents": "read"}},
+		{"branch read", http.MethodGet, "/repos/o/r/branches/main", map[string]string{"contents": "read"}},
+		{"tag list read", http.MethodGet, "/repos/o/r/tags", map[string]string{"contents": "read"}},
+		{"compare read", http.MethodGet, "/repos/o/r/compare/a...b", map[string]string{"contents": "read"}},
+		{"pr read", http.MethodGet, "/repos/o/r/pulls/42", map[string]string{"pull_requests": "read"}},
+		{"commit prs read", http.MethodGet, "/repos/o/r/commits/abc/pulls", map[string]string{"pull_requests": "read"}},
+		{"tag create", http.MethodPost, "/repos/o/r/git/tags", map[string]string{"contents": "write"}},
+		{"ref create", http.MethodPost, "/repos/o/r/git/refs", map[string]string{"contents": "write"}},
+		{"pr create", http.MethodPost, "/repos/o/r/pulls", map[string]string{"pull_requests": "write"}},
+		{"issue read", http.MethodGet, "/repos/o/r/issues/1", map[string]string{"issues": "read"}},
+		{"issue write", http.MethodPost, "/repos/o/r/issues", map[string]string{"issues": "write"}},
+		{"action read", http.MethodGet, "/repos/o/r/actions/runs", map[string]string{"actions": "read"}},
+		{"repo root read", http.MethodGet, "/repos/o/r", map[string]string{"contents": "read"}},
+		{"similar name is contents", http.MethodGet, "/repos/o/r/issues-foo", map[string]string{"contents": "read"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := permissionsForRequest(tt.method, tt.path)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("permissionsForRequest(%q, %q) = %#v, want %#v", tt.method, tt.path, got, tt.want)
+			}
+		})
 	}
 }
