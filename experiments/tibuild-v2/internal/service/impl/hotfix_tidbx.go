@@ -341,45 +341,35 @@ func (s *hotfixsrvc) computeNextTagByCompareCommits(ctx context.Context, owner, 
 }
 
 func (s *hotfixsrvc) getLatestNextgenReleaseBranchForCommit(ctx context.Context, owner, repo, commitSHA string) (string, error) {
-	branchNames, err := s.getBranchesContainingCommit(ctx, owner, repo, commitSHA)
+	refs, _, err := s.ghClient.Git.ListMatchingRefs(ctx, owner, repo, "heads/release-nextgen-")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("list release-nextgen branches: %w", err)
 	}
 
-	releaseBranches := slices.DeleteFunc(branchNames, func(b string) bool {
-		return !releaseNextgenBranchPattern.MatchString(b)
-	})
+	var releaseBranches []string
+	for _, ref := range refs {
+		branch := strings.TrimPrefix(ref.GetRef(), "refs/heads/")
+		if !releaseNextgenBranchPattern.MatchString(branch) {
+			continue
+		}
+
+		comparison, resp, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, commitSHA, branch, nil)
+		if err != nil {
+			if resp != nil && resp.StatusCode == http.StatusNotFound {
+				continue
+			}
+			return "", fmt.Errorf("compare commit %s with branch %s: %w", commitSHA, branch, err)
+		}
+		switch comparison.GetStatus() {
+		case "ahead", "identical":
+			releaseBranches = append(releaseBranches, branch)
+		}
+	}
 
 	if len(releaseBranches) == 0 {
 		return "", nil
 	}
 	return slices.Max(releaseBranches), nil
-}
-
-func (s *hotfixsrvc) getBranchesContainingCommit(ctx context.Context, owner, repo, commitSHA string) ([]string, error) {
-	u := fmt.Sprintf("https://%s/%s/%s/branch_commits/%s", "github.com", owner, repo, commitSHA)
-	req, err := s.ghClient.NewRequest(ctx, "GET", u, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-
-	var ret struct {
-		Branches []struct {
-			Branch string `json:"branch,omitempty"`
-		}
-	}
-	if _, err := s.ghClient.Do(req, &ret); err != nil {
-		s.logger.Err(err).Msg("fetch branches which contains the given commit failed")
-		return nil, err
-	}
-
-	var branchNames []string
-	for _, b := range ret.Branches {
-		branchNames = append(branchNames, b.Branch)
-	}
-
-	return branchNames, nil
 }
 
 func parseTidbxAlphaTag(tag string) (string, bool) {
