@@ -77,17 +77,6 @@ def _create_missing_tables(engine: Engine) -> None:
     _exec(
         engine,
         """
-        CREATE TABLE IF NOT EXISTS cost_job_state (
-          job_name TEXT PRIMARY KEY, watermark_json TEXT NOT NULL,
-          last_started_at TEXT NULL, last_succeeded_at TEXT NULL,
-          last_status TEXT NOT NULL DEFAULT 'never', last_error TEXT NULL,
-          updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-    )
-    _exec(
-        engine,
-        """
         CREATE TABLE IF NOT EXISTS roster_employees (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           lark_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
@@ -168,11 +157,6 @@ def _seed_all_checks(engine: Engine) -> None:
           " VALUES ('GCP', 'acct', :ep, :ud, 'res', 'h')",
           {"ep": (today - timedelta(days=5)).isoformat(),
            "ud": (today - timedelta(days=5)).isoformat()})
-    _exec(engine,
-          "INSERT OR REPLACE INTO cost_job_state"
-          " (job_name, watermark_json, last_succeeded_at, last_status)"
-          " VALUES ('sync-gcs-cache-last-seen', '{}', :ts, 'succeeded')",
-          {"ts": (now - timedelta(hours=5)).isoformat()})
     _exec(engine,
           "INSERT INTO roster_employees (lark_id, name, updated_at)"
           " VALUES ('l1', 'alice', :ts)",
@@ -335,6 +319,18 @@ class TestRunAllChecks:
     def test_runs_cost_checks_from_shared_engine(self, fresh_engine: Engine) -> None:
         report = run_all_checks(fresh_engine)
         assert len(report.results) == len(CHECKS)
+
+    def test_cost_checks_pass_without_retired_bazel_cache_state(self, fresh_engine: Engine) -> None:
+        _seed_all_checks(fresh_engine)
+        report = run_all_checks(fresh_engine)
+        cost_results = [result for result in report.results if result.check.db == "cost"]
+
+        assert {result.check.name for result in cost_results} == {
+            "cost_bq_export_summary_daily",
+            "cost_attribution_daily",
+            "cost_unmatched_resource_daily",
+        }
+        assert all(result.passed for result in cost_results)
 
 
 # ---------------------------------------------------------------------------
@@ -609,7 +605,7 @@ class TestCheckDefinitions:
         assert "archive_error_logs" in count_names
 
     def test_expected_count(self) -> None:
-        assert len(CHECKS) == 14, f"Expected 14, got {len(CHECKS)}"
+        assert len(CHECKS) == 13, f"Expected 13, got {len(CHECKS)}"
 
     def test_every_check_has_parsable_threshold(self) -> None:
         for c in CHECKS:
@@ -621,10 +617,8 @@ class TestCheckDefinitions:
             if c.level == "HIGH":
                 assert "hour" in c.threshold_description
 
-    def test_gcs_cache_check_uses_cost_db(self) -> None:
-        gcs = [c for c in CHECKS if c.name == "sync_gcs_cache_last_seen"]
-        assert len(gcs) == 1
-        assert gcs[0].db == "cost"
+    def test_retired_bazel_cache_is_not_monitored(self) -> None:
+        assert "sync_gcs_cache_last_seen" not in CHECKS_BY_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -801,16 +795,6 @@ class TestRunCheckCostAndRoster:
               {"ts": (_utcnow() - timedelta(hours=2)).isoformat()})
         with fresh_engine.begin() as conn:
             result = run_check(conn, CHECKS_BY_NAME["ci_l1_builds_derived"])
-        assert result.passed is True
-
-    def test_gcs_cache_job_state_passes(self, fresh_engine: Engine) -> None:
-        _exec(fresh_engine,
-              "INSERT OR REPLACE INTO cost_job_state"
-              " (job_name, watermark_json, last_succeeded_at, last_status)"
-              " VALUES ('sync-gcs-cache-last-seen', '{}', :ts, 'succeeded')",
-              {"ts": (_utcnow() - timedelta(hours=5)).isoformat()})
-        with fresh_engine.begin() as conn:
-            result = run_check(conn, CHECKS_BY_NAME["sync_gcs_cache_last_seen"])
         assert result.passed is True
 
 
