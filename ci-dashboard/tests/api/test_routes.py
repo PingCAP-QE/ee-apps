@@ -5602,6 +5602,131 @@ def test_ci_weekly_cost_budget_points_prorate_and_require_both_accounts() -> Non
     ) == 0.01
 
 
+def test_ci_weekly_cost_share_aggregates_without_owner_project_subdivisions(
+    sqlite_engine, monkeypatch
+):
+    for group_id, name, path, parent_id in [
+        (1, "Engineering Group", "/1/", None),
+        (2, "Product", "/1/2/", 1),
+        (3, "TiDB", "/1/2/3/", 2),
+        (99, "Outside engineering", "/99/", None),
+    ]:
+        _insert_roster_group(
+            sqlite_engine, group_id=group_id, lark_group_id=str(group_id),
+            name=name, path=path, parent_id=parent_id,
+        )
+    for index, (vendor, repo, group_id, amount, sku_name) in enumerate([
+        ("gcp", "tidb", 3, 100, "runner"),
+        ("gcp", "tidb", 3, 30, "runner"),
+        ("gcp", "tidb", 3, -10, "runner"),
+        ("gcp", "tidb", 3, 200, "Compute Flexible Committed Use Discounts v1"),
+        ("gcp", "tidb", 3, None, "runner"),
+        ("tencent", "tidb", 3, 65, "runner"),
+        ("tencent", "tidb", 3, -6.5, "runner"),
+        ("gcp", "", None, 5, "runner"),
+        ("gcp", None, None, -1, "runner"),
+        ("gcp", "tidb", 99, 3, "runner"),
+        ("gcp", "zero", 3, 1, "runner"),
+        ("gcp", "zero", 3, -1, "runner"),
+    ]):
+        _insert_cost_attribution(
+            sqlite_engine, usage_date="2026-10-12", vendor=vendor,
+            account_id="pingcap-testing-account" if vendor == "gcp" else "100050658403",
+            repo=repo, group_id=group_id, net_cost=amount or 0,
+            owner=f"owner-{index}", project=f"project-{index}", sku_name=sku_name,
+            dimension_hash=f"share-{index}",
+        )
+    # These facts must not contribute to the fixed account/week report.
+    for usage_date, account_id in [
+        ("2026-10-19", "pingcap-testing-account"), ("2026-10-12", "other-account")
+    ]:
+        _insert_cost_attribution(
+            sqlite_engine, usage_date=usage_date, account_id=account_id,
+            repo="excluded", group_id=3, net_cost=999,
+        )
+    with sqlite_engine.begin() as connection:
+        connection.execute(text(
+            "UPDATE cost_attribution_daily SET currency = 'CNY' WHERE vendor = 'tencent'"
+        ))
+        connection.execute(text(
+            "UPDATE cost_attribution_daily SET list_cost = NULL WHERE dimension_hash = 'share-4'"
+        ))
+
+    dimension_rows = []
+    original_dimensions = cost_queries._weekly_cost_team_dimensions
+
+    def capture_dimensions(rows, groups):
+        dimension_rows.extend(rows)
+        return original_dimensions(rows, groups)
+
+    monkeypatch.setattr(cost_queries, "_weekly_cost_team_dimensions", capture_dimensions)
+    with sqlite_engine.connect() as connection:
+        report = cost_queries._ci_weekly_cost_last_week_cost_share(
+            connection, date(2026, 10, 12), date(2026, 10, 18)
+        )
+
+    assert len(dimension_rows) == 6
+    assert report == {
+        "metric": "list_cost",
+        "total_list_cost": 136.0,
+        "teams": {"items": [
+            {"key": "team:3", "name": "TiDB", "value": 129.0,
+             "interactive": False, "share_pct": 94.85},
+            {"key": "team:none", "name": "(no team)", "value": 7.0,
+             "interactive": False, "share_pct": 5.15},
+        ]},
+        "repos": {"items": [
+            {"key": "repo:tidb", "name": "tidb", "value": 132.0,
+             "interactive": False, "share_pct": 97.06},
+            {"key": "repo:(no repo)", "name": "(no repo)", "value": 4.0,
+             "interactive": False, "share_pct": 2.94},
+        ]},
+    }
+
+
+@pytest.mark.parametrize(
+    ("section", "expected_reads", "expected_fields"),
+    [
+        ("overview", ["budgets", "values"], {"accounts", "budget_period_cost", "weekly_cost_history"}),
+        ("share", ["share"], {"last_week_cost_share"}),
+        ("categories", ["categories"], {"last_week_category_share"}),
+        (
+            "all",
+            ["budgets", "values", "share", "categories"],
+            {
+                "accounts", "budget_period_cost", "weekly_cost_history", "last_week_cost_share",
+                "last_week_category_share",
+            },
+        ),
+        ("invalid", [], set()),
+    ],
+)
+def test_ci_weekly_cost_sections_only_query_requested_panels(
+    api_client, monkeypatch, section, expected_reads, expected_fields
+):
+    reads = []
+    for name, label in [
+        ("_ci_weekly_cost_budget_rows", "budgets"),
+        ("_ci_weekly_cost_values", "values"),
+        ("_ci_weekly_cost_last_week_cost_share", "share"),
+        ("get_ci_weekly_cost_category_share", "categories"),
+    ]:
+        def record_read(*args, _label=label, **kwargs):
+            reads.append(_label)
+            return {}
+
+        monkeypatch.setattr(cost_queries, name, record_read)
+
+    response = api_client.get("/api/v1/pages/ci-weekly-cost", params={"section": section})
+
+    assert reads == expected_reads
+    assert response.status_code == (422 if section == "invalid" else 200)
+    if response.status_code == 200:
+        assert set(response.json()) == expected_fields | {
+            "meta", "last_complete_week", "previous_complete_week", "last_complete_month"
+        }
+
+
 def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
     sqlite_engine,
     api_client: TestClient,
@@ -5851,6 +5976,15 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
         ],
     }
     assert "list_cost" not in payload["budget_period_cost"]["accounts"][0]["points"][0]
+    for section, fields in [
+        ("overview", ["accounts", "budget_period_cost", "weekly_cost_history"]),
+        ("share", ["last_week_cost_share"]),
+        ("categories", ["last_week_category_share"]),
+    ]:
+        partial = api_client.get("/api/v1/pages/ci-weekly-cost", params={"section": section})
+        assert partial.status_code == 200
+        for field in ["meta", "last_complete_week", *fields]:
+            assert partial.json()[field] == payload[field]
 
 
 def test_weekly_cost_report_uses_current_budget_plan_membership_schema(

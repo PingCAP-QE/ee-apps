@@ -71,6 +71,13 @@ Notes:
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
 - the Cost and CI details insight tabs are always available
+- the Cost tab prioritizes its top spend/breakdown requests: share and trend
+  charts have independent loading/error states, and Engineering Group shares
+  load after those requests settle for the selected filter scope. Changing only
+  the breakdown grouping or drilldown does not refetch Engineering Group data.
+  Resource details remain on demand, including while other charts are loading.
+  Summary cards show placeholders until spend is available instead of displaying
+  pending or failed queries as zero spending.
 - the Cost tab uses T+3 data availability in UTC. End has a hover/focus info hint,
   its calendar and URL filters cap End at the latest available date, and the
   default End date uses the same three-day lag.

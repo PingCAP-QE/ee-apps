@@ -45,6 +45,29 @@ cumulative series uses its account's active plan basis and is labeled
 Cost values are normalized to USD before comparison. This keeps GCP list cost
 and Tencent net cost comparable to their USD budget amounts.
 
+## Progressive loading
+
+The UI requests `GET /api/v1/pages/ci-weekly-cost` in three stages:
+
+1. `section=overview`: account cards, gauges, cumulative spend, and eight-week
+   history. Both top panels reuse one daily-cost aggregation.
+2. `section=share`: last-week team and repository list-cost shares only.
+3. `section=categories`: last-week billing categories only.
+
+Each response includes the UTC calendar metadata and only its requested section
+fields. The backend skips unrelated queries, not just unrelated JSON fields.
+Omitting `section` (or using `section=all`) preserves the full report contract;
+unsupported sections return HTTP 422 before any cost query.
+
+Lower panels show loading placeholders until requested and completed. A failed
+section shows its own error but still allows subsequent sections to load;
+already rendered panels remain visible. Navigating away aborts pending requests.
+The fixed accounts, accounting expressions, and calendar windows do not change.
+The share query groups only by source/date/team/repository, not unused
+owner/project subdivisions; the shared dimension helper receives NULL values
+for the two unused fields. See the [loading and SQL validation evidence](validation-artifacts/2026-10-23/ci-cost-weekly-loading.md)
+for measurements and post-deployment checks.
+
 ## Presentation contract
 
 The Overall panel has a GCP list cost block and a Tencent net cost block.
@@ -139,6 +162,9 @@ Focused checks cover that:
 - weekly budget points use overlapping plans with prorated amounts, and the
   chart compares spend against a dashed budget line without including budget
   in the spend sum;
+- progressive request ordering, visible top panels while lower requests are
+  pending, independent errors, and request cancellation on navigation;
+- section queries skip unrelated work and match the full report's amounts;
 - category classification precedence, fixed account/date scope, USD conversion,
   reconciliation, small/negative amounts, and missing billing dates;
 - two category pies appear at the bottom, the strict >1% cutoff retains the

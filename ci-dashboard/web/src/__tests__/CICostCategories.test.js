@@ -64,7 +64,11 @@ async function withReport(accounts, check) {
       renderer = TestRenderer.create(React.createElement(CICostWeeklyPage));
       await Promise.resolve();
     });
-    assert.deepEqual(requests, ["/api/v1/pages/ci-weekly-cost"]);
+    assert.deepEqual(requests, [
+      "/api/v1/pages/ci-weekly-cost?section=overview",
+      "/api/v1/pages/ci-weekly-cost?section=share",
+      "/api/v1/pages/ci-weekly-cost?section=categories",
+    ]);
     await check(renderer);
   } finally {
     await act(async () => renderer?.unmount());

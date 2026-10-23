@@ -1942,7 +1942,7 @@ function buildBucketDeltaClassName(value) {
   return value > 0 ? "bucket-delta bucket-delta--up" : "bucket-delta";
 }
 
-function LoadingState() {
+export function LoadingState() {
   return (
     <div className="empty-state">
       <span className="loading-dot" />
@@ -1951,7 +1951,7 @@ function LoadingState() {
   );
 }
 
-function ErrorState({ error }) {
+export function ErrorState({ error }) {
   return <div className="empty-state empty-state--error">Could not load panel: {error}</div>;
 }
 

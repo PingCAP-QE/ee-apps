@@ -5,7 +5,7 @@ from sqlalchemy.engine import Engine
 
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT, CommonFilters
-from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS
+from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS, CIWeeklyCostSection
 from ci_dashboard.api.queries.pages import (
     get_build_trend_page,
     get_cost_budget_pace_page,
@@ -143,9 +143,10 @@ def cost_weekly_account_summaries_page(
 
 @router.get("/ci-weekly-cost")
 def ci_weekly_cost_report_page(
+    section: CIWeeklyCostSection = "all",
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    return get_ci_weekly_cost_report_page(engine)
+    return get_ci_weekly_cost_report_page(engine, section=section)
 
 
 @router.get("/weekly-cost")
