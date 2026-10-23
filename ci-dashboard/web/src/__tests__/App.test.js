@@ -737,7 +737,11 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
       await Promise.resolve();
     });
 
-    assert.deepEqual(requests, ["/api/v1/pages/ci-weekly-cost"]);
+    assert.deepEqual(requests, [
+      "/api/v1/pages/ci-weekly-cost?section=overview",
+      "/api/v1/pages/ci-weekly-cost?section=share",
+      "/api/v1/pages/ci-weekly-cost?section=categories",
+    ]);
     assert.equal(renderer.root.findAllByProps({ role: "progressbar" }).length, 4);
     const historyChart = renderer.root.findByProps({
       "aria-label": "Last 8 complete weeks stacked CI cost chart",

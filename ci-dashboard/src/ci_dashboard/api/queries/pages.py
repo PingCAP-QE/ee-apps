@@ -26,6 +26,7 @@ from ci_dashboard.api.queries.cost import (
     _cost_filters as _normalize_cost_filters,
 )
 from ci_dashboard.api.queries.cost import (
+    CIWeeklyCostSection,
     get_budget_pace,
     get_cost_page,
     get_cost_share,
@@ -325,8 +326,10 @@ def get_weekly_cost_report_page(engine: Engine, *, include_trend: bool = True) -
     return get_weekly_cost_report(engine, include_trend=include_trend)
 
 
-def get_ci_weekly_cost_report_page(engine: Engine) -> dict[str, Any]:
-    return get_ci_weekly_cost_report(engine)
+def get_ci_weekly_cost_report_page(
+    engine: Engine, *, section: CIWeeklyCostSection = "all"
+) -> dict[str, Any]:
+    return get_ci_weekly_cost_report(engine, section=section)
 
 
 def get_weekly_cost_trend_page(engine: Engine) -> dict[str, Any]:

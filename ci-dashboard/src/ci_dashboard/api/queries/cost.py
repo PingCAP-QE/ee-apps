@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
@@ -71,6 +71,7 @@ TIFLASH_COST_SOURCES = frozenset(
 )
 COST_UNMATCHED_SOURCE_DATE_NAMESPACE_INDEX = "idx_cost_unmatched_source_date_namespace"
 WeeklyCostBudgetScope = tuple[set[tuple[str, str]], set[str] | None, date, date]
+CIWeeklyCostSection = Literal["all", "overview", "share", "categories"]
 COST_DRIVER_LABELS = {
     "compute": "Compute",
     "block_storage": "Block storage",
@@ -903,8 +904,10 @@ def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dic
     return report
 
 
-def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
-    """Return the fixed two-account CI budget pace and active-period cost trend."""
+def get_ci_weekly_cost_report(
+    engine: Engine, *, section: CIWeeklyCostSection = "all"
+) -> dict[str, Any]:
+    """Query only the requested panels; keep the full report as the default."""
     today = _today()
     last_week_start = today - timedelta(days=today.weekday() + 7)
     last_week_end = last_week_start + timedelta(days=6)
@@ -921,72 +924,60 @@ def get_ci_weekly_cost_report(engine: Engine) -> dict[str, Any]:
         "last_complete_week": _ci_weekly_cost_period(last_week_start, last_week_end),
         "previous_complete_week": _ci_weekly_cost_period(previous_week_start, previous_week_end),
         "last_complete_month": _ci_weekly_cost_period(previous_month_start, previous_month_end),
-        "accounts": [],
-        "budget_period_cost": _ci_weekly_cost_empty_budget_period_cost(),
-        "weekly_cost_history": {"series": [], "budget_points": []},
-        "last_week_cost_share": _ci_weekly_cost_empty_last_week_cost_share(),
     }
 
     with engine.begin() as connection:
-        budget_rows = _ci_weekly_cost_budget_rows(connection)
-        active_plans = _ci_weekly_cost_active_plans(budget_rows, today)
-        source_bases = _ci_weekly_cost_source_bases(budget_rows)
-        data_start = min(
-            [eight_week_start, previous_month_start, *(plan["period_start_date"] for plan in active_plans)]
-        )
-        cost_values = _ci_weekly_cost_values(connection, data_start, today)
-        report["last_week_cost_share"] = _ci_weekly_cost_last_week_cost_share(
-            connection,
-            last_week_start,
-            last_week_end,
-        )
-        report["last_week_category_share"] = get_ci_weekly_cost_category_share(
-            connection,
-            last_week_start,
-            last_week_end,
-            list_cost_expr=_billing_report_list_cost_expr("c"),
-            net_cost_expr=_usd_cost_expr("c", "c.net_cost"),
-        )
-
-    report["accounts"] = [
-        _ci_weekly_cost_account(
-            source,
-            budget_rows.get(source, ()),
-            source_bases.get(source),
-            cost_values,
-            last_week_start,
-            last_week_end,
-            previous_week_start,
-            previous_week_end,
-            previous_month_start,
-            previous_month_end,
-        )
-        for source in CI_WEEKLY_COST_SOURCES
-    ]
-    report["budget_period_cost"] = _ci_weekly_cost_budget_period_cost(
-        active_plans,
-        cost_values,
-        today,
-    )
-    report["weekly_cost_history"] = _ci_weekly_cost_weekly_history(
-        cost_values,
-        budget_rows,
-        eight_week_start,
-        last_week_end,
-    )
+        if section in ("all", "overview"):
+            budget_rows = _ci_weekly_cost_budget_rows(connection)
+            active_plans = _ci_weekly_cost_active_plans(budget_rows, today)
+            source_bases = _ci_weekly_cost_source_bases(budget_rows)
+            data_start = min(
+                [
+                    eight_week_start,
+                    previous_month_start,
+                    *(plan["period_start_date"] for plan in active_plans),
+                ]
+            )
+            cost_values = _ci_weekly_cost_values(connection, data_start, today)
+            report["accounts"] = [
+                _ci_weekly_cost_account(
+                    source,
+                    budget_rows.get(source, ()),
+                    source_bases.get(source),
+                    cost_values,
+                    last_week_start,
+                    last_week_end,
+                    previous_week_start,
+                    previous_week_end,
+                    previous_month_start,
+                    previous_month_end,
+                )
+                for source in CI_WEEKLY_COST_SOURCES
+            ]
+            report["budget_period_cost"] = _ci_weekly_cost_budget_period_cost(
+                active_plans, cost_values, today
+            )
+            # Both top panels reuse the same daily totals rather than scanning twice.
+            report["weekly_cost_history"] = _ci_weekly_cost_weekly_history(
+                cost_values, budget_rows, eight_week_start, last_week_end
+            )
+        if section in ("all", "share"):
+            report["last_week_cost_share"] = _ci_weekly_cost_last_week_cost_share(
+                connection, last_week_start, last_week_end
+            )
+        if section in ("all", "categories"):
+            report["last_week_category_share"] = get_ci_weekly_cost_category_share(
+                connection,
+                last_week_start,
+                last_week_end,
+                list_cost_expr=_billing_report_list_cost_expr("c"),
+                net_cost_expr=_usd_cost_expr("c", "c.net_cost"),
+            )
     return report
 
 
 def _ci_weekly_cost_period(start_date: date, end_date: date) -> dict[str, str]:
     return {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
-
-
-def _ci_weekly_cost_empty_budget_period_cost() -> dict[str, Any]:
-    return {"metric": "budget_basis_spend", "accounts": []}
-
-
-def _ci_weekly_cost_empty_last_week_cost_share() -> dict[str, Any]:
-    return {"metric": "list_cost", "total_list_cost": 0.0, "teams": {"items": []}, "repos": {"items": []}}
 
 
 def _ci_weekly_cost_last_week_cost_share(
@@ -995,10 +986,12 @@ def _ci_weekly_cost_last_week_cost_share(
     end_date: date,
 ) -> dict[str, Any]:
     list_cost_expr = _billing_report_list_cost_expr("c")
+    # Only team/repo totals are consumed; owner/project subdivisions are redundant.
     rows = connection.execute(
         text(
             f"""
-            SELECT c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project, c.repo,
+            SELECT c.vendor, c.account_id, c.usage_date, c.group_id, c.repo,
+                   NULL AS owner, NULL AS project,
                    SUM(COALESCE({list_cost_expr}, 0)) AS list_cost
             FROM cost_attribution_daily c
             WHERE (
@@ -1006,7 +999,7 @@ def _ci_weekly_cost_last_week_cost_share(
                 OR (c.vendor = 'tencent' AND c.account_id = '100050658403')
             )
               AND c.usage_date BETWEEN :start_date AND :end_date
-            GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.owner, c.project, c.repo
+            GROUP BY c.vendor, c.account_id, c.usage_date, c.group_id, c.repo
             """
         ),
         {"start_date": start_date, "end_date": end_date},

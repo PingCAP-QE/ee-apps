@@ -14,14 +14,26 @@ const categoryCurrency = new Intl.NumberFormat("en-US", {
 });
 
 export default function CICostWeeklyPage() {
-  const report = useApiData("/api/v1/pages/ci-weekly-cost");
+  const report = useApiData("/api/v1/pages/ci-weekly-cost", { section: "overview" });
+  const shareEnabled = Boolean(report.data || report.error);
+  const shareReport = useApiData(
+    "/api/v1/pages/ci-weekly-cost",
+    { section: "share" },
+    shareEnabled,
+  );
+  const categoriesEnabled = Boolean(shareReport.data || shareReport.error);
+  const categoriesReport = useApiData(
+    "/api/v1/pages/ci-weekly-cost",
+    { section: "categories" },
+    categoriesEnabled,
+  );
   const [focusedHistorySeriesKey, setFocusedHistorySeriesKey] = useState(null);
   const accounts = report.data?.accounts || [];
   const lastCompleteWeek = report.data?.last_complete_week || {};
   const lastCompleteMonth = report.data?.last_complete_month || {};
   const accountPeriodCosts = report.data?.budget_period_cost?.accounts || [];
-  const lastWeekCostShare = report.data?.last_week_cost_share || {};
-  const categoryAccounts = report.data?.last_week_category_share?.accounts || [];
+  const lastWeekCostShare = shareReport.data?.last_week_cost_share || {};
+  const categoryAccounts = categoriesReport.data?.last_week_category_share?.accounts || [];
   const weeklyCostHistory = report.data?.weekly_cost_history?.series || [];
   const weeklyCostSeries = weeklyCostHistory
     .filter((item) =>
@@ -162,8 +174,8 @@ export default function CICostWeeklyPage() {
       <Panel
         title="Last week list-cost share"
         subtitle="GCP and Tencent CI accounts combined."
-        loading={report.loading}
-        error={report.error}
+        loading={shareReport.loading || (!shareReport.data && !shareReport.error)}
+        error={shareReport.error}
       >
         <div className="donut-grid">
           <LabeledDonutShareChart
@@ -192,8 +204,8 @@ export default function CICostWeeklyPage() {
       <Panel
         title="Last week cost categories"
         subtitle="Grouped by billing service, GKE allocation scope, resource/bucket name, and service/project metadata—not a dynamic/fixed split. Charts show only categories > 1% of each account total; small categories remain in the tables and are not renormalized."
-        loading={report.loading}
-        error={report.error}
+        loading={categoriesReport.loading || (!categoriesReport.data && !categoriesReport.error)}
+        error={categoriesReport.error}
       >
         <div className="donut-grid">
           {categoryAccounts.map((account) => (

@@ -10,6 +10,8 @@ import {
 import { ALL_COST_SOURCES, DEFAULT_COST_SOURCE } from "../lib/filterUrl";
 import {
   DonutShareChart,
+  ErrorState,
+  LoadingState,
   PageIntro,
   Panel,
   StatCard,
@@ -37,6 +39,7 @@ export default function CostPage({
   const [unmatchedSortBy, setUnmatchedSortBy] = useState("list_cost");
   const [resourceCursor, setResourceCursor] = useState(null);
   const [resourceItems, setResourceItems] = useState([]);
+  const [engineeringReadyScope, setEngineeringReadyScope] = useState(null);
   const selectedCostSource = filters.cost_source || DEFAULT_COST_SOURCE;
   const selectedCostSourceLabel = formatCostSourceLabel(selectedCostSource);
   const selectedCostSourceValue =
@@ -115,16 +118,27 @@ export default function CostPage({
   const trend = useApiData("/api/v1/pages/cost-trend", costTrendFilters);
   const costShare = useApiData("/api/v1/pages/cost-share", costShareFilters);
   const repoGroupStack = useApiData("/api/v1/pages/cost-repo-group-stack", costStackFilters);
+  const trendLoading = trend.loading
+    || trend.responseKey !== JSON.stringify(costTrendFilters);
+  const shareLoading = costShare.loading
+    || costShare.responseKey !== JSON.stringify(costShareFilters);
+  const stackLoading = repoGroupStack.loading
+    || repoGroupStack.responseKey !== JSON.stringify(costStackFilters);
+  const engineeringScopeKey = JSON.stringify(engineeringGroupFilters);
   const engineeringGroupShare = useApiData(
     "/api/v1/pages/cost-engineering-group-share",
     engineeringGroupFilters,
+    engineeringReadyScope === engineeringScopeKey,
   );
+  const engineeringLoading = engineeringGroupShare.loading
+    || engineeringGroupShare.responseKey !== engineeringScopeKey;
   const unmatchedResources = useApiData(
     "/api/v1/pages/cost-unmatched-resources",
     unmatchedResourceFilters,
     resourceBreakdownRequested,
   );
   const summary = trend.data?.meta?.summary || {};
+  const summaryReady = !trendLoading && !trend.error;
   const activeCostBreakdownGroup = COST_BREAKDOWN_GROUPS.find(
     (group) => group.key === effectiveCostBreakdownGroupBy,
   ) || COST_BREAKDOWN_GROUPS[0];
@@ -194,6 +208,13 @@ export default function CostPage({
   };
 
   useEffect(() => {
+    if (!trendLoading && !shareLoading && !stackLoading) {
+      // Prioritize the top charts once per filter scope, not on every drilldown.
+      setEngineeringReadyScope(engineeringScopeKey);
+    }
+  }, [trendLoading, shareLoading, stackLoading, engineeringScopeKey]);
+
+  useEffect(() => {
     setCostBreakdownDrilldown(null);
     setSelectedCostStackName("");
     setResourceScope({ dimension: "owner", value: NO_OWNER_LABEL });
@@ -260,7 +281,7 @@ export default function CostPage({
       >
         <StatCard
           label={netCostLabel}
-          value={formatCurrency(summary.net_cost)}
+          value={summaryReady ? formatCurrency(summary.net_cost) : "—"}
           detail={
             isAws7266SplitCostSource
               ? null
@@ -269,14 +290,16 @@ export default function CostPage({
         />
         <StatCard
           label="List cost"
-          value={formatCurrency(summary.list_cost)}
+          value={summaryReady ? formatCurrency(summary.list_cost) : "—"}
           detail="At public SKU pricing before negotiated discounts"
           tone="teal"
         />
         <StatCard
           label="Employee matched rate"
-          value={formatPercent(summary.matched_resource_pct)}
-          detail={`${formatCurrency(summary.matched_resource_cost)} / ${formatCurrency(summary.total_resource_cost)} list cost matched by author or owner email`}
+          value={summaryReady ? formatPercent(summary.matched_resource_pct) : "—"}
+          detail={summaryReady
+            ? `${formatCurrency(summary.matched_resource_cost)} / ${formatCurrency(summary.total_resource_cost)} list cost matched by author or owner email`
+            : trendLoading ? "Loading spend data..." : "Spend data unavailable."}
           tone="amber"
         />
       </section>
@@ -284,10 +307,6 @@ export default function CostPage({
       <Panel
         title="Cost breakdown (list cost)"
         subtitle={costBreakdownSubtitle}
-        loading={
-          costShare.loading || repoGroupStack.loading || trend.loading
-        }
-        error={costShare.error || repoGroupStack.error || trend.error}
         className="cost-breakdown-panel"
         actions={
           <>
@@ -304,27 +323,44 @@ export default function CostPage({
         }
       >
         <div className="cost-breakdown-grid">
-            <DonutShareChart
-              className="cost-share-donut"
-              title={`${activeCostBreakdownGroup.label} share${costBreakdownDrilldownTitleSuffix}`}
-              items={costShareItems}
-              totalValue={costShare.data?.meta?.total_list_cost}
-              totalLabel="list cost"
-              emptyMessage="No cost share data for the current filters."
-              onItemSelect={
-                canDrillDownCostBreakdown
-                  ? startCostBreakdownDrilldown
-                  : isResourceScopeGroup
-                    ? (item) => selectResourceScope(effectiveCostBreakdownGroupBy, item)
-                    : undefined
-              }
-            />
-            <article className="cost-stack-card">
-              <header className="donut-card__header">
-                <div>
-                  <strong>Cost trend{costBreakdownDrilldownTitleSuffix}</strong>
-                </div>
-              </header>
+          <div role="region" aria-label="Cost share" aria-busy={shareLoading}>
+            {shareLoading ? (
+              <LoadingState />
+            ) : costShare.error ? (
+              <ErrorState error={costShare.error} />
+            ) : (
+              <DonutShareChart
+                className="cost-share-donut"
+                title={`${activeCostBreakdownGroup.label} share${costBreakdownDrilldownTitleSuffix}`}
+                items={costShareItems}
+                totalValue={costShare.data?.meta?.total_list_cost}
+                totalLabel="list cost"
+                emptyMessage="No cost share data for the current filters."
+                onItemSelect={
+                  canDrillDownCostBreakdown
+                    ? startCostBreakdownDrilldown
+                    : isResourceScopeGroup
+                      ? (item) => selectResourceScope(effectiveCostBreakdownGroupBy, item)
+                      : undefined
+                }
+              />
+            )}
+          </div>
+          <article
+            className="cost-stack-card"
+            aria-label="Cost trend"
+            aria-busy={stackLoading || trendLoading}
+          >
+            <header className="donut-card__header">
+              <div>
+                <strong>Cost trend{costBreakdownDrilldownTitleSuffix}</strong>
+              </div>
+            </header>
+            {stackLoading || trendLoading ? (
+              <LoadingState />
+            ) : repoGroupStack.error || trend.error ? (
+              <ErrorState error={repoGroupStack.error || trend.error} />
+            ) : (
               <CostStackTrend
                 data={repoGroupStack.data}
                 trendData={trend.data}
@@ -335,8 +371,9 @@ export default function CostPage({
                 onDrilldown={startCostBreakdownDrilldown}
                 showComparisonLines={!costBreakdownDrilldown}
               />
-            </article>
-          </div>
+            )}
+          </article>
+        </div>
       </Panel>
 
       <Panel
@@ -417,8 +454,8 @@ export default function CostPage({
         <Panel
           title="Engineering Group cost share"
           subtitle="List cost share under Engineering Group, split once by direct child groups and once by second-level groups."
-          loading={engineeringGroupShare.loading}
-          error={engineeringGroupShare.error}
+          loading={engineeringLoading}
+          error={!engineeringLoading && engineeringGroupShare.error}
         >
           <div className="donut-grid">
             <DonutShareChart
