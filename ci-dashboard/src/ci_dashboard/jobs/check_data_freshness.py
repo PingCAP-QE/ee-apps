@@ -166,17 +166,6 @@ CHECKS: list[Check] = [
         sql="SELECT MAX(usage_date) FROM cost_unmatched_resource_daily",
         db="cost",
     ),
-    Check(
-        name="sync_gcs_cache_last_seen",
-        level="LOW",
-        description="sync-gcs-cache-last-seen job last succeeded at",
-        threshold_description="30 hours",
-        sql=(
-            "SELECT last_succeeded_at FROM cost_job_state"
-            " WHERE job_name = 'sync-gcs-cache-last-seen'"
-        ),
-        db="cost",
-    ),
     # --- Roster tables ---
     Check(
         name="roster_employees",
