@@ -64,13 +64,28 @@ Notes:
 
 ## Pod Watcher
 
-`watch-pods` is the long-running pod lifecycle collector. It runs in `apps` by
-default and records Pod `metadata.creationTimestamp` as `pod_created_at`.
+`watch-pods` is the long-running Pod/core/v1 Event LIST/WATCH collector, using the
+same `ci-dashboard-jobs` image on GCP and Tencent TKE. It runs in `apps` by default
+and records Pod `metadata.creationTimestamp` as `pod_created_at`. This is not
+container stdout collection and does not require Tencent CLS.
+
+Keep one active replica with `strategy: Recreate` (brief rollout downtime, no
+leader election); `--replicas` values other than `1` are rejected.
 
 Preconditions:
 
 - apply `017_alter_ci_l1_pod_lifecycle_add_pod_created_at.sql`
-- grant `apps/ci-dashboard` `get/list/watch` on `pods`, `persistentvolumeclaims`, and `events` in watched namespaces
+- grant the watcher ServiceAccount only `get/list/watch` on namespaced `pods` and
+  core/v1 `events` in watched namespaces
+- create/reference the ServiceAccount, DB secret and optional DB CA secret through
+  the existing ops secret-management flow; these renderers do not create them
+
+The watcher no longer grants unused PVC reads by default. `watch-pods` never
+queries PVCs; GCP `sync-pods` PVC mapping is separate and must retain its own
+permissions. If a GCP sync deployment previously relied on this watcher's PVC
+grant, establish a separate reviewed sync role before replacing the old watcher
+role. There is intentionally no PVC compatibility switch or node, Secret,
+exec/log, write or cluster-wide binding grant.
 
 ```bash
 cd ci-dashboard
@@ -78,14 +93,14 @@ cd ci-dashboard
   --service-account-namespace apps \
   --service-account-name ci-dashboard \
   --target-namespaces prow-test-pods,jenkins-tidb,jenkins-tiflow \
-  | kubectl apply -f -
+  > /tmp/ci-dashboard-pod-watcher-rbac.yaml
 ```
 
-Render and apply the Deployment:
+Render the existing GCP Deployment (`--gcp-project` remains compatible):
 
 ```bash
 ./scripts/render_pod_watcher_deployment.sh \
-  --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
+  --image 'ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<verified-tag>' \
   --db-secret ci-dashboard-db \
   --ca-secret ci-dashboard-ca \
   --gcp-project pingcap-testing-account \
@@ -94,18 +109,84 @@ Render and apply the Deployment:
   --location us-central1-c \
   --db-batch-size 100 \
   > /tmp/ci-dashboard-pod-watcher.yaml
-kubectl apply -f /tmp/ci-dashboard-pod-watcher.yaml
-kubectl -n apps rollout status deployment/ci-dashboard-pod-watcher
 ```
 
-DB persistence tuning:
+`--source-project pingcap-testing-account --cloud-phase GCP` is the neutral
+spelling. Both forms emit generic source/cloud environment plus the legacy GCP
+project variable. Equal source/project aliases are allowed; conflicting aliases
+fail before output. `--cloud-phase` defaults to `GCP`.
+
+Proposed TKE rendering (local files only; `ee-cd` placement still needs ops-owner
+confirmation):
+
+```bash
+TKE_NAMESPACES=prow-test-pods,jenkins-agents,jenkins-pd,jenkins-ticdc,jenkins-tidb,jenkins-tiflash,jenkins-tiflow,jenkins-tikv
+./scripts/render_pod_watcher_rbac.sh \
+  --name ci-dashboard-pod-watcher-tencent \
+  --service-account-namespace ee-cd \
+  --service-account-name ci-dashboard-pod-watcher \
+  --target-namespaces "$TKE_NAMESPACES" \
+  > /tmp/ci-dashboard-pod-watcher-tencent-rbac.yaml
+./scripts/render_pod_watcher_deployment.sh \
+  --namespace ee-cd \
+  --deployment-name ci-dashboard-pod-watcher-tencent \
+  --image 'ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs@sha256:<verified-digest>' \
+  --db-secret ci-dashboard-db \
+  --ca-secret ci-dashboard-ca \
+  --service-account ci-dashboard-pod-watcher \
+  --source-project tencent:ap-beijing:cls-9zpon9y1 \
+  --cloud-phase TENCENT \
+  --cluster-name pingcap-ee \
+  --location ap-beijing \
+  --pod-event-namespaces "$TKE_NAMESPACES" \
+  > /tmp/ci-dashboard-pod-watcher-tencent.yaml
+```
+
+Tencent requires a lowercase `tencent:<region>:cls-<id>` source, cluster name and
+matching region/location. Sources are limited to 128 characters; Tencent's
+`ci-watch-pods:<source>` state key must fit 64 characters. `--gcp-project` cannot
+supply a Tencent source, and TKE output never sets `CI_DASHBOARD_GCP_PROJECT`.
+Keep DB secrets free of unrelated GCP collector configuration as well. The
+`jenkins` controller namespace is excluded from the proposed watch list.
+
+Review rendered manifests through `ee-ops` GitOps ownership before rollout;
+rendering does not provision anything. DB networking/TLS/grants, a verified
+pullable release image and stable native application-pool placement remain
+separate rollout gates. Do **not** run GCP Cloud Logging `sync-pods` in TKE or use
+it as a Tencent fallback.
+
+### Delayed Pod linkage reconciliation
+
+Use the existing DB-only `reconcile-pod-linkage-range` command to retry attribution
+from saved Pod metadata and build facts; it does not call Kubernetes or Cloud
+Logging. A bounded Tencent example covers three inclusive UTC dates:
+
+```bash
+ci-dashboard reconcile-pod-linkage-range \
+  --source-project tencent:ap-beijing:cls-9zpon9y1 \
+  --start-date 2026-10-20 \
+  --end-date 2026-10-22 \
+  --batch-size 1000 \
+  --max-rows 10000
+```
+
+Routine runs use the recent 72-hour/three-UTC-date window and an exact source.
+For a capped run, resume with the reported committed `--after-id` and frozen
+`--through-id`, keeping the same source and dates. Start the next complete sweep
+at ID zero over an overlapping recent window to retry late builds. If
+`--end-date` is omitted, it resolves to the invocation's current UTC date; use
+the reported date explicitly for resume. Scheduling, single-run ownership and DB
+query-plan/load review belong to a separately reviewed ops rollout, not a new
+CronJob here.
+
+### Watcher DB persistence tuning
 
 - `CI_DASHBOARD_POD_WATCH_DB_BATCH_SIZE` controls rows per DB write batch. Default: `100`; use a positive integer.
 - `CI_DASHBOARD_POD_WATCH_DB_RETRY_ATTEMPTS` controls retry attempts for retryable DB write errors. Default: `3`; use a positive integer.
 - `CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS` controls the first retry delay in milliseconds before exponential backoff. Default: `500`; use a positive integer.
 - `CI_DASHBOARD_POD_WATCH_DB_RETRY_MAX_DELAY_MS` caps the exponential backoff delay in milliseconds. Default: `5000`; use a positive integer.
 
-Validation:
+### Watcher validation
 
 ```bash
 kubectl -n apps get deployment ci-dashboard-pod-watcher

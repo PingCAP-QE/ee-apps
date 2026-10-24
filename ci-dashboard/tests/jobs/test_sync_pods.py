@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import text
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
+from ci_dashboard.jobs import sync_pods
 from ci_dashboard.jobs.state_store import get_job_state
 from ci_dashboard.jobs.sync_pods import (
     JenkinsPodNameBuildRef,
@@ -418,6 +419,8 @@ def test_sync_pods_build_matching_helpers_cover_jenkins_paths(sqlite_engine, mon
                 """
             )
         )
+        # These are GCP URL fixtures, not legacy Tencent rows with GCP-looking keys.
+        connection.execute(text("UPDATE ci_l1_builds SET cloud_phase = 'GCP' WHERE source_prow_job_id IN ('prow-job-201', 'prow-job-202')"))
         prefix_map = _load_jenkins_pod_name_url_prefix_map(connection, reference_time=datetime(2026, 4, 21))
 
     assert prefix_map["jenkins-agent"] == "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/test-a/"
@@ -2016,13 +2019,11 @@ def test_sync_pods_loads_jenkins_prefix_map_once_per_run(sqlite_engine, monkeypa
 
     calls = {"count": 0}
 
-    def fake_load_jenkins_pod_name_url_prefix_map(_connection):
+    original_loader = sync_pods._load_jenkins_pod_name_url_prefix_map
+
+    def fake_load_jenkins_pod_name_url_prefix_map(connection, *, cloud_phase="GCP", reference_time=None):
         calls["count"] += 1
-        return {
-            "tidb-ci-pull-integration-realcluster-test-next-gen": (
-                "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_integration_realcluster_test_next_gen/"
-            )
-        }
+        return original_loader(connection, cloud_phase=cloud_phase, reference_time=reference_time)
 
     monkeypatch.setattr(
         "ci_dashboard.jobs.sync_pods._load_jenkins_pod_name_url_prefix_map",

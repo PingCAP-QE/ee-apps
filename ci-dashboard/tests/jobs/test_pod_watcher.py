@@ -1020,7 +1020,8 @@ def test_persist_pod_events_records_highest_priority_abnormal_summary(sqlite_eng
 def test_persist_paths_cache_jenkins_prefixes_and_refresh_heartbeat(sqlite_engine, monkeypatch) -> None:
     load_calls = 0
 
-    def fake_load_prefixes(connection):
+    def fake_load_prefixes(connection, *, cloud_phase, reference_time):
+        assert cloud_phase == "GCP"
         nonlocal load_calls
         load_calls += 1
         return {
@@ -1147,7 +1148,8 @@ def test_persist_pod_events_retries_retryable_db_error(sqlite_engine, monkeypatc
 def test_get_jenkins_prefixes_if_needed_respects_namespace(sqlite_engine, monkeypatch) -> None:
     load_calls = 0
 
-    def fake_load_prefixes(connection):
+    def fake_load_prefixes(connection, *, cloud_phase, reference_time):
+        assert cloud_phase == "GCP"
         del connection
         nonlocal load_calls
         load_calls += 1
