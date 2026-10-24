@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="31.3.2">
+  <diagram id="tencent-pod-watcher" name="TKE Pod lifecycle collector">
+    <mxGraphModel dx="1800" dy="1000" grid="1" gridSize="10" page="1" pageScale="1" pageWidth="1900" pageHeight="1000" background="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="2" value="Pod lifecycle collection — shared application, cluster-local watchers" style="text;html=1;align=left;fontSize=26;fontStyle=1;fontColor=#1f2937;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="1720" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="Tencent TKE · ap-beijing · pingcap-ee / cls-9zpon9y1 · PROPOSED" style="swimlane;html=1;whiteSpace=wrap;startSize=40;fillColor=#ffffff;swimlaneFillColor=#ffffff;strokeColor=#888888;fontSize=17;fontStyle=1;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="840" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="Kubernetes API&#xa;Pods + core/v1 Events&#xa;CI namespaces only" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=18;spacing=12;" vertex="1" parent="3">
+          <mxGeometry x="40" y="100" width="260" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="watch-pods · 1 replica&#xa;In-cluster ServiceAccount&#xa;TENCENT controller scope" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=18;spacing=12;" vertex="1" parent="3">
+          <mxGeometry x="520" y="100" width="280" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="GCP GKE · EXISTING COLLECTION · keep running" style="swimlane;html=1;whiteSpace=wrap;startSize=40;fillColor=#ffffff;swimlaneFillColor=#ffffff;strokeColor=#888888;fontSize=17;fontStyle=1;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="540" width="840" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="7" value="Kubernetes API&#xa;Pods + core/v1 Events&#xa;Existing CI namespaces" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=18;spacing=12;" vertex="1" parent="6">
+          <mxGeometry x="40" y="100" width="260" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="Existing watch-pods&#xa;Same shared application&#xa;GCP controller scope" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=18;spacing=12;" vertex="1" parent="6">
+          <mxGeometry x="520" y="100" width="280" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="Existing TiDB&#xa;ci_l1_pod_events&#xa;ci_l1_pod_lifecycle&#xa;ci_l1_builds / ci_job_state" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=18;spacingTop=10;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="380" width="300" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="10" value="Existing CI Dashboard&#xa;Runtime Insights&#xa;GCP / TENCENT filters" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=18;spacing=12;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="410" width="270" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="11" value="Deployment gate&#xa;Verify TKE → TiDB network, TLS, grants and image access.&#xa;No network or secret changes were made during discovery." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=17;spacing=14;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="110" width="770" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="12" value="Identity and metric guardrails&#xa;• Separate immutable collector source IDs and health state&#xa;• Internal Jenkins URLs must use explicit controller scope&#xa;• Created Event ≠ Pod creation; first Started ≠ Pod Ready&#xa;• WATCH is best-effort; downtime can leave historical gaps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#888888;fontSize=17;spacing=14;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="660" width="770" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="13" value="LIST / WATCH" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=16;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="4" target="5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="14" value="LIST / WATCH" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=16;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="7" target="8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="15" value="TLS · upsert + build lookup&#xa;approved route required" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;fontSize=15;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0.25;entryY=0;" edge="1" parent="1" source="5" target="9">
+          <mxGeometry x="0.35" y="0" relative="1" as="geometry">
+            <mxPoint x="0" y="-15" as="offset" />
+            <Array as="points"><mxPoint x="970" y="255" /><mxPoint x="970" y="310" /><mxPoint x="1175" y="310" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="16" value="Existing DB path" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=15;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0.25;entryY=1;" edge="1" parent="1" source="8" target="9">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points"><mxPoint x="970" y="695" /><mxPoint x="970" y="600" /><mxPoint x="1175" y="600" /></Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="17" value="Build-level&#xa;metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;fontSize=16;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="9" target="10">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="18" value="Legend" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#888888;verticalAlign=top;fontStyle=1;fontSize=15;container=1;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="880" width="840" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="19" value="Application / API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="18">
+          <mxGeometry x="20" y="30" width="220" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="20" value="Shared persistence" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="18">
+          <mxGeometry x="310" y="30" width="220" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="21" value="Unverified deployment gate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="18">
+          <mxGeometry x="600" y="30" width="220" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

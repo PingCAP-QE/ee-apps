@@ -10,8 +10,9 @@ usage() {
   cat <<'EOF'
 Render Kubernetes RBAC for the CI Dashboard Pod watcher.
 
-The rendered RBAC grants get/list/watch on pods, persistentvolumeclaims, and events only in the target
+The rendered RBAC grants get/list/watch on pods and core/v1 events only in the target
 namespaces by binding a shared ClusterRole with namespace-scoped RoleBindings.
+PVC reads used by GCP sync-pods are separate; watch-pods does not need them.
 
 Usage:
   render_pod_watcher_rbac.sh [options]
@@ -25,7 +26,40 @@ Optional:
 EOF
 }
 
+fail() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+# Keep this standalone Bash renderer independent of Python/YAML dependencies.
+yaml_quote() {
+  local value="$1" code octal char escaped
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  # Bash 3 printf reads only the first byte of a Unicode character: build the
+  # forbidden YAML control characters explicitly, leaving other UTF-8 intact.
+  for ((code = 1; code <= 159; code++)); do
+    ((code < 32 || code >= 127)) || continue
+    printf -v octal '%03o' "$code"
+    if ((code > 127)); then
+      printf -v char '%b' "\\302\\$octal"
+    else
+      printf -v char '%b' "\\$octal"
+    fi
+    printf -v escaped '\\u%04x' "$code"
+    value="${value//$char/$escaped}"
+  done
+  value="${value//$'\342\200\250'/\\u2028}"
+  value="${value//$'\342\200\251'/\\u2029}"
+  value="${value//$'\357\277\276'/\\ufffe}"
+  value="${value//$'\357\277\277'/\\uffff}"
+  printf '"%s"' "$value"
+}
+
 while [[ $# -gt 0 ]]; do
+  if [[ "$1" != --help && "$1" != -h ]]; then
+    [[ $# -ge 2 && "$2" != --* ]] || fail "missing value for $1"
+  fi
   case "$1" in
     --name)
       name="${2:-}"
@@ -55,60 +89,54 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${name}" ]]; then
-  echo "--name must not be empty" >&2
-  exit 1
-fi
-if [[ -z "${service_account_namespace}" ]]; then
-  echo "--service-account-namespace must not be empty" >&2
-  exit 1
-fi
-if [[ -z "${service_account_name}" ]]; then
-  echo "--service-account-name must not be empty" >&2
-  exit 1
-fi
-if [[ -z "${target_namespaces}" ]]; then
-  echo "--target-namespaces must not be empty" >&2
-  exit 1
-fi
+# Parse and validate every namespace before emitting even the shared role.
+for option in name service_account_namespace service_account_name target_namespaces; do
+  [[ -n "${!option}" && ! "${!option}" =~ ^[[:space:]]*$ ]] || fail "$option must not be blank"
+done
+[[ "$target_namespaces" != *[$'\001'-$'\037']* ]] || fail "target namespaces contain control characters"
+[[ "$target_namespaces" != ,* && "$target_namespaces" != *, ]] || fail "target namespaces must not be empty"
+IFS=',' read -r -a raw_namespaces <<< "$target_namespaces"
+namespaces=()
+for raw_namespace in "${raw_namespaces[@]}"; do
+  namespace="${raw_namespace#"${raw_namespace%%[![:space:]]*}"}"
+  namespace="${namespace%"${namespace##*[![:space:]]}"}"
+  [[ ${#namespace} -le 63 && "$namespace" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || \
+    fail "invalid target namespace: $raw_namespace"
+  namespaces+=("$namespace")
+done
 
 cat <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: ${name}
+  name: $(yaml_quote "$name")
   labels:
     app.kubernetes.io/name: ci-dashboard-pod-watcher
     app.kubernetes.io/part-of: ci-dashboard
 rules:
   - apiGroups: [""]
-    resources: ["pods", "persistentvolumeclaims", "events"]
+    resources: ["pods", "events"]
     verbs: ["get", "list", "watch"]
 EOF
 
-IFS=',' read -r -a namespaces <<< "${target_namespaces}"
-for raw_namespace in "${namespaces[@]}"; do
-  namespace="$(echo "${raw_namespace}" | xargs)"
-  if [[ -z "${namespace}" ]]; then
-    continue
-  fi
+for namespace in "${namespaces[@]}"; do
   cat <<EOF
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: ${name}
-  namespace: ${namespace}
+  name: $(yaml_quote "$name")
+  namespace: $(yaml_quote "$namespace")
   labels:
     app.kubernetes.io/name: ci-dashboard-pod-watcher
     app.kubernetes.io/part-of: ci-dashboard
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: ${name}
+  name: $(yaml_quote "$name")
 subjects:
   - kind: ServiceAccount
-    name: ${service_account_name}
-    namespace: ${service_account_namespace}
+    name: $(yaml_quote "$service_account_name")
+    namespace: $(yaml_quote "$service_account_namespace")
 EOF
 done

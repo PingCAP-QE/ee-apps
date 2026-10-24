@@ -22,7 +22,7 @@ CANONICAL_PROW_PATH_PREFIX = "/view/gs/"
 TRAILING_BUILD_NUMBER_RE = re.compile(r"/\d+/?$")
 
 
-def normalize_build_url(url: str | None) -> str | None:
+def normalize_build_url(url: str | None, *, default_host: str = GCP_HOST) -> str | None:
     if url is None:
         return None
     normalized = url.strip()
@@ -38,7 +38,7 @@ def normalize_build_url(url: str | None) -> str | None:
         elif host == "do.pingcap.net":
             canonical_host = TENCENT_HOST
         elif host == "jenkins.jenkins.svc.cluster.local":
-            canonical_host = GCP_HOST
+            canonical_host = default_host
     else:
         path = normalized
 
@@ -52,10 +52,10 @@ def normalize_build_url(url: str | None) -> str | None:
     if path.startswith("/job/"):
         path = f"/jenkins{path}"
     if path.startswith((*CANONICAL_JENKINS_PATH_PREFIXES, CANONICAL_PROW_PATH_PREFIX)):
-        return _canonical_full_url(path, canonical_host=canonical_host or GCP_HOST)
+        return _canonical_full_url(path, canonical_host=canonical_host or default_host)
 
     if any(normalized.startswith(prefix) for prefix in INTERNAL_JENKINS_HOST_PREFIXES) and path.startswith(CANONICAL_JENKINS_PATH_PREFIXES):
-        return _canonical_full_url(path, canonical_host=GCP_HOST)
+        return _canonical_full_url(path, canonical_host=default_host)
     return None
 
 

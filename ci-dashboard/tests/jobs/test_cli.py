@@ -62,10 +62,11 @@ def test_main_runs_reconcile_pod_linkage_range(monkeypatch) -> None:
     monkeypatch.setattr("ci_dashboard.jobs.cli.configure_logging", lambda _level: None)
     monkeypatch.setattr("ci_dashboard.jobs.cli.build_engine", lambda _settings: "engine")
 
-    def fake_run_reconcile(engine, *, start_time_from, start_time_to):
+    def fake_run_reconcile(engine, *, start_time_from, start_time_to, **kwargs):
         observed["engine"] = engine
         observed["start_time_from"] = start_time_from
         observed["start_time_to"] = start_time_to
+        observed.update(kwargs)
         return SyncPodsSummary(reconciled_rows_updated=3)
 
     monkeypatch.setattr(
@@ -88,6 +89,80 @@ def test_main_runs_reconcile_pod_linkage_range(monkeypatch) -> None:
     assert observed["engine"] == "engine"
     assert observed["start_time_from"] == datetime(2026, 4, 21, 0, 0, 0)
     assert observed["start_time_to"] == datetime(2026, 4, 23, 0, 0, 0)
+    assert observed["batch_size"] == 1000
+    assert observed["max_rows"] == 10000
+    assert observed["after_id"] == 0
+    assert observed["through_id"] is None
+    assert observed["source_project"] is None
+
+
+def test_reconcile_cli_source_bounds_and_default_utc_end(monkeypatch) -> None:
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 4, 22, 23, 59, tzinfo=tz)
+
+    observed = {}
+    monkeypatch.setattr(cli, "datetime", FrozenDateTime)
+    monkeypatch.setattr(cli, "get_settings", _settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _: None)
+    monkeypatch.setattr(cli, "build_engine", lambda _: "engine")
+    monkeypatch.setattr(
+        cli,
+        "run_reconcile_pod_linkage_for_time_window",
+        lambda engine, **kwargs: observed.update(kwargs) or SyncPodsSummary(),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "ci-dashboard",
+            "reconcile-pod-linkage-range",
+            "--start-date",
+            "2026-04-20",
+            "--source-project",
+            "tencent:ap-beijing:cls-example",
+            "--batch-size",
+            "10",
+            "--max-rows",
+            "20",
+            "--after-id",
+            "5",
+            "--through-id",
+            "50",
+        ],
+    )
+    assert cli.main() == 0
+    assert observed == dict(
+        start_time_from=datetime(2026, 4, 20),
+        start_time_to=datetime(2026, 4, 23),
+        source_project="tencent:ap-beijing:cls-example",
+        batch_size=10,
+        max_rows=20,
+        after_id=5,
+        through_id=50,
+    )
+
+
+@pytest.mark.parametrize("flags", [
+    ["--batch-size", "0"], ["--batch-size", "1001"], ["--max-rows", "-1"],
+    ["--max-rows", "10001"], ["--after-id", "-1"],
+    ["--after-id", "5", "--through-id", "4"],
+    ["--source-project", "tencent:invalid"],
+    ["--end-date", "2026-04-19"],
+])
+def test_reconcile_cli_rejects_invalid_controls_before_db(monkeypatch, flags) -> None:
+    monkeypatch.setattr(cli, "get_settings", _settings)
+    monkeypatch.setattr(cli, "configure_logging", lambda _: None)
+    monkeypatch.setattr(
+        cli, "build_engine", lambda _: pytest.fail("invalid controls must not reach DB")
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        ["ci-dashboard", "reconcile-pod-linkage-range", "--start-date", "2026-04-20", *flags],
+    )
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2
 
 
 def test_cli_sync_builds_dispatch(monkeypatch) -> None:

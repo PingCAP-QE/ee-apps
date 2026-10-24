@@ -133,6 +133,16 @@ class SyncPodsSummary:
     event_rows_written: int = 0
     lifecycle_rows_upserted: int = 0
     reconciled_rows_updated: int = 0
+    reconciled_rows_scanned: int = 0
+    reconciled_rows_ambiguous: int = 0
+    reconciled_rows_skipped: int = 0
+    reconcile_missing_time_rows: int = 0
+    reconcile_source_project: str | None = None
+    reconcile_start_time_from: str | None = None
+    reconcile_start_time_to: str | None = None
+    reconcile_after_id: int = 0
+    reconcile_through_id: int = 0
+    reconcile_complete: bool = False
     pods_touched: int = 0
     last_receive_timestamp: str | None = None
 

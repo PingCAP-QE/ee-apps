@@ -43,6 +43,16 @@ def test_normalize_build_url_supports_relative_paths_and_internal_jenkins_host()
     assert normalize_build_url("https://example.test/not-a-build") is None
 
 
+def test_scoped_default_only_changes_internal_and_relative_hosts() -> None:
+    relative = "job/pingcap/job/tidb/job/test/123/"
+    for raw in (relative, "http://jenkins.jenkins.svc.cluster.local:8080/jenkins/" + relative):
+        assert normalize_build_url(raw) == "https://prow.tidb.net/jenkins/" + relative
+        assert normalize_build_url(raw, default_host="https://do.pingcap.net") == "https://do.pingcap.net/jenkins/" + relative
+    for host in ("https://prow.tidb.net", "https://do.pingcap.net"):
+        raw = host + "/jenkins/" + relative
+        assert normalize_build_url(raw, default_host="https://do.pingcap.net") == raw
+
+
 def test_classify_cloud_phase_uses_host_prefix() -> None:
     assert classify_cloud_phase("https://prow.tidb.net/jenkins/job/example") == "GCP"
     assert classify_cloud_phase("https://prow.tidb.net/view/gs/prow-tidb-logs/job/example") == "GCP"

@@ -7,6 +7,7 @@ import queue
 import ssl
 import threading
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from http import HTTPStatus
@@ -24,6 +25,10 @@ from ci_dashboard.common.config import Settings
 from ci_dashboard.common.models import WatchPodsSummary
 from ci_dashboard.common.sql_helpers import chunked
 from ci_dashboard.jobs.build_url_matcher import canonicalize_job_name
+from ci_dashboard.jobs.pod_source import (
+    cloud_phase_for_source,
+    validate_watch_source,
+)
 from ci_dashboard.jobs.state_store import mark_job_failed, mark_job_started, mark_job_succeeded
 from ci_dashboard.jobs.sync_pods import (
     POD_EVENT_REASONS,
@@ -34,6 +39,7 @@ from ci_dashboard.jobs.sync_pods import (
     _coerce_str_mapping,
     _decode_json_object,
     _extract_pod_abnormal_summary,
+    _event_first_last_timestamps,
     _get_json,
     _get_kubernetes_api_ca_file,
     _get_kubernetes_api_token,
@@ -65,6 +71,16 @@ DEFAULT_DB_RETRY_MAX_DELAY_MS = 5000
 RETRYABLE_MYSQL_ERROR_CODES = frozenset({1205, 1213})
 POD_WATCH_TYPES = frozenset({"ADDED", "MODIFIED", "DELETED"})
 EVENT_WATCH_TYPES = frozenset({"ADDED", "MODIFIED"})
+TENCENT_POD_EVENT_REASONS = frozenset({
+    "FailedMount",
+    "FailedAttachVolume",
+    "SuccessfulAttachVolume",
+    "SuccessfulOccupyENI",
+    "SuccessfulOccupyENIIP",
+    "SucceedSetPodIP",
+    "FailedSchedulingOnEkletNodes",
+    "Nominated",
+})
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +90,11 @@ class WatchRuntimeContext:
     source_project: str
     cluster_name: str | None
     location: str | None
+    cloud_phase: str = "GCP"
+
+    @property
+    def job_name(self) -> str:
+        return JOB_NAME if self.cloud_phase == "GCP" else f"{JOB_NAME}:{self.source_project}"
 
 
 @dataclass(frozen=True)
@@ -166,20 +187,32 @@ class _ProgressRecorder:
 class _JenkinsPodNameUrlPrefixCache:
     def __init__(self, *, ttl_seconds: int) -> None:
         self._ttl_seconds = ttl_seconds
-        self._prefixes: dict[str, str] | None = None
-        self._expires_at = 0.0
+        self._entries: dict[tuple[str, datetime], tuple[dict[str, str], float]] = {}
         self._lock = threading.Lock()
 
-    def get(self, connection: Connection) -> dict[str, str]:
+    def get(
+        self,
+        connection: Connection,
+        *,
+        cloud_phase: str = "GCP",
+        reference_time: datetime | None = None,
+    ) -> dict[str, str]:
         now = time.monotonic()
+        reference = _parse_datetime(reference_time) or datetime.now(UTC).replace(tzinfo=None)
+        # A shared daily lookup window keeps cache hits useful across live streams.
+        reference_window = reference.replace(hour=0, minute=0, second=0, microsecond=0)
+        key = (cloud_phase, reference_window)
         with self._lock:
-            if self._prefixes is not None and (
-                self._ttl_seconds == 0 or now < self._expires_at
-            ):
-                return self._prefixes
-            prefixes = _load_jenkins_pod_name_url_prefix_map(connection)
-            self._prefixes = prefixes
-            self._expires_at = float("inf") if self._ttl_seconds == 0 else now + self._ttl_seconds
+            entry = self._entries.get(key)
+            if entry is not None and (self._ttl_seconds == 0 or now < entry[1]):
+                return entry[0]
+            prefixes = _load_jenkins_pod_name_url_prefix_map(
+                connection, cloud_phase=cloud_phase, reference_time=reference_window,
+            )
+            expires_at = float("inf") if self._ttl_seconds == 0 else now + self._ttl_seconds
+            # Only the current lookup window per controller needs to remain cached.
+            self._entries = {k: v for k, v in self._entries.items() if k[0] != cloud_phase}
+            self._entries[key] = (prefixes, expires_at)
             return prefixes
 
 
@@ -188,14 +221,23 @@ class _KubernetesClient:
         self,
         *,
         base_url: str,
-        token: str,
         ca_file: str | None,
         watch_timeout_seconds: int,
+        token: str | None = None,
+        token_provider: Callable[[], str] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._token = token
+        self._token_provider = token_provider or (
+            _get_kubernetes_api_token if token is None else lambda: token
+        )
         self._ca_file = ca_file
         self._watch_timeout_seconds = watch_timeout_seconds
+
+    def _read_token(self) -> str:
+        token = self._token_provider()
+        if not isinstance(token, str) or not token.strip():
+            raise RuntimeError("Kubernetes service account token is empty")
+        return token.strip()
 
     def list_collection(self, *, namespace_name: str, resource: str) -> tuple[list[dict[str, Any]], str | None]:
         items: list[dict[str, Any]] = []
@@ -205,11 +247,17 @@ class _KubernetesClient:
             query = {"limit": "500"}
             if continue_token:
                 query["continue"] = continue_token
-            response = _get_json(
-                self._collection_url(namespace_name=namespace_name, resource=resource, query=query),
-                headers={"Authorization": f"Bearer {self._token}"},
-                ca_file=self._ca_file,
-            )
+            for auth_attempt in range(2):
+                try:
+                    response = _get_json(
+                        self._collection_url(namespace_name=namespace_name, resource=resource, query=query),
+                        headers={"Authorization": f"Bearer {self._read_token()}"},
+                        ca_file=self._ca_file,
+                    )
+                    break
+                except RuntimeError as exc:
+                    if auth_attempt or not _is_unauthorized(exc):
+                        raise
             raw_items = response.get("items")
             if isinstance(raw_items, list):
                 items.extend(item for item in raw_items if isinstance(item, dict))
@@ -229,20 +277,43 @@ class _KubernetesClient:
         resource: str,
         resource_version: str | None,
     ) -> Iterable[dict[str, Any]]:
-        query = {
-            "watch": "true",
-            "allowWatchBookmarks": "true",
-            "timeoutSeconds": str(self._watch_timeout_seconds),
-        }
-        if resource_version:
-            query["resourceVersion"] = resource_version
-        url = self._collection_url(namespace_name=namespace_name, resource=resource, query=query)
-        yield from _stream_watch_json(
-            url,
-            token=self._token,
-            ca_file=self._ca_file,
-            timeout_seconds=self._watch_timeout_seconds + 30,
-        )
+        for auth_attempt in range(2):
+            query = {
+                "watch": "true",
+                "allowWatchBookmarks": "true",
+                "timeoutSeconds": str(self._watch_timeout_seconds),
+            }
+            if resource_version:
+                query["resourceVersion"] = resource_version
+            url = self._collection_url(namespace_name=namespace_name, resource=resource, query=query)
+            try:
+                with closing(_stream_watch_json(
+                    url,
+                    token=self._read_token(),
+                    ca_file=self._ca_file,
+                    timeout_seconds=self._watch_timeout_seconds + 30,
+                )) as events:
+                    for event in events:
+                        obj = event.get("object")
+                        if (
+                            event.get("type") == "ERROR"
+                            and isinstance(obj, dict)
+                            and str(obj.get("code")) == "401"
+                            and auth_attempt == 0
+                        ):
+                            break
+                        yield event
+                        # The consumer has persisted/processed the yielded object before
+                        # asking for the next item; only then advance the retry cursor.
+                        if event.get("type") != "ERROR" and isinstance(obj, dict):
+                            metadata = obj.get("metadata")
+                            if isinstance(metadata, dict):
+                                resource_version = _coerce_str(metadata.get("resourceVersion")) or resource_version
+                    else:
+                        return
+            except RuntimeError as exc:
+                if auth_attempt or not _is_unauthorized(exc):
+                    raise
 
     def _collection_url(self, *, namespace_name: str, resource: str, query: dict[str, str]) -> str:
         namespace = urllib_parse.quote(namespace_name, safe="")
@@ -282,7 +353,7 @@ def run_watch_pods(
     )
     client = _KubernetesClient(
         base_url=_get_kubernetes_api_url(),
-        token=_get_kubernetes_api_token(),
+        token_provider=_get_kubernetes_api_token,
         ca_file=_get_kubernetes_api_ca_file(),
         watch_timeout_seconds=watch_timeout_seconds,
     )
@@ -293,7 +364,7 @@ def run_watch_pods(
             "namespaces": namespaces,
             "source_project": context.source_project,
         }
-        mark_job_started(connection, JOB_NAME, watermark)
+        mark_job_started(connection, context.job_name, watermark)
 
     threads: list[threading.Thread] = []
     for namespace_name in namespaces:
@@ -367,12 +438,12 @@ def run_watch_pods(
             raise worker_errors.get()
 
         with engine.begin() as connection:
-            mark_job_succeeded(connection, JOB_NAME, {"namespaces": namespaces})
+            mark_job_succeeded(connection, context.job_name, {"namespaces": namespaces})
         return summary
     except BaseException as exc:
         stop_event.set()
         with engine.begin() as connection:
-            mark_job_failed(connection, JOB_NAME, {"namespaces": namespaces}, str(exc))
+            mark_job_failed(connection, context.job_name, {"namespaces": namespaces}, str(exc))
         raise
     finally:
         stop_event.set()
@@ -484,6 +555,9 @@ def _run_pod_worker(
             if stop_event.is_set():
                 break
             recorder.add(watch_restarts=1)
+            if _is_resource_version_expired_http_error(exc):
+                logger.info("pod list/watch resource version expired; relisting namespace %s", namespace_name)
+                continue
             logger.warning(
                 "pod watch stream restarted for namespace %s: %s",
                 namespace_name,
@@ -576,6 +650,9 @@ def _run_event_worker(
             if stop_event.is_set():
                 break
             recorder.add(watch_restarts=1)
+            if _is_resource_version_expired_http_error(exc):
+                logger.info("event list/watch resource version expired; relisting namespace %s", namespace_name)
+                continue
             logger.warning(
                 "event watch stream restarted for namespace %s: %s",
                 namespace_name,
@@ -603,6 +680,11 @@ def _persist_pod_snapshots(
                 connection,
                 [snapshot.identity for snapshot in batch],
                 jenkins_prefix_cache,
+                reference_time=min(
+                    (reference for snapshot in batch
+                     if (reference := snapshot.snapshot.creation_timestamp or snapshot.snapshot.observed_at) is not None),
+                    default=None,
+                ),
             )
             lifecycle_rows = _build_lifecycle_rows_for_snapshots(
                 connection,
@@ -654,6 +736,7 @@ def _persist_pod_events(
                 connection,
                 batch_identities,
                 jenkins_prefix_cache,
+                reference_time=min(row.first_timestamp or row.event_timestamp for row in batch),
             )
 
             pod_metadata_by_identity = _load_existing_pod_metadata_snapshots(
@@ -902,8 +985,7 @@ def _load_existing_pod_metadata_snapshots(
                 pod_uid=_coerce_str(row.get("pod_uid")),
                 labels=labels,
                 annotations=annotations,
-                observed_at=_parse_datetime(row.get("metadata_observed_at"))
-                or datetime.now(UTC).replace(tzinfo=None),
+                observed_at=_parse_datetime(row.get("metadata_observed_at")),
                 creation_timestamp=creation_timestamp,
                 abnormal_reason=abnormal_reason,
                 abnormal_message=abnormal_message,
@@ -959,7 +1041,9 @@ def _normalize_kubernetes_event(
         return None
 
     event_reason = _coerce_str(event_object.get("reason"))
-    if event_reason not in POD_EVENT_REASONS:
+    if event_reason not in POD_EVENT_REASONS and not (
+        context.cloud_phase == "TENCENT" and event_reason in TENCENT_POD_EVENT_REASONS
+    ):
         return None
 
     event_timestamp = (
@@ -990,6 +1074,7 @@ def _normalize_kubernetes_event(
         source_component = _coerce_str(source.get("component"))
         source_host = _coerce_str(source.get("host"))
 
+    first_timestamp, last_timestamp = _event_first_last_timestamps(event_object)
     return NormalizedPodEvent(
         source_project=context.source_project,
         cluster_name=context.cluster_name,
@@ -1002,8 +1087,8 @@ def _normalize_kubernetes_event(
         event_message=_coerce_str(event_object.get("message")),
         event_timestamp=event_timestamp,
         receive_timestamp=datetime.now(UTC).replace(tzinfo=None),
-        first_timestamp=_parse_datetime(event_object.get("firstTimestamp")),
-        last_timestamp=_parse_datetime(event_object.get("lastTimestamp")),
+        first_timestamp=first_timestamp,
+        last_timestamp=last_timestamp,
         reporting_component=_coerce_str(event_object.get("reportingComponent"))
         or source_component,
         reporting_instance=_coerce_str(event_object.get("reportingInstance")) or source_host,
@@ -1101,18 +1186,39 @@ def _build_health_handler(health_state: WatchHealthState):
 
 
 def _load_runtime_context() -> WatchRuntimeContext:
-    source_project = _coerce_str(os.environ.get("CI_DASHBOARD_POD_WATCH_SOURCE_PROJECT")) or _coerce_str(
-        os.environ.get("CI_DASHBOARD_GCP_PROJECT")
-    )
+    cloud_phase = os.environ.get("CI_DASHBOARD_POD_WATCH_CLOUD_PHASE", "GCP").strip().upper()
+    source_project = _coerce_str(os.environ.get("CI_DASHBOARD_POD_WATCH_SOURCE_PROJECT"))
+    if source_project is None and cloud_phase == "GCP":
+        source_project = _coerce_str(os.environ.get("CI_DASHBOARD_GCP_PROJECT"))
     if source_project is None:
         raise RuntimeError(
-            "Missing CI_DASHBOARD_POD_WATCH_SOURCE_PROJECT or CI_DASHBOARD_GCP_PROJECT"
+            "Missing CI_DASHBOARD_POD_WATCH_SOURCE_PROJECT (or CI_DASHBOARD_GCP_PROJECT for GCP)"
         )
-    return WatchRuntimeContext(
+    context = WatchRuntimeContext(
         source_project=source_project,
         cluster_name=_coerce_str(os.environ.get("CI_DASHBOARD_KUBERNETES_CLUSTER_NAME")),
         location=_coerce_str(os.environ.get("CI_DASHBOARD_KUBERNETES_LOCATION")),
+        cloud_phase=cloud_phase,
     )
+    try:
+        validate_watch_source(
+            context.source_project,
+            cloud_phase=context.cloud_phase,
+            cluster_name=context.cluster_name,
+            location=context.location,
+        )
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    return context
+
+
+def _is_unauthorized(exc: RuntimeError) -> bool:
+    return isinstance(exc.__cause__, urllib_error.HTTPError) and exc.__cause__.code == 401
+
+
+def _is_resource_version_expired_http_error(exc: Exception) -> bool:
+    error = exc if isinstance(exc, urllib_error.HTTPError) else exc.__cause__
+    return isinstance(error, urllib_error.HTTPError) and error.code == 410
 
 
 def _format_watch_error(watch_event: dict[str, Any]) -> str:
@@ -1170,9 +1276,18 @@ def _get_jenkins_prefixes_if_needed(
     connection: Connection,
     identities: Iterable[tuple[str, str | None, str | None, str | None]],
     jenkins_prefix_cache: _JenkinsPodNameUrlPrefixCache | None,
+    *,
+    reference_time: datetime | None = None,
 ) -> dict[str, str] | None:
     if jenkins_prefix_cache is None:
         return None
-    if any(_infer_pod_build_system(namespace_name) == "JENKINS" for _, namespace_name, _, _ in identities):
-        return jenkins_prefix_cache.get(connection)
+    clouds = {
+        cloud_phase_for_source(source_project)
+        for source_project, namespace_name, _, _ in identities
+        if _infer_pod_build_system(namespace_name) == "JENKINS"
+    }
+    if len(clouds) == 1:
+        return jenkins_prefix_cache.get(
+            connection, cloud_phase=next(iter(clouds)), reference_time=reference_time,
+        )
     return None

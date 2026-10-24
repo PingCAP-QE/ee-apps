@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import ssl
@@ -21,10 +22,10 @@ from ci_dashboard.common.models import SyncPodsSummary
 from ci_dashboard.common.sql_helpers import chunked
 from ci_dashboard.jobs.build_url_matcher import (
     canonicalize_job_name,
-    classify_build_system,
     normalize_build_url,
     normalized_job_path_from_key,
 )
+from ci_dashboard.jobs.pod_source import cloud_phase_for_source, jenkins_host_for_cloud
 from ci_dashboard.jobs.state_store import (
     get_job_state,
     mark_job_failed,
@@ -84,6 +85,9 @@ POD_LINK_RECONCILE_WINDOW_HOURS = 72
 POD_LINK_RECONCILE_BATCH_SIZE = 1000
 JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS = 30
 BUILD_URL_LOOKBACK_DAYS = 30
+POD_LINK_RECONCILE_MAX_ROWS = 10_000
+BUILD_TIME_GUARD = timedelta(hours=24)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -131,7 +135,7 @@ class PodMetadataSnapshot:
     pod_uid: str | None
     labels: dict[str, str]
     annotations: dict[str, str]
-    observed_at: datetime
+    observed_at: datetime | None
     creation_timestamp: datetime | None = None
     abnormal_reason: str | None = None
     abnormal_message: str | None = None
@@ -333,6 +337,7 @@ def run_sync_pods(engine: Engine, settings: Settings) -> SyncPodsSummary:
                 connection,
                 batch_size=settings.jobs.batch_size,
                 jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
+                reference_time=now_utc,
             )
 
         new_watermark = {
@@ -353,15 +358,92 @@ def run_reconcile_pod_linkage_for_time_window(
     start_time_from: datetime,
     start_time_to: datetime | None = None,
     batch_size: int | None = None,
+    source_project: str | None = None,
+    max_rows: int = POD_LINK_RECONCILE_MAX_ROWS,
+    after_id: int = 0,
+    through_id: int | None = None,
 ) -> SyncPodsSummary:
-    summary = SyncPodsSummary()
+    start = _parse_datetime(start_time_from)
+    end = (
+        _parse_datetime(start_time_to)
+        if start_time_to is not None
+        else _prefix_reference_window(datetime.now(UTC)) + timedelta(days=1)
+    )
+    if start is None or end is None or start >= end:
+        raise ValueError("Pod reconciliation requires a nonempty [from, to) UTC window")
+    size = POD_LINK_RECONCILE_BATCH_SIZE if batch_size is None else batch_size
+    if (
+        not 1 <= size <= POD_LINK_RECONCILE_BATCH_SIZE
+        or not 1 <= max_rows <= POD_LINK_RECONCILE_MAX_ROWS
+    ):
+        raise ValueError("Pod reconciliation batch size must be 1..1000 and max rows 1..10000")
+    if after_id < 0 or (through_id is not None and through_id < after_id):
+        raise ValueError("Pod reconciliation requires 0 <= after_id <= through_id")
+    if source_project is not None:
+        cloud_phase_for_source(source_project)
+    summary = SyncPodsSummary(
+        reconcile_source_project=source_project,
+        reconcile_start_time_from=_format_rfc3339(start),
+        reconcile_start_time_to=_format_rfc3339(end),
+        reconcile_after_id=after_id,
+    )
     with engine.begin() as connection:
-        summary.reconciled_rows_updated = _reconcile_lifecycle_rows_in_time_window(
-            connection,
-            start_time_from=start_time_from,
-            start_time_to=start_time_to,
-            batch_size=batch_size,
+        summary.reconcile_through_id = (
+            through_id
+            if through_id is not None
+            else _freeze_reconcile_ceiling(
+                connection,
+                start_time_from=start,
+                start_time_to=end,
+                source_project=source_project,
+            )
         )
+        summary.reconcile_through_id = max(after_id, summary.reconcile_through_id)
+        summary.reconcile_missing_time_rows = _count_reconcile_missing_time_rows(
+            connection,
+            source_project=source_project,
+        )
+    try:
+        while summary.reconciled_rows_scanned < max_rows:
+            with engine.begin() as connection:
+                rows = _load_lifecycle_rows_for_reconcile(
+                    connection,
+                    start_time_from=start,
+                    start_time_to=end,
+                    source_project=source_project,
+                    after_lifecycle_id=summary.reconcile_after_id,
+                    through_id=summary.reconcile_through_id,
+                    limit=min(size, max_rows - summary.reconciled_rows_scanned),
+                )
+                updated, ambiguous, skipped = _reconcile_lifecycle_batch(connection, rows)
+            # Never expose progress until this batch's transaction has committed.
+            if not rows:
+                summary.reconcile_complete = True
+                break
+            summary.reconcile_after_id = int(rows[-1]["id"])
+            summary.reconciled_rows_scanned += len(rows)
+            summary.reconciled_rows_updated += updated
+            summary.reconciled_rows_ambiguous += ambiguous
+            summary.reconciled_rows_skipped += skipped
+            summary.batches_processed += 1
+            logger.info("Pod linkage batch committed", extra={"summary": summary.__dict__.copy()})
+        if not summary.reconcile_complete:
+            with engine.begin() as connection:
+                summary.reconcile_complete = not _load_lifecycle_rows_for_reconcile(
+                    connection,
+                    start_time_from=start,
+                    start_time_to=end,
+                    source_project=source_project,
+                    after_lifecycle_id=summary.reconcile_after_id,
+                    through_id=summary.reconcile_through_id,
+                    limit=1,
+                )
+    except Exception:
+        logger.exception(
+            "Pod linkage reconciliation failed; resume from last committed cursor",
+            extra={"summary": summary.__dict__.copy()},
+        )
+        raise
     return summary
 
 
@@ -594,6 +676,7 @@ def _normalize_logging_entry(entry: dict[str, Any]) -> NormalizedPodEvent | None
     if event_timestamp is None or receive_timestamp is None:
         return None
 
+    first_timestamp, last_timestamp = _event_first_last_timestamps(payload)
     return NormalizedPodEvent(
         source_project=source_project,
         cluster_name=_coerce_str(labels.get("cluster_name")),
@@ -606,12 +689,36 @@ def _normalize_logging_entry(entry: dict[str, Any]) -> NormalizedPodEvent | None
         event_message=_coerce_str(payload.get("message")),
         event_timestamp=event_timestamp,
         receive_timestamp=receive_timestamp,
-        first_timestamp=_parse_datetime(payload.get("firstTimestamp")),
-        last_timestamp=_parse_datetime(payload.get("lastTimestamp")),
+        first_timestamp=first_timestamp,
+        last_timestamp=last_timestamp,
         reporting_component=_coerce_str(payload.get("reportingComponent")),
         reporting_instance=_coerce_str(payload.get("reportingInstance")),
         source_insert_id=source_insert_id,
     )
+
+
+def _event_first_last_timestamps(
+    event_object: dict,
+) -> tuple[datetime | None, datetime | None]:
+    metadata = event_object.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    series = event_object.get("series")
+    series = series if isinstance(series, dict) else {}
+    first = (
+        _parse_datetime(event_object.get("eventTime"))
+        or _parse_datetime(event_object.get("firstTimestamp"))
+        or _parse_datetime(metadata.get("creationTimestamp"))
+    )
+    latest = [
+        value
+        for value in (
+            first,
+            _parse_datetime(event_object.get("lastTimestamp")),
+            _parse_datetime(series.get("lastObservedTime")),
+        )
+        if value is not None
+    ]
+    return first, max(latest) if latest else None
 
 
 def _extract_project_from_log_name(log_name: str | None) -> str | None:
@@ -716,7 +823,6 @@ def _build_pod_events_upsert_statement(connection: Connection):
               event_reason = excluded.event_reason,
               event_type = excluded.event_type,
               event_message = excluded.event_message,
-              event_timestamp = excluded.event_timestamp,
               receive_timestamp = excluded.receive_timestamp,
               first_timestamp = excluded.first_timestamp,
               last_timestamp = excluded.last_timestamp,
@@ -745,7 +851,6 @@ def _build_pod_events_upsert_statement(connection: Connection):
           event_reason = VALUES(event_reason),
           event_type = VALUES(event_type),
           event_message = VALUES(event_message),
-          event_timestamp = VALUES(event_timestamp),
           receive_timestamp = VALUES(receive_timestamp),
           first_timestamp = VALUES(first_timestamp),
           last_timestamp = VALUES(last_timestamp),
@@ -760,18 +865,63 @@ def _build_lifecycle_rows(
     connection: Connection,
     pods: list[tuple[str, str | None, str | None, str | None]],
     *,
-    pod_metadata_by_identity: dict[tuple[str, str | None, str | None, str | None], PodMetadataSnapshot],
+    pod_metadata_by_identity: dict[
+        tuple[str, str | None, str | None, str | None], PodMetadataSnapshot
+    ],
     jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     lifecycle_rows = _load_lifecycle_aggregates(connection, pods)
     if not lifecycle_rows:
         return []
 
+    stored_rows = _load_stored_lifecycle_rows(connection, pods)
+    stored_by_identity = {
+        (row["source_project"], row["namespace_name"], row["pod_uid"], row["pod_name"]): row
+        for row in stored_rows
+    }
+    stored_metadata = _deserialize_pod_metadata_snapshots_from_lifecycle_rows(stored_rows)
+    metadata_by_identity = {**stored_metadata}
+    for identity, snapshot in pod_metadata_by_identity.items():
+        previous = stored_metadata.get(identity)
+        if previous is None or (
+            snapshot.observed_at is not None
+            and (previous.observed_at is None or snapshot.observed_at >= previous.observed_at)
+        ):
+            metadata_by_identity[identity] = snapshot
+    for lifecycle in lifecycle_rows:
+        identity = (
+            lifecycle["source_project"],
+            lifecycle["namespace_name"],
+            lifecycle["pod_uid"],
+            lifecycle["pod_name"],
+        )
+        previous = stored_by_identity.get(identity, {})
+        for field in _FIRST_MILESTONE_FIELDS + _LATEST_MILESTONE_FIELDS:
+            values = [
+                value
+                for value in (
+                    _parse_datetime(lifecycle.get(field)),
+                    _parse_datetime(previous.get(field)),
+                )
+                if value is not None
+            ]
+            lifecycle[field] = (
+                (min(values) if field in _FIRST_MILESTONE_FIELDS else max(values))
+                if values
+                else None
+            )
+        lifecycle["failed_scheduling_count"] = max(
+            int(lifecycle.get("failed_scheduling_count") or 0),
+            int(previous.get("failed_scheduling_count") or 0),
+        )
+        for field in _LINKAGE_FIELDS + ("pod_created_at",):
+            lifecycle[field] = previous.get(field)
+        lifecycle["_stored_linkage_loaded"] = True
     abnormal_event_summaries = _load_abnormal_event_summaries(connection, pods)
     build_metadata_by_identity = _load_build_metadata_map(
         connection,
         lifecycle_rows,
-        pod_metadata_by_identity=pod_metadata_by_identity,
+        pod_metadata_by_identity=metadata_by_identity,
         jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
     )
     rows: list[dict[str, Any]] = []
@@ -783,20 +933,32 @@ def _build_lifecycle_rows(
             pod_name=_coerce_str(lifecycle.get("pod_name")),
         )
         namespace_name = _coerce_str(lifecycle.get("namespace_name"))
-        pod_metadata = pod_metadata_by_identity.get(identity)
+        pod_metadata = metadata_by_identity.get(identity)
         build_meta = build_metadata_by_identity.get(identity, {})
         merged = {
             **lifecycle,
-            **(pod_metadata.as_lifecycle_fields() if pod_metadata else _empty_pod_metadata_fields()),
-            "build_system": build_meta.get("build_system") or _infer_pod_build_system(namespace_name),
-            "source_prow_job_id": build_meta.get("source_prow_job_id"),
-            "normalized_build_url": build_meta.get("normalized_build_url"),
-            "repo_full_name": build_meta.get("repo_full_name"),
-            "job_name": canonicalize_job_name(
+            **(
+                pod_metadata.as_lifecycle_fields() if pod_metadata else _empty_pod_metadata_fields()
+            ),
+            "build_system": build_meta.get("build_system")
+            or _infer_pod_build_system(namespace_name),
+            "source_prow_job_id": lifecycle.get("source_prow_job_id")
+            or build_meta.get("source_prow_job_id"),
+            "normalized_build_url": lifecycle.get("normalized_build_url")
+            or build_meta.get("normalized_build_url"),
+            "repo_full_name": lifecycle.get("repo_full_name") or build_meta.get("repo_full_name"),
+            "job_name": lifecycle.get("job_name")
+            or canonicalize_job_name(
                 _coerce_str(build_meta.get("job_name")),
                 repo_full_name=_coerce_str(build_meta.get("repo_full_name")),
             ),
         }
+        if not pod_metadata or pod_metadata.creation_timestamp is None:
+            merged["pod_created_at"] = lifecycle.get("pod_created_at")
+        previous = stored_by_identity.get(identity, {})
+        if identity not in pod_metadata_by_identity:
+            for field in ("pod_author", "pod_org", "pod_repo", "jenkins_label", "ci_job"):
+                merged[field] = previous.get(field)
         _supplement_jenkins_pod_fields_from_build_metadata(
             merged,
             build_meta,
@@ -805,13 +967,22 @@ def _build_lifecycle_rows(
         abnormal_reason, abnormal_message = _select_abnormal_summary(
             [
                 {
+                    "reason": previous.get("abnormal_reason"),
+                    "message": previous.get("abnormal_message"),
+                    "source_rank": 0,
+                },
+                {
                     "reason": _coerce_str(merged.get("abnormal_reason")),
                     "message": _coerce_str(merged.get("abnormal_message")),
                     "source_rank": 0,
                 },
                 {
-                    "reason": _coerce_str(abnormal_event_summaries.get(identity, {}).get("abnormal_reason")),
-                    "message": _coerce_str(abnormal_event_summaries.get(identity, {}).get("abnormal_message")),
+                    "reason": _coerce_str(
+                        abnormal_event_summaries.get(identity, {}).get("abnormal_reason")
+                    ),
+                    "message": _coerce_str(
+                        abnormal_event_summaries.get(identity, {}).get("abnormal_message")
+                    ),
                     "source_rank": 1,
                 },
             ]
@@ -823,7 +994,8 @@ def _build_lifecycle_rows(
         merged["scheduled_at"] = schedule_at
         merged["first_started_at"] = started_at
         if isinstance(schedule_at, datetime) and isinstance(started_at, datetime):
-            merged["schedule_to_started_seconds"] = int((started_at - schedule_at).total_seconds())
+            duration = int((started_at - schedule_at).total_seconds())
+            merged["schedule_to_started_seconds"] = duration if duration >= 0 else None
         else:
             merged["schedule_to_started_seconds"] = None
         rows.append(merged)
@@ -865,17 +1037,53 @@ def _build_ci_job_from_build_metadata(build_meta: dict[str, Any]) -> str | None:
     return canonicalized if canonicalized and "/" in canonicalized else None
 
 
+_FIRST_MILESTONE_FIELDS = ("scheduled_at", "first_pulling_at", "first_pulled_at", "first_created_at", "first_started_at")
+_LATEST_MILESTONE_FIELDS = ("last_failed_scheduling_at", "last_event_at")
+_LINKAGE_FIELDS = ("build_system", "source_prow_job_id", "normalized_build_url", "repo_full_name", "job_name", "pod_author", "pod_org", "pod_repo", "ci_job")
 _MAX_LIFECYCLE_UNION_PODS = 50
 
-_LIFECYCLE_AGGREGATE_SUFFIX = """\
-  MIN(CASE WHEN events.event_reason = 'Scheduled' THEN events.event_timestamp END) AS scheduled_at,
-  MIN(CASE WHEN events.event_reason = 'Pulling' THEN events.event_timestamp END) AS first_pulling_at,
-  MIN(CASE WHEN events.event_reason = 'Pulled' THEN events.event_timestamp END) AS first_pulled_at,
-  MIN(CASE WHEN events.event_reason = 'Created' THEN events.event_timestamp END) AS first_created_at,
-  MIN(CASE WHEN events.event_reason = 'Started' THEN events.event_timestamp END) AS first_started_at,
-  MAX(CASE WHEN events.event_reason = 'FailedScheduling' THEN events.event_timestamp END) AS last_failed_scheduling_at,
-  SUM(CASE WHEN events.event_reason = 'FailedScheduling' THEN 1 ELSE 0 END) AS failed_scheduling_count,
-  MAX(events.event_timestamp) AS last_event_at
+
+def _load_stored_lifecycle_rows(
+    connection: Connection,
+    pods: list[tuple[str, str | None, str | None, str | None]],
+) -> list[dict[str, Any]]:
+    stored = []
+    for batch in chunked(pods, _MAX_LIFECYCLE_UNION_PODS):
+        branches = []
+        params = {}
+        for index, identity in enumerate(batch):
+            where, branch_params = _build_lifecycle_aggregate_where(index, *identity)
+            branches.append(f"SELECT * FROM ci_l1_pod_lifecycle AS events WHERE {where}")
+            params.update(branch_params)
+        stored.extend(
+            dict(row)
+            for row in connection.execute(text(" UNION ALL ".join(branches)), params).mappings()
+        )
+    return stored
+
+
+_STAGE_TIME_SQL = (
+    "COALESCE(events.first_timestamp, "
+    "CASE WHEN events.last_timestamp IS NULL THEN events.event_timestamp END)"
+)
+_LATEST_TIME_SQL = (
+    "CASE WHEN events.last_timestamp > events.event_timestamp "
+    "THEN events.last_timestamp ELSE events.event_timestamp END"
+)
+_LIFECYCLE_MILESTONES_SQL = ",\n  ".join([
+    *(f"MIN(CASE WHEN events.event_reason = '{reason}' THEN {_STAGE_TIME_SQL} END) AS {column}"
+      for reason, column in (
+          ("Scheduled", "scheduled_at"), ("Pulling", "first_pulling_at"),
+          ("Pulled", "first_pulled_at"), ("Created", "first_created_at"),
+          ("Started", "first_started_at"),
+      )),
+    f"MAX(CASE WHEN events.event_reason = 'FailedScheduling' THEN {_LATEST_TIME_SQL} END) "
+    "AS last_failed_scheduling_at",
+    "SUM(CASE WHEN events.event_reason = 'FailedScheduling' THEN 1 ELSE 0 END) "
+    "AS failed_scheduling_count",
+    f"MAX({_LATEST_TIME_SQL}) AS last_event_at",
+])
+_LIFECYCLE_AGGREGATE_SUFFIX = "  " + _LIFECYCLE_MILESTONES_SQL + """
 FROM {events_table}
 WHERE {where_clause}
 GROUP BY
@@ -962,14 +1170,7 @@ def _load_single_lifecycle_aggregate(
           events.namespace_name,
           events.pod_name,
           events.pod_uid,
-          MIN(CASE WHEN events.event_reason = 'Scheduled' THEN events.event_timestamp END) AS scheduled_at,
-          MIN(CASE WHEN events.event_reason = 'Pulling' THEN events.event_timestamp END) AS first_pulling_at,
-          MIN(CASE WHEN events.event_reason = 'Pulled' THEN events.event_timestamp END) AS first_pulled_at,
-          MIN(CASE WHEN events.event_reason = 'Created' THEN events.event_timestamp END) AS first_created_at,
-          MIN(CASE WHEN events.event_reason = 'Started' THEN events.event_timestamp END) AS first_started_at,
-          MAX(CASE WHEN events.event_reason = 'FailedScheduling' THEN events.event_timestamp END) AS last_failed_scheduling_at,
-          SUM(CASE WHEN events.event_reason = 'FailedScheduling' THEN 1 ELSE 0 END) AS failed_scheduling_count,
-          MAX(events.event_timestamp) AS last_event_at
+          {_LIFECYCLE_MILESTONES_SQL}
         FROM {events_table}
         WHERE events.source_project = :source_project
           AND {_null_safe_equals_sql('events.namespace_name', ':namespace_name', connection.dialect.name)}
@@ -1033,7 +1234,7 @@ def _load_abnormal_event_summaries(
                   events.pod_name,
                   events.event_reason,
                   events.event_message,
-                  events.event_timestamp
+                  {_LATEST_TIME_SQL} AS event_timestamp
                 FROM {events_table}
                 WHERE {where_clause}
                   AND events.event_reason IN ({", ".join(reason_placeholders)})
@@ -1102,125 +1303,343 @@ def _load_build_metadata_map(
     connection: Connection,
     lifecycle_rows: list[dict[str, Any]],
     *,
-    pod_metadata_by_identity: dict[tuple[str, str | None, str | None, str | None], PodMetadataSnapshot],
+    pod_metadata_by_identity: dict[
+        tuple[str, str | None, str | None, str | None], PodMetadataSnapshot
+    ],
     jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
 ) -> dict[tuple[str, str | None, str | None, str | None], dict[str, Any]]:
-    prow_identities: dict[tuple[str, str | None, str | None, str | None], str] = {}
-    jenkins_rows_by_identity: dict[tuple[str, str | None, str | None, str | None], dict[str, Any]] = {}
-
-    for row in lifecycle_rows:
-        identity = _pod_identity_from_values(
-            source_project=_coerce_str(row.get("source_project")) or "",
-            namespace_name=_coerce_str(row.get("namespace_name")),
-            pod_uid=_coerce_str(row.get("pod_uid")),
-            pod_name=_coerce_str(row.get("pod_name")),
-        )
-        namespace_name = _coerce_str(row.get("namespace_name"))
-        pod_name = _coerce_str(row.get("pod_name"))
-        build_system = _infer_pod_build_system(namespace_name)
-        if build_system == "PROW_NATIVE" and pod_name is not None:
-            prow_identities[identity] = pod_name
-        if build_system == "JENKINS":
-            jenkins_rows_by_identity[identity] = {
-                "pod_name": pod_name,
-                "scheduled_at": _parse_datetime(row.get("scheduled_at")),
-                "pod_metadata": pod_metadata_by_identity.get(identity),
-                "existing_normalized_build_url": normalize_build_url(_coerce_str(row.get("normalized_build_url"))),
-            }
-
     results: dict[tuple[str, str | None, str | None, str | None], dict[str, Any]] = {}
-
-    if prow_identities:
-        direct_by_pod_name = _load_direct_build_metadata_map(
-            connection,
-            pod_names=sorted(set(prow_identities.values())),
+    scoped_rows: dict[str, list[tuple[tuple, dict[str, Any]]]] = defaultdict(list)
+    prefix_maps: dict[tuple[str, datetime], dict[str, str]] = {}
+    # Metadata-only watcher rows are freshly constructed. Check saved links too;
+    # the DB upsert independently repeats the guard for races after this read.
+    stored = _load_stored_lifecycle_rows(
+        connection,
+        [
+            (
+                row.get("source_project"),
+                row.get("namespace_name"),
+                row.get("pod_uid"),
+                row.get("pod_name"),
+            )
+            for row in lifecycle_rows
+            if not row.get("_stored_linkage_loaded") and "id" not in row
+        ],
+    )
+    stored_by_identity = {
+        (row["source_project"], row["namespace_name"], row["pod_uid"], row["pod_name"]): row
+        for row in stored
+    }
+    for incoming_row in lifecycle_rows:
+        identity = (
+            incoming_row.get("source_project"),
+            incoming_row.get("namespace_name"),
+            incoming_row.get("pod_uid"),
+            incoming_row.get("pod_name"),
         )
-        for identity, pod_name in prow_identities.items():
-            if pod_name in direct_by_pod_name:
-                results[identity] = direct_by_pod_name[pod_name]
-
-    if jenkins_rows_by_identity:
-        pod_name_url_prefixes = jenkins_pod_name_url_prefixes
-        candidate_urls_by_identity: dict[tuple[str, str | None, str | None, str | None], list[str]] = {}
-        jenkins_scheduled_ats = [
-            payload.get("scheduled_at")
-            for payload in jenkins_rows_by_identity.values()
-            if isinstance(payload.get("scheduled_at"), datetime)
-        ]
-        earliest_scheduled = min(jenkins_scheduled_ats) if jenkins_scheduled_ats else None
-        if pod_name_url_prefixes is None:
-            pod_name_url_prefixes = _load_jenkins_pod_name_url_prefix_map_for_reference(
-                connection,
-                reference_time=earliest_scheduled,
+        previous = stored_by_identity.get(identity, {})
+        row = {**incoming_row}
+        for field in _LINKAGE_FIELDS + ("scheduled_at", "pod_created_at"):
+            if previous.get(field) is not None:
+                row[field] = previous[field]
+        try:
+            cloud = cloud_phase_for_source(str(row.get("source_project") or ""))
+        except ValueError:
+            results[identity] = {"attribution_reason": "invalid_source"}
+            logger.warning(
+                "Pod attribution rejected",
+                extra={"reason": "invalid_source", "lifecycle_id": row.get("id")},
             )
-        for identity, payload in jenkins_rows_by_identity.items():
-            candidate_urls: list[str] = []
-            metadata_url = _extract_normalized_build_url_from_metadata(payload.get("pod_metadata"))
-            pod_name_url = _extract_normalized_build_url_from_pod_name(
-                _coerce_str(payload.get("pod_name")),
-                pod_name_url_prefixes,
+            continue
+        metadata = pod_metadata_by_identity.get(identity)
+        reference = (
+            _parse_datetime(row.get("scheduled_at"))
+            or _parse_datetime(row.get("pod_created_at"))
+            or (metadata.creation_timestamp if metadata else None)
+        )
+        system = _infer_pod_build_system(_coerce_str(row.get("namespace_name")))
+        if row.get("build_system") not in {None, "", "UNKNOWN", system}:
+            results[identity] = {"attribution_reason": "contradictory_existing_build_system"}
+            continue
+        payload = {**row, "reference_time": _parse_datetime(reference), "build_system": system}
+        existing_url = _coerce_str(row.get("normalized_build_url"))
+        if existing_url and not _url_in_scope(existing_url, cloud, system):
+            results[identity] = {"attribution_reason": "contradictory_existing_url"}
+            continue
+        if system == "JENKINS":
+            metadata_url, reason = _jenkins_metadata_evidence(metadata, cloud_phase=cloud)
+            if reason:
+                results[identity] = {"attribution_reason": reason}
+                continue
+            payload["metadata_url"] = metadata_url
+            label_url = (
+                _build_jenkins_url_from_label_and_ci_job(
+                    org=_coerce_str(metadata.labels.get("org")),
+                    repo=_coerce_str(metadata.labels.get("repo")),
+                    ci_job=_coerce_str(metadata.annotations.get("ci_job")),
+                    jenkins_label=_coerce_str(metadata.labels.get("jenkins/label")),
+                    cloud_phase=cloud,
+                )
+                if metadata
+                else None
             )
-            for candidate_url in (
-                metadata_url,
-                pod_name_url,
-                _coerce_str(payload.get("existing_normalized_build_url")),
+            candidate = metadata_url or label_url
+            name_url = None
+            # Weaker evidence cannot rescue contradictory metadata. If it matches
+            # a different build identity, it is a contradiction rather than a winner.
+            if reference is not None and _parse_jenkins_pod_name_build_ref(
+                _coerce_str(row.get("pod_name"))
             ):
-                if candidate_url and candidate_url not in candidate_urls:
-                    candidate_urls.append(candidate_url)
-            if candidate_urls:
-                candidate_urls_by_identity[identity] = candidate_urls
-
-        if earliest_scheduled:
-            lookback_days = _read_int_env(
-                "CI_DASHBOARD_BUILD_URL_LOOKBACK_DAYS",
-                BUILD_URL_LOOKBACK_DAYS,
+                window = _prefix_reference_window(reference)
+                key = (cloud, window)
+                if key not in prefix_maps:
+                    supplied = jenkins_pod_name_url_prefixes
+                    if isinstance(supplied, _JenkinsPrefixMap) and supplied.scope == key:
+                        prefix_maps[key] = supplied
+                    else:
+                        prefix_maps[key] = _load_jenkins_pod_name_url_prefix_map(
+                            connection,
+                            cloud_phase=cloud,
+                            reference_time=window,
+                        )
+                prefix_map = prefix_maps[key]
+                pod_ref = _parse_jenkins_pod_name_build_ref(_coerce_str(row.get("pod_name")))
+                if (
+                    isinstance(prefix_map, _JenkinsPrefixMap)
+                    and pod_ref
+                    and pod_ref.pod_prefix in prefix_map.ambiguous_prefixes
+                ):
+                    if candidate is None and existing_url is None:
+                        results[identity] = {"attribution_reason": "ambiguous_prefix"}
+                        continue
+                else:
+                    name_url = _extract_normalized_build_url_from_pod_name(
+                        _coerce_str(row.get("pod_name")),
+                        prefix_map,
+                    )
+            if any(url and not _url_in_scope(url, cloud, system) for url in (candidate, name_url)):
+                results[identity] = {"attribution_reason": "contradictory_prefix_url"}
+                continue
+            if existing_url and candidate and existing_url != candidate:
+                results[identity] = {"attribution_reason": "conflicting_candidate_urls"}
+                continue
+            payload["primary_url"] = candidate or existing_url
+            payload["candidate_urls"] = list(
+                dict.fromkeys(
+                    url for url in (metadata_url, label_url, name_url, existing_url) if url
+                )
             )
-            start_time_cutoff = earliest_scheduled - timedelta(days=lookback_days)
+        elif system == "PROW_NATIVE":
+            label_id = _coerce_str(metadata.labels.get("prow.k8s.io/id")) if metadata else None
+            existing_id = _coerce_str(row.get("source_prow_job_id"))
+            if label_id and existing_id and label_id != existing_id:
+                results[identity] = {"attribution_reason": "conflicting_prow_ids"}
+                continue
+            payload["exact_prow_id"] = label_id or existing_id
         else:
-            start_time_cutoff = None
+            continue
+        scoped_rows[cloud].append((identity, payload))
 
-        build_candidates_by_url = _load_build_candidates_by_normalized_url(
-            connection,
-            normalized_build_urls=sorted(
-                {
-                    candidate_url
-                    for candidate_urls in candidate_urls_by_identity.values()
-                    for candidate_url in candidate_urls
-                }
-            ),
-            start_time_cutoff=start_time_cutoff,
-        )
-        for identity, payload in jenkins_rows_by_identity.items():
-            resolved = _resolve_jenkins_build_metadata(
-                scheduled_at=payload.get("scheduled_at"),
-                candidate_urls=candidate_urls_by_identity.get(identity, []),
-                build_candidates_by_url=build_candidates_by_url,
+    for cloud, entries in scoped_rows.items():
+        urls = sorted({url for _, row in entries for url in row.get("candidate_urls", [])})
+        references = [row["reference_time"] for _, row in entries if row.get("reference_time")]
+        candidates = (
+            _load_build_candidates_by_normalized_url(
+                connection,
+                normalized_build_urls=urls,
+                cloud_phase=cloud,
+                start_time_cutoff=min(references) - BUILD_TIME_GUARD if references else None,
+                start_time_ceiling=max(references) + BUILD_TIME_GUARD if references else None,
             )
+            if references
+            else {}
+        )
+        prow_rows = [row for _, row in entries if row["build_system"] == "PROW_NATIVE"]
+        direct = (
+            _load_direct_build_metadata_map(
+                connection,
+                pod_names=sorted(
+                    {str(row["pod_name"]) for row in prow_rows if row.get("pod_name")}
+                ),
+                cloud_phase=cloud,
+                source_prow_job_ids=sorted(
+                    {row["exact_prow_id"] for row in prow_rows if row.get("exact_prow_id")}
+                ),
+                start_time_from=min(references) - BUILD_TIME_GUARD if references else None,
+                start_time_to=max(references) + BUILD_TIME_GUARD if references else None,
+            )
+            if prow_rows
+            else []
+        )
+        key_conflicts = {
+            "JENKINS": _load_build_url_key_conflicts(
+                connection, urls, cloud_phase=cloud, build_system="JENKINS"
+            ),
+            "PROW_NATIVE": _load_build_url_key_conflicts(
+                connection,
+                sorted({build["normalized_build_url"] for build in direct}),
+                cloud_phase=cloud,
+                build_system="PROW_NATIVE",
+            ),
+        }
+        for identity, row in entries:
+            if row["build_system"] == "JENKINS":
+                resolved = _resolve_jenkins_build_metadata(
+                    scheduled_at=row["reference_time"],
+                    candidate_urls=row.get("candidate_urls", []),
+                    build_candidates_by_url=candidates,
+                    retain_unmatched_url=bool(row.get("metadata_url")),
+                    primary_url=row.get("primary_url"),
+                )
+            else:
+                exact_id = row.get("exact_prow_id")
+                matches = [
+                    build
+                    for build in direct
+                    if (
+                        build.get("source_prow_job_id") == exact_id
+                        if exact_id
+                        else build.get("pod_name") == row.get("pod_name")
+                        and _within_build_time_guard(build, row["reference_time"])
+                    )
+                ]
+                resolved = _unique_build_metadata(matches, build_system="PROW_NATIVE")
+            collision = key_conflicts[row["build_system"]].get(resolved.get("normalized_build_url"))
+            if collision:
+                resolved = {"attribution_reason": collision}
+            if (
+                not resolved.get("_matched_build")
+                and not resolved.get("attribution_reason")
+                and row.get("source_prow_job_id")
+                and resolved.get("normalized_build_url") != row.get("normalized_build_url")
+            ):
+                resolved = {"attribution_reason": "unverified_existing_link"}
+            if resolved.get("_matched_build") and any(
+                _coerce_str(row.get(field))
+                and _coerce_str(row.get(field)) != _coerce_str(resolved.get(field))
+                for field in ("source_prow_job_id", "normalized_build_url")
+            ):
+                resolved = {"attribution_reason": "contradictory_existing_link"}
             if resolved:
                 results[identity] = resolved
-
+    for identity, result in results.items():
+        if result.get("attribution_reason"):
+            logger.info(
+                "Pod attribution unresolved",
+                extra={
+                    "reason": result["attribution_reason"],
+                    "source_project": identity[0],
+                    "pod_uid": identity[2],
+                },
+            )
     return results
+
+
+def _load_build_url_key_conflicts(
+    connection: Connection,
+    urls: list[str],
+    *,
+    cloud_phase: str,
+    build_system: str,
+) -> dict[str, str]:
+    if not urls:
+        return {}
+    params = {f"url_{index}": url for index, url in enumerate(urls)}
+    placeholders = ", ".join(f":{name}" for name in params)
+    # Runtime Insights joins on URL alone. This is a rejection-only audit,
+    # deliberately independent of time/scope, never an attribution fallback.
+    rows = connection.execute(
+        text(
+            "SELECT normalized_build_url, cloud_phase, build_system FROM ci_l1_builds "
+            f"WHERE normalized_build_url IN ({placeholders})"
+        ),
+        params,
+    ).mappings()
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[row["normalized_build_url"]].append(row)
+    conflicts = {}
+    for url, builds in grouped.items():
+        if any(
+            build["cloud_phase"] != cloud_phase or build["build_system"] != build_system
+            for build in builds
+        ):
+            conflicts[url] = "cross_scope_url_collision"
+        elif len(builds) > 1:
+            conflicts[url] = "ambiguous_build_key"
+    return conflicts
+
+
+def _url_in_scope(url: str, cloud_phase: str, build_system: str) -> bool:
+    prefix = "/jenkins/job/" if build_system == "JENKINS" else "/view/gs/"
+    return url.startswith(jenkins_host_for_cloud(cloud_phase) + prefix)
+
+
+def _within_build_time_guard(build: dict[str, Any], reference: datetime | None) -> bool:
+    start = _parse_datetime(build.get("start_time"))
+    return (
+        start is not None and reference is not None and abs(start - reference) <= BUILD_TIME_GUARD
+    )
+
+
+def _unique_build_metadata(matches: list[dict[str, Any]], *, build_system: str) -> dict[str, Any]:
+    identities = {
+        (row.get("id"), row.get("source_prow_job_id"), row.get("normalized_build_url"))
+        for row in matches
+    }
+    if len(identities) > 1:
+        return {"attribution_reason": "ambiguous_build_candidates"}
+    if not matches:
+        return {}
+    return {**matches[0], "build_system": build_system, "_matched_build": True}
 
 
 def _load_direct_build_metadata_map(
     connection: Connection,
     *,
     pod_names: list[str],
-) -> dict[str, dict[str, Any]]:
-    if not pod_names:
-        return {}
+    cloud_phase: str = "GCP",
+    source_prow_job_ids: list[str] | None = None,
+    start_time_from: datetime | None = None,
+    start_time_to: datetime | None = None,
+) -> list[dict[str, Any]]:
+    if not pod_names and not source_prow_job_ids:
+        return []
 
     placeholders: list[str] = []
-    params: dict[str, Any] = {}
+    params: dict[str, Any] = {
+        "cloud_phase": cloud_phase,
+        "controller_prefix": jenkins_host_for_cloud(cloud_phase) + "/view/gs/%",
+    }
     for index, pod_name in enumerate(pod_names):
         param_name = f"pod_name_{index}"
         placeholders.append(f":{param_name}")
         params[param_name] = pod_name
 
+    conditions = []
+    if placeholders and start_time_from is not None and start_time_to is not None:
+        lower = _datetime_lower_bound_sql("start_time", ":start_time_from", connection.dialect.name)
+        upper = (
+            "julianday(start_time) <= julianday(:start_time_to)"
+            if connection.dialect.name == "sqlite"
+            else "start_time <= :start_time_to"
+        )
+        conditions.append(f"(pod_name IN ({', '.join(placeholders)}) AND {lower} AND {upper})")
+        params.update(start_time_from=start_time_from, start_time_to=start_time_to)
+    id_placeholders = []
+    for index, prow_id in enumerate(source_prow_job_ids or []):
+        param = f"prow_id_{index}"
+        params[param] = prow_id
+        id_placeholders.append(f":{param}")
+    if id_placeholders:
+        conditions.append(f"source_prow_job_id IN ({', '.join(id_placeholders)})")
+    if not conditions:
+        return []
     rows = connection.execute(
         text(
             f"""
             SELECT
+              id,
               pod_name,
               source_prow_job_id,
               normalized_build_url,
@@ -1232,31 +1651,20 @@ def _load_direct_build_metadata_map(
               build_system,
               start_time
             FROM ci_l1_builds
-            WHERE pod_name IN ({", ".join(placeholders)})
-            ORDER BY pod_name ASC, start_time DESC
+            WHERE ({" OR ".join(conditions)})
+              AND cloud_phase = :cloud_phase
+              AND build_system = 'PROW_NATIVE'
+              AND normalized_build_url LIKE :controller_prefix
             """
         ),
         params,
     ).mappings()
 
-    metadata_by_pod_name: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        pod_name = _coerce_str(row.get("pod_name"))
-        if pod_name is None or pod_name in metadata_by_pod_name:
-            continue
-        payload = dict(row)
-        build_system = payload.get("build_system") or classify_build_system(payload.get("normalized_build_url"))
-        metadata_by_pod_name[pod_name] = {
-            "build_system": build_system,
-            "source_prow_job_id": payload.get("source_prow_job_id"),
-            "normalized_build_url": payload.get("normalized_build_url"),
-            "org": payload.get("org"),
-            "repo": payload.get("repo"),
-            "repo_full_name": payload.get("repo_full_name"),
-            "job_name": payload.get("job_name"),
-            "author": payload.get("author"),
-        }
-    return metadata_by_pod_name
+    return [
+        dict(row)
+        for row in rows
+        if _url_in_scope(str(row["normalized_build_url"]), cloud_phase, "PROW_NATIVE")
+    ]
 
 
 def _load_build_candidates_by_normalized_url(
@@ -1264,6 +1672,8 @@ def _load_build_candidates_by_normalized_url(
     *,
     normalized_build_urls: list[str],
     start_time_cutoff: datetime | None = None,
+    start_time_ceiling: datetime | None = None,
+    cloud_phase: str = "GCP",
 ) -> dict[str, list[dict[str, Any]]]:
     if not normalized_build_urls:
         return {}
@@ -1275,7 +1685,11 @@ def _load_build_candidates_by_normalized_url(
         )
         start_time_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=lookback_days)
 
-    params: dict[str, Any] = {"start_time_cutoff": start_time_cutoff}
+    params: dict[str, Any] = {
+        "start_time_cutoff": start_time_cutoff,
+        "cloud_phase": cloud_phase,
+        "controller_prefix": jenkins_host_for_cloud(cloud_phase) + "/jenkins/job/%",
+    }
     placeholders: list[str] = []
     for index, normalized_build_url in enumerate(normalized_build_urls):
         param_name = f"normalized_build_url_{index}"
@@ -1287,10 +1701,19 @@ def _load_build_candidates_by_normalized_url(
         ":start_time_cutoff",
         connection.dialect.name,
     )
+    ceiling_clause = ""
+    if start_time_ceiling is not None:
+        params["start_time_ceiling"] = start_time_ceiling
+        ceiling_clause = (
+            "AND julianday(start_time) <= julianday(:start_time_ceiling)"
+            if connection.dialect.name == "sqlite"
+            else "AND start_time <= :start_time_ceiling"
+        )
     rows = connection.execute(
         text(
             f"""
             SELECT
+              id,
               source_prow_job_id,
               normalized_build_url,
               org,
@@ -1302,7 +1725,11 @@ def _load_build_candidates_by_normalized_url(
             FROM ci_l1_builds
             WHERE normalized_build_url IS NOT NULL
               AND normalized_build_url IN ({", ".join(placeholders)})
+              AND cloud_phase = :cloud_phase
+              AND build_system = 'JENKINS'
+              AND normalized_build_url LIKE :controller_prefix
               AND {start_time_clause}
+              {ceiling_clause}
             ORDER BY start_time DESC
             """
         ),
@@ -1312,40 +1739,67 @@ def _load_build_candidates_by_normalized_url(
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         normalized_build_url = _coerce_str(row.get("normalized_build_url"))
-        if normalized_build_url is None:
+        if normalized_build_url is None or not _url_in_scope(
+            normalized_build_url, cloud_phase, "JENKINS"
+        ):
             continue
         grouped[normalized_build_url].append(dict(row))
     return dict(grouped)
+
+
+def _prefix_reference_window(reference_time: datetime) -> datetime:
+    reference = _parse_datetime(reference_time)
+    assert reference is not None
+    return reference.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+class _JenkinsPrefixMap(dict[str, str]):
+    """A discovery result is reusable only for its controller and UTC-day window."""
+
+    def __init__(
+        self,
+        values: dict[str, str],
+        *,
+        cloud_phase: str,
+        reference_time: datetime,
+        ambiguous_prefixes: set[str] | None = None,
+    ):
+        super().__init__(values)
+        self.scope = (cloud_phase, _prefix_reference_window(reference_time))
+        self.ambiguous_prefixes = ambiguous_prefixes or set()
 
 
 def _load_jenkins_pod_name_url_prefix_map_for_reference(
     connection: Connection,
     *,
     reference_time: datetime | None,
+    cloud_phase: str = "GCP",
 ) -> dict[str, str]:
-    try:
-        return _load_jenkins_pod_name_url_prefix_map(
-            connection,
-            reference_time=reference_time,
-        )
-    except TypeError as exc:
-        if "reference_time" not in str(exc):
-            raise
-        return _load_jenkins_pod_name_url_prefix_map(connection)
+    return _load_jenkins_pod_name_url_prefix_map(
+        connection,
+        cloud_phase=cloud_phase,
+        reference_time=reference_time,
+    )
 
 
 def _load_jenkins_pod_name_url_prefix_map(
     connection: Connection,
     *,
+    cloud_phase: str = "GCP",
     reference_time: datetime | None = None,
 ) -> dict[str, str]:
     lookback_days = _read_int_env(
         "CI_DASHBOARD_JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS",
         JENKINS_POD_NAME_PREFIX_LOOKBACK_DAYS,
     )
-    resolved_reference_time = reference_time or datetime.now(UTC).replace(tzinfo=None)
+    resolved_reference_time = _prefix_reference_window(reference_time or datetime.now(UTC))
     cutoff = resolved_reference_time - timedelta(days=lookback_days)
+    window_end = resolved_reference_time + timedelta(days=1)
+    controller_prefix = jenkins_host_for_cloud(cloud_phase) + "/jenkins/job/%"
     start_time_clause = _datetime_lower_bound_sql("start_time", ":cutoff", connection.dialect.name)
+    end_time_clause = _datetime_upper_bound_sql(
+        "start_time", ":window_end", connection.dialect.name
+    )
     rows = connection.execute(
         text(
             f"""
@@ -1355,6 +1809,9 @@ def _load_jenkins_pod_name_url_prefix_map(
                 MAX(start_time) AS latest_start_time
               FROM ci_l1_builds
               WHERE build_system = 'JENKINS'
+                AND cloud_phase = :cloud_phase
+                AND normalized_build_url LIKE :controller_prefix
+                AND {end_time_clause}
                 AND job_name IS NOT NULL
                 AND pod_name IS NOT NULL
                 AND normalized_build_url IS NOT NULL
@@ -1370,18 +1827,27 @@ def _load_jenkins_pod_name_url_prefix_map(
               ON latest.job_name = b.job_name
              AND latest.latest_start_time = b.start_time
             WHERE b.build_system = 'JENKINS'
+              AND b.cloud_phase = :cloud_phase
+              AND b.normalized_build_url LIKE :controller_prefix
               AND b.pod_name IS NOT NULL
               AND b.normalized_build_url IS NOT NULL
             ORDER BY b.start_time DESC, b.id DESC
             """
         ),
-        {"cutoff": cutoff},
+        {
+            "cutoff": cutoff,
+            "window_end": window_end,
+            "cloud_phase": cloud_phase,
+            "controller_prefix": controller_prefix,
+        },
     ).mappings()
 
     candidates_by_prefix: dict[str, dict[str, tuple[int, datetime | None]]] = defaultdict(dict)
     for row in rows:
         pod_name = _coerce_str(row.get("pod_name"))
-        normalized_build_url = normalize_build_url(_coerce_str(row.get("normalized_build_url")))
+        normalized_build_url = _normalize_jenkins_runtime_url(
+            _coerce_str(row.get("normalized_build_url")), cloud_phase=cloud_phase
+        )
         if pod_name is None or normalized_build_url is None:
             continue
         parsed_ref = _parse_jenkins_pod_name_build_ref(pod_name)
@@ -1392,27 +1858,43 @@ def _load_jenkins_pod_name_url_prefix_map(
         normalized_job_url = normalized_job_path_from_key(normalized_build_url)
         if normalized_job_url is None:
             continue
-        current_count, current_latest = candidates_by_prefix[parsed_ref.pod_prefix].get(normalized_job_url, (0, None))
+        current_count, current_latest = candidates_by_prefix[parsed_ref.pod_prefix].get(
+            normalized_job_url, (0, None)
+        )
         start_time = _parse_datetime(row.get("start_time"))
         if current_latest is None or (
-            isinstance(start_time, datetime) and isinstance(current_latest, datetime) and start_time > current_latest
+            isinstance(start_time, datetime)
+            and isinstance(current_latest, datetime)
+            and start_time > current_latest
         ):
             latest = start_time
         else:
             latest = current_latest
-        candidates_by_prefix[parsed_ref.pod_prefix][normalized_job_url] = (current_count + 1, latest)
+        candidates_by_prefix[parsed_ref.pod_prefix][normalized_job_url] = (
+            current_count + 1,
+            latest,
+        )
 
     selected: dict[str, str] = {}
+    ambiguous_prefixes: set[str] = set()
     for pod_prefix, variants in candidates_by_prefix.items():
-        selected[pod_prefix] = max(
-            variants.items(),
-            key=lambda item: (
-                item[1][0],
-                item[1][1].timestamp() if isinstance(item[1][1], datetime) else float("-inf"),
-                item[0],
-            ),
-        )[0]
-    return selected
+        ranks = {url: (count, latest or datetime.min) for url, (count, latest) in variants.items()}
+        best = max(ranks.values())
+        winners = [url for url, rank in ranks.items() if rank == best]
+        if len(winners) == 1:
+            selected[pod_prefix] = winners[0]
+        else:
+            ambiguous_prefixes.add(pod_prefix)
+            logger.info(
+                "Pod prefix attribution unresolved",
+                extra={"reason": "ambiguous_prefix", "cloud_phase": cloud_phase},
+            )
+    return _JenkinsPrefixMap(
+        selected,
+        cloud_phase=cloud_phase,
+        reference_time=resolved_reference_time,
+        ambiguous_prefixes=ambiguous_prefixes,
+    )
 
 
 def _resolve_jenkins_build_metadata(
@@ -1420,44 +1902,37 @@ def _resolve_jenkins_build_metadata(
     scheduled_at: datetime | None,
     candidate_urls: list[str],
     build_candidates_by_url: dict[str, list[dict[str, Any]]],
+    retain_unmatched_url: bool = True,
+    primary_url: str | None = None,
 ) -> dict[str, Any]:
-    normalized_candidates = [candidate for candidate in candidate_urls if candidate]
-    matched_builds: list[tuple[str, dict[str, Any]]] = []
-    for candidate_url in normalized_candidates:
-        for build_candidate in build_candidates_by_url.get(candidate_url, []):
-            matched_builds.append((candidate_url, build_candidate))
-
-    if matched_builds:
-        selected_url, selected_build = min(
-            matched_builds,
-            key=lambda item: _candidate_build_sort_key(item[1], scheduled_at),
-        )
-        return {
-            "build_system": "JENKINS",
-            "normalized_build_url": selected_url,
-            "source_prow_job_id": selected_build.get("source_prow_job_id"),
-            "org": selected_build.get("org"),
-            "repo": selected_build.get("repo"),
-            "repo_full_name": selected_build.get("repo_full_name"),
-            "job_name": selected_build.get("job_name"),
-            "author": selected_build.get("author"),
-        }
-
-    if normalized_candidates:
-        return {
-            "build_system": "JENKINS",
-            "normalized_build_url": normalized_candidates[0],
-        }
-    return {}
-
-
-def _candidate_build_sort_key(build_candidate: dict[str, Any], scheduled_at: datetime | None) -> tuple[float, float]:
-    start_time = _parse_datetime(build_candidate.get("start_time"))
-    if not isinstance(start_time, datetime):
-        return (float("inf"), float("inf"))
-    if not isinstance(scheduled_at, datetime):
-        return (float("inf"), -start_time.timestamp())
-    return (abs((start_time - scheduled_at).total_seconds()), -start_time.timestamp())
+    normalized_candidates = list(
+        dict.fromkeys(candidate for candidate in candidate_urls if candidate)
+    )
+    matched = [
+        {**build, "normalized_build_url": url}
+        for url in normalized_candidates
+        for build in build_candidates_by_url.get(url, [])
+        if _within_build_time_guard(build, scheduled_at)
+    ]
+    resolved = _unique_build_metadata(matched, build_system="JENKINS")
+    if resolved:
+        if (
+            resolved.get("_matched_build")
+            and primary_url
+            and resolved["normalized_build_url"] != primary_url
+        ):
+            return {"attribution_reason": "conflicting_candidate_urls"}
+        return resolved
+    retained = primary_url or (
+        normalized_candidates[0] if len(normalized_candidates) == 1 else None
+    )
+    if retained and retain_unmatched_url:
+        return {"build_system": "JENKINS", "normalized_build_url": retained}
+    return {
+        "attribution_reason": "missing_reference_time"
+        if scheduled_at is None
+        else "no_consistent_build"
+    }
 
 
 def _extract_normalized_build_url_from_pod_name(
@@ -1493,23 +1968,43 @@ def _parse_jenkins_pod_name_build_ref(pod_name: str | None) -> JenkinsPodNameBui
     return None
 
 
-def _extract_normalized_build_url_from_metadata(pod_metadata: PodMetadataSnapshot | None) -> str | None:
+def _jenkins_metadata_evidence(
+    pod_metadata: PodMetadataSnapshot | None,
+    *,
+    cloud_phase: str,
+) -> tuple[str | None, str | None]:
     if pod_metadata is None:
+        return None, None
+    urls = set()
+    for name in ("buildUrl", "runUrl"):
+        raw = _coerce_str(pod_metadata.annotations.get(name))
+        if raw is None:
+            continue
+        normalized = _normalize_jenkins_runtime_url(raw, cloud_phase=cloud_phase)
+        if normalized is None:
+            return None, "invalid_or_cross_scope_metadata_url"
+        urls.add(normalized)
+    if len(urls) > 1:
+        return None, "conflicting_metadata_urls"
+    return next(iter(urls), None), None
+
+
+def _extract_normalized_build_url_from_metadata(
+    pod_metadata: PodMetadataSnapshot | None,
+    *,
+    cloud_phase: str = "GCP",
+) -> str | None:
+    url, reason = _jenkins_metadata_evidence(pod_metadata, cloud_phase=cloud_phase)
+    if reason or pod_metadata is None:
         return None
-    annotations = pod_metadata.annotations
-    labels = pod_metadata.labels
-    for raw_url in (
-        annotations.get("buildUrl"),
-        annotations.get("runUrl"),
-    ):
-        normalized_build_url = _normalize_jenkins_runtime_url(raw_url)
-        if normalized_build_url is not None:
-            return normalized_build_url
+    if url:
+        return url
     return _build_jenkins_url_from_label_and_ci_job(
-        org=_coerce_str(labels.get("org")),
-        repo=_coerce_str(labels.get("repo")),
-        ci_job=_coerce_str(annotations.get("ci_job")),
-        jenkins_label=_coerce_str(labels.get("jenkins/label")),
+        org=_coerce_str(pod_metadata.labels.get("org")),
+        repo=_coerce_str(pod_metadata.labels.get("repo")),
+        ci_job=_coerce_str(pod_metadata.annotations.get("ci_job")),
+        jenkins_label=_coerce_str(pod_metadata.labels.get("jenkins/label")),
+        cloud_phase=cloud_phase,
     )
 
 
@@ -1556,7 +2051,9 @@ def _load_pod_metadata_snapshots(
         defaultdict(list)
     )
     for identity in pods:
-        _source_project, namespace_name, _, pod_name = identity
+        source_project, namespace_name, _, pod_name = identity
+        if cloud_phase_for_source(source_project) != "GCP":
+            continue
         if _infer_pod_build_system(namespace_name) not in {"JENKINS", "PROW_NATIVE"}:
             continue
         if namespace_name is None or pod_name is None:
@@ -1794,11 +2291,30 @@ def _get_json(url: str, *, headers: dict[str, str], ca_file: str | None) -> dict
     )
 
 
-def _normalize_jenkins_runtime_url(value: str | None) -> str | None:
-    normalized_build_url = normalize_build_url(value)
-    if normalized_build_url is None:
+def _normalize_jenkins_runtime_url(value: str | None, *, cloud_phase: str = "GCP") -> str | None:
+    raw = _coerce_str(value)
+    if raw is None:
         return None
-    return normalized_build_url if normalized_build_url.startswith("https://prow.tidb.net/jenkins/job/") else None
+    host = jenkins_host_for_cloud(cloud_phase)
+    try:
+        parsed = urllib_parse.urlsplit(raw)
+    except ValueError:
+        return None
+    if parsed.scheme or parsed.netloc:
+        if (
+            parsed.scheme not in {"http", "https"}
+            or parsed.hostname
+            not in {
+                "prow.tidb.net",
+                "do.pingcap.net",
+                "jenkins.jenkins.svc.cluster.local",
+            }
+            or parsed.username
+            or parsed.password
+        ):
+            return None
+    normalized = normalize_build_url(raw, default_host=host)
+    return normalized if normalized and _url_in_scope(normalized, cloud_phase, "JENKINS") else None
 
 
 def _build_jenkins_url_from_label_and_ci_job(
@@ -1807,6 +2323,7 @@ def _build_jenkins_url_from_label_and_ci_job(
     repo: str | None,
     ci_job: str | None,
     jenkins_label: str | None,
+    cloud_phase: str = "GCP",
 ) -> str | None:
     if org is None or repo is None or ci_job is None:
         return None
@@ -1824,7 +2341,9 @@ def _build_jenkins_url_from_label_and_ci_job(
     for segment in job_segments:
         path_segments.extend(("job", segment))
     path_segments.append(build_number)
-    return normalize_build_url("/" + "/".join(path_segments))
+    return normalize_build_url(
+        "/" + "/".join(path_segments), default_host=jenkins_host_for_cloud(cloud_phase)
+    )
 
 
 def _extract_build_number_from_jenkins_label(value: str | None) -> str | None:
@@ -1931,13 +2450,18 @@ def _reconcile_recent_lifecycle_rows(
     *,
     batch_size: int | None = None,
     jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
+    reference_time: datetime | None = None,
 ) -> int:
-    window_hours = _read_int_env("CI_DASHBOARD_POD_LINK_RECONCILE_WINDOW_HOURS", POD_LINK_RECONCILE_WINDOW_HOURS)
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=window_hours)
+    window_hours = _read_int_env(
+        "CI_DASHBOARD_POD_LINK_RECONCILE_WINDOW_HOURS", POD_LINK_RECONCILE_WINDOW_HOURS
+    )
+    end = _parse_datetime(reference_time) or datetime.now(UTC).replace(tzinfo=None)
+    cutoff = end - timedelta(hours=window_hours)
     return _reconcile_lifecycle_rows_in_time_window(
         connection,
         start_time_from=cutoff,
-        start_time_to=None,
+        start_time_to=end,
+        gcp_only=True,
         batch_size=batch_size,
         jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
     )
@@ -1950,133 +2474,192 @@ def _reconcile_lifecycle_rows_in_time_window(
     start_time_to: datetime | None,
     batch_size: int | None = None,
     jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
+    source_project: str | None = None,
+    gcp_only: bool = False,
 ) -> int:
-    resolved_batch_size = batch_size or _read_int_env(
-        "CI_DASHBOARD_POD_LINK_RECONCILE_BATCH_SIZE",
-        POD_LINK_RECONCILE_BATCH_SIZE,
+    """Connection-only sweep: transaction ownership always stays with the caller."""
+    size = (
+        batch_size
+        if batch_size is not None
+        else _read_int_env(
+            "CI_DASHBOARD_POD_LINK_RECONCILE_BATCH_SIZE", POD_LINK_RECONCILE_BATCH_SIZE
+        )
     )
-    after_lifecycle_id = 0
-    total_updated = 0
-    cached_prefix_map = jenkins_pod_name_url_prefixes
-
+    if size <= 0:
+        raise ValueError("Pod reconciliation page size must be positive")
+    end = _parse_datetime(start_time_to) or datetime.now(UTC).replace(tzinfo=None)
+    start = _parse_datetime(start_time_from)
+    if start is None or start >= end:
+        raise ValueError("Pod reconciliation requires a nonempty [from, to) UTC window")
+    through_id = _freeze_reconcile_ceiling(
+        connection,
+        start_time_from=start,
+        start_time_to=end,
+        source_project=source_project,
+        gcp_only=gcp_only,
+    )
+    after_id = total_updated = 0
     while True:
-        lifecycle_rows = _load_lifecycle_rows_for_reconcile(
+        rows = _load_lifecycle_rows_for_reconcile(
             connection,
-            start_time_from=start_time_from,
-            start_time_to=start_time_to,
-            after_lifecycle_id=after_lifecycle_id,
-            limit=resolved_batch_size,
+            start_time_from=start,
+            start_time_to=end,
+            after_lifecycle_id=after_id,
+            through_id=through_id,
+            limit=size,
+            source_project=source_project,
+            gcp_only=gcp_only,
         )
-        if not lifecycle_rows:
-            break
-
-        after_lifecycle_id = max(int(lifecycle["id"]) for lifecycle in lifecycle_rows)
-        if cached_prefix_map is None and any(
-            _infer_pod_build_system(_coerce_str(lifecycle.get("namespace_name"))) == "JENKINS"
-            for lifecycle in lifecycle_rows
-        ):
-            cached_prefix_map = _load_jenkins_pod_name_url_prefix_map_for_reference(
-                connection,
-                reference_time=start_time_to or start_time_from,
-            )
-
-        pod_metadata_by_identity = _deserialize_pod_metadata_snapshots_from_lifecycle_rows(lifecycle_rows)
-        build_metadata_by_identity = _load_build_metadata_map(
+        if not rows:
+            return total_updated
+        updated, _, _ = _reconcile_lifecycle_batch(
             connection,
-            lifecycle_rows,
-            pod_metadata_by_identity=pod_metadata_by_identity,
-            jenkins_pod_name_url_prefixes=cached_prefix_map,
+            rows,
+            jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
         )
+        total_updated += updated
+        after_id = int(rows[-1]["id"])
 
-        payload: list[dict[str, Any]] = []
-        for lifecycle in lifecycle_rows:
-            identity = _pod_identity_from_values(
-                source_project=_coerce_str(lifecycle.get("source_project")) or "",
-                namespace_name=_coerce_str(lifecycle.get("namespace_name")),
-                pod_uid=_coerce_str(lifecycle.get("pod_uid")),
-                pod_name=_coerce_str(lifecycle.get("pod_name")),
-            )
-            build_meta = build_metadata_by_identity.get(identity, {})
-            current_build_system = _coerce_str(lifecycle.get("build_system")) or _infer_pod_build_system(
-                _coerce_str(lifecycle.get("namespace_name"))
-            )
-            resolved_build_system = build_meta.get("build_system") or current_build_system
-            resolved_normalized_build_url = build_meta.get("normalized_build_url") or _coerce_str(
-                lifecycle.get("normalized_build_url")
-            )
-            resolved_source_prow_job_id = build_meta.get("source_prow_job_id") or _coerce_str(
-                lifecycle.get("source_prow_job_id")
-            )
-            resolved_repo_full_name = build_meta.get("repo_full_name") or _coerce_str(lifecycle.get("repo_full_name"))
-            resolved_job_name = canonicalize_job_name(
-                _coerce_str(build_meta.get("job_name")) or _coerce_str(lifecycle.get("job_name")),
-                repo_full_name=resolved_repo_full_name,
-            )
-            resolved_pod_fields = {
-                "pod_author": _coerce_str(lifecycle.get("pod_author")),
-                "pod_org": _coerce_str(lifecycle.get("pod_org")),
-                "pod_repo": _coerce_str(lifecycle.get("pod_repo")),
-                "ci_job": _coerce_str(lifecycle.get("ci_job")),
-            }
-            _supplement_jenkins_pod_fields_from_build_metadata(
-                resolved_pod_fields,
-                build_meta,
-                build_system=resolved_build_system,
-            )
 
-            if (
-                resolved_build_system == _coerce_str(lifecycle.get("build_system"))
-                and resolved_normalized_build_url == _coerce_str(lifecycle.get("normalized_build_url"))
-                and resolved_source_prow_job_id == _coerce_str(lifecycle.get("source_prow_job_id"))
-                and resolved_repo_full_name == _coerce_str(lifecycle.get("repo_full_name"))
-                and resolved_job_name == _coerce_str(lifecycle.get("job_name"))
-                and resolved_pod_fields["pod_author"] == _coerce_str(lifecycle.get("pod_author"))
-                and resolved_pod_fields["pod_org"] == _coerce_str(lifecycle.get("pod_org"))
-                and resolved_pod_fields["pod_repo"] == _coerce_str(lifecycle.get("pod_repo"))
-                and resolved_pod_fields["ci_job"] == _coerce_str(lifecycle.get("ci_job"))
+def _reconcile_lifecycle_batch(
+    connection: Connection,
+    lifecycle_rows: list[dict[str, Any]],
+    *,
+    jenkins_pod_name_url_prefixes: dict[str, str] | None = None,
+) -> tuple[int, int, int]:
+    metadata = _load_build_metadata_map(
+        connection,
+        lifecycle_rows,
+        pod_metadata_by_identity=_deserialize_pod_metadata_snapshots_from_lifecycle_rows(
+            lifecycle_rows
+        ),
+        jenkins_pod_name_url_prefixes=jenkins_pod_name_url_prefixes,
+    )
+    guarded_fields = _LINKAGE_FIELDS + ("metadata_observed_at",)
+    guards = " AND ".join(
+        _null_safe_equals_sql(field, f":old_{field}", connection.dialect.name)
+        for field in guarded_fields
+    )
+    statement = text(
+        "UPDATE ci_l1_pod_lifecycle SET "
+        + ", ".join(f"{field} = :{field}" for field in _LINKAGE_FIELDS)
+        + f", updated_at = CURRENT_TIMESTAMP WHERE id = :id AND source_project = :source_project AND {guards}"
+    )
+    updated = ambiguous = skipped = 0
+    for row in lifecycle_rows:
+        identity = (row["source_project"], row["namespace_name"], row["pod_uid"], row["pod_name"])
+        build = metadata.get(identity, {})
+        reason = build.get("attribution_reason")
+        if reason:
+            if any(
+                category in reason
+                for category in ("ambiguous", "conflict", "contradict", "collision")
             ):
-                continue
-
-            payload.append(
-                {
-                    "id": lifecycle["id"],
-                    "build_system": resolved_build_system,
-                    "normalized_build_url": resolved_normalized_build_url,
-                    "source_prow_job_id": resolved_source_prow_job_id,
-                    "repo_full_name": resolved_repo_full_name,
-                    "job_name": resolved_job_name,
-                    "pod_author": resolved_pod_fields["pod_author"],
-                    "pod_org": resolved_pod_fields["pod_org"],
-                    "pod_repo": resolved_pod_fields["pod_repo"],
-                    "ci_job": resolved_pod_fields["ci_job"],
-                }
-            )
-
-        if not payload:
+                ambiguous += 1
+            else:
+                skipped += 1
             continue
+        if not build.get("_matched_build"):
+            skipped += 1
+            continue
+        resolved = {
+            **{field: _coerce_str(build.get(field)) for field in _LINKAGE_FIELDS},
+            "job_name": canonicalize_job_name(
+                _coerce_str(build.get("job_name")),
+                repo_full_name=_coerce_str(build.get("repo_full_name")),
+            ),
+            "pod_author": _coerce_str(build.get("author")),
+            "pod_org": _coerce_str(build.get("org")),
+            "pod_repo": _coerce_str(build.get("repo")),
+            "ci_job": _build_ci_job_from_build_metadata(build)
+            if build.get("build_system") == "JENKINS"
+            else None,
+        }
+        payload = {
+            field: row.get(field)
+            if _coerce_str(row.get(field)) is not None
+            and not (field == "build_system" and row.get(field) == "UNKNOWN")
+            else resolved.get(field)
+            for field in _LINKAGE_FIELDS
+        }
+        if all(payload[field] == row.get(field) for field in _LINKAGE_FIELDS):
+            skipped += 1
+            continue
+        payload.update(
+            {
+                "id": row["id"],
+                "source_project": row["source_project"],
+                **{f"old_{field}": row.get(field) for field in guarded_fields},
+            }
+        )
+        result = connection.execute(statement, payload)
+        if result.rowcount == 1:
+            updated += 1
+        else:
+            skipped += 1
+    return updated, ambiguous, skipped
 
+
+def _reconcile_scope_sql(source_project: str | None, gcp_only: bool = False) -> str:
+    clauses = []
+    if source_project is not None:
+        clauses.append("source_project = :source_project")
+    if gcp_only:
+        clauses.append("LOWER(source_project) NOT LIKE 'tencent:%'")
+    return " AND ".join(clauses) or "1 = 1"
+
+
+def _freeze_reconcile_ceiling(
+    connection: Connection,
+    *,
+    start_time_from: datetime,
+    start_time_to: datetime,
+    source_project: str | None = None,
+    gcp_only: bool = False,
+) -> int:
+    reference = "COALESCE(scheduled_at, pod_created_at)"
+    lower = _datetime_lower_bound_sql(reference, ":start_time_from", connection.dialect.name)
+    upper = _datetime_upper_bound_sql(reference, ":start_time_to", connection.dialect.name)
+    return int(
         connection.execute(
             text(
-                """
-                UPDATE ci_l1_pod_lifecycle
-                SET build_system = :build_system,
-                    normalized_build_url = :normalized_build_url,
-                    source_prow_job_id = :source_prow_job_id,
-                    repo_full_name = :repo_full_name,
-                    job_name = :job_name,
-                    pod_author = :pod_author,
-                    pod_org = :pod_org,
-                    pod_repo = :pod_repo,
-                    ci_job = :ci_job,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = :id
-                """
+                f"SELECT COALESCE(MAX(id), 0) FROM ci_l1_pod_lifecycle WHERE {lower} AND {upper} AND {_reconcile_scope_sql(source_project, gcp_only)}"
             ),
-            payload,
-        )
-        total_updated += len(payload)
+            {
+                "start_time_from": start_time_from,
+                "start_time_to": start_time_to,
+                "source_project": source_project,
+            },
+        ).scalar_one()
+    )
 
-    return total_updated
+
+def _count_reconcile_missing_time_rows(
+    connection: Connection,
+    *,
+    source_project: str | None,
+) -> int:
+    # Undatable rows cannot belong to a date window; report a source-wide
+    # diagnostic separately from the selected/scanned row counts and cursor.
+    return int(
+        connection.execute(
+            text(
+                "SELECT COUNT(*) FROM ci_l1_pod_lifecycle WHERE scheduled_at IS NULL AND pod_created_at IS NULL "
+                f"AND {_reconcile_scope_sql(source_project)} AND {_INCOMPLETE_LINKAGE_SQL}"
+            ),
+            {"source_project": source_project},
+        ).scalar_one()
+    )
+
+
+_INCOMPLETE_LINKAGE_SQL = """(
+    NULLIF(source_prow_job_id, '') IS NULL OR NULLIF(normalized_build_url, '') IS NULL
+    OR NULLIF(repo_full_name, '') IS NULL OR NULLIF(job_name, '') IS NULL
+    OR ((build_system = 'JENKINS' OR namespace_name LIKE 'jenkins-%') AND (
+        NULLIF(pod_author, '') IS NULL OR NULLIF(pod_org, '') IS NULL
+        OR NULLIF(pod_repo, '') IS NULL OR NULLIF(ci_job, '') IS NULL
+    ))
+)"""
 
 
 def _load_lifecycle_rows_for_reconcile(
@@ -2086,22 +2669,24 @@ def _load_lifecycle_rows_for_reconcile(
     start_time_to: datetime | None,
     after_lifecycle_id: int,
     limit: int,
+    through_id: int | None = None,
+    source_project: str | None = None,
+    gcp_only: bool = False,
 ) -> list[dict[str, Any]]:
     params: dict[str, Any] = {
         "start_time_from": start_time_from,
         "after_lifecycle_id": after_lifecycle_id,
+        "through_id": through_id,
+        "source_project": source_project,
         "limit": limit,
     }
+    reference = "COALESCE(scheduled_at, pod_created_at)"
     end_clause = ""
     if start_time_to is not None:
-        end_clause = (
-            f"  AND {_datetime_upper_bound_sql('scheduled_at', ':start_time_to', connection.dialect.name)}\n"
-        )
+        end_clause = f" AND {_datetime_upper_bound_sql(reference, ':start_time_to', connection.dialect.name)}"
         params["start_time_to"] = start_time_to
     start_time_from_clause = _datetime_lower_bound_sql(
-        "scheduled_at",
-        ":start_time_from",
-        connection.dialect.name,
+        reference, ":start_time_from", connection.dialect.name
     )
 
     rows = connection.execute(
@@ -2117,6 +2702,7 @@ def _load_lifecycle_rows_for_reconcile(
               pod_labels_json,
               pod_annotations_json,
               metadata_observed_at,
+              pod_created_at,
               scheduled_at,
               pod_author,
               pod_org,
@@ -2128,26 +2714,10 @@ def _load_lifecycle_rows_for_reconcile(
               job_name
             FROM ci_l1_pod_lifecycle
             WHERE {start_time_from_clause}
-{end_clause}              AND id > :after_lifecycle_id
-              AND (
-                source_prow_job_id IS NULL
-                OR source_prow_job_id = ''
-                OR normalized_build_url IS NULL
-                OR normalized_build_url = ''
-                OR (
-                  (build_system = 'JENKINS' OR namespace_name LIKE 'jenkins-%')
-                  AND (
-                    pod_author IS NULL
-                    OR pod_author = ''
-                    OR pod_org IS NULL
-                    OR pod_org = ''
-                    OR pod_repo IS NULL
-                    OR pod_repo = ''
-                    OR ci_job IS NULL
-                    OR ci_job = ''
-                  )
-                )
-              )
+{end_clause} AND id > :after_lifecycle_id
+              AND (:through_id IS NULL OR id <= :through_id)
+              AND {_reconcile_scope_sql(source_project, gcp_only)}
+              AND {_INCOMPLETE_LINKAGE_SQL}
             ORDER BY id ASC
             LIMIT :limit
             """
@@ -2173,6 +2743,7 @@ def _deserialize_pod_metadata_snapshots_from_lifecycle_rows(
             and creation_timestamp is None
             and abnormal_reason is None
             and abnormal_message is None
+            and _parse_datetime(lifecycle.get("metadata_observed_at")) is None
         ):
             continue
         identity = _pod_identity_from_values(
@@ -2181,7 +2752,7 @@ def _deserialize_pod_metadata_snapshots_from_lifecycle_rows(
             pod_uid=_coerce_str(lifecycle.get("pod_uid")),
             pod_name=_coerce_str(lifecycle.get("pod_name")),
         )
-        observed_at = _parse_datetime(lifecycle.get("metadata_observed_at")) or datetime.now(UTC).replace(tzinfo=None)
+        observed_at = _parse_datetime(lifecycle.get("metadata_observed_at"))
         snapshots[identity] = PodMetadataSnapshot(
             pod_uid=_coerce_str(lifecycle.get("pod_uid")),
             labels=labels,
@@ -2206,104 +2777,143 @@ def _json_loads_str_mapping(value: Any) -> dict[str, str]:
 
 
 def _build_pod_lifecycle_upsert_statement(connection: Connection):
-    if connection.dialect.name == "sqlite":
-        return text(
-            """
-            INSERT INTO ci_l1_pod_lifecycle (
-              source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
-              build_system, pod_labels_json, pod_annotations_json, metadata_observed_at, pod_created_at,
-              abnormal_reason, abnormal_message,
-              pod_author, pod_org, pod_repo, jenkins_label, ci_job,
-              source_prow_job_id, normalized_build_url, repo_full_name, job_name,
-              scheduled_at, first_pulling_at, first_pulled_at, first_created_at, first_started_at,
-              last_failed_scheduling_at, failed_scheduling_count, last_event_at, schedule_to_started_seconds
-            ) VALUES (
-              :source_project, :cluster_name, :location, :namespace_name, :pod_name, :pod_uid,
-              :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at, :pod_created_at,
-              :abnormal_reason, :abnormal_message,
-              :pod_author, :pod_org, :pod_repo, :jenkins_label, :ci_job,
-              :source_prow_job_id, :normalized_build_url, :repo_full_name, :job_name,
-              :scheduled_at, :first_pulling_at, :first_pulled_at, :first_created_at, :first_started_at,
-              :last_failed_scheduling_at, :failed_scheduling_count, :last_event_at, :schedule_to_started_seconds
+    sqlite = connection.dialect.name == "sqlite"
+    columns = (
+        "source_project",
+        "cluster_name",
+        "location",
+        "namespace_name",
+        "pod_name",
+        "pod_uid",
+        "build_system",
+        "pod_labels_json",
+        "pod_annotations_json",
+        "metadata_observed_at",
+        "pod_created_at",
+        "abnormal_reason",
+        "abnormal_message",
+        "pod_author",
+        "pod_org",
+        "pod_repo",
+        "jenkins_label",
+        "ci_job",
+        "source_prow_job_id",
+        "normalized_build_url",
+        "repo_full_name",
+        "job_name",
+        *_FIRST_MILESTONE_FIELDS,
+        "last_failed_scheduling_at",
+        "failed_scheduling_count",
+        "last_event_at",
+        "schedule_to_started_seconds",
+    )
+
+    def old(column: str) -> str:
+        return f"ci_l1_pod_lifecycle.{column}"
+
+    def new(column: str) -> str:
+        return f"excluded.{column}" if sqlite else f"VALUES({column})"
+
+    def extrema(column: str, *, earliest: bool) -> str:
+        left, right = old(column), new(column)
+        operator = "<" if earliest else ">"
+        comparison = f"{right} {operator} {left}"
+        if sqlite and column != "failed_scheduling_count":
+            comparison = f"julianday({right}) {operator} julianday({left})"
+        return f"CASE WHEN {left} IS NULL THEN {right} WHEN {right} IS NULL THEN {left} WHEN {comparison} THEN {right} ELSE {left} END"
+
+    observed, incoming = old("metadata_observed_at"), new("metadata_observed_at")
+    observed_time = f"julianday({observed})" if sqlite else observed
+    incoming_time = f"julianday({incoming})" if sqlite else incoming
+    newer_snapshot = (
+        f"({incoming} IS NOT NULL AND ({observed} IS NULL OR {incoming_time} > {observed_time}))"
+    )
+    stale_snapshot = (
+        f"({observed} IS NOT NULL AND ({incoming} IS NULL OR {incoming_time} < {observed_time}))"
+    )
+    consistent_link = " AND ".join(
+        f"(NULLIF({old(field)}, '') IS NULL OR NULLIF({new(field)}, '') IS NULL OR {old(field)} = {new(field)})"
+        for field in ("normalized_build_url", "source_prow_job_id")
+    )
+    updates = {}
+    for field in ("cluster_name", "location"):
+        updates[field] = f"COALESCE({new(field)}, {old(field)})"
+    for field in ("pod_labels_json", "pod_annotations_json", "jenkins_label"):
+        updates[field] = f"CASE WHEN {newer_snapshot} THEN {new(field)} ELSE {old(field)} END"
+    updates["pod_created_at"] = f"COALESCE({old('pod_created_at')}, {new('pod_created_at')})"
+    for field in ("pod_author", "pod_org", "pod_repo", "ci_job"):
+        updates[field] = (
+            f"CASE WHEN NOT ({consistent_link}) THEN {old(field)} "
+            f"WHEN {newer_snapshot} THEN {new(field)} "
+            f"WHEN {stale_snapshot} THEN {old(field)} "
+            f"ELSE COALESCE(NULLIF({old(field)}, ''), {new(field)}) END"
+        )
+    # Link guards must see the old URL AND ID on MySQL, whose assignments run left to right.
+    for field in ("repo_full_name", "job_name", "build_system"):
+        missing = f"NULLIF({old(field)}, '') IS NULL"
+        if field == "build_system":
+            missing += f" OR {old(field)} = 'UNKNOWN'"
+        updates[field] = (
+            f"CASE WHEN ({missing}) AND ({consistent_link}) THEN {new(field)} ELSE {old(field)} END"
+        )
+    updates["source_prow_job_id"] = (
+        f"CASE WHEN {consistent_link} THEN COALESCE(NULLIF({old('source_prow_job_id')}, ''), {new('source_prow_job_id')}) ELSE {old('source_prow_job_id')} END"
+    )
+    updates["normalized_build_url"] = (
+        f"CASE WHEN {consistent_link} THEN COALESCE(NULLIF({old('normalized_build_url')}, ''), {new('normalized_build_url')}) ELSE {old('normalized_build_url')} END"
+    )
+    for field in _FIRST_MILESTONE_FIELDS + _LATEST_MILESTONE_FIELDS:
+        updates[field] = extrema(field, earliest=field in _FIRST_MILESTONE_FIELDS)
+    updates["failed_scheduling_count"] = extrema("failed_scheduling_count", earliest=False)
+    scheduled = extrema("scheduled_at", earliest=True)
+    started = extrema("first_started_at", earliest=True)
+    duration = (
+        f"CAST(strftime('%s', ({started})) AS INTEGER) - CAST(strftime('%s', ({scheduled})) AS INTEGER)"
+        if sqlite
+        else f"TIMESTAMPDIFF(SECOND, ({scheduled}), ({started}))"
+    )
+    nonnegative = (
+        f"julianday({started}) >= julianday({scheduled})"
+        if sqlite
+        else f"({started}) >= ({scheduled})"
+    )
+    updates["schedule_to_started_seconds"] = f"CASE WHEN {nonnegative} THEN {duration} END"
+    old_reason, new_reason = old("abnormal_reason"), new("abnormal_reason")
+
+    def reason_rank(expression: str) -> str:
+        return (
+            "CASE "
+            + expression
+            + " "
+            + " ".join(
+                f"WHEN '{reason}' THEN {rank}" for reason, rank in ABNORMAL_REASON_RANK.items()
             )
-            ON CONFLICT(source_project, namespace_name, pod_uid, pod_name) DO UPDATE SET
-              cluster_name = excluded.cluster_name,
-              location = excluded.location,
-              build_system = excluded.build_system,
-              pod_labels_json = excluded.pod_labels_json,
-              pod_annotations_json = excluded.pod_annotations_json,
-              metadata_observed_at = excluded.metadata_observed_at,
-              pod_created_at = excluded.pod_created_at,
-              abnormal_reason = excluded.abnormal_reason,
-              abnormal_message = excluded.abnormal_message,
-              pod_author = excluded.pod_author,
-              pod_org = excluded.pod_org,
-              pod_repo = excluded.pod_repo,
-              jenkins_label = excluded.jenkins_label,
-              ci_job = excluded.ci_job,
-              source_prow_job_id = excluded.source_prow_job_id,
-              normalized_build_url = excluded.normalized_build_url,
-              repo_full_name = excluded.repo_full_name,
-              job_name = excluded.job_name,
-              scheduled_at = excluded.scheduled_at,
-              first_pulling_at = excluded.first_pulling_at,
-              first_pulled_at = excluded.first_pulled_at,
-              first_created_at = excluded.first_created_at,
-              first_started_at = excluded.first_started_at,
-              last_failed_scheduling_at = excluded.last_failed_scheduling_at,
-              failed_scheduling_count = excluded.failed_scheduling_count,
-              last_event_at = excluded.last_event_at,
-              schedule_to_started_seconds = excluded.schedule_to_started_seconds,
-              updated_at = CURRENT_TIMESTAMP
-            """
+            + " ELSE 999 END"
         )
+
+    prefer_abnormal = (
+        f"{new_reason} IS NOT NULL AND ({old_reason} IS NULL OR "
+        f"{reason_rank(new_reason)} < {reason_rank(old_reason)} OR "
+        f"({new_reason} = {old_reason} AND {new('abnormal_message')} IS NOT NULL))"
+    )
+    updates["abnormal_message"] = (
+        f"CASE WHEN {prefer_abnormal} THEN {new('abnormal_message')} ELSE {old('abnormal_message')} END"
+    )
+    updates["abnormal_reason"] = (
+        f"CASE WHEN {prefer_abnormal} THEN {new_reason} ELSE {old_reason} END"
+    )
+    # Keep observation ordering predicates on the original timestamp in MySQL/TiDB.
+    updates["metadata_observed_at"] = (
+        f"CASE WHEN {newer_snapshot} THEN {incoming} ELSE {observed} END"
+    )
+    updates["updated_at"] = "CURRENT_TIMESTAMP"
+    conflict = (
+        "ON CONFLICT(source_project, namespace_name, pod_uid, pod_name) DO UPDATE SET"
+        if sqlite
+        else "ON DUPLICATE KEY UPDATE"
+    )
     return text(
-        """
-        INSERT INTO ci_l1_pod_lifecycle (
-          source_project, cluster_name, location, namespace_name, pod_name, pod_uid,
-          build_system, pod_labels_json, pod_annotations_json, metadata_observed_at, pod_created_at,
-          abnormal_reason, abnormal_message,
-          pod_author, pod_org, pod_repo, jenkins_label, ci_job,
-          source_prow_job_id, normalized_build_url, repo_full_name, job_name,
-          scheduled_at, first_pulling_at, first_pulled_at, first_created_at, first_started_at,
-          last_failed_scheduling_at, failed_scheduling_count, last_event_at, schedule_to_started_seconds
-        ) VALUES (
-          :source_project, :cluster_name, :location, :namespace_name, :pod_name, :pod_uid,
-          :build_system, :pod_labels_json, :pod_annotations_json, :metadata_observed_at, :pod_created_at,
-          :abnormal_reason, :abnormal_message,
-          :pod_author, :pod_org, :pod_repo, :jenkins_label, :ci_job,
-          :source_prow_job_id, :normalized_build_url, :repo_full_name, :job_name,
-          :scheduled_at, :first_pulling_at, :first_pulled_at, :first_created_at, :first_started_at,
-          :last_failed_scheduling_at, :failed_scheduling_count, :last_event_at, :schedule_to_started_seconds
-        )
-        ON DUPLICATE KEY UPDATE
-          cluster_name = VALUES(cluster_name),
-          location = VALUES(location),
-          build_system = VALUES(build_system),
-          pod_labels_json = VALUES(pod_labels_json),
-          pod_annotations_json = VALUES(pod_annotations_json),
-          metadata_observed_at = VALUES(metadata_observed_at),
-          pod_created_at = VALUES(pod_created_at),
-          abnormal_reason = VALUES(abnormal_reason),
-          abnormal_message = VALUES(abnormal_message),
-          pod_author = VALUES(pod_author),
-          pod_org = VALUES(pod_org),
-          pod_repo = VALUES(pod_repo),
-          jenkins_label = VALUES(jenkins_label),
-          ci_job = VALUES(ci_job),
-          source_prow_job_id = VALUES(source_prow_job_id),
-          normalized_build_url = VALUES(normalized_build_url),
-          repo_full_name = VALUES(repo_full_name),
-          job_name = VALUES(job_name),
-          scheduled_at = VALUES(scheduled_at),
-          first_pulling_at = VALUES(first_pulling_at),
-          first_pulled_at = VALUES(first_pulled_at),
-          first_created_at = VALUES(first_created_at),
-          first_started_at = VALUES(first_started_at),
-          last_failed_scheduling_at = VALUES(last_failed_scheduling_at),
-          failed_scheduling_count = VALUES(failed_scheduling_count),
-          last_event_at = VALUES(last_event_at),
-          schedule_to_started_seconds = VALUES(schedule_to_started_seconds),
-          updated_at = CURRENT_TIMESTAMP
-        """
+        f"INSERT INTO ci_l1_pod_lifecycle ({', '.join(columns)}) "
+        f"VALUES ({', '.join(':' + field for field in columns)}) {conflict} "
+        + ",\n".join(f"{field} = {expression}" for field, expression in updates.items())
     )

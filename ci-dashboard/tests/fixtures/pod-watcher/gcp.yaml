@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "ci-dashboard-pod-watcher"
+  namespace: "apps"
+  labels:
+    app.kubernetes.io/name: ci-dashboard-pod-watcher
+    app.kubernetes.io/part-of: ci-dashboard
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ci-dashboard-pod-watcher
+      app.kubernetes.io/part-of: ci-dashboard
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ci-dashboard-pod-watcher
+        app.kubernetes.io/part-of: ci-dashboard
+    spec:
+
+      restartPolicy: Always
+      containers:
+        - name: pod-watcher
+          image: "ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:latest"
+          imagePullPolicy: "IfNotPresent"
+          args: ["watch-pods"]
+          ports:
+            - name: health
+              containerPort: 8081
+          envFrom:
+            - secretRef:
+                name: "ci-dashboard-db"
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: CI_DASHBOARD_LOG_LEVEL
+              value: "INFO"
+            - name: CI_DASHBOARD_POD_WATCH_SOURCE_PROJECT
+              value: "pingcap-testing-account"
+            - name: CI_DASHBOARD_POD_WATCH_CLOUD_PHASE
+              value: "GCP"
+            - name: CI_DASHBOARD_GCP_PROJECT
+              value: "pingcap-testing-account"
+            - name: CI_DASHBOARD_POD_EVENT_NAMESPACES
+              value: "prow-test-pods,jenkins-tidb,jenkins-tiflow"
+            - name: CI_DASHBOARD_POD_WATCH_TIMEOUT_SECONDS
+              value: "300"
+            - name: CI_DASHBOARD_POD_WATCH_RETRY_DELAY_SECONDS
+              value: "5"
+            - name: CI_DASHBOARD_POD_WATCH_HEALTH_PORT
+              value: "8081"
+            - name: CI_DASHBOARD_POD_WATCH_STALE_AFTER_SECONDS
+              value: "720"
+            - name: CI_DASHBOARD_JENKINS_POD_NAME_PREFIX_CACHE_SECONDS
+              value: "900"
+            - name: CI_DASHBOARD_POD_WATCH_DB_BATCH_SIZE
+              value: "100"
+            - name: CI_DASHBOARD_POD_WATCH_DB_RETRY_ATTEMPTS
+              value: "3"
+            - name: CI_DASHBOARD_POD_WATCH_DB_RETRY_BASE_DELAY_MS
+              value: "500"
+            - name: CI_DASHBOARD_POD_WATCH_DB_RETRY_MAX_DELAY_MS
+              value: "5000"
+
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 18
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: health
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"

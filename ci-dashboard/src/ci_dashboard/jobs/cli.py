@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from ci_dashboard.common.config import get_settings
 from ci_dashboard.common.db import build_engine
@@ -31,6 +31,7 @@ from ci_dashboard.jobs.sync_unattached_ebs_volumes import (
     run_sync_unattached_ebs_volumes,
 )
 from ci_dashboard.jobs.check_data_freshness import run_check_data_freshness
+from ci_dashboard.jobs.pod_source import cloud_phase_for_source
 from ci_dashboard.jobs.pod_watcher import run_watch_pods
 from ci_dashboard.jobs.sync_pods import run_reconcile_pod_linkage_for_time_window, run_sync_pods
 
@@ -200,19 +201,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pod_link_reconcile_range_parser = subparsers.add_parser(
         "reconcile-pod-linkage-range",
-        help="Reconcile pod lifecycle rows against build rows for an inclusive scheduled date range",
+        help="Reconcile saved pod linkage in a bounded inclusive UTC date range (DB only)",
     )
     pod_link_reconcile_range_parser.add_argument(
         "--start-date",
         required=True,
         type=_parse_iso_date,
-        help="Inclusive pod scheduled date in YYYY-MM-DD",
+        help="Inclusive pod scheduled/creation date in YYYY-MM-DD",
     )
     pod_link_reconcile_range_parser.add_argument(
         "--end-date",
         type=_parse_iso_date,
-        help="Inclusive pod scheduled date in YYYY-MM-DD; defaults to open-ended",
+        help="Inclusive pod scheduled/creation date in YYYY-MM-DD; defaults to today's UTC date",
     )
+    pod_link_reconcile_range_parser.add_argument("--source-project", help="Exact saved collector source identity")
+    pod_link_reconcile_range_parser.add_argument("--batch-size", type=int, default=1000, help="Rows per committed batch (1..1000)")
+    pod_link_reconcile_range_parser.add_argument("--max-rows", type=int, default=10000, help="Maximum rows scanned (1..10000)")
+    pod_link_reconcile_range_parser.add_argument("--after-id", type=int, default=0, help="Resume after the last committed lifecycle ID")
+    pod_link_reconcile_range_parser.add_argument("--through-id", type=int, help="Frozen lifecycle ID ceiling from the preceding run")
     backfill_parser = subparsers.add_parser(
         "backfill-range",
         help="Idempotently re-import a build date range without touching incremental job watermarks",
@@ -463,18 +469,41 @@ def main() -> int:
         return 0
 
     if args.command == "reconcile-pod-linkage-range":
-        if args.end_date is not None and args.start_date > args.end_date:
-            parser.error("--start-date must be on or before --end-date")
-
+        end_date = args.end_date or datetime.now(UTC).date()
+        if args.start_date > end_date:
+            parser.error("--start-date must be on or before --end-date (defaults to today's UTC date)")
+        if not 1 <= args.batch_size <= 1000 or not 1 <= args.max_rows <= 10000:
+            parser.error("--batch-size must be 1..1000 and --max-rows must be 1..10000")
+        if args.after_id < 0 or (args.through_id is not None and args.through_id < args.after_id):
+            parser.error("require 0 <= --after-id <= --through-id")
+        if args.source_project is not None:
+            try:
+                cloud_phase_for_source(args.source_project)
+            except ValueError as exc:
+                parser.error(str(exc))
         start_time_from, start_time_to = _build_time_window(
             start_date=args.start_date,
-            end_date=args.end_date,
+            end_date=end_date,
+        )
+        logging.getLogger(__name__).info(
+            "reconcile-pod-linkage-range window resolved",
+            extra={
+                "end_date": end_date.isoformat(),
+                "source_project": args.source_project,
+                "start_time_from": start_time_from.isoformat(sep=" "),
+                "start_time_to": start_time_to.isoformat(sep=" "),
+            },
         )
         engine = build_engine(settings)
         summary = run_reconcile_pod_linkage_for_time_window(
             engine,
             start_time_from=start_time_from,
             start_time_to=start_time_to,
+            source_project=args.source_project,
+            batch_size=args.batch_size,
+            max_rows=args.max_rows,
+            after_id=args.after_id,
+            through_id=args.through_id,
         )
         logging.getLogger(__name__).info(
             "reconcile-pod-linkage-range finished",
