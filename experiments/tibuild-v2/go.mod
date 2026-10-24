@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	entgo.io/ent v0.14.6
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261022101411-c387612b2157
+	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261024134110-5b10a0bc5bc6
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/go-co-op/gocron/v2 v2.21.2
