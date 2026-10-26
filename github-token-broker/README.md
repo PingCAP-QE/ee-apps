@@ -108,6 +108,31 @@ policy:
 Requested permissions must be a subset of `max_permissions`; write access is
 only granted when the policy allows it.
 
+### Evaluation semantics
+
+For a caller, the broker evaluates all matching `allow` entries. An entry
+matches when:
+
+- the owner matches (`*` matches any owner);
+- the target repository and any `repositories` narrowing are covered by the
+  entry's `repositories` list (`["*"]` or an empty list covers all repositories
+  of the owner);
+- `max_permissions` covers the requested permissions (`write` implies `read`).
+
+The request is allowed when **any** matching entry grants it. Entries for the
+same owner are additive, so a policy can grant `contents: write` to one
+repository and `contents: read` to another under the same owner.
+
+When no entry grants the request, the broker returns HTTP 403 with one of:
+
+- `caller is not allowed`: the caller has no rule, or no rule matches the owner;
+- `repository is not allowed: <repo>`: the caller has rules, but no entry covers
+  the target repository or the requested `repositories` narrowing;
+- `permission is not allowed: <permission>=<level> (max <level>)`: the
+  repository is covered, but the requested permission exceeds the grant.
+
+Error responses never include token material.
+
 ## Configuration
 
 See [config.example.yaml](./config.example.yaml). Notable settings:
