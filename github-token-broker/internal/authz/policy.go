@@ -100,26 +100,55 @@ func (p *Policy) Authorize(caller Caller, owner, repository string, repositories
 		}
 	}
 
+	var (
+		callerMatched bool
+		ownerMatched  bool
+		repoMatched   bool
+		repoErr       error
+		permErr       error
+	)
 	for i := range p.Rules {
 		rule := &p.Rules[i]
 		if rule.Caller.Namespace != caller.Namespace || rule.Caller.ServiceAccount != caller.ServiceAccount {
 			continue
 		}
+		callerMatched = true
 		for j := range rule.Allow {
 			allow := &rule.Allow[j]
 			if allow.Owner != "*" && !strings.EqualFold(allow.Owner, owner) {
 				continue
 			}
+			ownerMatched = true
 			if err := checkRepositories(allow.Repositories, repository, repositories); err != nil {
-				return nil, err
+				if repoErr == nil {
+					repoErr = err
+				}
+				continue
 			}
+			repoMatched = true
 			if err := checkPermissions(allow.MaxPermissions, perms); err != nil {
-				return nil, err
+				if permErr == nil {
+					permErr = err
+				}
+				continue
 			}
 			return perms, nil
 		}
 	}
-	return nil, ErrCallerNotAllowed
+
+	if !callerMatched || !ownerMatched {
+		return nil, ErrCallerNotAllowed
+	}
+	if !repoMatched {
+		if repoErr != nil {
+			return nil, repoErr
+		}
+		return nil, fmt.Errorf("%w: %s", ErrRepositoryNotAllowed, repository)
+	}
+	if permErr != nil {
+		return nil, permErr
+	}
+	return nil, ErrPermissionNotAllowed
 }
 
 // NormalizePermissions returns a copy of permissions with normalized keys and
