@@ -111,7 +111,7 @@ test("category pies strictly exclude shares <= 1% without renormalizing or dropp
     assert.match(JSON.stringify(renderer.toJSON()), /not self-hosted/);
 
     const panels = renderer.root.findAllByType("section").filter((section) => section.props.className === "panel");
-    assert.equal(panels.at(-1).findByType("h3").children.join(""), "Last week cost categories");
+    assert.equal(panels.at(-1).findByType("h3").children.join(""), "Last week's cost categories");
   });
 });
 

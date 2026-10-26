@@ -14,6 +14,10 @@ It is a fixed weekly-review report for QA cloud accounts:
   table; and
 - account identity is `(vendor, account_id)`; `display_name` is presentation only.
 
+Summary cards are labeled **Previous calendar week**, **Week before last** (the
+WoW comparison baseline), and **Previous calendar month**, each with its date
+range. The summary and account table remain fixed when allocation periods switch.
+
 The tab has no date, granularity, vendor, account, repository, branch, or other
 filter that can change these report windows. It does not pass global dashboard
 filters to the endpoint. The endpoint has no supported filter parameters and
@@ -227,37 +231,41 @@ amounts, so configuration is visible; its WoW and QA-share percentages are
 `summary.week_wow_pct` is `null`. Zero denominators always use `null`, never a
 fabricated `0%`.
 
-## Budget pace and team share
+## Budget utilization and team share
 
 The report also shows the Demo's report-level budget and allocation views, but
 keeps the existing fixed QA scope and last-complete-week calendar. It adds no
-page filters and creates no new database table or snapshot. Budget pace exposes the browser-state switch between **Last natural week**
-(the default) and **Last natural month**; Team share follows that selected
+page filters and creates no new database table or snapshot. Budget utilization
+exposes the browser-state switch between **Previous calendar week** (the default)
+and **Previous calendar month**; Team share follows that selected
 period without duplicating the control. The month view is loaded from the
 allocation-only endpoint.
 
-### Budget pace
+### Budget utilization
 
 Every budget value and actual uses the same billing-report **list-cost**
-expression as the existing report. The budget period for this page is exactly
-`last_week`; an annual or fiscal-period budget is prorated by inclusive date
-overlap. This is completed-period utilization, not a forecast. In the month view,
-**Last week budget utilization** renders the budget-scoped QA list cost accumulated across
-each natural calendar day instead of the weekly gauge, annotating the peak with
-its budget utilization percentage.
+expression as the existing report. The budget period is `last_week` in the
+week view and the previous calendar month in the month view; an annual or
+fiscal-period budget is prorated by inclusive date overlap. This is completed-period utilization, not a forecast. In the month view,
+**Previous month's budget utilization** renders the budget-scoped QA list cost
+accumulated across each calendar day instead of the weekly gauge, annotating the
+peak with its budget utilization percentage. The scenario chart title switches
+between **Daily cumulative cost for the previous week** and **Daily cumulative
+cost for the previous month**. Team-share empty states refer to the selected
+period rather than always claiming a weekly window.
 
-- **Last week budget utilization** is the deduplicated list cost in the union of
+- **Last week's budget utilization** is the deduplicated list cost in the union of
   qualifying QA budget-plan scopes divided by the sum of both source-wide **and
   project-scoped** QA budget-plan targets for that week. In the week view, a
   second gauge shows actual cost as a
   percentage of the current natural month's full budget. A current plan is selected only when `platform = 'QA'` and its
   `vendor` plus JSON `accounts` membership intersects the fixed QA sources; a
   plan amount is counted once, even when it names several accounts or projects.
-- **Budget Scenario utilization** lists each configured positive-budget plan by
+- **Budget utilization by scenario** lists each configured positive-budget plan by
   `budget_name`. Its actual is scoped to the plan's `vendor`, JSON `accounts`,
   JSON `projects` membership, and date overlap with the report week. A plan
   without `projects` is source-wide and uses all its scoped account costs, so it
-  also has a utilization breakdown. Selecting a plan refreshes the right-side
+  also has a **Spend breakdown**. Selecting a plan refreshes the right-side
   account/project allocation donut; each segment is one account/project pair
   and is labeled directly with a connector, including its dollar cost and
   percentage, with no separate legend. Its center shows the selected plan's
@@ -265,7 +273,7 @@ its budget utilization percentage.
   same account/project allocations. The segments sum to positive allocated
   spend; credits remain reflected in the plan-utilization value. Attributed
   projects not covered by a plan are omitted from this card.
-- **2026 H2 overall cumulative cost** covers only current QA plans with explicit
+- **Budget-period cumulative cost** covers only current QA plans with explicit
   project membership (`projects` or legacy `label_filters.project`). It starts
   at the earliest plan start date, has one cumulative-cost bar per UTC natural
   week through today, and displays cumulative actual, the summed full
@@ -274,26 +282,30 @@ its budget utilization percentage.
   excluded.
 
 An unmatched project target remains `null` in the API response and is omitted
-from **Budget Scenario utilization**; it is never converted to a zero budget. Legacy source-scoped `cost_budgets` rows remain supported for the
+from **Budget utilization by scenario**; it is never converted to a zero budget.
+Legacy source-scoped `cost_budgets` rows remain supported for the
 older `vendor`/`account_id` schema, but current QA plans use JSON memberships.
 Budget rows with unsupported group, manager, repo, or non-project label filters
 are excluded because their scoped actual cannot be derived from account/project
 allocations. Legacy rows scoped to a `group_id` are also excluded because the
 legacy schema does not provide group-aware aggregate budget matching. A
 single logical plan still must not be duplicated across
-separate budget rows merely to model cross-account reporting. Every configured
-Budget pace utilization uses the same capped threshold: green below 80%, yellow
-from 80% through 95%, and red above 95%. `Last week budget utilization` uses a
-semi-circular gauge and `Budget Scenario utilization` uses linear progress
-bars. In the desktop three-lane layout, `Last week budget utilization` and
-`Current month budget utilization` stack in the first lane, the budget-scenario
+separate budget rows merely to model cross-account reporting. All budget
+utilization indicators use the same capped threshold: green below 80%, yellow
+from 80% through 95%, and red above 95%. `Last week's budget utilization` uses a
+semi-circular gauge and `Budget utilization by scenario` uses linear progress
+bars. In the desktop three-lane layout, `Last week's budget utilization` and
+`Current month's budget utilization` stack in the first lane, the budget-scenario
 list is in the second lane, its selected-scenario breakdown is in the third
 lane. The first two lanes share an unchanged panel height: their upper areas
-are equal-height, and `2026 H2 overall cumulative cost` spans their lower area.
+are equal-height, and `Budget-period cumulative cost` spans their lower area.
+Its summary reads **Cumulative spend**, with the actual budget period shown
+instead of a hard-coded half-year in the title.
 
 ### Team share
 
-For the last complete week, the page displays three list-cost shares:
+For the selected previous calendar week or month, the page displays three
+list-cost shares:
 
 1. Level 1 groups — the direct children of the active `Engineering Group` roster
    node;
@@ -313,22 +325,23 @@ Owner share.
 
 ## Table and chart presentation
 
-The account table displays list-cost fields: **Account**, **Purpose**, **Last
-week**, **WoW**, **QA share**, and **Last natural month**. The compatible
-`previous_week_cost` and `week_wow_pct` response fields supply the comparison.
+The account table displays list-cost fields: **Account**, **Purpose**, **Previous
+calendar week**, **WoW**, **QA share**, and **Previous calendar month**. The
+compatible `previous_week_cost` and `week_wow_pct` response fields supply the
+comparison.
 
-- The **Last week** and **Last natural month** headers each use two lines: the
-  metric title first, then its inclusive fixed UTC range (`YYYY-MM-DD –
-  YYYY-MM-DD`) from `last_week` or `previous_month` directly beneath it.
+- The **Previous calendar week** and **Previous calendar month** headers each
+  use two lines: the metric title first, then its inclusive fixed UTC range
+  (`YYYY-MM-DD – YYYY-MM-DD`) from `last_week` or `previous_month` directly beneath it.
 - Account and Purpose are left-aligned. Every money or percentage header and
-  cell is right-aligned, including Last week, WoW, QA share, and Last natural
-  month.
-- Three fixed vendor-summary rows (`AWS Sum`, `GCP Sum`, and `AZURE Sum`) appear
-  above the account rows. They sum every qualifying QA account for their vendor
+  cell is right-aligned, including Previous calendar week, WoW, QA share, and
+  Previous calendar month.
+- Three fixed vendor-summary rows (`AWS total`, `GCP total`, and `AZURE total`)
+  appear above the account rows. They sum every qualifying QA account for their vendor
   and are not moved by account-column sorting.
-- Each of the four numeric columns (Last week, WoW, QA share, and Last natural
-  month) is sortable by its header. The first selection sorts descending; a
-  second selection of the same column switches to ascending. Missing values
+- Each of the four numeric columns (Previous calendar week, WoW, QA share, and
+  Previous calendar month) is sortable by its header. The first selection sorts
+  descending; a second selection of the same column switches to ascending. Missing values
   remain last.
 - A row's WoW contains only the existing percent formatter's percentage text,
   with no `WoW` prefix. Only a strictly positive value greater than `30%` is
@@ -381,11 +394,11 @@ Backend acceptance:
 Frontend acceptance:
 
 - `QA Cost Weekly` is reachable from navigation and renders billing-report
-  list-cost summary and table values; the Last week and Last natural month table
-  headers have the title over the fixed UTC range, numeric/percentage cells are
-  right-aligned, and long Purpose text wraps within the `1.5 × Account` limit;
-- the restored row-level WoW column is between Last week and QA share, contains
-  only percentage text, and is bold red only above `30%` (with `30%`, `30.01%`,
+  list-cost summary and table values; the Previous calendar week and Previous
+  calendar month table headers have the title over the fixed UTC range,
+  numeric/percentage cells are right-aligned, and long Purpose text wraps within the `1.5 × Account` limit;
+- the restored row-level WoW column is between Previous calendar week and QA
+  share, contains only percentage text, and is bold red only above `30%` (with `30%`, `30.01%`,
   and null covered by regression tests);
 - below the table **Cost trend** renders eight Monday labels and every history
   series as a returned-order stack, with the largest eight-week series at the
@@ -395,7 +408,10 @@ Frontend acceptance:
   tooltip with each visible source value and total; and
 - it makes the fixed report request without global filters or a time-selection
   control, and distinguishes the old-schema state, no configured QA sources, and
-  a populated zero-cost source without crashing.
+  a populated zero-cost source without crashing;
+- switching between week and month updates budget and daily cumulative-cost
+  titles in both directions, uses period-neutral team-share empty states, and
+  distinguishes unavailable scenarios from scenarios without allocated costs.
 
 Verification commands for implementation are:
 

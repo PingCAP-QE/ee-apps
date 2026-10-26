@@ -809,12 +809,15 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
     assert.match(rendered, /Tencent net cost/);
     assert.match(rendered, /Cumulative spend/);
     assert.match(rendered, /Cost trend/);
-    assert.match(rendered, /Last week budget utilization · GCP list \+ Tencent net/);
+    assert.match(rendered, /Last week's budget utilization · GCP list \+ Tencent net/);
     assert.match(rendered, /GCP \+ Tencent weekly budget/);
     assert.doesNotMatch(rendered, /Each week has list-cost and net-cost bars; each is stacked by GCP and Tencent/);
     assert.match(rendered, /2026-09-14 – 2026-09-20/);
-    assert.match(rendered, /Last natural month/);
-    assert.match(rendered, /Last week list-cost share/);
+    assert.match(rendered, /Previous calendar week/);
+    assert.match(rendered, /Previous calendar month/);
+    assert.match(rendered, /Previous month's budget utilization/);
+    assert.match(rendered, /Last week's list-cost share/);
+    assert.doesNotMatch(rendered, /Last natural|Last week budget utilization|Budget Cumulative Spend/);
     assert.match(rendered, /Team share/);
     assert.match(rendered, /Repository share/);
     assert.match(rendered, /pingcap\/tidb/);
@@ -912,11 +915,13 @@ test("weekly cost distinguishes no QA sources from configured zero-cost sources"
       .map((label) => label.children.map((part) => part.children.join("")));
     assert.match(rendered, /Configured QA environment/);
     assert.deepEqual(periodLabels, [
-      ["Last week", "2026-07-13 – 2026-07-19"],
-      ["Last natural month", "2026-06-01 – 2026-06-30"],
-      ["Last week", "2026-07-13 – 2026-07-19"],
-      ["Last natural month", "2026-06-01 – 2026-06-30"],
+      ["Previous calendar week", "2026-07-13 – 2026-07-19"],
+      ["Previous calendar month", "2026-06-01 – 2026-06-30"],
+      ["Previous calendar week", "2026-07-13 – 2026-07-19"],
+      ["Previous calendar month", "2026-06-01 – 2026-06-30"],
     ]);
+    assert.match(rendered, /Week before last/);
+    assert.doesNotMatch(rendered, /Previous week cost|Last natural/);
     assert.doesNotMatch(rendered, /No QA cost sources with a configured purpose/);
   } finally {
     await act(async () => renderer?.unmount());
@@ -1028,10 +1033,16 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
 
     const rendered = JSON.stringify(renderer.toJSON());
     assert.equal(requests.length, 3);
-    assert.match(rendered, /Budget pace/);
-    assert.match(rendered, /Last week budget utilization/);
-    assert.match(rendered, /Current month budget utilization/);
-    assert.match(rendered, /Budget Scenario utilization/);
+    assert.match(rendered, /Budget utilization/);
+    assert.match(rendered, /Last week's budget utilization/);
+    assert.match(rendered, /Current month's budget utilization/);
+    assert.match(rendered, /Budget utilization by scenario/);
+    assert.match(rendered, /Cross-account cost allocation/);
+    const dailyCostTitle = renderer.root.findByProps({
+      className: "weekly-cost__budget-scenario-trend",
+    }).findByType("strong").children.join("");
+    assert.equal(dailyCostTitle, "Daily cumulative cost for the previous week");
+    assert.doesNotMatch(rendered, /Last natural|Cross-accounts|Budget Scenario|Daily cumulative cost in last week/);
     assert.doesNotMatch(rendered, /Zero/);
     assert.doesNotMatch(rendered, /Not configured/);
     assert.doesNotMatch(rendered, /Last week team share/);
@@ -1042,18 +1053,18 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
     const gammaScenarioLabel = "Select Gamma budget scenario: $90.00 of $100.00, 90.0% utilization";
     assert.equal(renderer.root.findByProps({ "aria-label": alphaScenarioLabel }).props["aria-pressed"], true);
     assert.equal(renderer.root.findByProps({ "aria-label": gammaScenarioLabel }).props["aria-pressed"], false);
-    assert.equal(renderer.root.findAllByProps({ "aria-label": "Budget pace period" }).length, 1);
     assert.equal(
-      renderer.root.findAllByProps({ "aria-label": "Budget pace and team share period" }).length,
-      0,
+      renderer.root.findAllByProps({ "aria-label": "Budget utilization and team share period" }).length,
+      1,
     );
     assert.ok(
-      renderer.root.findByProps({ role: "img", "aria-label": "Utilization breakdown share chart" }),
+      renderer.root.findByProps({ role: "img", "aria-label": "Spend breakdown share chart" }),
     );
     assert.ok(
       renderer.root.findByProps({ role: "img", "aria-label": "Budget scenario daily cumulative cost chart" }),
     );
-    assert.match(rendered, /2026 H2 overall cumulative cost/);
+    assert.match(rendered, /Budget-period cumulative cost/);
+    assert.match(rendered, /Budget scenario: Alpha/);
     assert.ok(
       renderer.root.findByProps({ role: "img", "aria-label": "Budget period cumulative cost chart" }),
     );
@@ -1091,7 +1102,7 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
     assert.equal(renderer.root.findAllByProps({ role: "img", "aria-label": "Project allocation share chart" }).length, 0);
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Owner share share chart" }));
     const overallGauge = renderer.root.findByProps({
-      "aria-label": "Last week budget utilization gauge",
+      "aria-label": "Last week's budget utilization gauge",
     });
     assert.equal(overallGauge.props["aria-valuenow"], 21);
     assert.match(
@@ -1117,7 +1128,7 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
     const cumulativeSummary = renderer.root.findByProps({
       className: "weekly-cost__cumulative-cost-summary",
     });
-    assert.equal(cumulativeSummary.findByType("strong").children.join(""), "Budget Cumulative Spend $200.00");
+    assert.equal(cumulativeSummary.findByType("strong").children.join(""), "Cumulative spend $200.00");
     assert.equal(cumulativeSummary.findByType("span").children.join(""), "$1,000 budget · 20.0%");
   } finally {
     await act(async () => renderer?.unmount());
@@ -1125,7 +1136,40 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
   }
 });
 
-test("weekly cost switches budget pace and team share to the last natural month", async () => {
+test("weekly cost identifies a configured scenario without allocated costs", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  const report = weeklyCostReport({
+    budgetPace: {
+      overall: { actual_list_cost: 0, period_budget: 100, utilization_pct: 0 },
+      projects: [{
+        key: "budget-plan:empty",
+        name: "Configured empty scenario",
+        actual_list_cost: 0,
+        period_budget: 100,
+        utilization_pct: 0,
+        project_account_usage: [],
+      }],
+    },
+  });
+  globalThis.fetch = async () => ({ ok: true, json: async () => report });
+
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(WeeklyCostPage));
+      await Promise.resolve();
+    });
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /Configured empty scenario/);
+    assert.match(rendered, /No allocated list cost for this scenario and period/);
+    assert.doesNotMatch(rendered, /No budget scenario is available|No budget scenarios have a positive budget/);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("weekly cost keeps budget titles, chart titles and empty states aligned when switching week and month", async () => {
   const requests = [];
   const originalFetch = globalThis.fetch;
   let renderer;
@@ -1156,6 +1200,14 @@ test("weekly cost switches budget pace and team share to the last natural month"
         actual_list_cost: 300,
         period_budget: 500,
         utilization_pct: 60,
+        project_account_usage: [{
+          key: "project-account:monthly:aws:qa-aws",
+          project: "Monthly",
+          vendor: "aws",
+          account_id: "qa-aws",
+          actual_list_cost: 300,
+          daily_list_cost: [{ date: "2026-06-03", list_cost: 300, cumulative_list_cost: 300 }],
+        }],
       },
       {
         key: "project:monthly-unmatched",
@@ -1220,7 +1272,7 @@ test("weekly cost switches budget pace and team share to the last natural month"
     await act(async () => {
       renderer.root
         .findAllByType("button")
-        .find((button) => button.children.join("") === "Last natural month")
+        .find((button) => button.children.join("") === "Previous calendar month")
         .props.onClick();
       await Promise.resolve();
     });
@@ -1231,7 +1283,7 @@ test("weekly cost switches budget pace and team share to the last natural month"
       "/api/v1/pages/weekly-cost/allocation?period=current_month",
       "/api/v1/pages/weekly-cost/allocation?period=month",
     ]);
-    assert.match(JSON.stringify(renderer.toJSON()), /Last natural month Jun 1 - Jun 30, 2026/);
+    assert.match(JSON.stringify(renderer.toJSON()), /Previous calendar month: Jun 1 - Jun 30, 2026/);
 
     await act(async () => {
       resolveMonthlyResponse();
@@ -1249,11 +1301,11 @@ test("weekly cost switches budget pace and team share to the last natural month"
     assert.ok(
       renderer.root.findByProps({
         role: "img",
-        "aria-label": "Last week budget utilization cumulative cost chart",
+        "aria-label": "Previous month's budget utilization cumulative cost chart",
       }),
     );
     assert.equal(
-      renderer.root.findAllByProps({ "aria-label": "Last week budget utilization gauge" }).length,
+      renderer.root.findAllByProps({ "aria-label": "Last week's budget utilization gauge" }).length,
       0,
     );
     assert.ok(
@@ -1263,6 +1315,29 @@ test("weekly cost switches budget pace and team share to the last natural month"
           label.findAllByType("tspan").some((line) => line.children.join("") === "60.0%"),
         ),
     );
+    const dailyCostTitle = () => renderer.root.findByProps({
+      className: "weekly-cost__budget-scenario-trend",
+    }).findByType("strong").children.join("");
+    assert.equal(dailyCostTitle(), "Daily cumulative cost for the previous month");
+    assert.match(rendered, /No Level 1 group cost allocation for the selected period/);
+    assert.match(rendered, /No Level 2 team cost allocation for the selected period/);
+    assert.match(rendered, /No owner cost allocation for the selected period/);
+    assert.doesNotMatch(rendered, /Last week's budget utilization|Current month's budget utilization|for this week/);
+
+    await act(async () => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.join("") === "Previous calendar week")
+        .props.onClick();
+      await Promise.resolve();
+    });
+    const weekRendered = JSON.stringify(renderer.toJSON());
+    assert.equal(dailyCostTitle(), "Daily cumulative cost for the previous week");
+    assert.match(weekRendered, /Last week's budget utilization/);
+    assert.match(weekRendered, /Current month's budget utilization/);
+    assert.match(weekRendered, /No budget scenarios have a positive budget for this period/);
+    assert.match(weekRendered, /No budget scenario is available for this period/);
+    assert.doesNotMatch(weekRendered, /Previous month's budget utilization|Select a budget scenario/);
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;
@@ -1320,20 +1395,20 @@ test("weekly cost sorts account breakdown numeric columns on demand", async () =
       rowsByClassName("weekly-cost__account-row").map((row) => row.findByType("strong").children.join(""));
     assert.deepEqual(
       rowsByClassName("weekly-cost__vendor-total").map((row) => row.findByType("strong").children.join("")),
-      ["AWS Sum", "GCP Sum", "AZURE Sum"],
+      ["AWS total", "GCP total", "AZURE total"],
     );
     assert.deepEqual(accountNames(), ["GCP · low", "AWS · high"]);
 
     await act(async () => {
       renderer.root
-        .findByProps({ "aria-label": "Sort Last week descending" })
+        .findByProps({ "aria-label": "Sort Previous calendar week descending" })
         .props.onClick();
     });
     assert.deepEqual(accountNames(), ["AWS · high", "GCP · low"]);
 
     await act(async () => {
       renderer.root
-        .findByProps({ "aria-label": "Sort Last week ascending" })
+        .findByProps({ "aria-label": "Sort Previous calendar week ascending" })
         .props.onClick();
     });
     assert.deepEqual(accountNames(), ["GCP · low", "AWS · high"]);
@@ -1403,7 +1478,8 @@ test("weekly cost flags only row WoW values above 30%", async () => {
       .filter((row) => row.props.className === "weekly-cost__account-row")
       .map((row) => row.findAllByType("td")[2]);
 
-    assert.ok(renderer.root.findByProps({ "aria-label": "Sort WoW descending" }));
+    assert.ok(renderer.root.findByProps({ "aria-label": "Sort Week-over-week change descending" }));
+    assert.ok(renderer.root.findByProps({ "aria-label": "Sort QA share of list cost descending" }));
     assert.deepEqual(
       wowCells.map((cell) => cell.children.join("")),
       ["30.0%", "30.0%", "—"],

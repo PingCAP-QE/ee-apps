@@ -72,10 +72,10 @@ export default function CICostWeeklyPage() {
 
       <Panel
         title="Overall"
-        subtitle={`Last complete week ${formatDateRangeLabel(
+        subtitle={`Previous calendar week: ${formatDateRangeLabel(
           lastCompleteWeek.start_date,
           lastCompleteWeek.end_date,
-        )} and month ${formatDateRangeLabel(
+        )}; previous calendar month: ${formatDateRangeLabel(
           lastCompleteMonth.start_date,
           lastCompleteMonth.end_date,
         )}.`}
@@ -92,23 +92,23 @@ export default function CICostWeeklyPage() {
                 <h4>{`${formatAccountLabel(account)} ${formatCostBasis(account.cost_basis)}`}</h4>
                 <div className="ci-weekly-cost__account-row">
                   <StatCard
-                    label={<PeriodLabel title="Last week" period={lastCompleteWeek} />}
+                    label={<PeriodLabel title="Previous calendar week" period={lastCompleteWeek} />}
                     value={formatCurrency(account.last_complete_week?.actual_cost)}
                     delta={formatWeekOverWeek(account.week_wow_pct)}
                     deltaTone={costDeltaTone(account.week_wow_pct)}
                   />
                   <StatCard
-                    label={<PeriodLabel title="Last natural month" period={lastCompleteMonth} />}
+                    label={<PeriodLabel title="Previous calendar month" period={lastCompleteMonth} />}
                     value={formatCurrency(account.last_complete_month?.actual_cost)}
                     tone="amber"
                   />
                   <BudgetUtilizationGauge
-                    title="Last complete week"
+                    title="Last week's budget utilization"
                     item={account.last_complete_week}
                     actualCostKey="actual_cost"
                   />
                   <BudgetUtilizationGauge
-                    title="Last complete month"
+                    title="Previous month's budget utilization"
                     item={account.last_complete_month}
                     actualCostKey="actual_cost"
                   />
@@ -131,7 +131,7 @@ export default function CICostWeeklyPage() {
       >
         <div className="ci-weekly-cost__trend-layout">
           <BudgetUtilizationGauge
-            title="Last week budget utilization · GCP list + Tencent net"
+            title="Last week's budget utilization · GCP list + Tencent net"
             item={lastWeekBudgetUtilization}
             actualCostKey="actual_cost"
           />
@@ -172,7 +172,7 @@ export default function CICostWeeklyPage() {
       </Panel>
 
       <Panel
-        title="Last week list-cost share"
+        title="Last week's list-cost share"
         subtitle="GCP and Tencent CI accounts combined."
         loading={shareReport.loading || (!shareReport.data && !shareReport.error)}
         error={shareReport.error}
@@ -202,7 +202,7 @@ export default function CICostWeeklyPage() {
       </Panel>
 
       <Panel
-        title="Last week cost categories"
+        title="Last week's cost categories"
         subtitle="Grouped by billing service, GKE allocation scope, resource/bucket name, and service/project metadata—not a dynamic/fixed split. Charts show only categories > 1% of each account total; small categories remain in the tables and are not renormalized."
         loading={categoriesReport.loading || (!categoriesReport.data && !categoriesReport.error)}
         error={categoriesReport.error}

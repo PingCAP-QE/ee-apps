@@ -101,7 +101,7 @@ export function BudgetUtilizationGauge({
 
 export function CumulativeWeeklyCostChart({
   item,
-  title = "2026 H2 overall cumulative cost",
+  title = "Budget-period cumulative cost",
   cumulativeCostKey = "cumulative_list_cost",
 }) {
   const points = item?.points || [];
@@ -127,7 +127,7 @@ export function CumulativeWeeklyCostChart({
           <span>{formatIsoDateRange(item.period || {})}</span>
         </div>
         <div className="weekly-cost__cumulative-cost-summary">
-          <strong>Budget Cumulative Spend {formatCurrency(peak[cumulativeCostKey])}</strong>
+          <strong>Cumulative spend {formatCurrency(peak[cumulativeCostKey])}</strong>
           <span>{formatCurrency(totalBudget)} budget · {formatNullablePercent(peakUtilization)}</span>
         </div>
       </header>
