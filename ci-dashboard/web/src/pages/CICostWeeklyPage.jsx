@@ -114,7 +114,7 @@ export default function CICostWeeklyPage() {
                   />
                   <CumulativeWeeklyCostChart
                     item={periodCost}
-                    title="Cumulative spend"
+                    title="Cumulative spend by account"
                     cumulativeCostKey="cumulative_budget_basis_cost"
                   />
                 </div>

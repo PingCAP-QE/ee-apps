@@ -807,7 +807,13 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
     assert.match(rendered, /Overall/);
     assert.match(rendered, /GCP list cost/);
     assert.match(rendered, /Tencent net cost/);
-    assert.match(rendered, /Cumulative spend/);
+    const cumulativeTitles = renderer.root
+      .findAllByProps({ className: "weekly-cost__cumulative-cost-title" })
+      .map((title) => title.findByType("strong").children.join(""));
+    assert.deepEqual(cumulativeTitles, [
+      "Cumulative spend by account",
+      "Cumulative spend by account",
+    ]);
     assert.match(rendered, /Cost trend/);
     assert.match(rendered, /Last week's budget utilization · GCP list \+ Tencent net/);
     assert.match(rendered, /GCP \+ Tencent weekly budget/);
