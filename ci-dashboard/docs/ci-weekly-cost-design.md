@@ -71,10 +71,11 @@ for measurements and post-deployment checks.
 ## Presentation contract
 
 The Overall panel has a GCP list cost block and a Tencent net cost block.
-Each contains one equal-height row of last-week and last-natural-month spend
-cards, completed-week and completed-month gauges, and a cumulative chart that
+Each contains one equal-height row of **Previous calendar week** and
+**Previous calendar month** spend cards, **Last week's budget utilization** and
+**Previous month's budget utilization** gauges, and a cumulative chart that
 fills the remaining row width. The cost basis appears only in the block title.
-The Cost trend panel places a last-week utilization gauge on the left. It sums
+The Cost trend panel places a **Last week's budget utilization** gauge on the left. It sums
 GCP list cost and Tencent net cost for both actual and budget, so its percentage
 uses a consistent basis. On the right, the last eight completed weeks appear as
 one stacked bar per week, combining only GCP list cost (blue) and Tencent net
@@ -87,7 +88,7 @@ The tooltip shows spend and budget separately; its spend sum excludes the
 budget. Selecting a cost legend item focuses that series; selecting it again
 restores both series. The total-budget reference line remains visible.
 The team/repository panel shows list-cost shares for the last complete week
-across both accounts. The final **Last week cost categories** panel contains
+across both accounts. The final **Last week's cost categories** panel contains
 separate GCP list-cost and Tencent net-cost pies and full category tables.
 Only categories strictly greater than 1% of their account total appear in the
 pies. The cutoff uses unrounded amounts, not rounded display percentages.

@@ -112,25 +112,25 @@ export default function WeeklyCostPage() {
       <PageIntro
         eyebrow="QA Cost Weekly"
         title="QA cloud spend, ready for the weekly review"
-        description="This page is fixed to the previous complete natural week, Monday through Sunday in UTC. QA accounts are sources with a configured purpose."
+        description="Summary and account breakdown cover the previous calendar week (Monday–Sunday, UTC). Budget utilization and team share can also show the previous calendar month. QA accounts have a configured purpose."
         kicker={formatDateRangeLabel(lastWeek.start_date, lastWeek.end_date)}
       />
 
       <section className="stats-grid weekly-cost__summary">
         <StatCard
-          label={<PeriodLabel title="Last week" period={lastWeek} />}
+          label={<PeriodLabel title="Previous calendar week" period={lastWeek} />}
           value={formatCurrency(summary.last_week_cost)}
           delta={formatWeekOverWeek(summary.week_wow_pct)}
           deltaTone={costDeltaTone(summary.week_wow_pct)}
         />
         <StatCard
-          label="Previous week cost"
+          label="Week before last"
           value={formatCurrency(summary.previous_week_cost)}
           detail={formatDateRangeLabel(previousWeek.start_date, previousWeek.end_date)}
           tone="teal"
         />
         <StatCard
-          label={<PeriodLabel title="Last natural month" period={previousMonth} />}
+          label={<PeriodLabel title="Previous calendar month" period={previousMonth} />}
           value={formatCurrency(summary.previous_month_cost)}
           tone="amber"
         />
@@ -138,11 +138,11 @@ export default function WeeklyCostPage() {
 
       {budgetPace ? (
         <Panel
-          title="Budget pace"
-          subtitle={`${allocationPeriod === "week" ? "Last natural week" : "Last natural month"} ${formatDateRangeLabel(
+          title="Budget utilization"
+          subtitle={`${allocationPeriod === "week" ? "Previous calendar week" : "Previous calendar month"}: ${formatDateRangeLabel(
             allocationPeriodRange.start_date,
             allocationPeriodRange.end_date,
-          )}. Cross-accounts cost allocation.`}
+          )}. Cross-account cost allocation.`}
           loading={allocationLoading}
           error={allocationError}
           actions={<AllocationPeriodToggle value={allocationPeriod} onChange={setAllocationPeriod} />}
@@ -151,13 +151,15 @@ export default function WeeklyCostPage() {
             <div className="weekly-cost__budget-overview">
               <div className="weekly-cost__budget-lane weekly-cost__budget-lane--summary">
                 <BudgetUtilizationGauge
-                  title="Last week budget utilization"
+                  title={allocationPeriod === "week"
+                    ? "Last week's budget utilization"
+                    : "Previous month's budget utilization"}
                   item={budgetPace.overall}
                   showMonthlyCumulativeCost={allocationPeriod === "month"}
                 />
                 {currentMonthBudget ? (
                   <BudgetUtilizationGauge
-                    title="Current month budget utilization"
+                    title="Current month's budget utilization"
                     item={currentMonthBudget}
                   />
                 ) : null}
@@ -165,16 +167,16 @@ export default function WeeklyCostPage() {
               <div className="weekly-cost__budget-lane">
                 <BudgetPaceList
                   className="weekly-cost__budget-projects"
-                  title="Budget Scenario utilization"
+                  title="Budget utilization by scenario"
                   items={budgetScenarios}
                   selectedKey={selectedBudgetScenario?.key}
                   onSelect={setSelectedBudgetScenarioKey}
-                  emptyMessage="No budget scenario matched this period."
+                  emptyMessage="No budget scenarios have a positive budget for this period."
                 />
               </div>
               <CumulativeWeeklyCostChart item={budgetPeriodCost} />
             </div>
-            <BudgetScenarioUsageChart item={selectedBudgetScenario} />
+            <BudgetScenarioUsageChart item={selectedBudgetScenario} period={allocationPeriod} />
           </div>
         </Panel>
       ) : null}
@@ -193,11 +195,11 @@ export default function WeeklyCostPage() {
           <div className="weekly-cost__share-grid">
             <DonutShareChart
               title="Level 1 groups"
-              subtitle="Direct Engineering Group children"
+              subtitle="Direct subgroups of Engineering Group"
               items={teamShare.level1?.items || []}
               totalValue={teamShare.total_list_cost}
               totalLabel="list cost"
-              emptyMessage="No Level 1 group share data for this week."
+              emptyMessage="No Level 1 group cost allocation for the selected period."
               className="weekly-cost__share-card"
             />
             <DonutShareChart
@@ -206,7 +208,7 @@ export default function WeeklyCostPage() {
               items={teamShare.level2?.items || []}
               totalValue={teamShare.total_list_cost}
               totalLabel="list cost"
-              emptyMessage="No Level 2 team share data for this week."
+              emptyMessage="No Level 2 team cost allocation for the selected period."
               className="weekly-cost__share-card"
             />
             <DonutShareChart
@@ -215,7 +217,7 @@ export default function WeeklyCostPage() {
               items={teamShare.owners?.items || []}
               totalValue={teamShare.total_list_cost}
               totalLabel="list cost"
-              emptyMessage="No owner share data for this week."
+              emptyMessage="No owner cost allocation for the selected period."
               className="weekly-cost__share-card"
             />
           </div>
@@ -224,7 +226,7 @@ export default function WeeklyCostPage() {
 
       <Panel
         title="QA account breakdown"
-        subtitle="Costs use the billing-report list-cost expression. QA share is each account's share of all QA accounts in the previous complete week."
+        subtitle="Costs use the billing report's list-cost basis. QA share is each account's share of total QA list cost for the previous calendar week."
         loading={report.loading}
         error={report.error}
       >
@@ -237,29 +239,29 @@ export default function WeeklyCostPage() {
                   <th scope="col">Purpose</th>
                   <SortableCostHeader
                     field="last_week_cost"
-                    label={<PeriodLabel title="Last week" period={lastWeek} />}
-                    sortLabel="Last week"
+                    label={<PeriodLabel title="Previous calendar week" period={lastWeek} />}
+                    sortLabel="Previous calendar week"
                     sort={accountSort}
                     onSort={handleAccountSort}
                   />
                   <SortableCostHeader
                     field="week_wow_pct"
                     label="WoW"
-                    sortLabel="WoW"
+                    sortLabel="Week-over-week change"
                     sort={accountSort}
                     onSort={handleAccountSort}
                   />
                   <SortableCostHeader
                     field="last_week_share_pct"
                     label="QA share"
-                    sortLabel="QA share"
+                    sortLabel="QA share of list cost"
                     sort={accountSort}
                     onSort={handleAccountSort}
                   />
                   <SortableCostHeader
                     field="previous_month_cost"
-                    label={<PeriodLabel title="Last natural month" period={previousMonth} />}
-                    sortLabel="Last natural month"
+                    label={<PeriodLabel title="Previous calendar month" period={previousMonth} />}
+                    sortLabel="Previous calendar month"
                     sort={accountSort}
                     onSort={handleAccountSort}
                   />
@@ -270,7 +272,7 @@ export default function WeeklyCostPage() {
                   <tr className="weekly-cost__vendor-total" key={`vendor-total:${item.vendor}`}>
                     <th scope="row">
                       <span className="weekly-cost__account">
-                        <strong>{item.vendor.toUpperCase()} Sum</strong>
+                        <strong>{item.vendor.toUpperCase()} total</strong>
                       </span>
                     </th>
                     <td className="weekly-cost__purpose">Vendor total</td>
@@ -373,12 +375,12 @@ export default function WeeklyCostPage() {
 function AllocationPeriodToggle({ value, onChange }) {
   return (
     <SegmentedControl
-      ariaLabel="Budget pace period"
+      ariaLabel="Budget utilization and team share period"
       value={value}
       onChange={onChange}
       options={[
-        { key: "week", label: "Last natural week" },
-        { key: "month", label: "Last natural month" },
+        { key: "week", label: "Previous calendar week" },
+        { key: "month", label: "Previous calendar month" },
       ]}
     />
   );
@@ -460,7 +462,7 @@ function BudgetPaceList({ title, items = [], selectedKey, onSelect, emptyMessage
   );
 }
 
-function BudgetScenarioUsageChart({ item }) {
+function BudgetScenarioUsageChart({ item, period }) {
   const usageItems = budgetUsageShareItems(item?.project_account_usage);
   const usageTotal = usageItems.reduce((total, usageItem) => total + usageItem.value, 0);
   const usageByKey = new Map(
@@ -489,20 +491,22 @@ function BudgetScenarioUsageChart({ item }) {
       aria-label={`Selected budget scenario: ${item?.name || "none"}`}
     >
       <LabeledDonutShareChart
-        title="Utilization breakdown"
-        subtitle={item ? `Focus on ${item.name}` : "Select a budget scenario."}
+        title="Spend breakdown"
+        subtitle={item ? `Budget scenario: ${item.name}` : null}
         items={usageItems}
         totalValue={usageTotal}
         totalLabel="allocated spend"
         centerValue={item ? formatNullablePercent(item.utilization_pct) : null}
         centerLabel="budget utilization"
         metricValueFormatter={formatCurrency}
-        emptyMessage="No account/project usage for this budget scenario."
+        emptyMessage={item
+          ? "No allocated list cost for this scenario and period."
+          : "No budget scenario is available for this period."}
         className="weekly-cost__share-card weekly-cost__budget-project-share weekly-cost__scenario-pie"
       />
       <article className="weekly-cost__budget-scenario-trend">
         <header>
-          <strong>Daily cumulative cost in last week</strong>
+          <strong>Daily cumulative cost for the previous {period}</strong>
           <span>Stacked by account / project</span>
         </header>
         <TrendChart
