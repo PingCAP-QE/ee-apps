@@ -122,6 +122,142 @@ func TestAuthorize(t *testing.T) {
 	})
 }
 
+func TestAuthorizeAdditiveAllow(t *testing.T) {
+	caller := Caller{Namespace: "ci", ServiceAccount: "checkout"}
+
+	specificPolicy := &Policy{Rules: []Rule{{
+		Caller: caller,
+		Allow: []Allow{
+			{
+				Owner:          "pingcap",
+				Repositories:   []string{"tidb", "tiflow", "tiflash"},
+				MaxPermissions: map[string]string{"contents": "write", "pull_requests": "read"},
+			},
+			{
+				Owner:          "pingcap",
+				Repositories:   []string{"ticdc", "ng-monitoring"},
+				MaxPermissions: map[string]string{"contents": "read"},
+			},
+		},
+	}}}
+
+	wildcardPolicy := &Policy{Rules: []Rule{{
+		Caller: caller,
+		Allow: []Allow{
+			{
+				Owner:          "pingcap",
+				Repositories:   []string{"tidb"},
+				MaxPermissions: map[string]string{"contents": "write"},
+			},
+			{
+				Owner:          "pingcap",
+				Repositories:   []string{"ticdc"},
+				MaxPermissions: map[string]string{"contents": "read"},
+			},
+			{
+				Owner:          "*",
+				Repositories:   []string{"*"},
+				MaxPermissions: map[string]string{"members": "read"},
+			},
+		},
+	}}}
+
+	tests := []struct {
+		name    string
+		policy  *Policy
+		owner   string
+		repo    string
+		narrow  []string
+		perms   map[string]string
+		wantErr error
+	}{
+		{
+			name:   "read-only repo read",
+			policy: specificPolicy,
+			owner:  "pingcap",
+			repo:   "ticdc",
+			perms:  map[string]string{"contents": "read"},
+		},
+		{
+			name:    "read-only repo write denied",
+			policy:  specificPolicy,
+			owner:   "pingcap",
+			repo:    "ticdc",
+			perms:   map[string]string{"contents": "write"},
+			wantErr: ErrPermissionNotAllowed,
+		},
+		{
+			name:   "write repo read",
+			policy: specificPolicy,
+			owner:  "pingcap",
+			repo:   "tidb",
+			perms:  map[string]string{"contents": "read"},
+		},
+		{
+			name:   "write repo write",
+			policy: specificPolicy,
+			owner:  "pingcap",
+			repo:   "tidb",
+			perms:  map[string]string{"contents": "write"},
+		},
+		{
+			name:    "unlisted repo denied",
+			policy:  specificPolicy,
+			owner:   "pingcap",
+			repo:    "unlisted",
+			perms:   map[string]string{"contents": "read"},
+			wantErr: ErrRepositoryNotAllowed,
+		},
+		{
+			name:   "narrowed read-only repo",
+			policy: specificPolicy,
+			owner:  "pingcap",
+			repo:   "ticdc",
+			narrow: []string{"ticdc"},
+			perms:  map[string]string{"contents": "read"},
+		},
+		{
+			name:    "narrowed mixed repo denied",
+			policy:  specificPolicy,
+			owner:   "pingcap",
+			repo:    "tidb",
+			narrow:  []string{"tidb", "ticdc"},
+			perms:   map[string]string{"contents": "read"},
+			wantErr: ErrRepositoryNotAllowed,
+		},
+		{
+			name:   "wildcard fallback after same-owner mismatch",
+			policy: wildcardPolicy,
+			owner:  "pingcap",
+			repo:   "unlisted",
+			perms:  map[string]string{"members": "read"},
+		},
+		{
+			name:    "wildcard permission still enforced",
+			policy:  wildcardPolicy,
+			owner:   "pingcap",
+			repo:    "unlisted",
+			perms:   map[string]string{"contents": "read"},
+			wantErr: ErrPermissionNotAllowed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.policy.Authorize(caller, tt.owner, tt.repo, tt.narrow, tt.perms)
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("expected %v, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestPolicyValidate(t *testing.T) {
 	tests := []struct {
 		name   string
