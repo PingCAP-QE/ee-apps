@@ -37,11 +37,6 @@ const (
 )
 
 func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
-	token, ok := ctx.Value(ctxKeyGithubToken).(string)
-	if !ok || token == "" {
-		return "", fmt.Errorf("GitHub token not found in context")
-	}
-
 	if len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
 		return repoAdminHelpText, NewInformationError("Requested command usage")
 	}
@@ -50,7 +45,17 @@ func runCommandRepoAdmin(ctx context.Context, args []string) (string, error) {
 		return "", errors.New(repoAdminHelpText)
 	}
 
-	gc := github.NewClient(nil).WithAuthToken(token)
+	owner, repoName, err := parseRepo(args[0])
+	if err != nil {
+		return "", err
+	}
+
+	provider, err := gitHubClientFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	gc := provider.newClient(owner+"/"+repoName, repoAdminPermissions)
 	return queryRepoAdmins(ctx, args[0], gc)
 }
 
@@ -206,5 +211,5 @@ func formatAdminsResponse(owner, repo string, admins []string) string {
 }
 
 func setupCtxRepoAdmin(ctx context.Context, config config.Config, _ *CommandActor) context.Context {
-	return context.WithValue(ctx, ctxKeyGithubToken, config.RepoAdmin.GithubToken)
+	return withGitHubClientProvider(ctx, config, config.RepoAdmin.GithubToken)
 }

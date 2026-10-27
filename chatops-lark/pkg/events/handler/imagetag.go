@@ -82,7 +82,7 @@ func setupCtxRegistryImage(ctx context.Context, cfg config.Config, _ *CommandAct
 		workflow = defaultRegistryImageWorkflow
 	}
 
-	nextCtx := context.WithValue(ctx, ctxKeyGithubToken, strings.TrimSpace(registryImageCfg.GitHubToken))
+	nextCtx := withGitHubClientProvider(ctx, cfg, registryImageCfg.GitHubToken)
 	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageOwner, owner)
 	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageRepo, repo)
 	nextCtx = context.WithValue(nextCtx, cfgKeyRegistryImageWorkflow, workflow)
@@ -91,25 +91,20 @@ func setupCtxRegistryImage(ctx context.Context, cfg config.Config, _ *CommandAct
 	return nextCtx
 }
 
-func loadRegistryImageWorkflowConfig(ctx context.Context) (registryImageWorkflowConfig, string, error) {
-	token, ok := ctx.Value(ctxKeyGithubToken).(string)
-	if !ok || token == "" {
-		return registryImageWorkflowConfig{}, "", fmt.Errorf("GitHub token not found in context")
-	}
-
+func loadRegistryImageWorkflowConfig(ctx context.Context) (registryImageWorkflowConfig, error) {
 	owner, ok := ctx.Value(cfgKeyRegistryImageOwner).(string)
 	if !ok || owner == "" {
-		return registryImageWorkflowConfig{}, "", fmt.Errorf("registry image owner not found in context")
+		return registryImageWorkflowConfig{}, fmt.Errorf("registry image owner not found in context")
 	}
 
 	repo, ok := ctx.Value(cfgKeyRegistryImageRepo).(string)
 	if !ok || repo == "" {
-		return registryImageWorkflowConfig{}, "", fmt.Errorf("registry image repo not found in context")
+		return registryImageWorkflowConfig{}, fmt.Errorf("registry image repo not found in context")
 	}
 
 	workflow, ok := ctx.Value(cfgKeyRegistryImageWorkflow).(string)
 	if !ok || workflow == "" {
-		return registryImageWorkflowConfig{}, "", fmt.Errorf("registry image workflow not found in context")
+		return registryImageWorkflowConfig{}, fmt.Errorf("registry image workflow not found in context")
 	}
 
 	ref, _ := ctx.Value(cfgKeyRegistryImageRef).(string)
@@ -119,5 +114,5 @@ func loadRegistryImageWorkflowConfig(ctx context.Context) (registryImageWorkflow
 		Repo:     repo,
 		Workflow: workflow,
 		Ref:      ref,
-	}, token, nil
+	}, nil
 }

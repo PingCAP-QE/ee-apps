@@ -21,6 +21,9 @@ type Config struct {
 	CherryPickInvite *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
+		// GithubToken is the static token. Inviting collaborators needs
+		// administration: write, which is still pending a governance review, so
+		// this command keeps using a PAT.
 		GithubToken string `yaml:"github_token" json:"github_token"`
 	} `yaml:"cherry_pick_invite" json:"cherry_pick_invite"`
 
@@ -61,8 +64,14 @@ type Config struct {
 	RepoAdmin *struct {
 		BaseCmdConfig `yaml:",inline" json:",inline"`
 
+		// GithubToken is the legacy static token used as the broker fallback.
 		GithubToken string `yaml:"github_token" json:"github_token"`
 	} `yaml:"repo_admins" json:"repo_admins"`
+
+	// GitHub configures the shared GitHub App token broker client used by all
+	// commands that call the GitHub API. When the block is absent the broker is
+	// disabled and commands only work with a static token.
+	GitHub *GitHubConfig `yaml:"github" json:"github"`
 
 	// Debug mode
 	Debug bool `yaml:"debug" json:"debug"`
@@ -80,6 +89,19 @@ type RegistryImageConfig struct {
 	Workflow    string `yaml:"workflow" json:"workflow"`
 	Ref         string `yaml:"ref" json:"ref"`
 	GitHubToken string `yaml:"github_token" json:"github_token"`
+}
+
+// GitHubConfig configures the in-cluster GitHub App token broker client.
+type GitHubConfig struct {
+	// BrokerURL is the broker base URL. When the github block is present and
+	// this is empty, the in-cluster service DNS name is used.
+	BrokerURL string `yaml:"broker_url" json:"broker_url"`
+	// BrokerTokenFile is the projected ServiceAccount token used to
+	// authenticate to the broker.
+	BrokerTokenFile string `yaml:"broker_token_file" json:"broker_token_file"`
+	// Token is an optional static token used only when the broker is disabled,
+	// the request is not repository-scoped, or the broker denies the request.
+	Token string `yaml:"token" json:"token"`
 }
 
 type AuditConfig struct {

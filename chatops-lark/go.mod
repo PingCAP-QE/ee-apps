@@ -4,6 +4,7 @@ go 1.23.4
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
+	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261027061731-a270be8e71fc
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/google/go-github/v68 v68.0.0
