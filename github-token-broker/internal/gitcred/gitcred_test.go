@@ -368,7 +368,7 @@ func TestResponseWrite(t *testing.T) {
 	if err := (Response{Username: "x-access-token", Password: "ghs_token"}).Write(&b); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	want := "username=x-access-token\npassword=ghs_token\n"
+	want := "username=x-access-token\npassword=ghs_token\n\n"
 	if b.String() != want {
 		t.Errorf("Write = %q, want %q", b.String(), want)
 	}

@@ -36,7 +36,7 @@ func TestRunGetWritesCredentials(t *testing.T) {
 	if err := run(context.Background(), []string{"get"}, req, &stdout, &stderr); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if got, want := stdout.String(), "username=x-access-token\npassword=ghs_cli\n"; got != want {
+	if got, want := stdout.String(), "username=x-access-token\npassword=ghs_cli\n\n"; got != want {
 		t.Errorf("stdout = %q, want %q", got, want)
 	}
 }
@@ -81,7 +81,7 @@ func TestRunWithConfigFile(t *testing.T) {
 	if err := run(context.Background(), []string{"-config", configPath, "get"}, req, &stdout, &stderr); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	if got, want := stdout.String(), "username=x-access-token\npassword=ghs_file\n"; got != want {
+	if got, want := stdout.String(), "username=x-access-token\npassword=ghs_file\n\n"; got != want {
 		t.Errorf("stdout = %q, want %q", got, want)
 	}
 }
@@ -125,5 +125,45 @@ func TestRunRequiresOneOperation(t *testing.T) {
 	}
 	if err := run(context.Background(), []string{"get", "erase"}, strings.NewReader(""), &stdout, &stderr); err == nil {
 		t.Fatal("run with two arguments succeeded, want error")
+	}
+}
+
+func TestRunSetupWritesFiles(t *testing.T) {
+	home := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"setup",
+		"-home", home,
+		"-broker-url", "http://broker.example",
+		"-permissions", "contents=read",
+		"-hosts", "github.com",
+	}
+	if err := run(context.Background(), args, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("run setup: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "git-auth: config") {
+		t.Errorf("stdout = %q, want the setup summary", stdout.String())
+	}
+	for _, name := range []string{"config.json", "gitconfig.fragment", "source"} {
+		path := filepath.Join(home, ".git-auth", name)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("missing %s: %v", path, err)
+		}
+	}
+}
+
+func TestRunSetupRequiresBrokerURL(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run(context.Background(), []string{"setup", "-home", t.TempDir()}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "broker-url") {
+		t.Fatalf("run setup error = %v, want a missing broker URL error", err)
+	}
+}
+
+func TestRunSetupRejectsUnknownFlag(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run(context.Background(), []string{"setup", "-nope"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "parse setup flags") {
+		t.Fatalf("run setup error = %v, want a flag parsing error", err)
 	}
 }

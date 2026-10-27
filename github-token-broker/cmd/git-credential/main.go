@@ -34,6 +34,9 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if len(args) > 0 && args[0] == setupCommand {
+		return runSetup(args[1:], stdout)
+	}
 	cfg, action, err := parseArgs(args)
 	if err != nil {
 		return err

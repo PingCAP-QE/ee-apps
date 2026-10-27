@@ -428,7 +428,9 @@ func (r Response) Write(w io.Writer) error {
 	if r.Password == "" {
 		return nil
 	}
-	if _, err := fmt.Fprintf(w, "username=%s\npassword=%s\n", r.Username, r.Password); err != nil {
+	// The git credential protocol terminates a helper response with a blank
+	// line (git's own store helper does the same).
+	if _, err := fmt.Fprintf(w, "username=%s\npassword=%s\n\n", r.Username, r.Password); err != nil {
 		return err
 	}
 	return nil
