@@ -8,6 +8,16 @@ import (
 	"strings"
 )
 
+const (
+	// sharedDirPerm lets later steps in the pod, which may run as a different
+	// UID, read and write the helper state.
+	sharedDirPerm = 0o777
+	// sharedFilePerm lets later steps read the rendered configuration.
+	sharedFilePerm = 0o644
+	// sharedWritePerm lets later steps rewrite the credential-source file.
+	sharedWritePerm = 0o666
+)
+
 // SetupOptions describes the files the setup mode writes into a pod's shared
 // home directory.
 type SetupOptions struct {
@@ -61,8 +71,12 @@ func Setup(opts SetupOptions) (SetupResult, error) {
 	cacheDir := filepath.Join(authDir, "cache")
 	binDir := filepath.Join(authDir, "bin")
 	for _, dir := range []string{authDir, cacheDir, binDir} {
-		if err := os.MkdirAll(dir, cacheDirPerm); err != nil {
+		if err := os.MkdirAll(dir, sharedDirPerm); err != nil {
 			return SetupResult{}, fmt.Errorf("gitcred: create %s: %w", dir, err)
+		}
+		// MkdirAll applies the umask; later steps may run as another UID.
+		if err := os.Chmod(dir, sharedDirPerm); err != nil {
+			return SetupResult{}, fmt.Errorf("gitcred: chmod %s: %w", dir, err)
 		}
 	}
 
@@ -93,14 +107,14 @@ func Setup(opts SetupOptions) (SetupResult, error) {
 	if err != nil {
 		return SetupResult{}, fmt.Errorf("gitcred: encode config: %w", err)
 	}
-	if err := os.WriteFile(result.ConfigFile, append(encoded, '\n'), statePerm); err != nil {
+	if err := writeSharedFile(result.ConfigFile, append(encoded, '\n'), sharedFilePerm); err != nil {
 		return SetupResult{}, fmt.Errorf("gitcred: write config: %w", err)
 	}
 
-	if err := os.WriteFile(result.GitConfigFragment, []byte(gitConfigFragment(result.CredentialHelper, result.ConfigFile, hosts)), statePerm); err != nil {
+	if err := writeSharedFile(result.GitConfigFragment, []byte(gitConfigFragment(result.CredentialHelper, result.ConfigFile, hosts)), sharedFilePerm); err != nil {
 		return SetupResult{}, fmt.Errorf("gitcred: write git config fragment: %w", err)
 	}
-	if err := os.WriteFile(result.StateFile, nil, statePerm); err != nil {
+	if err := writeSharedFile(result.StateFile, nil, sharedWritePerm); err != nil {
 		return SetupResult{}, fmt.Errorf("gitcred: write state file: %w", err)
 	}
 	return result, nil
@@ -122,6 +136,15 @@ func gitConfigFragment(helperPath, configPath string, hosts []string) string {
 	b.WriteString("\tinsteadOf = git@github.com:\n")
 	b.WriteString("\tinsteadOf = ssh://git@github.com/\n")
 	return b.String()
+}
+
+// writeSharedFile writes a file readable (or writable) by every step in the
+// pod, because Tekton steps may run under different UIDs.
+func writeSharedFile(path string, data []byte, perm os.FileMode) error {
+	if err := os.WriteFile(path, data, perm); err != nil {
+		return err
+	}
+	return os.Chmod(path, perm)
 }
 
 func splitList(raw string) []string {

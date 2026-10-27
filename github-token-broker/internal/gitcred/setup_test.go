@@ -120,3 +120,38 @@ func TestSetupConfigIsReadableByHelper(t *testing.T) {
 		t.Fatalf("New from setup config: %v", err)
 	}
 }
+
+func TestSetupUsesSharedPermissions(t *testing.T) {
+	home := t.TempDir()
+	result, err := Setup(SetupOptions{
+		Home:        home,
+		BrokerURL:   "http://broker.example",
+		Permissions: "contents=read",
+		Hosts:       "github.com",
+	})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	// Tekton steps may run as different UIDs, so everything the helper needs
+	// must be readable (and the state file writable) by every step.
+	checks := []struct {
+		path string
+		want os.FileMode
+	}{
+		{filepath.Dir(result.ConfigFile), sharedDirPerm},
+		{result.CacheDir, sharedDirPerm},
+		{filepath.Dir(result.CredentialHelper), sharedDirPerm},
+		{result.ConfigFile, sharedFilePerm},
+		{result.GitConfigFragment, sharedFilePerm},
+		{result.StateFile, sharedWritePerm},
+	}
+	for _, check := range checks {
+		info, err := os.Stat(check.path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", check.path, err)
+		}
+		if got := info.Mode().Perm(); got != check.want {
+			t.Errorf("%s mode = %o, want %o", check.path, got, check.want)
+		}
+	}
+}
