@@ -1535,12 +1535,11 @@ def _resolve_pull_state_as_of(row: dict[str, Any], as_of_date: date) -> str | No
     closed_at = _parse_datetime_value(row.get("closed_at"))
     if closed_at is not None and closed_at < as_of_exclusive and closed_at >= latest_event_time:
         latest_state = "closed"
-        latest_event_time = closed_at
 
     merged_at = _parse_datetime_value(row.get("merged_at"))
-    if merged_at is not None and merged_at < as_of_exclusive and merged_at >= latest_event_time:
+    # Merged is terminal, even if GitHub records the PR's closure later.
+    if merged_at is not None and merged_at < as_of_exclusive:
         latest_state = "merged"
-        latest_event_time = merged_at
 
     current_state = str(row.get("state") or "").lower()
     if current_state == "closed" and closed_at is None and merged_at is None:
