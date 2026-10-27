@@ -9,7 +9,11 @@ import pytest
 from sqlalchemy import text
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
-from ci_dashboard.common.github_auth import GitHubTokenError, GitHubTokenRequest
+from ci_dashboard.common.github_auth import (
+    GitHubTokenError,
+    GitHubTokenNotInstalled,
+    GitHubTokenRequest,
+)
 from ci_dashboard.jobs.state_store import get_job_state
 from ci_dashboard.jobs.sync_flaky_issues import (
     FlakyIssuePrLinkRow,
@@ -1968,6 +1972,55 @@ def test_enrich_issue_row_propagates_broker_failures(monkeypatch: pytest.MonkeyP
         _enrich_issue_row_for_pr_fallback(
             {"repo": "tikv/pd", "number": 9, "body": None, "comments": None}
         )
+
+
+def test_enrich_issue_row_skips_missing_installation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            GitHubTokenNotInstalled("github app is not installed for someone/tidb")
+        ),
+    )
+
+    row = {"repo": "tikv/pd", "number": 9, "body": None, "comments": None}
+
+    # Forks outside the App installation keep the row untouched instead of
+    # failing the whole sync.
+    assert _enrich_issue_row_for_pr_fallback(dict(row)) == row
+
+
+def test_linked_pr_metadata_skips_missing_installation(
+    sqlite_engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_pull_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(
+            GitHubTokenNotInstalled("github app is not installed for someone/tidb")
+        ),
+    )
+    link_rows = [
+        FlakyIssuePrLinkRow(
+            issue_repo="pingcap/tidb",
+            issue_number=1,
+            pr_repo="someone/tidb",
+            pr_number=2,
+            pr_url="https://github.com/someone/tidb/pull/2",
+            pr_title="fix flaky",
+            link_type="cross_reference",
+            source_event_type="timeline",
+            source_event_id=None,
+            linked_at=datetime(2026, 10, 1),
+            source_ticket_updated_at=datetime(2026, 10, 1),
+        )
+    ]
+
+    with sqlite_engine.begin() as connection:
+        rows, attempted, failed = _fetch_linked_pr_metadata_rows(connection, link_rows)
+
+    assert rows == []
+    assert attempted == 1
+    assert failed == 1
 
 
 def test_linked_pr_metadata_propagates_broker_failures(

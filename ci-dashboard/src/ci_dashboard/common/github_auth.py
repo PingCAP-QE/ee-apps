@@ -37,6 +37,15 @@ class GitHubTokenError(RuntimeError):
     """Raised when the token broker cannot mint a token."""
 
 
+class GitHubTokenNotInstalled(GitHubTokenError):
+    """Raised when the GitHub App has no installation for the repository owner.
+
+    This is a coverage boundary, not a failure: forks and third-party
+    repositories are outside the App installation, and callers usually skip
+    those rows instead of aborting the whole sync.
+    """
+
+
 @dataclass(frozen=True)
 class GitHubAuthSettings:
     broker_url: str = DEFAULT_BROKER_URL
@@ -205,6 +214,7 @@ class GitHubTokenBroker:
         endpoint = f"{self._settings.broker_url.rstrip('/')}/v1/token"
         attempts = max(1, self._settings.max_attempts)
         last_error = "unknown error"
+        last_status: int | None = None
 
         with httpx.Client(
             timeout=self._settings.timeout_seconds,
@@ -222,6 +232,7 @@ class GitHubTokenBroker:
                         return self._parse_minted_token(response)
                     body = response.text.strip()[:MAX_ERROR_BODY_CHARS]
                     last_error = f"HTTP {response.status_code}: {body}"
+                    last_status = response.status_code
                     retryable = response.status_code >= 500
 
                 LOG.warning(
@@ -239,6 +250,10 @@ class GitHubTokenBroker:
                     break
                 self._sleep(self._settings.retry_backoff_seconds * (attempt + 1))
 
+        if last_status == httpx.codes.NOT_FOUND:
+            raise GitHubTokenNotInstalled(
+                f"github app is not installed for {request.repo}: {last_error}"
+            )
         raise GitHubTokenError(
             f"token broker request failed for {request.repo}: {last_error}"
         )

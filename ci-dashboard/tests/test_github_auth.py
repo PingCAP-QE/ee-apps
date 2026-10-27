@@ -13,6 +13,7 @@ from ci_dashboard.common.github_auth import (
     GitHubAuthSettings,
     GitHubTokenBroker,
     GitHubTokenError,
+    GitHubTokenNotInstalled,
     load_github_auth_settings,
     token_request_for_url,
 )
@@ -231,6 +232,28 @@ def test_token_for_does_not_retry_policy_denials(tmp_path: Path) -> None:
     assert "403" in str(excinfo.value)
     assert "permission denied by policy" in str(excinfo.value)
     assert "sa-token" not in str(excinfo.value)
+
+
+def test_token_for_reports_missing_installation(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            404,
+            json={
+                "name": "not_found",
+                "message": "github app is not installed for the repository",
+            },
+        )
+
+    broker = _broker(handler, settings=_settings(tmp_path))
+    request = token_request_for_url("https://api.github.com/repos/someone/tidb/pulls/9")
+    assert request is not None
+
+    with pytest.raises(GitHubTokenNotInstalled) as excinfo:
+        broker.token_for(request)
+
+    assert "not installed" in str(excinfo.value)
+    # It must stay a GitHubTokenError so existing handlers keep working.
+    assert isinstance(excinfo.value, GitHubTokenError)
 
 
 def test_token_for_retries_timeouts_then_raises(tmp_path: Path) -> None:

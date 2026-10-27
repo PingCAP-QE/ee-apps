@@ -18,6 +18,7 @@ from ci_dashboard.common.config import Settings
 from ci_dashboard.common.github_auth import (
     GitHubTokenBroker,
     GitHubTokenError,
+    GitHubTokenNotInstalled,
     load_github_auth_settings,
     token_request_for_url,
 )
@@ -494,6 +495,11 @@ def _enrich_issue_row_for_pr_fallback(row: dict[str, Any]) -> dict[str, Any]:
             repo=repo,
             issue_number=int(row["number"]),
         )
+    except GitHubTokenNotInstalled as exc:
+        # Forks and repositories outside the App installation cannot be minted;
+        # keep the row without the fallback instead of failing the sync.
+        LOG.warning("skipping issue body enrichment for %s#%s: %s", repo, row.get("number"), exc)
+        return row
     except GitHubTokenError:
         raise
     except Exception:
@@ -891,6 +897,9 @@ def _fetch_linked_pr_metadata_rows(
                     pr_number=pr_number,
                 )
             )
+        except GitHubTokenNotInstalled as exc:
+            failed += 1
+            LOG.warning("skipping linked flaky PR %s#%s: %s", pr_repo, pr_number, exc)
         except GitHubTokenError:
             raise
         except Exception:
