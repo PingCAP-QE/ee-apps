@@ -48,6 +48,29 @@ Tokens are cached by repository and permission set until five minutes before
 expiry. Requests without a repository path, requests to other hosts, and
 requests the broker denies use `FallbackToken` when it is configured.
 
+## Pinned (command-scoped) mode
+
+Some callers need endpoints that are not repository-scoped
+(`/orgs/{org}/members`, `/users/{login}`) or endpoints whose permission cannot
+be derived from the path (`/repos/{owner}/{repo}/collaborators` needs
+`administration`). Set `Repo` and `Permissions` to mint one token for an
+explicit scope and use it for every GitHub API request:
+
+```go
+transport := githubauth.NewTransport(githubauth.Config{
+    BrokerURL:   "http://github-token-broker.github-token-broker.svc",
+    Repo:        "example-org/example-repo",
+    Permissions: map[string]string{"members": "read", "administration": "read"},
+    OnFallback: func(repo string, err error) {
+        // Report silent degradation to a static token.
+    },
+})
+```
+
+In pinned mode the token is only attached to `api.github.com` requests, so
+signed download URLs stay unauthenticated. `OnFallback` is called whenever the
+broker request fails and `FallbackToken` takes over.
+
 ## Configuration
 
 | Field | Description |
