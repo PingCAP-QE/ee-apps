@@ -8247,9 +8247,14 @@ def test_flaky_page_issue_lifecycle_snapshot_ignores_issue_status_filter(
     assert open_by_week["2026-04-13"] == 3
 
 
+@pytest.mark.parametrize(
+    "pr_closed_at",
+    ["2026-04-24 13:00:00", "2026-04-24 13:00:01", "2026-04-25 00:00:00"],
+)
 def test_flaky_page_issue_fix_progress_snapshot(
     sqlite_engine,
     api_client: TestClient,
+    pr_closed_at: str,
 ) -> None:
     _insert_flaky_issue(
         sqlite_engine,
@@ -8318,7 +8323,7 @@ def test_flaky_page_issue_fix_progress_snapshot(
         number=72002,
         state="closed",
         created_at="2026-04-18 10:30:00",
-        closed_at="2026-04-24 13:00:00",
+        closed_at=pr_closed_at,
         merged=1,
         merged_at="2026-04-24 13:00:00",
     )
