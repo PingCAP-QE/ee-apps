@@ -5,6 +5,8 @@ from collections.abc import Iterator
 from datetime import date
 from typing import Any
 
+from cost_insight.common.bigquery import build_billing_bigquery_client
+
 DEFAULT_AZURE_BILLING_TABLE = "gcp-digital-bi.azure_billing.azure_billing_cost_*"
 
 
@@ -30,7 +32,7 @@ def fetch_azure_billing_summary_rows(
     from google.cloud import bigquery
 
     billing_table = _validate_billing_table(billing_table)
-    client = bigquery.Client()
+    client = build_billing_bigquery_client()
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
             bigquery.ScalarQueryParameter("account_id", "STRING", account_id),

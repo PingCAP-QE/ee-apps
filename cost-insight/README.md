@@ -44,7 +44,7 @@ Useful GCP settings:
 
 | Env | Default |
 | --- | --- |
-| `COST_INSIGHT_GCP_BILLING_TABLE` | `gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6` |
+| `COST_INSIGHT_GCP_BILLING_TABLE` | `warehouse-f80fbbe8e8.raw_gcp_billing.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6` |
 | `COST_INSIGHT_GCP_ACCOUNT_ID` | `pingcap-testing-account` |
 | `COST_INSIGHT_EARLIEST_USAGE_DATE` | `2026-01-01` |
 | `COST_INSIGHT_SYNC_LAG_DAYS` | `5` |
@@ -116,6 +116,48 @@ validation with a user account:
 gcloud auth application-default login
 gcloud auth application-default set-quota-project pingcap-testing-account
 ```
+
+### Warehouse billing identity and source cutover
+
+Billing exporters (including unmatched resources and reconciliation) support these
+optional settings; unset values preserve ADC client defaults:
+
+| Env | Meaning |
+| --- | --- |
+| `COST_INSIGHT_BILLING_BQ_PROJECT` | Query-job and impersonation quota project |
+| `COST_INSIGHT_BILLING_BQ_LOCATION` | Query location, e.g. `us-west1` (not `US`) |
+| `COST_INSIGHT_BILLING_BQ_IMPERSONATE_SERVICE_ACCOUNT` | Target SA for short-lived, keyless impersonation |
+
+Use [config/warehouse-billing.env.example](config/warehouse-billing.env.example)
+as a **staged** profile. The caller needs permission to impersonate the target SA;
+the target needs query-job permission and access to the selected tables. Its
+approved table access expires on **2027-04-25**. A pod already bound directly to
+that GSA via Workload Identity should leave the impersonation option **unset**;
+it does not need a self-impersonation hop. The existing shared `ci-dashboard`
+GSA was verified to lack `iam.serviceAccounts.getAccessToken` on this target.
+Billing settings do not change GCS cache storage/BigQuery clients or their project.
+
+The GCP default now points at the schema-compatible warehouse raw export. The new
+comparison sources for the other vendors are:
+
+- `warehouse-f80fbbe8e8.mart_cloud_cost.aws_member_daily_cost`
+- `warehouse-f80fbbe8e8.mart_cloud_cost.azure_daily_cost`
+- `warehouse-f80fbbe8e8.mart_cloud_cost.alibaba_daily_cost`
+
+AWS query builders now support explicit `warehouse_raw=True` for read-only
+compatibility validation of full CUR data; importer fetch/dispatch remains
+unchanged until a stable source contract is confirmed. This is not a new CLI
+import mode.
+
+These marts are **not drop-in importer sources**: they omit detail/attribution
+fields (especially AWS tenant/usedby and split-cost lineage). Do not change the
+existing AWS source profiles or point legacy importers at them before the
+small-sample amount and dimension checks pass. Temporary `_stage`/`_before`
+tables are not stable source contracts either. Keep legacy billing reads in a
+separate invocation/profile because their regions and access identities differ.
+No backfill or production-writer cutover is implied by this profile. See the
+[2026-10-27 cutover validation report](docs/warehouse-billing-cutover-2026-10-27.md)
+for the AWS amount/dimension checks and remaining cutover gates.
 
 ## Seed Active Sources
 

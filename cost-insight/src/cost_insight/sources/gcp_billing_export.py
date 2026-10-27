@@ -5,6 +5,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from cost_insight.common.bigquery import build_billing_bigquery_client
+
 DEFAULT_COST_OWNER_AUTHOR = "wei_zheng"
 _GCP_MULTI_REGION_LOCATIONS = ("us", "eu", "asia", "nam4", "eur4")
 _GCP_MULTI_REGION_SKU_PATTERN = r"\b(multi[- ]region|dual[- ]region)\b"
@@ -52,7 +54,7 @@ def fetch_gcp_billing_summary_rows(
 ) -> Iterator[dict[str, Any]]:
     from google.cloud import bigquery
 
-    client = bigquery.Client()
+    client = build_billing_bigquery_client()
     query = build_gcp_billing_summary_query(billing_table=billing_table, limit=limit)
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
@@ -92,7 +94,7 @@ def fetch_gcp_unmatched_resource_rows(
 ) -> Iterator[dict[str, Any]]:
     from google.cloud import bigquery
 
-    client = bigquery.Client()
+    client = build_billing_bigquery_client()
     query = build_gcp_unmatched_resource_query(billing_table=billing_table, limit=limit)
     job_config = bigquery.QueryJobConfig(
         query_parameters=[

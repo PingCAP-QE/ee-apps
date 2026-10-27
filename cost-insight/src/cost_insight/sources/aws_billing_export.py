@@ -4,6 +4,8 @@ from collections.abc import Iterator
 from datetime import date
 from typing import Any
 
+from cost_insight.common.bigquery import build_billing_bigquery_client
+from cost_insight.sources.aws_warehouse_compat import build_warehouse_cur_relation
 
 _AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
 
@@ -21,7 +23,7 @@ def fetch_aws_billing_summary_rows(
 ) -> Iterator[dict[str, Any]]:
     from google.cloud import bigquery
 
-    client = bigquery.Client()
+    client = build_billing_bigquery_client()
     query = build_aws_billing_summary_query(
         billing_table=billing_table,
         usage_end_date=usage_end_date,
@@ -68,7 +70,7 @@ def fetch_aws_unmatched_resource_rows(
 ) -> Iterator[dict[str, Any]]:
     from google.cloud import bigquery
 
-    client = bigquery.Client()
+    client = build_billing_bigquery_client()
     query = build_aws_unmatched_resource_query(billing_table=billing_table, limit=limit)
     job_config = bigquery.QueryJobConfig(
         query_parameters=[
@@ -97,7 +99,9 @@ def build_aws_billing_summary_query(
     billing_table: str,
     usage_end_date: date | None = None,
     limit: int | None = None,
+    warehouse_raw: bool = False,
 ) -> str:
+    table = build_warehouse_cur_relation(billing_table) if warehouse_raw else f"`{billing_table}`"
     usage_end_clause = (
         "\n    AND DATE(line_item_usage_start_date) <= @usage_end_date"
         if usage_end_date is not None
@@ -152,7 +156,7 @@ WITH normalized AS (
       0
     ) AS net_cost,
     line_item_usage_end_date AS source_export_time
-  FROM `{billing_table}`
+  FROM {table}
   WHERE line_item_usage_account_id = @account_id
     AND PARSE_DATE('%Y%m%d', billing_month) BETWEEN @export_partition_start AND @export_partition_end
     AND DATE(line_item_usage_start_date) >= @earliest_usage_date{usage_end_clause}
@@ -212,7 +216,13 @@ ORDER BY
 """.strip()
 
 
-def build_aws_unmatched_resource_query(*, billing_table: str, limit: int | None = None) -> str:
+def build_aws_unmatched_resource_query(
+    *,
+    billing_table: str,
+    limit: int | None = None,
+    warehouse_raw: bool = False,
+) -> str:
+    table = build_warehouse_cur_relation(billing_table) if warehouse_raw else f"`{billing_table}`"
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     return f"""
 WITH normalized AS (
@@ -263,7 +273,7 @@ WITH normalized AS (
     COALESCE(line_item_unblended_cost, line_item_blended_cost, 0) AS effective_cost,
     COALESCE(line_item_net_unblended_cost, line_item_unblended_cost, line_item_blended_cost, 0) AS net_cost,
     line_item_usage_end_date AS source_export_time
-  FROM `{billing_table}`
+  FROM {table}
   WHERE line_item_usage_account_id = @account_id
     AND PARSE_DATE('%Y%m%d', billing_month) BETWEEN @export_partition_start AND @export_partition_end
     AND DATE(line_item_usage_start_date) BETWEEN @usage_start_date AND @usage_end_date

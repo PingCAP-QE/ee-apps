@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, timedelta
 
+from cost_insight.common.bigquery import build_billing_bigquery_client
 from cost_insight.common.config import (
     DEFAULT_GCP_ACCOUNT_ID,
     AwsBillingSettings,
@@ -920,14 +921,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "validate-aws-reconciliation":
         if args.start_date >= args.end_date:
             raise ValueError("--start-date must be before --end-date")
-        from google.cloud import bigquery
         import boto3
 
         engine = build_engine(settings)
         try:
             result = run_aws_reconciliation(
                 engine,
-                bq_client=bigquery.Client(),
+                bq_client=build_billing_bigquery_client(),
                 ce_client=boto3.client("ce", region_name=args.aws_region),
                 source=resolve_reconciliation_source(
                     engine,

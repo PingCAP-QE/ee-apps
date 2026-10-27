@@ -5,6 +5,9 @@ from collections.abc import Iterator
 from datetime import date
 from typing import Any
 
+from cost_insight.common.bigquery import build_billing_bigquery_client
+from cost_insight.sources.aws_warehouse_compat import build_warehouse_cur_relation
+
 _BIGQUERY_TABLE_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$")
 _AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
 # Bound to the dedicated F04 source registered by migration 023.
@@ -24,7 +27,7 @@ def fetch_aws_flat_cur_summary_rows(
 ) -> Iterator[dict[str, Any]]:
     from google.cloud import bigquery
 
-    client = bigquery.Client()
+    client = build_billing_bigquery_client()
     query = build_aws_flat_cur_summary_query(
         billing_table=billing_table,
         export_partition_start=export_partition_start,
@@ -62,7 +65,21 @@ def build_aws_flat_cur_summary_query(
     export_partition_end: date,
     usage_end_date: date | None = None,
     limit: int | None = None,
+    warehouse_raw: bool = False,
 ) -> str:
+    table = (
+        build_warehouse_cur_relation(
+            billing_table,
+            tag_columns=(
+                "resource_tags_user_usedby",
+                "resource_tags_user_tenant",
+                "resource_tags_user_project",
+                "resource_tags_user_cluster",
+            ),
+        )
+        if warehouse_raw
+        else _quote_bigquery_table(billing_table)
+    )
     usage_end_clause = (
         "\n    AND DATE(line_item_usage_start_date) <= @usage_end_date"
         if usage_end_date is not None
@@ -101,7 +118,7 @@ WITH normalized AS (
     CAST(COALESCE(line_item_unblended_cost, line_item_blended_cost, 0) AS BIGNUMERIC)
       AS effective_cost,
     line_item_usage_end_date AS source_export_time
-  FROM {_quote_bigquery_table(billing_table)}
+  FROM {table}
   WHERE line_item_usage_account_id = @account_id
     AND DATE(bill_billing_period_start_date) BETWEEN @export_partition_start AND @export_partition_end
     AND DATE(line_item_usage_start_date) >= @earliest_usage_date{usage_end_clause}
