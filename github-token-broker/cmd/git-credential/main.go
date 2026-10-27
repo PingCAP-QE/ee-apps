@@ -1,18 +1,19 @@
 // Command git-credential-broker is a git credential helper that mints GitHub
 // App installation tokens from the in-cluster token broker.
 //
-// Usage (configured by git through credential.helper):
+// Git calls the helper as:
 //
-//	git-credential-broker get
-//	git-credential-broker store
-//	git-credential-broker erase
+//	git-credential-broker [-config <file>] get|store|erase
 //
-// Configuration comes from GIT_AUTH_* environment variables.
+// With -config the helper reads a JSON configuration file written by the Tekton
+// setup-git-auth step; without it the configuration comes from GIT_AUTH_*
+// environment variables.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -33,19 +34,18 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if len(args) != 1 {
-		return errors.New("expected exactly one operation: get, store or erase")
+	cfg, action, err := parseArgs(args)
+	if err != nil {
+		return err
 	}
-	action := args[0]
+	if action != "get" && action != "store" && action != "erase" {
+		return fmt.Errorf("unsupported operation %q, want get, store or erase", action)
+	}
 	request, err := gitcred.ParseRequest(stdin)
 	if err != nil {
 		return fmt.Errorf("parse credential request: %w", err)
 	}
 
-	cfg, err := gitcred.ConfigFromEnv(os.Getenv)
-	if err != nil {
-		return err
-	}
 	cfg.Logger = gitcred.NewLogger(stderr)
 	helper, err := gitcred.New(cfg)
 	if err != nil {
@@ -63,9 +63,40 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		// Tokens are cached by the helper itself; git's store operation has
 		// nothing to persist.
 		return nil
-	case "erase":
+	default: // erase
 		return helper.Erase(request)
-	default:
-		return fmt.Errorf("unsupported operation %q, want get, store or erase", action)
 	}
+}
+
+// parseArgs splits git's arguments (the configured flags plus the trailing
+// operation) into configuration and operation.
+func parseArgs(args []string) (gitcred.Config, string, error) {
+	if len(args) == 0 {
+		return gitcred.Config{}, "", errors.New("expected an operation: get, store or erase")
+	}
+	flags := flag.NewFlagSet("git-credential-broker", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	configPath := flags.String("config", "", "path to the JSON configuration file")
+	// Git appends the operation after any configured arguments, so parse the
+	// leading flags and treat the last argument as the operation.
+	action := args[len(args)-1]
+	if err := flags.Parse(args[:len(args)-1]); err != nil {
+		return gitcred.Config{}, "", fmt.Errorf("parse helper flags: %w", err)
+	}
+	if flags.NArg() > 0 {
+		return gitcred.Config{}, "", fmt.Errorf("unexpected helper arguments %v", flags.Args())
+	}
+
+	if *configPath != "" {
+		cfg, err := gitcred.ConfigFromFile(*configPath)
+		if err != nil {
+			return gitcred.Config{}, "", err
+		}
+		return cfg, action, nil
+	}
+	cfg, err := gitcred.ConfigFromEnv(os.Getenv)
+	if err != nil {
+		return gitcred.Config{}, "", err
+	}
+	return cfg, action, nil
 }

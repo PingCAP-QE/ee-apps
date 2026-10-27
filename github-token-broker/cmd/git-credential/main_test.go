@@ -59,6 +59,42 @@ func TestRunGetFailsOnBrokerError(t *testing.T) {
 	}
 }
 
+func TestRunWithConfigFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"token":"ghs_file","expires_at":"2026-10-27T12:55:00Z"}`)
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	caller := filepath.Join(dir, "sa.token")
+	if err := os.WriteFile(caller, []byte("caller-token\n"), 0o600); err != nil {
+		t.Fatalf("write caller token: %v", err)
+	}
+	configPath := filepath.Join(dir, "config.json")
+	content := `{"broker_url":"` + server.URL + `","token_file":"` + caller + `","cache_dir":"` + filepath.Join(dir, "cache") + `","permissions":{"contents":"read"}}`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	req := strings.NewReader("protocol=https\nhost=github.com\npath=pingcap/tidb.git\n\n")
+	if err := run(context.Background(), []string{"-config", configPath, "get"}, req, &stdout, &stderr); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got, want := stdout.String(), "username=x-access-token\npassword=ghs_file\n"; got != want {
+		t.Errorf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunRejectsUnexpectedArguments(t *testing.T) {
+	prepareEnv(t, "http://127.0.0.1:1")
+	var stdout, stderr bytes.Buffer
+	err := run(context.Background(), []string{"--verbose", "get"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "parse helper flags") {
+		t.Fatalf("run error = %v, want a flag parsing error", err)
+	}
+}
+
 func TestRunStoreAndEraseAreNoOps(t *testing.T) {
 	prepareEnv(t, "http://127.0.0.1:1")
 	for _, action := range []string{"store", "erase"} {
