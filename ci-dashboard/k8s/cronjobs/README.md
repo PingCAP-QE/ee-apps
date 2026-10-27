@@ -255,7 +255,12 @@ Notes:
 
 ## Daily Flaky Issue Sync
 
-`sync-flaky-issues` keeps `ci_l1_flaky_issues` in sync from the read-only `github_tickets` source and enriches branch information by calling the GitHub API when the source ticket payload does not carry branch details.
+`sync-flaky-issues` keeps `ci_l1_flaky_issues` in sync from the read-only `github_tickets` source and enriches issue/PR metadata by calling the GitHub API when the source ticket payload is incomplete.
+
+GitHub access goes through the in-cluster token broker: the CronJob runs as the
+`ci-dashboard` ServiceAccount in `apps`, and the job mints repository-scoped App
+installation tokens (`issues: write`, plus `pull_requests: read` for the PR
+fallback). No PAT secret is mounted.
 
 Render a CronJob manifest:
 
@@ -264,7 +269,6 @@ cd ci-dashboard
 ./scripts/render_flaky_issue_sync_cronjob.sh \
   --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
   --db-secret ci-dashboard-eq-prd-insight-db \
-  --github-secret prow-github \
   --ca-secret ci-dashboard-backfill-ca \
   > /tmp/ci-dashboard-sync-flaky-issues.yaml
 ```
@@ -279,7 +283,12 @@ Useful overrides:
 
 - `--schedule "0 2 * * *"` keeps the default once-per-day run.
 - `--time-zone Asia/Shanghai` keeps scheduling aligned with the local working timezone.
-- `--github-secret prow-github` injects `GITHUB_TOKEN` for GitHub API lookups during branch enrichment.
+- `--service-account ci-dashboard` is the default and must match the broker policy
+  caller (`apps/ci-dashboard`).
+- `--github-broker-url http://github-token-broker.github-token-broker.svc` overrides the broker endpoint.
+- `--github-secret prow-github` is an explicit opt-in PAT fallback: it mounts
+  `GITHUB_TOKEN` and sets `CI_DASHBOARD_GITHUB_PAT_FALLBACK=true`. Leave it unset
+  for the broker-only path.
 - `--batch-size 200` is a safe default because the flaky issue set is small.
 - `--concurrency-policy Forbid` avoids overlapping sync runs.
 

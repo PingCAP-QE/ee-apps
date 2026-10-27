@@ -7,12 +7,13 @@ cronjob_name="ci-dashboard-sync-flaky-issues"
 schedule="0 2 * * *"
 time_zone="Asia/Shanghai"
 db_secret="ci-dashboard-eq-prd-insight-db"
-github_secret="prow-github"
+github_secret=""
 github_token_key="token"
+github_broker_url="http://github-token-broker.github-token-broker.svc"
 batch_size="200"
 log_level="INFO"
 image_pull_policy="IfNotPresent"
-service_account=""
+service_account="ci-dashboard"
 ca_secret=""
 ca_key="ca.crt"
 cpu_request="250m"
@@ -41,12 +42,15 @@ Optional:
   --schedule CRON              Cron expression. Default: "0 2 * * *"
   --time-zone TZ               CronJob timeZone. Default: Asia/Shanghai
   --db-secret NAME             Secret containing TIDB_* or CI_DASHBOARD_DB_URL. Default: ci-dashboard-eq-prd-insight-db
-  --github-secret NAME         Secret containing GitHub API token. Default: prow-github
+  --github-secret NAME         Optional Secret containing a static GitHub token. Only for the
+                               explicit PAT fallback (sets CI_DASHBOARD_GITHUB_PAT_FALLBACK=true).
   --github-token-key NAME      Key inside GitHub secret. Default: token
+  --github-broker-url URL      GitHub token broker base URL.
+                               Default: http://github-token-broker.github-token-broker.svc
   --batch-size N               CI_DASHBOARD_BATCH_SIZE override. Default: 200
   --log-level LEVEL            CI_DASHBOARD_LOG_LEVEL override. Default: INFO
   --image-pull-policy P        Image pull policy. Default: IfNotPresent
-  --service-account NAME       Optional service account name.
+  --service-account NAME       ServiceAccount used to mint broker tokens. Default: ci-dashboard
   --ca-secret NAME             Optional secret containing CA file for TIDB SSL.
   --ca-key NAME                Key inside CA secret. Default: ca.crt
   --cpu-request VALUE          CPU request. Default: 250m
@@ -96,6 +100,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --github-token-key)
       github_token_key="${2:-}"
+      shift 2
+      ;;
+    --github-broker-url)
+      github_broker_url="${2:-}"
       shift 2
       ;;
     --batch-size)
@@ -186,6 +194,21 @@ EOF
 )
 fi
 
+github_pat_env_block=""
+if [[ -n "${github_secret}" ]]; then
+  github_pat_env_block=$(cat <<EOF
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: ${github_secret}
+                      key: ${github_token_key}
+                - name: CI_DASHBOARD_GITHUB_PAT_FALLBACK
+                  value: "true"
+EOF
+)
+  github_pat_env_block+=$'\n'
+fi
+
 time_zone_block=""
 if [[ -n "${time_zone}" ]]; then
   time_zone_block=$(cat <<EOF
@@ -263,12 +286,9 @@ ${service_account_block}
               env:
                 - name: PYTHONUNBUFFERED
                   value: "1"
-                - name: GITHUB_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: ${github_secret}
-                      key: ${github_token_key}
-                - name: CI_DASHBOARD_BATCH_SIZE
+                - name: CI_DASHBOARD_GITHUB_BROKER_URL
+                  value: "${github_broker_url}"
+${github_pat_env_block}                - name: CI_DASHBOARD_BATCH_SIZE
                   value: "${batch_size}"
                 - name: CI_DASHBOARD_LOG_LEVEL
                   value: "${log_level}"
