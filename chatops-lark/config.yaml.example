@@ -22,8 +22,8 @@ github:
 cherry_pick_invite:
   audit:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-  # Inviting collaborators needs administration: write, which is pending a
-  # governance review; this command still uses a static PAT.
+  # Optional broker fallback. The broker scopes administration: write to the
+  # ti-chi-bot fork repositories.
   github_token: "ghp_xxx"
 
 # Ask command configuration
