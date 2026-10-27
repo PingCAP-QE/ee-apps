@@ -45,12 +45,15 @@ func runCommandRegistryImageQuery(ctx context.Context, args []string) (string, e
 		return "", err
 	}
 
-	cfg, token, err := loadRegistryImageWorkflowConfig(ctx)
+	cfg, err := loadRegistryImageWorkflowConfig(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	gc, httpClient := newRegistryImageGitHubClient(token)
+	gc, httpClient, err := newRegistryImageGitHubClient(ctx, cfg)
+	if err != nil {
+		return "", err
+	}
 	return queryRegistryImage(ctx, params, gc, cfg, httpClient)
 }
 
@@ -382,9 +385,19 @@ func registryImageWorkflowRunMatchesRef(run *github.WorkflowRun, ref string) boo
 	return false
 }
 
-func newRegistryImageGitHubClient(token string) (*github.Client, *http.Client) {
-	httpClient := &http.Client{Timeout: registryImageHTTPTimeout}
-	return github.NewClient(httpClient).WithAuthToken(token), httpClient
+// newRegistryImageGitHubClient builds the API client scoped to the workflow
+// repository (actions: write covers both dispatch and polling) and a separate
+// unauthenticated client for signed artifact and log downloads.
+func newRegistryImageGitHubClient(ctx context.Context, cfg registryImageWorkflowConfig) (*github.Client, *http.Client, error) {
+	provider, err := gitHubClientFromContext(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	gc := provider.newClient(cfg.Owner+"/"+cfg.Repo, registryImagePermissions)
+	downloadClient := &http.Client{Timeout: registryImageHTTPTimeout}
+
+	return gc, downloadClient, nil
 }
 
 func buildWorkflowPageURL(cfg registryImageWorkflowConfig) string {

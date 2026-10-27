@@ -8,6 +8,7 @@ import (
 
 const (
 	ctxKeyGithubToken     = "github_token"
+	ctxKeyGitHubClient    = "github.client"
 	ctxKeyLarkSenderEmail = "lark.sender.email"
 
 	// Message types

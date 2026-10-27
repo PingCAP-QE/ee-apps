@@ -208,3 +208,28 @@ func TestGetOrgAdmins_RepoNotFound(t *testing.T) {
 		t.Errorf("getOrgAdmins() error message should mention not found, got: %v", err)
 	}
 }
+
+func TestGetOrgAdmins_PermissionDenied(t *testing.T) {
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	mux.HandleFunc("/repos/testorg/private/collaborators", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"message": "Resource not accessible by integration",
+		})
+	})
+
+	gc := github.NewClient(nil)
+	gc.BaseURL, _ = url.Parse(server.URL + "/")
+
+	_, err := getOrgAdmins(context.Background(), gc, "testorg", "private")
+	if err == nil {
+		t.Fatal("getOrgAdmins() should return an error when the token lacks administration: read")
+	}
+	if !strings.Contains(err.Error(), "failed to get collaborators") {
+		t.Fatalf("error = %v, want a collaborators error", err)
+	}
+}

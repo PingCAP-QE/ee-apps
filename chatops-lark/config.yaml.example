@@ -4,10 +4,26 @@
 app_id: <app_id> # or set it from cli options `--app-id`
 app_secret: <app_secret> # or set it from cli options `--app-secret`
 
+# GitHub App token broker client, shared by every command that calls the GitHub
+# API (/repo-admins, /cloud-image). Remove this block to disable the broker;
+# commands then only work with a static `github_token`.
+github:
+  # Optional. When the block is present and this is empty, the in-cluster
+  # service DNS name is used. GITHUB_TOKEN_BROKER_URL overrides this value.
+  broker_url: "http://github-token-broker.github-token-broker.svc"
+  # Projected ServiceAccount token used to authenticate to the broker.
+  # GITHUB_TOKEN_BROKER_TOKEN_FILE overrides this value.
+  broker_token_file: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  # Optional static token. It is used only when the broker denies the request,
+  # and every fallback is logged as a warning. Leave empty in production.
+  token: ""
+
 # Cherry pick configuration
 cherry_pick_invite:
   audit:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  # Inviting collaborators needs administration: write, which is pending a
+  # governance review; this command still uses a static PAT.
   github_token: "ghp_xxx"
 
 # Ask command configuration
@@ -44,6 +60,7 @@ registry_image:
   repo: "docker-image-controller" # Optional, defaults to docker-image-controller
   workflow: "query-image-tag.yml" # Optional, defaults to query-image-tag.yml
   ref: "main" # Optional, defaults to the repository default branch when omitted
+  # Optional broker fallback; prefer the top-level `github` block.
   github_token: "ghp_xxx"
 hotfix:
   api_url: "https://tibuild.pingcap.net/api/v2/hotfix" # API endpoint for hotfix operations
@@ -56,6 +73,7 @@ hotfix:
 repo_admins:
   audit:
     webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+  # Optional broker fallback; prefer the top-level `github` block.
   github_token: "ghp_xxx"
 
 # Debug mode
