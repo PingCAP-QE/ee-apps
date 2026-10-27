@@ -3,6 +3,11 @@
 > Historical migration design. References to `cost_raw_details` and its
 > collector describe the pre-retirement pipeline; current ingestion and
 > attribution use `cost_bq_export_summary_daily`.
+> As of 2026-10-27, the GCP default is
+> `warehouse-f80fbbe8e8.raw_gcp_billing.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6`
+> in `us-west1`. The old `gcp-digital-bi` source and label counts below record
+> historical validation; see the current
+> [warehouse cutover report](warehouse-billing-cutover-2026-10-27.md).
 
 ## Context
 

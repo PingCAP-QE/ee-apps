@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import Mock
 
 import google.auth
@@ -61,6 +62,21 @@ def test_billing_client_can_set_project_and_location_without_impersonation(monke
     client.assert_called_once_with(project="warehouse", location="us-west1")
 
 
+def test_billing_client_requires_explicit_project_before_impersonating(monkeypatch) -> None:
+    auth = Mock()
+    client = Mock()
+    monkeypatch.setattr(google.auth, "default", auth)
+    monkeypatch.setattr(bigquery, "Client", client)
+
+    with pytest.raises(ValueError, match="COST_INSIGHT_BILLING_BQ_PROJECT is required"):
+        build_billing_bigquery_client(
+            BillingBigQuerySettings(impersonate_service_account="reader@example.com")
+        )
+
+    auth.assert_not_called()
+    client.assert_not_called()
+
+
 def test_billing_client_does_not_fall_back_after_auth_failure(monkeypatch) -> None:
     monkeypatch.setattr(google.auth, "default", Mock(side_effect=ValueError("expired ADC")))
     client = Mock()
@@ -68,10 +84,26 @@ def test_billing_client_does_not_fall_back_after_auth_failure(monkeypatch) -> No
 
     with pytest.raises(ValueError, match="expired ADC"):
         build_billing_bigquery_client(
-            BillingBigQuerySettings(impersonate_service_account="reader@example.com")
+            BillingBigQuerySettings(
+                project="warehouse", impersonate_service_account="reader@example.com"
+            )
         )
 
     client.assert_not_called()
+
+
+def test_warehouse_profile_defaults_to_direct_workload_identity() -> None:
+    profile = Path(__file__).parents[1] / "config" / "warehouse-billing.env.example"
+    active = [
+        line.strip()
+        for line in profile.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert "unset COST_INSIGHT_BILLING_BQ_IMPERSONATE_SERVICE_ACCOUNT" in active
+    assert not any(
+        line.startswith("export COST_INSIGHT_BILLING_BQ_IMPERSONATE_SERVICE_ACCOUNT=")
+        for line in active
+    )
 
 
 def test_billing_settings_do_not_change_cache_project() -> None:

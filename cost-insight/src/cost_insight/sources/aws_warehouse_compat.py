@@ -8,7 +8,7 @@ _RESOURCE_TAG_COLUMN_RE = re.compile(r"^resource_tags_[A-Za-z0-9_]+$")
 
 
 def build_warehouse_cur_relation(billing_table: str, tag_columns: Iterable[str] = ()) -> str:
-    """Expose legacy CUR aliases without changing raw values or downstream cost logic."""
+    """Preserve CUR values with explicit physical bounds using existing DATE parameters."""
     if not _BIGQUERY_TABLE_RE.fullmatch(billing_table):
         raise ValueError(f"Invalid BigQuery table identifier: {billing_table!r}")
     tag_aliases = {
@@ -36,4 +36,6 @@ def build_warehouse_cur_relation(billing_table: str, tag_columns: Iterable[str] 
     FORMAT_DATE('%Y%m%d', DATE(raw.bill_billing_period_start_date)) AS billing_month,
   {tag_projections}
   FROM `{billing_table}` AS raw
+  WHERE raw.bill_billing_period_start_date >= TIMESTAMP(@export_partition_start)
+    AND raw.bill_billing_period_start_date < TIMESTAMP(DATE_ADD(@export_partition_end, INTERVAL 1 DAY))
 )"""

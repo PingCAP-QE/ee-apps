@@ -88,7 +88,12 @@ def test_warehouse_relation_maps_billing_period_and_legacy_tags_without_normaliz
     relation = build_warehouse_cur_relation(_TABLE)
 
     assert relation.startswith("(\n  SELECT\n    raw.*,")
-    assert relation.endswith(f"FROM `{_TABLE}` AS raw\n)")
+    assert f"FROM `{_TABLE}` AS raw\n" in relation
+    assert "raw.bill_billing_period_start_date >= TIMESTAMP(@export_partition_start)" in relation
+    assert (
+        "raw.bill_billing_period_start_date < "
+        "TIMESTAMP(DATE_ADD(@export_partition_end, INTERVAL 1 DAY))"
+    ) in relation
     assert "FORMAT_DATE('%Y%m%d', DATE(raw.bill_billing_period_start_date)) AS billing_month" in relation
     for column, key in (
         ("tag_used_by", "user_usedby"),

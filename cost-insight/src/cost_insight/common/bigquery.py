@@ -12,6 +12,10 @@ def build_billing_bigquery_client(settings: BillingBigQuerySettings | None = Non
     from google.cloud import bigquery
 
     resolved = settings or load_settings(require_database=False).billing_bigquery
+    if resolved.impersonate_service_account and not resolved.project:
+        raise ValueError(
+            "COST_INSIGHT_BILLING_BQ_PROJECT is required when impersonating a billing SA"
+        )
     kwargs: dict[str, Any] = {}
     if resolved.project:
         kwargs["project"] = resolved.project

@@ -3,6 +3,11 @@
 > Historical migration design. The raw compatibility pipeline described here
 > was retired by [Cost Schema Retirement Design](cost-schema-retirement-design.md).
 > Current operations use the billing summary pipeline documented in the README.
+> As of 2026-10-27, its GCP default is
+> `warehouse-f80fbbe8e8.raw_gcp_billing.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6`
+> in `us-west1`. The `gcp-digital-bi` source and scan measurements below are
+> historical, not current configuration guidance; see the
+> [warehouse cutover report](warehouse-billing-cutover-2026-10-27.md).
 
 ## Context
 

@@ -14,7 +14,11 @@ backfill costs, or republish attribution/resource-serving facts.
 
 The new billing-only client supports project, location and short-lived SA
 impersonation. All billing exporters (including resource reads and reconciliation)
-use it. Unset options retain ADC defaults. GCS cache clients are unchanged. A
+use it. Unset options retain ADC defaults. Impersonation requires an explicit
+billing project and fails before credential/client construction if it is absent.
+The staged profile now defaults to direct WI, unsets any inherited impersonation
+setting, and documents local impersonation as an explicit opt-in after sourcing.
+GCS cache clients are unchanged. A
 production caller must separately have permission to impersonate the target SA;
 local impersonation success does not establish the runtime KSA's permissions.
 
@@ -26,8 +30,9 @@ The default source now matches the live warehouse export:
 warehouse-f80fbbe8e8.raw_gcp_billing.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6
 ```
 
-Using the staged profile, `SESSION_USER()` confirmed the target SA and the client
-reported the expected query project/location. The application's existing
+Using the staged project/location settings with explicit local-ADC
+impersonation, `SESSION_USER()` confirmed the target SA and the client reported
+the expected query project/location. The application's existing
 `build_gcp_billing_summary_query` executed successfully for
 `pingcap-testing-account`, export partition and earliest usage date `2026-10-26`.
 Only a BigQuery `SELECT` ran; no database was required or connected.
@@ -96,8 +101,13 @@ The raw data can retain attribution dimensions, but a table-name-only switch
 will not work: derive the billing month from `bill_billing_period_start_date`,
 extract nested `user_usedby`, `user_tenant`, `user_project`, `user_cluster` tags
 for legacy aliases, and map nested tags to split/F04 flattened column names.
-A minimal compatibility relation now implements these aliases. All seven
-query builders accept explicit `warehouse_raw=True` while their default SQL
+A minimal compatibility relation now implements these aliases and directly
+bounds the physical billing-period timestamp with the existing DATE parameters
+(`>= TIMESTAMP(@export_partition_start)` and `<` the day after the inclusive
+export end). This avoids relying on optimizer folding of the derived legacy
+`billing_month` expression for partition pruning. `raw.*` preserves the schema;
+outer queries can still prune unused columns, and scan estimates/caps remain
+required. All seven query builders accept explicit `warehouse_raw=True` while their default SQL
 fingerprints remain unchanged. This mode is available for read-only validation,
 not enabled in importer fetch/dispatch or production source profiles. The
 stable source contract must be settled before wiring that production route.
@@ -370,8 +380,13 @@ separated from lack of permission by that response).
 
 ## Local verification
 
-- Full suite: **540 passed**, total coverage **90.94%** (90% gate passed).
+- Full suite after review hardening: **552 passed**, total coverage **91.42%**
+  (90% gate passed).
 - New billing client and warehouse relation modules: **100%** statement coverage.
 - Existing default query fingerprints are preserved for all seven AWS builders.
+- All ten billing fetch entrypoints have regression tests forbidding a plain
+  BigQuery client in place of the configured billing factory.
+- All seven explicit-physical-bound raw queries passed another BigQuery dry-run
+  compilation after the review changes; no data query was executed for that check.
 - Focused lint for the client/config/exporter changes and new tests: passed.
 - `git diff --check`: passed.

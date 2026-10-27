@@ -124,18 +124,29 @@ optional settings; unset values preserve ADC client defaults:
 
 | Env | Meaning |
 | --- | --- |
-| `COST_INSIGHT_BILLING_BQ_PROJECT` | Query-job and impersonation quota project |
+| `COST_INSIGHT_BILLING_BQ_PROJECT` | Query-job and impersonation quota project; required with impersonation |
 | `COST_INSIGHT_BILLING_BQ_LOCATION` | Query location, e.g. `us-west1` (not `US`) |
 | `COST_INSIGHT_BILLING_BQ_IMPERSONATE_SERVICE_ACCOUNT` | Target SA for short-lived, keyless impersonation |
 
 Use [config/warehouse-billing.env.example](config/warehouse-billing.env.example)
-as a **staged** profile. The caller needs permission to impersonate the target SA;
-the target needs query-job permission and access to the selected tables. Its
-approved table access expires on **2027-04-25**. A pod already bound directly to
-that GSA via Workload Identity should leave the impersonation option **unset**;
-it does not need a self-impersonation hop. The existing shared `ci-dashboard`
-GSA was verified to lack `iam.serviceAccounts.getAccessToken` on this target.
-Billing settings do not change GCS cache storage/BigQuery clients or their project.
+as a **staged** profile. It defaults to direct Workload Identity and explicitly
+unsets impersonation, so a pod already bound to the target GSA does not request
+a self-impersonation hop. The target needs query-job permission and table access;
+its approved access expires on **2027-04-25**.
+
+For local ADC, explicitly opt in **after** sourcing the profile:
+
+```bash
+source config/warehouse-billing.env.example
+export COST_INSIGHT_BILLING_BQ_IMPERSONATE_SERVICE_ACCOUNT=hxprog-e5d756e67e8641f386ab0e9@warehouse-f80fbbe8e8.iam.gserviceaccount.com
+```
+
+That local/cross-identity caller needs permission to impersonate the target SA.
+An explicit billing query project is required with impersonation; missing it
+fails before credential/client creation instead of charging an ambient ADC
+project. The shared `ci-dashboard` GSA was verified to lack
+`iam.serviceAccounts.getAccessToken` on this target. Billing settings do not
+change GCS cache storage/BigQuery clients or their project.
 
 The GCP default now points at the schema-compatible warehouse raw export. The new
 comparison sources for the other vendors are:
