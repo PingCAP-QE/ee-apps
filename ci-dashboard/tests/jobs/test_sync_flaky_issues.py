@@ -9,8 +9,10 @@ import pytest
 from sqlalchemy import text
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, Settings
+from ci_dashboard.common.github_auth import GitHubTokenError, GitHubTokenRequest
 from ci_dashboard.jobs.state_store import get_job_state
 from ci_dashboard.jobs.sync_flaky_issues import (
+    FlakyIssuePrLinkRow,
     _build_flaky_issue_row,
     _build_issue_pr_links_upsert_statement,
     _build_upsert_statement,
@@ -19,6 +21,7 @@ from ci_dashboard.jobs.sync_flaky_issues import (
     _extract_issue_lifecycle,
     _fallback_issue_branch,
     _fetch_github_api_json,
+    _fetch_linked_pr_metadata_rows,
     _normalize_issue_comments,
     _parse_case_name,
     _parse_datetime,
@@ -1841,3 +1844,155 @@ def test_upsert_flaky_issues_accepts_empty_rows_and_tidb_statement(sqlite_engine
     assert "ON DUPLICATE KEY UPDATE" in str(statement)
     issue_pr_links_statement = _build_issue_pr_links_upsert_statement(tidb_connection)
     assert "ON DUPLICATE KEY UPDATE" in str(issue_pr_links_statement)
+
+
+class _FakeGitHubTokenBroker:
+    def __init__(self, token: str | None) -> None:
+        self.token = token
+        self.requests: list[GitHubTokenRequest] = []
+
+    def token_for(self, request: GitHubTokenRequest) -> str | None:
+        self.requests.append(request)
+        return self.token
+
+
+class _JsonResponse:
+    def __init__(self, payload: str) -> None:
+        self._payload = payload.encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def read(self) -> bytes:
+        return self._payload
+
+
+def _install_fake_broker(monkeypatch: pytest.MonkeyPatch, token: str | None) -> _FakeGitHubTokenBroker:
+    broker = _FakeGitHubTokenBroker(token)
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues._get_github_token_broker",
+        lambda: broker,
+    )
+    return broker
+
+
+def test_fetch_github_api_json_mints_broker_token_per_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broker = _install_fake_broker(monkeypatch, "ghs_scoped")
+    seen_auth: list[str | None] = []
+
+    def _fake_urlopen(request, timeout=0):
+        seen_auth.append(request.get_header("Authorization"))
+        return _JsonResponse(json.dumps({"ok": True}))
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.urllib_request.urlopen",
+        _fake_urlopen,
+    )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues._last_github_api_request_monotonic",
+        None,
+    )
+
+    _fetch_github_api_json("https://api.github.com/repos/pingcap/tidb/issues/1")
+    _fetch_github_api_json("https://api.github.com/repos/pingcap/tidb/pulls/7")
+
+    assert seen_auth == ["Bearer ghs_scoped", "Bearer ghs_scoped"]
+    assert [(item.repo, dict(item.permissions)) for item in broker.requests] == [
+        ("pingcap/tidb", {"issues": "write"}),
+        ("pingcap/tidb", {"pull_requests": "read"}),
+    ]
+
+
+def test_fetch_github_api_json_omits_authorization_without_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_broker(monkeypatch, None)
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_must_not_be_used")
+    seen_auth: list[str | None] = []
+
+    def _fake_urlopen(request, timeout=0):
+        seen_auth.append(request.get_header("Authorization"))
+        return _JsonResponse(json.dumps({"ok": True}))
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.urllib_request.urlopen",
+        _fake_urlopen,
+    )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues._last_github_api_request_monotonic",
+        None,
+    )
+
+    _fetch_github_api_json("https://api.github.com/repos/pingcap/tidb/issues/1")
+
+    assert seen_auth == [None]
+
+
+def test_fetch_github_api_json_does_not_provision_tokens_for_unknown_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    broker = _install_fake_broker(monkeypatch, "ghs_scoped")
+    seen_auth: list[str | None] = []
+
+    def _fake_urlopen(request, timeout=0):
+        seen_auth.append(request.get_header("Authorization"))
+        return _JsonResponse(json.dumps({"ok": True}))
+
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.urllib_request.urlopen",
+        _fake_urlopen,
+    )
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues._last_github_api_request_monotonic",
+        None,
+    )
+
+    _fetch_github_api_json("https://api.github.com/rate_limit")
+
+    assert seen_auth == [None]
+    assert broker.requests == []
+
+
+def test_enrich_issue_row_propagates_broker_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_issue_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(GitHubTokenError("token broker request failed")),
+    )
+
+    with pytest.raises(GitHubTokenError):
+        _enrich_issue_row_for_pr_fallback(
+            {"repo": "tikv/pd", "number": 9, "body": None, "comments": None}
+        )
+
+
+def test_linked_pr_metadata_propagates_broker_failures(
+    sqlite_engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ci_dashboard.jobs.sync_flaky_issues.fetch_pull_details_via_github_api",
+        lambda **_: (_ for _ in ()).throw(GitHubTokenError("token broker request failed")),
+    )
+    link_rows = [
+        FlakyIssuePrLinkRow(
+            issue_repo="pingcap/tidb",
+            issue_number=1,
+            pr_repo="pingcap/tidb",
+            pr_number=2,
+            pr_url="https://github.com/pingcap/tidb/pull/2",
+            pr_title="fix flaky",
+            link_type="cross_reference",
+            source_event_type="timeline",
+            source_event_id=None,
+            linked_at=datetime(2026, 10, 1),
+            source_ticket_updated_at=datetime(2026, 10, 1),
+        )
+    ]
+
+    with sqlite_engine.begin() as connection, pytest.raises(GitHubTokenError):
+        _fetch_linked_pr_metadata_rows(connection, link_rows)

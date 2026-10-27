@@ -43,7 +43,9 @@ Optional:
   --namespace NAME          Kubernetes namespace. Default: apps
   --image IMAGE             Jobs image. Default: ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:latest
   --db-secret NAME          Secret containing TIDB_* or CI_DASHBOARD_DB_URL. Default: ci-dashboard-eq-prd-insight-db
-  --github-secret NAME      Optional secret containing GitHub API token.
+  --github-secret NAME      Optional static GitHub token secret; enables the
+                            explicit PAT fallback (CI_DASHBOARD_GITHUB_PAT_FALLBACK=true).
+                            Prefer the token broker with --service-account ci-dashboard.
   --github-token-key NAME   Key inside GitHub secret. Default: token
   --job-name NAME           Fixed Job name. Default: ci-dashboard-backfill-<timestamp>
   --batch-size N            CI_DASHBOARD_BATCH_SIZE override. Default: 2000
@@ -245,6 +247,8 @@ if [[ -n "${github_secret}" ]]; then
                 secretKeyRef:
                   name: ${github_secret}
                   key: ${github_token_key}
+            - name: CI_DASHBOARD_GITHUB_PAT_FALLBACK
+              value: "true"
 EOF
 )
 fi

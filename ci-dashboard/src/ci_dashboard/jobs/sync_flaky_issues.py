@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import json
 import logging
-import os
 import re
 import time
 from dataclasses import dataclass
@@ -16,6 +15,12 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from ci_dashboard.common.config import Settings
+from ci_dashboard.common.github_auth import (
+    GitHubTokenBroker,
+    GitHubTokenError,
+    load_github_auth_settings,
+    token_request_for_url,
+)
 from ci_dashboard.common.models import (
     BackfillFlakyIssuePrLinksSummary,
     SyncFlakyIssuesSummary,
@@ -58,6 +63,7 @@ GITHUB_API_RATE_LIMIT_RETRIES = 3
 GITHUB_API_RETRY_BASE_DELAY_SECONDS = 2.0
 GITHUB_API_MAX_RETRY_DELAY_SECONDS = 30.0
 _last_github_api_request_monotonic: float | None = None
+_GITHUB_TOKEN_BROKER: GitHubTokenBroker | None = None
 
 
 @dataclass(frozen=True)
@@ -329,6 +335,20 @@ def fetch_pull_details_via_github_api(
     return payload
 
 
+def _get_github_token_broker() -> GitHubTokenBroker:
+    global _GITHUB_TOKEN_BROKER
+    if _GITHUB_TOKEN_BROKER is None:
+        _GITHUB_TOKEN_BROKER = GitHubTokenBroker(load_github_auth_settings())
+    return _GITHUB_TOKEN_BROKER
+
+
+def _github_token_for_url(url: str) -> str | None:
+    request = token_request_for_url(url)
+    if request is None:
+        return None
+    return _get_github_token_broker().token_for(request)
+
+
 def _fetch_github_api_json(url: str) -> Any:
     global _last_github_api_request_monotonic
     headers = {
@@ -336,7 +356,7 @@ def _fetch_github_api_json(url: str) -> Any:
         "User-Agent": "ci-dashboard-sync-flaky-issues",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    token = (os.environ.get("GITHUB_TOKEN") or "").strip()
+    token = _github_token_for_url(url)
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
@@ -474,6 +494,8 @@ def _enrich_issue_row_for_pr_fallback(row: dict[str, Any]) -> dict[str, Any]:
             repo=repo,
             issue_number=int(row["number"]),
         )
+    except GitHubTokenError:
+        raise
     except Exception:
         LOG.exception(
             "failed to enrich flaky issue body for PR fallback %s#%s",
@@ -869,6 +891,8 @@ def _fetch_linked_pr_metadata_rows(
                     pr_number=pr_number,
                 )
             )
+        except GitHubTokenError:
+            raise
         except Exception:
             failed += 1
             LOG.exception("failed to fetch linked flaky PR %s#%s", pr_repo, pr_number)

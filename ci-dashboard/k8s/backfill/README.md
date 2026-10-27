@@ -79,9 +79,13 @@ For a one-off forced flaky issue stale cleanup after an intentional large
   --force-flaky-stale-cleanup true \
   --image ghcr.io/pingcap-qe/ee-apps/ci-dashboard-jobs:<tag> \
   --db-secret ci-dashboard-eq-prd-insight-db \
-  --github-secret prow-github \
+  --service-account ci-dashboard \
   > /tmp/ci-dashboard-sync-flaky-issues-once.yaml
 ```
+
+The job authenticates to the in-cluster GitHub token broker through the
+`ci-dashboard` ServiceAccount. Only pass `--github-secret <name>` if you
+deliberately want the logged `GITHUB_TOKEN` fallback.
 
 ## 4. Watch Progress
 

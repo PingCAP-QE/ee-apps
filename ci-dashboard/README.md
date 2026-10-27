@@ -13,7 +13,7 @@ Current scope in this scaffold:
 - `ci-sync-pr-events`
 - `ci-sync-flaky-issues`
 
-`sync-flaky-issues` may call the GitHub API to recover branch metadata for flaky issues when the read-only `github_tickets` source omits the issue body or branch details. In Kubernetes, inject a `GITHUB_TOKEN` runtime secret for that job.
+`sync-flaky-issues` may call the GitHub API to recover issue/PR metadata when the read-only `github_tickets` source omits it. In Kubernetes, the job authenticates to the in-cluster `github-token-broker` with its ServiceAccount (`serviceAccountName: ci-dashboard`) and requests repository-scoped App installation tokens. A static `GITHUB_TOKEN` is used only when `CI_DASHBOARD_GITHUB_PAT_FALLBACK=true` is set explicitly; broker failures otherwise fail the job instead of silently degrading to a PAT.
   - `ci-refresh-build-derived`
   - `backfill-range` for idempotent date-window re-imports
   - one-off Kubernetes backfill helpers under `k8s/backfill/`
@@ -93,6 +93,7 @@ Notes:
 - `backfill-range` is stateless and does not update `ci_job_state`, so the same time window can be re-imported safely
 - `CI_DASHBOARD_REFRESH_BUILD_LIMIT` controls how many impacted builds one `refresh-build-derived` run will process before checkpointing and continuing in the next CronJob run; the default is `5000`, valid values are positive integers, and smaller values trade shorter/faster runs for more CronJob passes before backlog catch-up finishes
 - `CI_DASHBOARD_FORCE_FLAKY_STALE_CLEANUP=true` lets `sync-flaky-issues` apply stale flaky issue cleanup after an intentional large `flaky-test` label purge; empty source sets still skip cleanup, and the one-off Job renderer exposes this as `--force-flaky-stale-cleanup true`
+- `CI_DASHBOARD_GITHUB_BROKER_URL` selects the GitHub token broker used by `sync-flaky-issues` (default `http://github-token-broker.github-token-broker.svc`; an empty value disables the broker). `CI_DASHBOARD_GITHUB_BROKER_TOKEN_FILE` overrides the projected ServiceAccount token path, and `CI_DASHBOARD_GITHUB_PAT_FALLBACK=true` opts into a logged `GITHUB_TOKEN` fallback.
 - `scripts/render_backfill_job.sh` renders a one-off Kubernetes Job manifest for GKE backfill runs
 - `scripts/render_flaky_issue_sync_cronjob.sh` renders a recurring Kubernetes CronJob manifest for daily flaky issue sync
 - `scripts/render_jenkins_worker_deployment.sh` renders the V3 Jenkins event worker Deployment manifest
