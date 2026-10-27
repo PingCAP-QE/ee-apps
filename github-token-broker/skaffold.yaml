@@ -22,6 +22,24 @@ build:
           org.opencontainers.image.description: In-cluster GitHub App token broker
           org.opencontainers.image.licenses: MIT
           org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
+    # Git credential helper used by Tekton tasks. The image keeps a shell so a
+    # Tekton step can install the statically linked binary into the shared
+    # $HOME of a build pod.
+    - image: github-token-broker-git-credential
+      ko:
+        fromImage: alpine:3.24
+        main: ./cmd/git-credential
+        dependencies:
+          paths:
+            - "**/*.go"
+            - "go.mod"
+            - "go.sum"
+        flags:
+          - -trimpath
+        labels:
+          org.opencontainers.image.description: Git credential helper that mints GitHub App tokens from the in-cluster broker
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
   local:
     useDockerCLI: true
     useBuildkit: true

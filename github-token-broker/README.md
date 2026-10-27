@@ -211,6 +211,44 @@ Dockerfile to maintain:
 skaffold build --push=false -f skaffold.yaml
 ```
 
+The same Skaffold config publishes two images:
+
+| Image | Purpose |
+|---|---|
+| `github-token-broker` | the broker server (`distroless/static`) |
+| `github-token-broker-git-credential` | git credential helper used by CI steps; Alpine base so a Tekton step can install the statically linked helper into a build pod's shared `$HOME` |
+
+## Git credential helper
+
+`cmd/git-credential` is a
+[git credential helper](https://git-scm.com/docs/gitcredentials) for workloads
+that need GitHub credentials without a PAT — Tekton checkout steps and build
+steps that fetch private Go, Cargo or npm dependencies.
+
+```bash
+# invoked by git as: credential.helper = /path/to/git-credential
+git-credential get      # reads the request from stdin, prints username/password
+git-credential erase    # drops the cached token after a rejected credential
+```
+
+It authenticates to the broker with the pod ServiceAccount token, requests
+`contents: read` (configurable) for the repository in the git request and caches
+each token on disk until 5 minutes before expiry, so a build longer than one
+hour keeps working without minting on every git operation.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GIT_AUTH_BROKER_URL` | `http://github-token-broker.github-token-broker.svc` | broker base URL |
+| `GIT_AUTH_BROKER_TOKEN_FILE` | `/var/run/secrets/kubernetes.io/serviceaccount/token` | caller ServiceAccount token |
+| `GIT_AUTH_PERMISSIONS` | `contents=read` | `name=level` pairs separated by `;` |
+| `GIT_AUTH_HOSTS` | `github.com` | comma-separated hosts allowed to receive a token |
+| `GIT_AUTH_CACHE_DIR` | user cache dir | minted token cache |
+| `GIT_AUTH_FALLBACK_CREDENTIALS` | unset | optional `.git-credentials` file used when the broker denies the request |
+| `GIT_AUTH_STATE_FILE` | unset | records the credential source (`app` or `pat`) for auditing |
+| `GIT_AUTH_TIMEOUT` | `10s` | per-request timeout |
+
+The helper never receives the App private key and never logs token material.
+
 ## Security notes
 
 - Tokens are never logged; only the caller, repository, permissions and source
