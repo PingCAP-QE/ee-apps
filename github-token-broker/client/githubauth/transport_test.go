@@ -201,6 +201,245 @@ func TestTransportReturnsErrorWithoutFallback(t *testing.T) {
 	}
 }
 
+func TestTransportPinnedRepoMintsForNonRepositoryRequests(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		calls    int
+		lastRepo string
+		lastPerm map[string]string
+	)
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		var body struct {
+			Repo        string            `json:"repo"`
+			Permissions map[string]string `json:"permissions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode broker request: %v", err)
+		}
+		lastRepo, lastPerm = body.Repo, body.Permissions
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token":      "pinned-token",
+			"expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		})
+	}))
+	defer broker.Close()
+
+	var auths []string
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		auths = append(auths, req.Header.Get("Authorization"))
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(http.NoBody), Request: req}, nil
+	})
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("sa-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tr := NewTransport(Config{
+		BrokerURL:   broker.URL,
+		TokenFile:   tokenFile,
+		Repo:        "pingcap/tidb",
+		Permissions: map[string]string{"members": "read", "administration": "read"},
+		Base:        base,
+	})
+	client := &http.Client{Transport: tr}
+
+	for _, path := range []string{
+		"https://api.github.com/orgs/pingcap/members?role=admin",
+		"https://api.github.com/users/pingcap",
+		"https://api.github.com/repos/pingcap/tidb/collaborators",
+	} {
+		resp, err := client.Get(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("broker calls = %d, want 1 (same repo and permissions are cached)", calls)
+	}
+	if lastRepo != "pingcap/tidb" {
+		t.Fatalf("broker repo = %q, want pinned repo", lastRepo)
+	}
+	if !reflect.DeepEqual(lastPerm, map[string]string{"members": "read", "administration": "read"}) {
+		t.Fatalf("broker permissions = %#v, want the pinned permission set", lastPerm)
+	}
+	for _, auth := range auths {
+		if auth != "Bearer pinned-token" {
+			t.Fatalf("Authorization = %q, want the pinned broker token", auth)
+		}
+	}
+}
+
+func TestTransportPinnedRepoDoesNotLeakToOtherHosts(t *testing.T) {
+	var calls int
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	defer broker.Close()
+
+	var auth string
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		auth = req.Header.Get("Authorization")
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(http.NoBody), Request: req}, nil
+	})
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("sa-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: NewTransport(Config{
+		BrokerURL:   broker.URL,
+		TokenFile:   tokenFile,
+		Repo:        "pingcap/tidb",
+		Permissions: map[string]string{"members": "read"},
+		Base:        base,
+	})}
+
+	resp, err := client.Get("https://objects.githubusercontent.com/artifact?sig=x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if calls != 0 {
+		t.Fatalf("broker calls = %d, want 0 for non-GitHub API hosts", calls)
+	}
+	if auth != "" {
+		t.Fatalf("Authorization = %q, want none for signed download URLs", auth)
+	}
+}
+
+func TestTransportPinnedRepoReportsFallback(t *testing.T) {
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer broker.Close()
+
+	var auth string
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		auth = req.Header.Get("Authorization")
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(http.NoBody), Request: req}, nil
+	})
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("sa-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	type fallbackEvent struct {
+		repo string
+		err  error
+	}
+	var events []fallbackEvent
+	client := &http.Client{Transport: NewTransport(Config{
+		BrokerURL:     broker.URL,
+		TokenFile:     tokenFile,
+		FallbackToken: "pat-token",
+		Repo:          "pingcap/tidb",
+		Permissions:   map[string]string{"members": "read"},
+		Base:          base,
+		OnFallback: func(repo string, err error) {
+			events = append(events, fallbackEvent{repo: repo, err: err})
+		},
+	})}
+
+	resp, err := client.Get("https://api.github.com/orgs/pingcap/members")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if auth != "Bearer pat-token" {
+		t.Fatalf("Authorization = %q, want the fallback token", auth)
+	}
+	if len(events) != 1 {
+		t.Fatalf("fallback events = %d, want 1", len(events))
+	}
+	if events[0].repo != "pingcap/tidb" || events[0].err == nil {
+		t.Fatalf("fallback event = %#v, want repo and error", events[0])
+	}
+}
+
+func TestTransportPinnedRepoReturnsErrorWithoutFallback(t *testing.T) {
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	defer broker.Close()
+
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatal("GitHub request must not be sent without a token")
+		return nil, nil
+	})
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("sa-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: NewTransport(Config{
+		BrokerURL:   broker.URL,
+		TokenFile:   tokenFile,
+		Repo:        "pingcap/tidb",
+		Permissions: map[string]string{"members": "read"},
+		Base:        base,
+	})}
+	if _, err := client.Get("https://api.github.com/orgs/pingcap/members"); err == nil {
+		t.Fatal("expected broker error")
+	}
+}
+
+func TestTransportSeparatesCacheEntriesByPermissionSet(t *testing.T) {
+	var (
+		mu        sync.Mutex
+		permCalls []map[string]string
+	)
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		var body struct {
+			Permissions map[string]string `json:"permissions"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		permCalls = append(permCalls, body.Permissions)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token":"tok","expires_at":"` + time.Now().Add(time.Hour).UTC().Format(time.RFC3339) + `"}`))
+	}))
+	defer broker.Close()
+
+	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(http.NoBody), Request: req}, nil
+	})
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("sa-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: NewTransport(Config{
+		BrokerURL: broker.URL,
+		TokenFile: tokenFile,
+		Base:      base,
+	})}
+
+	// Two permission sets for the same repository must not share a cache entry.
+	for i := 0; i < 2; i++ {
+		for _, path := range []string{
+			"https://api.github.com/repos/o/r/actions/runs",
+			"https://api.github.com/repos/o/r/issues/1",
+		} {
+			resp, err := client.Get(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = resp.Body.Close()
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(permCalls) != 2 {
+		t.Fatalf("broker calls = %d, want 2 (one per permission set)", len(permCalls))
+	}
+}
+
 func TestPermissionsForRequest(t *testing.T) {
 	tests := []struct {
 		name   string

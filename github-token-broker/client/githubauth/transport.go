@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,18 @@ type Config struct {
 	// FallbackToken is used when the broker is disabled, the request is not
 	// repository-scoped, or the broker denies the request. It may be empty.
 	FallbackToken string
+	// Repo pins every GitHub API request to this repository. When set, the
+	// token is minted once for Repo and Permissions, regardless of the request
+	// path, which also covers endpoints outside /repos/{owner}/{repo} (for
+	// example /orgs/{org}/members) and endpoints whose permission cannot be
+	// derived from the path.
+	Repo string
+	// Permissions is the permission set requested when Repo is set. Empty means
+	// the broker's default (contents: read).
+	Permissions map[string]string
+	// OnFallback, when set, is called every time the broker request fails and
+	// FallbackToken is used instead.
+	OnFallback func(repo string, err error)
 	// Base is the transport used for GitHub API requests. Broker requests use
 	// the default transport.
 	Base http.RoundTripper
@@ -42,17 +55,14 @@ type Transport struct {
 	brokerURL     string
 	tokenFile     string
 	fallbackToken string
+	pinnedRepo    string
+	pinnedPerms   map[string]string
+	onFallback    func(repo string, err error)
 	base          http.RoundTripper
 	brokerClient  *http.Client
 
 	mu    sync.Mutex
-	cache map[cacheKey]cachedToken
-}
-
-type cacheKey struct {
-	repo         string
-	contents     string
-	pullRequests string
+	cache map[string]cachedToken
 }
 
 type cachedToken struct {
@@ -79,13 +89,27 @@ func NewTransport(cfg Config) *Transport {
 		brokerURL:     strings.TrimRight(cfg.BrokerURL, "/"),
 		tokenFile:     tokenFile,
 		fallbackToken: cfg.FallbackToken,
+		pinnedRepo:    strings.Trim(strings.TrimSpace(cfg.Repo), "/"),
+		pinnedPerms:   copyPermissions(cfg.Permissions),
+		onFallback:    cfg.OnFallback,
 		base:          base,
 		brokerClient: &http.Client{
 			Timeout:   defaultBrokerTimeout,
 			Transport: http.DefaultTransport,
 		},
-		cache: map[cacheKey]cachedToken{},
+		cache: map[string]cachedToken{},
 	}
+}
+
+func copyPermissions(permissions map[string]string) map[string]string {
+	if len(permissions) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(permissions))
+	for name, level := range permissions {
+		out[name] = level
+	}
+	return out
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -105,15 +129,14 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (t *Transport) tokenFor(ctx context.Context, req *http.Request, repo string, scoped bool, perms map[string]string) (string, error) {
+	if t.pinnedRepo != "" {
+		repo, scoped, perms = t.pinnedRepo, true, t.pinnedPerms
+	}
 	if t.brokerURL == "" || !scoped || !strings.EqualFold(req.URL.Hostname(), "api.github.com") {
 		return t.fallbackToken, nil
 	}
 
-	key := cacheKey{
-		repo:         repo,
-		contents:     perms["contents"],
-		pullRequests: perms["pull_requests"],
-	}
+	key := cacheKeyFor(repo, perms)
 	now := time.Now()
 	t.mu.Lock()
 	cached, ok := t.cache[key]
@@ -125,6 +148,9 @@ func (t *Transport) tokenFor(ctx context.Context, req *http.Request, repo string
 	token, expiresAt, err := t.mint(ctx, repo, perms)
 	if err != nil {
 		if t.fallbackToken != "" {
+			if t.onFallback != nil {
+				t.onFallback(repo, err)
+			}
 			return t.fallbackToken, nil
 		}
 		return "", err
@@ -135,6 +161,30 @@ func (t *Transport) tokenFor(ctx context.Context, req *http.Request, repo string
 		t.mu.Unlock()
 	}
 	return token, nil
+}
+
+// cacheKeyFor builds a stable cache key for a repository and permission set.
+// The key must include every permission because a token minted for one
+// permission set cannot serve a request that needs another.
+func cacheKeyFor(repo string, perms map[string]string) string {
+	if len(perms) == 0 {
+		return repo + "|"
+	}
+	names := make([]string, 0, len(perms))
+	for name := range perms {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var b strings.Builder
+	b.WriteString(repo)
+	for _, name := range names {
+		b.WriteString("|")
+		b.WriteString(name)
+		b.WriteString("=")
+		b.WriteString(perms[name])
+	}
+	return b.String()
 }
 
 func (t *Transport) mint(ctx context.Context, repo string, perms map[string]string) (string, time.Time, error) {
