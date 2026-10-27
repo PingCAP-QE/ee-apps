@@ -7,6 +7,12 @@ Retirement note: Dashboard now serves native attribution only. The writer and
 CLI were removed, and migration `026_retire_materialized_cost_allocations.sql`
 drops the unused materialized allocation tables. Do not re-enable this design.
 
+Source note (2026-10-27): the current GCP default is
+`warehouse-f80fbbe8e8.raw_gcp_billing.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6`
+in `us-west1`. Old `gcp-digital-bi` names below belong to the historical
+validation, not current configuration guidance. See the
+[warehouse cutover report](warehouse-billing-cutover-2026-10-27.md).
+
 Historical implementation note: migration `016_add_materialized_cost_allocations.sql`,
 `materialize-cost-allocations`, and the four Dashboard basis choices implement
 the GCP-native and EQ stages. AWS keeps its existing split-cost adapter and
@@ -164,7 +170,7 @@ costManagementConfig:
 
 ### Billing export
 
-The authoritative source is:
+The source used for this historical validation was:
 
 ```text
 gcp-digital-bi.gcp_billing_detailed.

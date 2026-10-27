@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
-from typing import Mapping
 
 DEFAULT_GCP_BILLING_TABLE = (
-    "gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6"
+    "warehouse-f80fbbe8e8.raw_gcp_billing.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6"
 )
 DEFAULT_GCP_ACCOUNT_ID = "pingcap-testing-account"
 DEFAULT_AWS_BILLING_TABLE = "gcp-digital-bi.stg_cloud_billing.stg_aws_billing"
@@ -42,6 +42,13 @@ class DatabaseSettings:
     password: str | None
     database: str | None
     ssl_ca: str | None
+
+
+@dataclass(frozen=True)
+class BillingBigQuerySettings:
+    project: str | None = None
+    location: str | None = None
+    impersonate_service_account: str | None = None
 
 
 @dataclass(frozen=True)
@@ -165,6 +172,7 @@ class Settings:
     gcs_cache: GcsCacheSettings = GcsCacheSettings()
     tcms_allocation: TcmsAllocationSettings = TcmsAllocationSettings()
     log_level: str = "INFO"
+    billing_bigquery: BillingBigQuerySettings = BillingBigQuerySettings()
 
 
 def load_settings(
@@ -176,6 +184,13 @@ def load_settings(
     database = _load_database_settings(env, require_database=require_database)
     return Settings(
         database=database,
+        billing_bigquery=BillingBigQuerySettings(
+            project=_read_optional_any(env, "COST_INSIGHT_BILLING_BQ_PROJECT"),
+            location=_read_optional_any(env, "COST_INSIGHT_BILLING_BQ_LOCATION"),
+            impersonate_service_account=_read_optional_any(
+                env, "COST_INSIGHT_BILLING_BQ_IMPERSONATE_SERVICE_ACCOUNT"
+            ),
+        ),
         gcp_billing=GcpBillingSettings(
             billing_table=_read_any(
                 env,

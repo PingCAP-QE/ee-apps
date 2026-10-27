@@ -37,11 +37,17 @@ jobs, and API surface.
 
 Use BigQuery billing exports as the primary cost source.
 
-For GCP, the preferred source is Cloud Billing Detailed usage export:
+For GCP, the current default (2026-10-27) is the warehouse Cloud Billing
+Detailed usage export, queried in `us-west1`:
 
 ```text
-gcp-digital-bi.gcp_billing_detailed.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6
+warehouse-f80fbbe8e8.raw_gcp_billing.gcp_billing_export_resource_v1_01D088_8F9CF2_8AF1C6
 ```
+
+References to `gcp-digital-bi.gcp_billing_detailed` in older validation examples
+identify the legacy export, not the current default. See the
+[warehouse cutover report](warehouse-billing-cutover-2026-10-27.md) for source
+boundaries, identity verification and remaining rollout gates.
 
 This source has resource-level fields, usage fields, labels, credits, list-cost
 fields, price fields, and export timestamps. It is a better primary source than
@@ -473,12 +479,16 @@ Budget sync can wait until the cost and usage pipeline is stable.
 6. Materialize and publish the three derived cost perspectives.
 7. Add budget sync when a source of truth replaces the current manual rows.
 
-## Open Questions
+## Source Identity Decision (2026-10-27)
 
-- Does the production job service account have access to
-  `gcp-digital-bi.gcp_billing_detailed`?
-- Which service account will run the scheduled sync, and should we use the
-  local `bq` user credential first or create a dedicated GCP service account?
+Warehouse billing jobs use the existing `apps/cost-insight-gcp-billing` KSA,
+directly bound by Workload Identity to
+`hxprog-e5d756e67e8641f386ab0e9@warehouse-f80fbbe8e8.iam.gserviceaccount.com`.
+GCP already uses that identity and the warehouse source in its live schedule.
+Do not enable self-impersonation in those pods. Local ADC validation can
+explicitly opt into impersonation with a billing query project; it is not the
+production identity. A fresh dedicated-KSA runtime canary remains a separate
+manual rollout check, not a completed test claimed by this design.
 
 Resolved decisions:
 

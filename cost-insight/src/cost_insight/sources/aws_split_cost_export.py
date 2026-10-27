@@ -5,6 +5,9 @@ from collections.abc import Iterator
 from datetime import date
 from typing import Any
 
+from cost_insight.common.bigquery import build_billing_bigquery_client
+from cost_insight.sources.aws_warehouse_compat import build_warehouse_cur_relation
+
 _BIGQUERY_TABLE_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+$")
 _AWS_CE_UNBLENDED_LINE_ITEM_TYPES = "'Usage', 'SavingsPlanCoveredUsage'"
 _AWS_SPLIT_COST_TAG_COLUMNS = (
@@ -173,7 +176,7 @@ def _fetch_rows(
         parameters.append(
             bigquery.ScalarQueryParameter("usage_end_date", "DATE", usage_end_date.isoformat())
         )
-    client = bigquery.Client()
+    client = build_billing_bigquery_client()
     if guardrail_query is not None:
         violations = list(
             client.query(
@@ -199,12 +202,14 @@ def build_aws_split_cost_summary_query(
     billing_table: str,
     limit: int | None = None,
     include_usage_end_date: bool = False,
+    warehouse_raw: bool = False,
 ) -> str:
     return _build_split_cost_query(
         billing_table=billing_table,
         resource_level=False,
         include_usage_end_date=include_usage_end_date,
         limit=limit,
+        warehouse_raw=warehouse_raw,
     )
 
 
@@ -212,12 +217,14 @@ def build_aws_split_cost_unmatched_resource_query(
     *,
     billing_table: str,
     limit: int | None = None,
+    warehouse_raw: bool = False,
 ) -> str:
     return _build_split_cost_query(
         billing_table=billing_table,
         resource_level=True,
         include_usage_end_date=True,
         limit=limit,
+        warehouse_raw=warehouse_raw,
     )
 
 
@@ -225,9 +232,10 @@ def build_aws_split_cost_guardrail_query(
     *,
     billing_table: str,
     include_usage_end_date: bool = False,
+    warehouse_raw: bool = False,
 ) -> str:
     """Return parent/day violations before an import can write any normalized facts."""
-    table = _quote_bigquery_table(billing_table)
+    table = _build_split_cost_relation(billing_table, warehouse_raw=warehouse_raw)
     usage_end_filter = (
         "\n    AND DATE(line_item_usage_start_date) <= @usage_end_date"
         if include_usage_end_date
@@ -312,9 +320,10 @@ def build_aws_split_cost_parent_residual_allocation_query(
     *,
     billing_table: str,
     include_usage_end_date: bool = False,
+    warehouse_raw: bool = False,
 ) -> str:
     """Return the parent/pod grain retained only by the residual audit ledger."""
-    table = _quote_bigquery_table(billing_table)
+    table = _build_split_cost_relation(billing_table, warehouse_raw=warehouse_raw)
     usage_end_filter = (
         "\n    AND DATE(line_item_usage_start_date) <= @usage_end_date"
         if include_usage_end_date
@@ -459,8 +468,9 @@ def _build_split_cost_query(
     resource_level: bool,
     include_usage_end_date: bool,
     limit: int | None,
+    warehouse_raw: bool = False,
 ) -> str:
-    table = _quote_bigquery_table(billing_table)
+    table = _build_split_cost_relation(billing_table, warehouse_raw=warehouse_raw)
     usage_end_filter = "\n    AND DATE(line_item_usage_start_date) <= @usage_end_date" if include_usage_end_date else ""
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     resource_columns = """
@@ -908,6 +918,15 @@ def _flattened_vendor_tags_json_sql() -> str:
     return f"""TO_JSON_STRING(JSON_STRIP_NULLS(JSON_OBJECT(
         {fields}
       )))"""
+
+
+def _build_split_cost_relation(billing_table: str, *, warehouse_raw: bool) -> str:
+    if warehouse_raw:
+        return build_warehouse_cur_relation(
+            billing_table,
+            tag_columns=(column for _, column in _AWS_SPLIT_COST_TAG_COLUMNS),
+        )
+    return _quote_bigquery_table(billing_table)
 
 
 def _quote_bigquery_table(table: str) -> str:
