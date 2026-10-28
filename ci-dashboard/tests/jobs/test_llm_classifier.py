@@ -101,11 +101,120 @@ def test_openai_compatible_llm_classifier_posts_to_configured_base_url() -> None
                     "- job_name: ghpr_check2\n"
                     "- url: https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/ghpr_check2/101/\n\n"
                     "Redacted console log tail:\n"
-                    "dial tcp 10.0.0.1:443: i/o timeout\n"
+                    "dial tcp [INTERNAL_IP]:443: i/o timeout\n"
                 ),
             },
         ],
     }
+
+
+def test_llm_request_redacts_legacy_archive_and_build_context() -> None:
+    captured: dict[str, object] = {}
+    job_token = "ghs_" + "c" * 36
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        captured["auth"] = request.headers["Authorization"]
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            text=(
+                'data: {"choices":[{"delta":{"content":"{\\"l1\\":\\"INFRA\\",'
+                '\\"l2\\":\\"NETWORK\\"}"}}]}\n\n'
+            ),
+        )
+
+    classifier = OpenAICompatibleLLMClassifier(
+        provider_name="test",
+        base_url="https://llm.example.invalid/v1",
+        model="test-model",
+        api_key="provider-api-key",
+        reasoning_effort=None,
+        default_l1_category="OTHERS",
+        default_l2_subcategory="UNCLASSIFIED",
+        allowed_classifications=(("INFRA", "NETWORK"),),
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = classifier.classify(
+        log_text=(
+            "Authorization: Basic ZmFrZS1vbGQtY3JlZGVudGlhbA==\n"
+            '{"password": "old archive password"}\n'
+            "+ curl -uabc123def: https://api.github.com/repos/pingcap/tidb/pulls\n"
+            "docker login -p fake-docker-password -u ci registry.example.com\n"
+            "docker login -pfake-attached-docker-password registry.example.com\n"
+            "aws configure set aws_secret_access_key fake-aws-secret\n"
+            "token fake-space-separated-token\n"
+            "token:\nFAIL: TestExample: assertion failed\n"
+            "Container [golang] terminated [OOMKilled]\n"
+        ),
+        build={
+            "job_name": f"ghpr_check2 {job_token}",
+            "url": "https://ci:fake-url-password@prow.tidb.net/jenkins/job/test/1/",
+            "unused_field": "unused-sensitive-value",
+        },
+    )
+
+    request_text = json.dumps(captured["body"])
+    for secret in (
+        "ZmFrZS1vbGQtY3JlZGVudGlhbA==",
+        "old archive password",
+        "abc123def",
+        "fake-docker-password",
+        "fake-attached-docker-password",
+        "fake-aws-secret",
+        "fake-space-separated-token",
+        job_token,
+        "fake-url-password",
+        "unused-sensitive-value",
+    ):
+        assert secret not in request_text
+    assert "[REDACTED]" in request_text
+    assert "Container [golang] terminated [OOMKilled]" in request_text
+    assert "FAIL: TestExample: assertion failed" in request_text
+    assert captured["auth"] == "Bearer provider-api-key"
+    assert result.l2_subcategory == "NETWORK"
+
+
+@pytest.mark.parametrize(
+    "credential, fragment",
+    [
+        ("-----BEGIN PRIVATE KEY-----\n" + "FAKE_KEY_BODY\n" * 100, "FAKE_KEY_BODY"),
+        ("github_pat_" + "b" * 1000, "b" * 100),
+    ],
+)
+def test_llm_request_redacts_credentials_before_truncation(credential: str, fragment: str) -> None:
+    captured: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content)["messages"][1]["content"])
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            text=(
+                'data: {"choices":[{"delta":{"content":"{\\"l1\\":\\"OTHERS\\",'
+                '\\"l2\\":\\"UNCLASSIFIED\\"}"}}]}\n\n'
+            ),
+        )
+
+    classifier = OpenAICompatibleLLMClassifier(
+        provider_name="test",
+        base_url="https://llm.example.invalid/v1",
+        model="test-model",
+        api_key="provider-api-key",
+        reasoning_effort=None,
+        default_l1_category="OTHERS",
+        default_l2_subcategory="UNCLASSIFIED",
+        allowed_classifications=(("OTHERS", "UNCLASSIFIED"),),
+        max_input_chars=128,
+        transport=httpx.MockTransport(handler),
+    )
+
+    classifier.classify(log_text=f"FAIL: TestExample\n{credential}", build={})
+
+    assert fragment not in captured[0]
+    assert "FAIL: TestExample" in captured[0]
+    assert "[REDACTED]" in captured[0]
 
 
 def test_openai_compatible_llm_classifier_rejects_unknown_label() -> None:

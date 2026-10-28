@@ -10,6 +10,7 @@ import httpx
 
 from ci_dashboard.common.config import LLMSettings
 from ci_dashboard.common.models import ErrorClassification
+from ci_dashboard.jobs.archive_error_logs import redact_console_log
 from ci_dashboard.jobs.error_classification_guidance import ERROR_CLASSIFICATION_GUIDANCE
 
 LOG = logging.getLogger(__name__)
@@ -62,7 +63,9 @@ class OpenAICompatibleLLMClassifier:
                 allowed_classifications=self.allowed_classifications,
                 default_l1_category=self.default_l1_category,
                 default_l2_subcategory=self.default_l2_subcategory,
-                log_text=_truncate_log_text(log_text, max_chars=self.max_input_chars),
+                log_text=_truncate_log_text(
+                    redact_console_log(log_text), max_chars=self.max_input_chars,
+                ),
                 build=build,
             )
         )
@@ -176,8 +179,8 @@ def _build_chat_payload(
     allowed_lines = "\n".join(
         f"- {l1_category}/{l2_subcategory}" for l1_category, l2_subcategory in allowed_classifications
     )
-    job_name = str(build.get("job_name") or "")
-    url = str(build.get("url") or "")
+    job_name = redact_console_log(str(build.get("job_name") or ""))
+    url = redact_console_log(str(build.get("url") or ""))
     system_prompt = (
         "You classify Jenkins CI build failures into a fixed taxonomy. "
         "Return JSON only with keys 'l1' and 'l2'. "

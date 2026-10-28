@@ -153,6 +153,109 @@ def test_redact_console_log_masks_common_secrets() -> None:
     assert "/home/[USER]/" in redacted
 
 
+@pytest.mark.parametrize(
+    "raw, secret",
+    [
+        ("https://ci:fake!url!password@localhost/repo", "fake!url!password"),
+        ("postgresql://ci:fake-db-password@localhost/database", "fake-db-password"),
+        ("Authorization: Basic ZmFrZS1jcmVkZW50aWFs", "ZmFrZS1jcmVkZW50aWFs"),
+        ("literal ghp_" + "a" * 36, "ghp_" + "a" * 36),
+        ("literal github_pat_" + "b" * 82, "github_pat_" + "b" * 82),
+        ("literal ghs_" + "c" * 36, "ghs_" + "c" * 36),
+        ("literal AKIA" + "D" * 16, "AKIA" + "D" * 16),
+        ("literal ASIA" + "E" * 16, "ASIA" + "E" * 16),
+        ("literal eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.fake_signature-", "fake_signature-"),
+        ("--password fake-flag-password", "fake-flag-password"),
+        ("--access-token 'fake flag token'", "fake flag token"),
+        ("-u ci:fake-basic-password", "fake-basic-password"),
+        ("+ curl -uabc123def: https://api.github.com/repos/pingcap/tidb/pulls", "abc123def"),
+        ("curl -uci:fake-attached-basic-password https://example.com", "fake-attached-basic-password"),
+        ("docker login -p fake-docker-password -u ci registry.example.com", "fake-docker-password"),
+        ("docker login -pfake-attached-docker-password registry.example.com", "fake-attached-docker-password"),
+        ("--user=ci:fake-long-user-password", "fake-long-user-password"),
+        ('{"password": "fake json password"}', "fake json password"),
+        ("password='fake quoted password'", "fake quoted password"),
+        ('password="fake \\"quote\\" escaped-password"', "escaped-password"),
+        ('password="fake unterminated password', "unterminated password"),
+        ('password="fake unterminated CRLF secret\r\n', "CRLF secret"),
+        ('{"password":\n "fake next-line password"}', "fake next-line password"),
+        ('{"password":\r\n "fake CRLF password"}', "fake CRLF password"),
+        ('{"password":\n\n "fake blank-line password"}', "fake blank-line password"),
+        ("AWS_SECRET_ACCESS_KEY=fake-aws-secret", "fake-aws-secret"),
+        ("aws configure set aws_secret_access_key fake-aws-secret", "fake-aws-secret"),
+        ("token fake-space-separated-token", "fake-space-separated-token"),
+        ("token\t'fake tab-separated token'", "fake tab-separated token"),
+        ("password=fake unquoted password", "unquoted password"),
+        ('password=[REDACTED] leaked legacy suffix"', "leaked legacy suffix"),
+    ],
+)
+def test_archive_upload_redacts_credential_formats(sqlite_engine, raw: str, secret: str) -> None:
+    _insert_build(sqlite_engine, build_id=101)
+    diagnostic = "FAIL: TestExample; Container [golang] terminated [OOMKilled]"
+    uploader = _FakeUploader()
+
+    summary = run_archive_error_logs(
+        sqlite_engine,
+        _settings(),
+        fetcher=_FakeFetcher(f"{raw}\n{diagnostic}\n"),
+        uploader=uploader,
+    )
+
+    assert summary.builds_archived == 1
+    archived = uploader.calls[0][2]
+    assert secret not in archived
+    assert "[REDACTED]" in archived
+    assert diagnostic in archived
+    assert redact_console_log(archived) == archived
+
+
+@pytest.mark.parametrize("raw", ["token:\n", "token:\r\n", "token:\n\n", '{"password":\n'])
+def test_archive_upload_preserves_diagnostics_after_empty_secret(sqlite_engine, raw: str) -> None:
+    _insert_build(sqlite_engine, build_id=101)
+    diagnostic = "FAIL: TestExample: assertion failed"
+    log_text = f"{raw}{diagnostic}\n"
+    uploader = _FakeUploader()
+
+    summary = run_archive_error_logs(
+        sqlite_engine, _settings(), fetcher=_FakeFetcher(log_text), uploader=uploader,
+    )
+
+    assert summary.builds_archived == 1
+    assert uploader.calls[0][2] == log_text
+    assert redact_console_log(log_text) == log_text
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "OPENSSH PRIVATE KEY", "ENCRYPTED PRIVATE KEY"],
+)
+@pytest.mark.parametrize("truncation", ["none", "head", "tail"])
+def test_archive_upload_redacts_private_keys(sqlite_engine, kind: str, truncation: str) -> None:
+    _insert_build(sqlite_engine, build_id=101)
+    diagnostic = "FAIL: TestExample"
+    body = "FAKE_PRIVATE_KEY_BODY\nSECOND_FAKE_KEY_LINE"
+    begin, end = f"-----BEGIN {kind}-----", f"-----END {kind}-----"
+    if truncation == "head":
+        raw = f"{body}\n{end}\n{diagnostic}\n"
+    elif truncation == "tail":
+        raw = f"{diagnostic}\n{begin}\n{body}"
+    else:
+        raw = f"{diagnostic}\n{begin}\n{body}\n{end}\n"
+    uploader = _FakeUploader()
+
+    summary = run_archive_error_logs(
+        sqlite_engine, _settings(), fetcher=_FakeFetcher(raw), uploader=uploader,
+    )
+
+    assert summary.builds_archived == 1
+    archived = uploader.calls[0][2]
+    assert "FAKE_PRIVATE_KEY_BODY" not in archived
+    assert "SECOND_FAKE_KEY_LINE" not in archived
+    assert "[REDACTED]" in archived
+    assert diagnostic in archived
+    assert redact_console_log(archived) == archived
+
+
 def test_parse_archive_timestamp_supports_space_before_timezone_offset() -> None:
     parsed = parse_archive_timestamp("2026-04-24 10:00:00 +00:00")
 
@@ -252,6 +355,7 @@ def test_run_archive_error_logs_appends_failed_pipeline_node_logs(sqlite_engine)
         (
             "===== Jenkins failed pipeline node log =====\n"
             "parameter: run_real_tikv_tests.sh bazel_importintotest\n"
+            '{"password": "failed node secret"}\n'
             "INFO: Build completed, 1 test FAILED, 5247 total actions\n"
         ),
     )
@@ -271,6 +375,7 @@ def test_run_archive_error_logs_appends_failed_pipeline_node_logs(sqlite_engine)
     ]
     assert "Connection reset by peer" in uploader.calls[0][2]
     assert "Build completed, 1 test FAILED" in uploader.calls[0][2]
+    assert "failed node secret" not in uploader.calls[0][2]
 
 
 def test_run_archive_error_logs_appends_live_signal_excerpts_for_remoting_tail(sqlite_engine) -> None:
@@ -280,6 +385,7 @@ def test_run_archive_error_logs_appends_live_signal_excerpts_for_remoting_tail(s
         (
             "===== Jenkins console signal excerpts =====\n"
             "----- lines 101-103 -----\n"
+            "--password 'signal excerpt secret'\n"
             "Container [golang] terminated [OOMKilled]\n"
         ),
     )
@@ -299,6 +405,7 @@ def test_run_archive_error_logs_appends_live_signal_excerpts_for_remoting_tail(s
     ]
     assert "Timeout waiting for agent to come back" in uploader.calls[0][2]
     assert "Container [golang] terminated [OOMKilled]" in uploader.calls[0][2]
+    assert "signal excerpt secret" not in uploader.calls[0][2]
 
 
 def test_run_archive_error_logs_skips_existing_archive_without_force(sqlite_engine) -> None:
