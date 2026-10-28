@@ -140,6 +140,19 @@ Notes:
   - `curl http://127.0.0.1:8000/api/v1/status/freshness`
   - `curl http://127.0.0.1:5173/api/v1/status/freshness`
 
+## Daily cost source freshness
+
+The existing `check-data-freshness` job can also compare each active cost account's
+BigQuery availability against imported summary and attribution dates. It is opt-in:
+set `FRESHNESS_COST_BQ_ENABLED=true`, an explicit `FRESHNESS_COST_BQ_PROJECT`, and
+`FRESHNESS_COST_BQ_LOCATION=us-west1`. Use the existing dedicated warehouse Workload
+Identity, not shared-account impersonation. Enabled runs include signed date diffs
+in the daily Lark report; `FRESHNESS_DRY_RUN=true` reads and prints without sending.
+
+See [the design and rollout contract](docs/cost-source-freshness-design.md) for
+bounded query budgets, importer eligibility, explicit dormant-source exceptions,
+and AWS split/F04 scope limitations. The checker does not import or repair data.
+
 ## Container Builds
 
 This project now provides two container entrypoints:

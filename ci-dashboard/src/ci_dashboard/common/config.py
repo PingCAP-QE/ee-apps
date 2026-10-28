@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Mapping
@@ -140,6 +141,42 @@ class GcpBlockVolumeSettings:
 
 
 @dataclass(frozen=True)
+class CostFreshnessSettings:
+    enabled: bool = False
+    project: str | None = None
+    location: str = "us-west1"
+    lookback_days: int = 14
+    maximum_bytes_billed: int = 2147483648
+    timeout_seconds: int = 30
+    excluded_sources: tuple[str, ...] = ()
+
+
+def _cost_freshness_settings(env: Mapping[str, str]) -> CostFreshnessSettings:
+    enabled = _read_bool(env, "FRESHNESS_COST_BQ_ENABLED", False)
+    project = (env.get("FRESHNESS_COST_BQ_PROJECT") or "").strip() or None
+    location = env.get("FRESHNESS_COST_BQ_LOCATION", "us-west1").strip()
+    lookback_days = _read_int(env, "FRESHNESS_COST_BQ_LOOKBACK_DAYS", 14)
+    if enabled and (not project or not re.fullmatch(r"[a-z][a-z0-9-]{4,61}[a-z0-9]", project)):
+        raise ValueError("FRESHNESS_COST_BQ_PROJECT must be an explicit GCP project ID")
+    if enabled and not location:
+        raise ValueError("FRESHNESS_COST_BQ_LOCATION must not be empty")
+    if not 8 <= lookback_days <= 62:
+        raise ValueError("FRESHNESS_COST_BQ_LOOKBACK_DAYS must be between 8 and 62")
+    excluded = _read_csv(env, "FRESHNESS_COST_BQ_EXCLUDED_SOURCES", ())
+    if any(not re.fullmatch(r"[a-z][a-z0-9_-]*/[^/\s]+", source) for source in excluded):
+        raise ValueError("FRESHNESS_COST_BQ_EXCLUDED_SOURCES must contain vendor/account keys")
+    return CostFreshnessSettings(
+        enabled=enabled,
+        project=project,
+        location=location,
+        lookback_days=lookback_days,
+        maximum_bytes_billed=_read_int(env, "FRESHNESS_COST_BQ_MAXIMUM_BYTES_BILLED", 2147483648),
+        timeout_seconds=_read_int(env, "FRESHNESS_COST_BQ_TIMEOUT_SECONDS", 30),
+        excluded_sources=excluded,
+    )
+
+
+@dataclass(frozen=True)
 class Settings:
     database: DatabaseSettings
     jobs: JobSettings
@@ -150,6 +187,7 @@ class Settings:
     llm: LLMSettings = LLMSettings()
     aws_ebs: AwsEbsSettings = AwsEbsSettings()
     gcp_block_volumes: GcpBlockVolumeSettings = GcpBlockVolumeSettings()
+    cost_freshness: CostFreshnessSettings = CostFreshnessSettings()
     log_level: str = "INFO"
 
 
@@ -219,6 +257,7 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
         )
     return Settings(
         database=database,
+        cost_freshness=_cost_freshness_settings(env),
         jobs=JobSettings(
             batch_size=_read_int(env, "CI_DASHBOARD_BATCH_SIZE", 1000),
             refresh_group_batch_size=_read_int(
