@@ -74,8 +74,37 @@ UPDATE_ARCHIVE_FIELDS = text(
     """
 )
 
-TOKEN_VALUE_RE = re.compile(r"(?i)(token|password|passwd|pwd|secret|apikey|api_key)(\s*[=:]\s*)(\S+)")
-BEARER_RE = re.compile(r"(?i)(Bearer\s+)(\S+)")
+SECRET_NAME_PATTERN = r"(?:token|password|passwd|pwd|secret|api[_-]?key|access[_-]?key)"
+# Mask through end of line: quotes may be truncated or stripped by older redaction.
+SECRET_VALUE_PATTERN = r"[^\r\n]+"
+# Only cross a newline for a quoted value, not an unrelated diagnostic.
+TOKEN_VALUE_RE = re.compile(
+    rf"({SECRET_NAME_PATTERN}[\"']?(?:[ \t]*[=:][ \t]*(?:(?:\r?\n[ \t]*)+(?=[\"']))?|[ \t]+))"
+    rf"{SECRET_VALUE_PATTERN}",
+    flags=re.IGNORECASE | re.MULTILINE,
+)
+TOKEN_FLAG_RE = re.compile(
+    rf"(--(?:[a-z0-9]+[-_])*{SECRET_NAME_PATTERN}[ \t]+){SECRET_VALUE_PATTERN}",
+    flags=re.IGNORECASE | re.MULTILINE,
+)
+CREDENTIAL_FLAG_RE = re.compile(
+    rf"((?<!\S)(?:-[up][ \t]*|--user(?:=|[ \t]+))){SECRET_VALUE_PATTERN}",
+    flags=re.IGNORECASE | re.MULTILINE,
+)
+BEARER_RE = re.compile(r"(?i)((?:Bearer|Basic)[ \t]+)(\S+)")
+URL_USERINFO_RE = re.compile(r'''(://)[^/\s?#"']+@''')
+BARE_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|"
+    r"(?:AKIA|ASIA)[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)"
+    r"(?![A-Za-z0-9_-])"
+)
+PRIVATE_KEY_RE = re.compile(
+    r"-----BEGIN ((?:[A-Z0-9]+ )*PRIVATE KEY)-----.*?(?:-----END \1-----|\Z)",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+PRIVATE_KEY_TAIL_RE = re.compile(
+    r"\A.*-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----", flags=re.IGNORECASE | re.DOTALL,
+)
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 HOME_USER_RE = re.compile(r"(?i)/home/[^/\s]+/")
 VAR_LIB_JENKINS_USER_RE = re.compile(r"(?i)/var/lib/jenkins/workspace/[^/\s]+")
@@ -168,8 +197,15 @@ def run_archive_error_logs(
 
 
 def redact_console_log(text: str) -> str:
-    redacted = TOKEN_VALUE_RE.sub(r"\1\2[REDACTED]", text)
+    redacted = PRIVATE_KEY_RE.sub("[REDACTED]", text)
+    # A bounded Jenkins tail can start inside a private-key block.
+    redacted = PRIVATE_KEY_TAIL_RE.sub("[REDACTED]", redacted)
+    redacted = URL_USERINFO_RE.sub(r"\1[REDACTED]@", redacted)
+    redacted = TOKEN_VALUE_RE.sub(r"\1[REDACTED]", redacted)
+    redacted = TOKEN_FLAG_RE.sub(r"\1[REDACTED]", redacted)
+    redacted = CREDENTIAL_FLAG_RE.sub(r"\1[REDACTED]", redacted)
     redacted = BEARER_RE.sub(r"\1[REDACTED]", redacted)
+    redacted = BARE_TOKEN_RE.sub("[REDACTED]", redacted)
     redacted = TOKEN_QUERY_RE.sub(r"\1[REDACTED]", redacted)
     redacted = INTERNAL_IP_RE.sub("[INTERNAL_IP]", redacted)
     redacted = EMAIL_RE.sub("[EMAIL]", redacted)
