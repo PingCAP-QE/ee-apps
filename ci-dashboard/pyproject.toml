@@ -11,6 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "boto3>=1.34.0",
   "fastapi>=0.115.0",
+  "google-cloud-bigquery>=3.25.0",
   "google-cloud-storage>=2.18.0",
   "httpx>=0.27.0",
   "kafka-python-ng>=2.2.3",

@@ -12,6 +12,10 @@ dry_run="false"
 log_level="INFO"
 image_pull_policy="IfNotPresent"
 service_account=""
+cost_bq_project=""
+cost_bq_enabled="false"
+cost_bq_location="us-west1"
+cost_bq_excluded_sources=""
 ca_secret=""
 ca_key="ca.crt"
 cpu_request="250m"
@@ -47,7 +51,10 @@ Optional:
   --dry-run true|false          Set FRESHNESS_DRY_RUN. Default: false
   --log-level LEVEL             CI_DASHBOARD_LOG_LEVEL override. Default: INFO
   --image-pull-policy P         Image pull policy. Default: IfNotPresent
-  --service-account NAME        Optional service account name.
+  --service-account NAME        Optional service account name; required with --cost-bq-project.
+  --cost-bq-project ID           Enable account-scoped BigQuery cost watermark comparisons.
+  --cost-bq-location LOCATION    BigQuery location. Default: us-west1
+  --cost-bq-excluded-sources CSV Explicit vendor/account exclusions (reported, not counted healthy).
   --ca-secret NAME              Optional secret containing CA file for TIDB SSL.
   --ca-key NAME                 Key inside CA secret. Default: ca.crt
   --cpu-request VALUE           CPU request. Default: 250m
@@ -89,6 +96,12 @@ while [[ $# -gt 0 ]]; do
       image_pull_policy="${2:-}"; shift 2 ;;
     --service-account)
       service_account="${2:-}"; shift 2 ;;
+    --cost-bq-project)
+      cost_bq_enabled="true"; cost_bq_project="${2:-}"; shift 2 ;;
+    --cost-bq-location)
+      cost_bq_location="${2:-}"; shift 2 ;;
+    --cost-bq-excluded-sources)
+      cost_bq_excluded_sources="${2:-}"; shift 2 ;;
     --ca-secret)
       ca_secret="${2:-}"; shift 2 ;;
     --ca-key)
@@ -126,10 +139,35 @@ done
 # --lark-webhook-url is strongly recommended but not enforced here — the job
 # will print results to stdout when the URL is missing.
 
+cost_bq_env_block=""
+if [[ "${cost_bq_enabled}" == "true" ]]; then
+  if [[ ! "${cost_bq_project}" =~ ^[a-z][a-z0-9-]{4,61}[a-z0-9]$ ]] || \
+     [[ ! "${service_account}" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]]; then
+    echo "--cost-bq-project requires a valid GCP project ID and explicit --service-account" >&2
+    exit 1
+  fi
+  if [[ ! "${cost_bq_location}" =~ ^[A-Za-z][A-Za-z0-9-]*$ ]] || \
+     { [[ -n "${cost_bq_excluded_sources}" ]] && [[ ! "${cost_bq_excluded_sources}" =~ ^[A-Za-z0-9_./,:-]+$ ]]; }; then
+    echo "invalid BigQuery location or excluded source list" >&2
+    exit 1
+  fi
+  cost_bq_env_block=$(cat <<EOF
+                - name: FRESHNESS_COST_BQ_ENABLED
+                  value: "true"
+                - name: FRESHNESS_COST_BQ_PROJECT
+                  value: "${cost_bq_project}"
+                - name: FRESHNESS_COST_BQ_LOCATION
+                  value: "${cost_bq_location}"
+                - name: FRESHNESS_COST_BQ_EXCLUDED_SOURCES
+                  value: "${cost_bq_excluded_sources}"
+EOF
+  )
+fi
+
 service_account_block=""
 if [[ -n "${service_account}" ]]; then
   service_account_block=$(cat <<EOF
-          serviceAccountName: ${service_account}
+          serviceAccountName: "${service_account}"
 EOF
   )
 fi
@@ -223,6 +261,7 @@ ${service_account_block}
                 - name: FRESHNESS_DRY_RUN
                   value: "${dry_run}"
 ${lark_env_block}
+${cost_bq_env_block}
 ${ca_env_block}
               resources:
                 requests:

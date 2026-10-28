@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable
 
@@ -20,6 +20,7 @@ from sqlalchemy.engine import Connection, Engine
 
 from ci_dashboard.common.config import Settings
 from ci_dashboard.common.db import build_engine
+from ci_dashboard.jobs.cost_source_freshness import CostSourceResult, run_cost_source_checks
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class Check:
     description: str
     # Threshold: if the observed lag exceeds this, the check fails.
     threshold_description: str  # e.g. "4 hours"
-    # SQL that returns ONE ROW with a single column: the latest timestamp (or count).
+    # SQL returns one scalar; empty for external checks supplying their own CheckResult.
     sql: str
     # Owning domain: "ci" | "cost". Both use the shared TiDB database.
     db: str = "ci"
@@ -249,6 +250,7 @@ class CheckResult:
 class Report:
     timestamp: datetime
     results: list[CheckResult] = field(default_factory=list)
+    cost_sources: list[CostSourceResult] = field(default_factory=list)
 
     @property
     def failed(self) -> list[CheckResult]:
@@ -383,8 +385,7 @@ def _format_lark_message(report: Report) -> str:
     lines.append(" | ".join(parts))
 
     if not failed:
-        lines.append("✅ All pipelines are fresh.")
-        return "\n".join(lines)
+        lines.append("✅ All evaluated checks passed." if report.cost_sources else "✅ All pipelines are fresh.")
 
     # Failure details, grouped by severity.
     lines.append("")
@@ -400,8 +401,13 @@ def _format_lark_message(report: Report) -> str:
                 f" (threshold: {r.check.threshold_description})"
             )
 
+    if report.cost_sources:
+        lines.append("💰 BigQuery → imported summary → attribution (UTC dates):")
+        for result in report.cost_sources:
+            lines.append(f"  • {result.describe()}")
+        lines.append("Watermarks only; not a completeness or amount reconciliation check.")
 
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip()
 
 
 def _send_lark_dm(text: str) -> bool:
@@ -500,12 +506,49 @@ def run_check_data_freshness(settings: Settings) -> Report:
     engine = build_engine(settings)
     try:
         report = run_all_checks(engine)
+        if settings.cost_freshness.enabled:
+            try:
+                report.cost_sources = run_cost_source_checks(engine, settings.cost_freshness)
+                for result in report.cost_sources:
+                    logger.info("Cost source freshness: %s", result.describe())
+                    if result.passed is None:
+                        continue
+                    report.results.append(CheckResult(
+                        check=Check(
+                            name=f"cost_source_diff:{result.vendor}/{result.account_id}",
+                            level=result.level,
+                            description="Bounded BigQuery availability vs account-scoped imported dates",
+                            threshold_description="eligible source gap ≤1 day; attribution gap 0 days",
+                            sql="",
+                            db="cost",
+                        ),
+                        passed=result.passed,
+                        value=asdict(result),
+                        lag_description=result.describe(),
+                        error=None if result.passed else result.detail,
+                    ))
+            except Exception as exc:
+                logger.exception("Cost source freshness runner failed")
+                report.results.append(CheckResult(
+                    check=Check(
+                        name="cost_source_diff:runner",
+                        level="MEDIUM",
+                        description="Cost source freshness runner completed",
+                        threshold_description="cost source checks completed",
+                        sql="",
+                        db="cost",
+                    ),
+                    passed=False,
+                    value=None,
+                    lag_description=f"runner error: {exc}",
+                    error=str(exc),
+                ))
     finally:
         engine.dispose()
 
     dry_run = os.getenv("FRESHNESS_DRY_RUN", "false").lower() == "true"
 
-    if report.failed:
+    if report.failed or report.cost_sources:
         message = _format_lark_message(report)
         if dry_run:
             logger.info("DRY RUN — would send:\n%s", message)

@@ -4,6 +4,11 @@
 
 每天运行一次检查 Job，验证 ci-dashboard 和 cost-insight 各核心数据表的新鲜度是否在容忍范围内。超过阈值则通过飞书发送告警。
 
+新增的可选 BigQuery → 本地成本水位对比，按 vendor/account 区分源延迟、导入延迟和归因延迟；
+其有界查询、导入可摄入窗口、AWS 特殊 scope 限制及部署配置见
+[Account-scoped BigQuery cost freshness](cost-source-freshness-design.md)。启用后沿用本 CronJob
+及飞书接收人，每日发送含 source diff 的报告；不执行导入、补数或自动修复。
+
 ## 检查范围
 
 跳过 raw 表（如 `ci_l1_pod_events`），只检查汇总层和直接消费的表。上游外部表（`prow_jobs`、`github_tickets`）作为独立检查项纳入，因为它们的数据新鲜度直接影响下游所有表。
