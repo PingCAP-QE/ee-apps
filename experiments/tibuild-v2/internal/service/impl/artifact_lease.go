@@ -161,22 +161,31 @@ func (s *artifactsrvc) runReaper(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			n, err := s.reapOnce(ctx)
+			n, err := s.reapAndRecord(ctx)
 			if err != nil {
 				s.logger.Err(err).Msg("failed to reap expired task leases")
 				continue
 			}
 			if n > 0 {
 				s.logger.Warn().Int("count", n).Msg("reclaimed expired task leases")
-				if s.metrics != nil {
-					s.metrics.recordReclaimed(n)
-				}
-				if s.alerts != nil {
-					s.alerts.noteLeaseReclaim(n, s.now())
-				}
 			}
 		}
 	}
+}
+
+// reapAndRecord reclaims expired leases and records the metrics/alert state.
+func (s *artifactsrvc) reapAndRecord(ctx context.Context) (int, error) {
+	n, err := s.reapOnce(ctx)
+	if err != nil || n == 0 {
+		return n, err
+	}
+	if s.metrics != nil {
+		s.metrics.recordReclaimed(n)
+	}
+	if s.alerts != nil {
+		s.alerts.noteLeaseReclaim(n, s.now())
+	}
+	return n, nil
 }
 
 // markSucceeded writes the result only while the caller still holds the lease.
