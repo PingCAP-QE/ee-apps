@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -114,7 +115,8 @@ func TestClaimOneRespectsTargetsAndAvailability(t *testing.T) {
 
 func TestClaimOneConcurrentOnlyOneWinner(t *testing.T) {
 	ctx := context.Background()
-	db, err := ent.Open("sqlite3", "file:claim_concurrent?mode=memory&cache=shared&_fk=1&_busy_timeout=5000")
+	dsn := filepath.Join(t.TempDir(), "claim.db") + "?_busy_timeout=5000&_journal_mode=WAL&_fk=1"
+	db, err := ent.Open("sqlite3", dsn)
 	require.NoError(t, err)
 	require.NoError(t, db.Schema.Create(ctx))
 	t.Cleanup(func() { _ = db.Close() })
