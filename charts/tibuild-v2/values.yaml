@@ -175,6 +175,11 @@ server:
 worker:
   enabled: false
   replicaCount: 1
+  # The worker runs a separate binary/image built from cmd/tibuild-worker.
+  image:
+    repository: ghcr.io/pingcap-qe/ee-apps/exp-tibuild-worker
+    # Defaults to .Values.image.tag when empty.
+    tag: ""
   # Worker identity written to claimed_by. Defaults to the pod name.
   workerID: ""
   healthPort: 8081
