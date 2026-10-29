@@ -8,6 +8,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entimagesynctask "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
+	workerpkg "github.com/PingCAP-QE/ee-apps/tibuild/internal/worker"
 )
 
 const (
@@ -21,33 +22,30 @@ const (
 // service restart (residual PROCESSING tasks are reclaimed on startup).
 // It blocks until the context is cancelled.
 func (s *artifactsrvc) Start(ctx context.Context) {
-	// Reclaim tasks that were left in PROCESSING by a previous run.
-	if _, err := s.db.ImageSyncTask.Update().
-		Where(entimagesynctask.Status(TaskStatusProcessing)).
-		SetStatus(TaskStatusPending).
-		Save(ctx); err != nil {
-		s.logger.Err(err).Msg("failed to reclaim interrupted image sync tasks")
-	} else {
-		s.logger.Info().Msg("reclaimed interrupted image sync tasks on startup")
-	}
-
 	s.mu.RLock()
+	workerCfg := s.workerCfg
 	pollingRate := s.pollingRate
 	s.mu.RUnlock()
 
-	ticker := time.NewTicker(pollingRate)
-	defer ticker.Stop()
-
-	s.logger.Info().Dur("polling_rate", pollingRate).Msg("image sync worker started")
-	for {
-		select {
-		case <-ctx.Done():
-			s.logger.Info().Msg("image sync worker stopped")
-			return
-		case <-ticker.C:
-			s.pollOnce(ctx)
+	// Phase 1 keeps the legacy startup reclaim behind a switch so the new
+	// binary can be rolled back without a schema change.
+	if workerCfg.LegacyReclaimEnabled() {
+		if _, err := s.db.ImageSyncTask.Update().
+			Where(entimagesynctask.Status(TaskStatusProcessing)).
+			SetStatus(TaskStatusPending).
+			Save(ctx); err != nil {
+			s.logger.Err(err).Msg("failed to reclaim interrupted image sync tasks")
+		} else {
+			s.logger.Info().Msg("reclaimed interrupted image sync tasks on startup")
 		}
 	}
+
+	runner := &workerpkg.Runner{
+		Logger:       s.logger,
+		PollInterval: pollingRate,
+		Consume:      s.pollOnce,
+	}
+	runner.Run(ctx)
 }
 
 // pollOnce claims and processes a batch of PENDING tasks.
