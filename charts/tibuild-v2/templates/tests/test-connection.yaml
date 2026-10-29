@@ -10,6 +10,11 @@ spec:
   containers:
     - name: wget
       image: busybox
-      command: ['wget']
-      args: ['{{ include "tibuild-v2.fullname" . }}:{{ .Values.service.port }}/healthz']
+      command: ['sh', '-c']
+      # Retry: the test Pod can start before the Service endpoints are
+      # programmed, which otherwise leaves wget hanging forever.
+      args:
+        - >-
+          wget -T 5 -t 6 -qO-
+          http://{{ include "tibuild-v2.fullname" . }}:{{ .Values.service.port }}/healthz
   restartPolicy: Never
