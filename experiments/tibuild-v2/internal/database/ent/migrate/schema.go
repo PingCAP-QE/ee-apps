@@ -55,6 +55,11 @@ var (
 		{Name: "status", Type: field.TypeString, Size: 16, Default: "PENDING"},
 		{Name: "err_msg", Type: field.TypeString, Nullable: true, Size: 512},
 		{Name: "retry_count", Type: field.TypeInt, Default: 0},
+		{Name: "target_key", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "claimed_by", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "lease_until", Type: field.TypeTime, Nullable: true},
+		{Name: "available_at", Type: field.TypeTime, Nullable: true},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -63,6 +68,13 @@ var (
 		Name:       "image_sync_tasks",
 		Columns:    ImageSyncTasksColumns,
 		PrimaryKey: []*schema.Column{ImageSyncTasksColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_claim",
+				Unique:  false,
+				Columns: []*schema.Column{ImageSyncTasksColumns[6], ImageSyncTasksColumns[3], ImageSyncTasksColumns[9], ImageSyncTasksColumns[0]},
+			},
+		},
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{

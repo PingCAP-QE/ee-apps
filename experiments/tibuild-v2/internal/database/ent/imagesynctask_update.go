@@ -111,6 +111,107 @@ func (_u *ImageSyncTaskUpdate) AddRetryCount(v int) *ImageSyncTaskUpdate {
 	return _u
 }
 
+// SetTargetKey sets the "targetKey" field.
+func (_u *ImageSyncTaskUpdate) SetTargetKey(v string) *ImageSyncTaskUpdate {
+	_u.mutation.SetTargetKey(v)
+	return _u
+}
+
+// SetNillableTargetKey sets the "targetKey" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdate) SetNillableTargetKey(v *string) *ImageSyncTaskUpdate {
+	if v != nil {
+		_u.SetTargetKey(*v)
+	}
+	return _u
+}
+
+// ClearTargetKey clears the value of the "targetKey" field.
+func (_u *ImageSyncTaskUpdate) ClearTargetKey() *ImageSyncTaskUpdate {
+	_u.mutation.ClearTargetKey()
+	return _u
+}
+
+// SetClaimedBy sets the "claimedBy" field.
+func (_u *ImageSyncTaskUpdate) SetClaimedBy(v string) *ImageSyncTaskUpdate {
+	_u.mutation.SetClaimedBy(v)
+	return _u
+}
+
+// SetNillableClaimedBy sets the "claimedBy" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdate) SetNillableClaimedBy(v *string) *ImageSyncTaskUpdate {
+	if v != nil {
+		_u.SetClaimedBy(*v)
+	}
+	return _u
+}
+
+// ClearClaimedBy clears the value of the "claimedBy" field.
+func (_u *ImageSyncTaskUpdate) ClearClaimedBy() *ImageSyncTaskUpdate {
+	_u.mutation.ClearClaimedBy()
+	return _u
+}
+
+// SetLeaseUntil sets the "leaseUntil" field.
+func (_u *ImageSyncTaskUpdate) SetLeaseUntil(v time.Time) *ImageSyncTaskUpdate {
+	_u.mutation.SetLeaseUntil(v)
+	return _u
+}
+
+// SetNillableLeaseUntil sets the "leaseUntil" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdate) SetNillableLeaseUntil(v *time.Time) *ImageSyncTaskUpdate {
+	if v != nil {
+		_u.SetLeaseUntil(*v)
+	}
+	return _u
+}
+
+// ClearLeaseUntil clears the value of the "leaseUntil" field.
+func (_u *ImageSyncTaskUpdate) ClearLeaseUntil() *ImageSyncTaskUpdate {
+	_u.mutation.ClearLeaseUntil()
+	return _u
+}
+
+// SetAvailableAt sets the "availableAt" field.
+func (_u *ImageSyncTaskUpdate) SetAvailableAt(v time.Time) *ImageSyncTaskUpdate {
+	_u.mutation.SetAvailableAt(v)
+	return _u
+}
+
+// SetNillableAvailableAt sets the "availableAt" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdate) SetNillableAvailableAt(v *time.Time) *ImageSyncTaskUpdate {
+	if v != nil {
+		_u.SetAvailableAt(*v)
+	}
+	return _u
+}
+
+// ClearAvailableAt clears the value of the "availableAt" field.
+func (_u *ImageSyncTaskUpdate) ClearAvailableAt() *ImageSyncTaskUpdate {
+	_u.mutation.ClearAvailableAt()
+	return _u
+}
+
+// SetAttempts sets the "attempts" field.
+func (_u *ImageSyncTaskUpdate) SetAttempts(v int) *ImageSyncTaskUpdate {
+	_u.mutation.ResetAttempts()
+	_u.mutation.SetAttempts(v)
+	return _u
+}
+
+// SetNillableAttempts sets the "attempts" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdate) SetNillableAttempts(v *int) *ImageSyncTaskUpdate {
+	if v != nil {
+		_u.SetAttempts(*v)
+	}
+	return _u
+}
+
+// AddAttempts adds value to the "attempts" field.
+func (_u *ImageSyncTaskUpdate) AddAttempts(v int) *ImageSyncTaskUpdate {
+	_u.mutation.AddAttempts(v)
+	return _u
+}
+
 // SetCreatedAt sets the "createdAt" field.
 func (_u *ImageSyncTaskUpdate) SetCreatedAt(v time.Time) *ImageSyncTaskUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -194,6 +295,16 @@ func (_u *ImageSyncTaskUpdate) check() error {
 			return &ValidationError{Name: "errMsg", err: fmt.Errorf(`ent: validator failed for field "ImageSyncTask.errMsg": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.TargetKey(); ok {
+		if err := imagesynctask.TargetKeyValidator(v); err != nil {
+			return &ValidationError{Name: "targetKey", err: fmt.Errorf(`ent: validator failed for field "ImageSyncTask.targetKey": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClaimedBy(); ok {
+		if err := imagesynctask.ClaimedByValidator(v); err != nil {
+			return &ValidationError{Name: "claimedBy", err: fmt.Errorf(`ent: validator failed for field "ImageSyncTask.claimedBy": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -229,6 +340,36 @@ func (_u *ImageSyncTaskUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if value, ok := _u.mutation.AddedRetryCount(); ok {
 		_spec.AddField(imagesynctask.FieldRetryCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TargetKey(); ok {
+		_spec.SetField(imagesynctask.FieldTargetKey, field.TypeString, value)
+	}
+	if _u.mutation.TargetKeyCleared() {
+		_spec.ClearField(imagesynctask.FieldTargetKey, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClaimedBy(); ok {
+		_spec.SetField(imagesynctask.FieldClaimedBy, field.TypeString, value)
+	}
+	if _u.mutation.ClaimedByCleared() {
+		_spec.ClearField(imagesynctask.FieldClaimedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.LeaseUntil(); ok {
+		_spec.SetField(imagesynctask.FieldLeaseUntil, field.TypeTime, value)
+	}
+	if _u.mutation.LeaseUntilCleared() {
+		_spec.ClearField(imagesynctask.FieldLeaseUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.AvailableAt(); ok {
+		_spec.SetField(imagesynctask.FieldAvailableAt, field.TypeTime, value)
+	}
+	if _u.mutation.AvailableAtCleared() {
+		_spec.ClearField(imagesynctask.FieldAvailableAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Attempts(); ok {
+		_spec.SetField(imagesynctask.FieldAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAttempts(); ok {
+		_spec.AddField(imagesynctask.FieldAttempts, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(imagesynctask.FieldCreatedAt, field.TypeTime, value)
@@ -339,6 +480,107 @@ func (_u *ImageSyncTaskUpdateOne) AddRetryCount(v int) *ImageSyncTaskUpdateOne {
 	return _u
 }
 
+// SetTargetKey sets the "targetKey" field.
+func (_u *ImageSyncTaskUpdateOne) SetTargetKey(v string) *ImageSyncTaskUpdateOne {
+	_u.mutation.SetTargetKey(v)
+	return _u
+}
+
+// SetNillableTargetKey sets the "targetKey" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdateOne) SetNillableTargetKey(v *string) *ImageSyncTaskUpdateOne {
+	if v != nil {
+		_u.SetTargetKey(*v)
+	}
+	return _u
+}
+
+// ClearTargetKey clears the value of the "targetKey" field.
+func (_u *ImageSyncTaskUpdateOne) ClearTargetKey() *ImageSyncTaskUpdateOne {
+	_u.mutation.ClearTargetKey()
+	return _u
+}
+
+// SetClaimedBy sets the "claimedBy" field.
+func (_u *ImageSyncTaskUpdateOne) SetClaimedBy(v string) *ImageSyncTaskUpdateOne {
+	_u.mutation.SetClaimedBy(v)
+	return _u
+}
+
+// SetNillableClaimedBy sets the "claimedBy" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdateOne) SetNillableClaimedBy(v *string) *ImageSyncTaskUpdateOne {
+	if v != nil {
+		_u.SetClaimedBy(*v)
+	}
+	return _u
+}
+
+// ClearClaimedBy clears the value of the "claimedBy" field.
+func (_u *ImageSyncTaskUpdateOne) ClearClaimedBy() *ImageSyncTaskUpdateOne {
+	_u.mutation.ClearClaimedBy()
+	return _u
+}
+
+// SetLeaseUntil sets the "leaseUntil" field.
+func (_u *ImageSyncTaskUpdateOne) SetLeaseUntil(v time.Time) *ImageSyncTaskUpdateOne {
+	_u.mutation.SetLeaseUntil(v)
+	return _u
+}
+
+// SetNillableLeaseUntil sets the "leaseUntil" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdateOne) SetNillableLeaseUntil(v *time.Time) *ImageSyncTaskUpdateOne {
+	if v != nil {
+		_u.SetLeaseUntil(*v)
+	}
+	return _u
+}
+
+// ClearLeaseUntil clears the value of the "leaseUntil" field.
+func (_u *ImageSyncTaskUpdateOne) ClearLeaseUntil() *ImageSyncTaskUpdateOne {
+	_u.mutation.ClearLeaseUntil()
+	return _u
+}
+
+// SetAvailableAt sets the "availableAt" field.
+func (_u *ImageSyncTaskUpdateOne) SetAvailableAt(v time.Time) *ImageSyncTaskUpdateOne {
+	_u.mutation.SetAvailableAt(v)
+	return _u
+}
+
+// SetNillableAvailableAt sets the "availableAt" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdateOne) SetNillableAvailableAt(v *time.Time) *ImageSyncTaskUpdateOne {
+	if v != nil {
+		_u.SetAvailableAt(*v)
+	}
+	return _u
+}
+
+// ClearAvailableAt clears the value of the "availableAt" field.
+func (_u *ImageSyncTaskUpdateOne) ClearAvailableAt() *ImageSyncTaskUpdateOne {
+	_u.mutation.ClearAvailableAt()
+	return _u
+}
+
+// SetAttempts sets the "attempts" field.
+func (_u *ImageSyncTaskUpdateOne) SetAttempts(v int) *ImageSyncTaskUpdateOne {
+	_u.mutation.ResetAttempts()
+	_u.mutation.SetAttempts(v)
+	return _u
+}
+
+// SetNillableAttempts sets the "attempts" field if the given value is not nil.
+func (_u *ImageSyncTaskUpdateOne) SetNillableAttempts(v *int) *ImageSyncTaskUpdateOne {
+	if v != nil {
+		_u.SetAttempts(*v)
+	}
+	return _u
+}
+
+// AddAttempts adds value to the "attempts" field.
+func (_u *ImageSyncTaskUpdateOne) AddAttempts(v int) *ImageSyncTaskUpdateOne {
+	_u.mutation.AddAttempts(v)
+	return _u
+}
+
 // SetCreatedAt sets the "createdAt" field.
 func (_u *ImageSyncTaskUpdateOne) SetCreatedAt(v time.Time) *ImageSyncTaskUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -435,6 +677,16 @@ func (_u *ImageSyncTaskUpdateOne) check() error {
 			return &ValidationError{Name: "errMsg", err: fmt.Errorf(`ent: validator failed for field "ImageSyncTask.errMsg": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.TargetKey(); ok {
+		if err := imagesynctask.TargetKeyValidator(v); err != nil {
+			return &ValidationError{Name: "targetKey", err: fmt.Errorf(`ent: validator failed for field "ImageSyncTask.targetKey": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClaimedBy(); ok {
+		if err := imagesynctask.ClaimedByValidator(v); err != nil {
+			return &ValidationError{Name: "claimedBy", err: fmt.Errorf(`ent: validator failed for field "ImageSyncTask.claimedBy": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -487,6 +739,36 @@ func (_u *ImageSyncTaskUpdateOne) sqlSave(ctx context.Context) (_node *ImageSync
 	}
 	if value, ok := _u.mutation.AddedRetryCount(); ok {
 		_spec.AddField(imagesynctask.FieldRetryCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.TargetKey(); ok {
+		_spec.SetField(imagesynctask.FieldTargetKey, field.TypeString, value)
+	}
+	if _u.mutation.TargetKeyCleared() {
+		_spec.ClearField(imagesynctask.FieldTargetKey, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClaimedBy(); ok {
+		_spec.SetField(imagesynctask.FieldClaimedBy, field.TypeString, value)
+	}
+	if _u.mutation.ClaimedByCleared() {
+		_spec.ClearField(imagesynctask.FieldClaimedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.LeaseUntil(); ok {
+		_spec.SetField(imagesynctask.FieldLeaseUntil, field.TypeTime, value)
+	}
+	if _u.mutation.LeaseUntilCleared() {
+		_spec.ClearField(imagesynctask.FieldLeaseUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.AvailableAt(); ok {
+		_spec.SetField(imagesynctask.FieldAvailableAt, field.TypeTime, value)
+	}
+	if _u.mutation.AvailableAtCleared() {
+		_spec.ClearField(imagesynctask.FieldAvailableAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.Attempts(); ok {
+		_spec.SetField(imagesynctask.FieldAttempts, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedAttempts(); ok {
+		_spec.AddField(imagesynctask.FieldAttempts, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(imagesynctask.FieldCreatedAt, field.TypeTime, value)

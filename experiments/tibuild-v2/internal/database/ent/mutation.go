@@ -2341,6 +2341,12 @@ type ImageSyncTaskMutation struct {
 	errMsg        *string
 	retryCount    *int
 	addretryCount *int
+	targetKey     *string
+	claimedBy     *string
+	leaseUntil    *time.Time
+	availableAt   *time.Time
+	attempts      *int
+	addattempts   *int
 	createdAt     *time.Time
 	updatedAt     *time.Time
 	clearedFields map[string]struct{}
@@ -2660,6 +2666,258 @@ func (m *ImageSyncTaskMutation) ResetRetryCount() {
 	m.addretryCount = nil
 }
 
+// SetTargetKey sets the "targetKey" field.
+func (m *ImageSyncTaskMutation) SetTargetKey(s string) {
+	m.targetKey = &s
+}
+
+// TargetKey returns the value of the "targetKey" field in the mutation.
+func (m *ImageSyncTaskMutation) TargetKey() (r string, exists bool) {
+	v := m.targetKey
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetKey returns the old "targetKey" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldTargetKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetKey: %w", err)
+	}
+	return oldValue.TargetKey, nil
+}
+
+// ClearTargetKey clears the value of the "targetKey" field.
+func (m *ImageSyncTaskMutation) ClearTargetKey() {
+	m.targetKey = nil
+	m.clearedFields[imagesynctask.FieldTargetKey] = struct{}{}
+}
+
+// TargetKeyCleared returns if the "targetKey" field was cleared in this mutation.
+func (m *ImageSyncTaskMutation) TargetKeyCleared() bool {
+	_, ok := m.clearedFields[imagesynctask.FieldTargetKey]
+	return ok
+}
+
+// ResetTargetKey resets all changes to the "targetKey" field.
+func (m *ImageSyncTaskMutation) ResetTargetKey() {
+	m.targetKey = nil
+	delete(m.clearedFields, imagesynctask.FieldTargetKey)
+}
+
+// SetClaimedBy sets the "claimedBy" field.
+func (m *ImageSyncTaskMutation) SetClaimedBy(s string) {
+	m.claimedBy = &s
+}
+
+// ClaimedBy returns the value of the "claimedBy" field in the mutation.
+func (m *ImageSyncTaskMutation) ClaimedBy() (r string, exists bool) {
+	v := m.claimedBy
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimedBy returns the old "claimedBy" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldClaimedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimedBy: %w", err)
+	}
+	return oldValue.ClaimedBy, nil
+}
+
+// ClearClaimedBy clears the value of the "claimedBy" field.
+func (m *ImageSyncTaskMutation) ClearClaimedBy() {
+	m.claimedBy = nil
+	m.clearedFields[imagesynctask.FieldClaimedBy] = struct{}{}
+}
+
+// ClaimedByCleared returns if the "claimedBy" field was cleared in this mutation.
+func (m *ImageSyncTaskMutation) ClaimedByCleared() bool {
+	_, ok := m.clearedFields[imagesynctask.FieldClaimedBy]
+	return ok
+}
+
+// ResetClaimedBy resets all changes to the "claimedBy" field.
+func (m *ImageSyncTaskMutation) ResetClaimedBy() {
+	m.claimedBy = nil
+	delete(m.clearedFields, imagesynctask.FieldClaimedBy)
+}
+
+// SetLeaseUntil sets the "leaseUntil" field.
+func (m *ImageSyncTaskMutation) SetLeaseUntil(t time.Time) {
+	m.leaseUntil = &t
+}
+
+// LeaseUntil returns the value of the "leaseUntil" field in the mutation.
+func (m *ImageSyncTaskMutation) LeaseUntil() (r time.Time, exists bool) {
+	v := m.leaseUntil
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseUntil returns the old "leaseUntil" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldLeaseUntil(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseUntil: %w", err)
+	}
+	return oldValue.LeaseUntil, nil
+}
+
+// ClearLeaseUntil clears the value of the "leaseUntil" field.
+func (m *ImageSyncTaskMutation) ClearLeaseUntil() {
+	m.leaseUntil = nil
+	m.clearedFields[imagesynctask.FieldLeaseUntil] = struct{}{}
+}
+
+// LeaseUntilCleared returns if the "leaseUntil" field was cleared in this mutation.
+func (m *ImageSyncTaskMutation) LeaseUntilCleared() bool {
+	_, ok := m.clearedFields[imagesynctask.FieldLeaseUntil]
+	return ok
+}
+
+// ResetLeaseUntil resets all changes to the "leaseUntil" field.
+func (m *ImageSyncTaskMutation) ResetLeaseUntil() {
+	m.leaseUntil = nil
+	delete(m.clearedFields, imagesynctask.FieldLeaseUntil)
+}
+
+// SetAvailableAt sets the "availableAt" field.
+func (m *ImageSyncTaskMutation) SetAvailableAt(t time.Time) {
+	m.availableAt = &t
+}
+
+// AvailableAt returns the value of the "availableAt" field in the mutation.
+func (m *ImageSyncTaskMutation) AvailableAt() (r time.Time, exists bool) {
+	v := m.availableAt
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAvailableAt returns the old "availableAt" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldAvailableAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAvailableAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAvailableAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAvailableAt: %w", err)
+	}
+	return oldValue.AvailableAt, nil
+}
+
+// ClearAvailableAt clears the value of the "availableAt" field.
+func (m *ImageSyncTaskMutation) ClearAvailableAt() {
+	m.availableAt = nil
+	m.clearedFields[imagesynctask.FieldAvailableAt] = struct{}{}
+}
+
+// AvailableAtCleared returns if the "availableAt" field was cleared in this mutation.
+func (m *ImageSyncTaskMutation) AvailableAtCleared() bool {
+	_, ok := m.clearedFields[imagesynctask.FieldAvailableAt]
+	return ok
+}
+
+// ResetAvailableAt resets all changes to the "availableAt" field.
+func (m *ImageSyncTaskMutation) ResetAvailableAt() {
+	m.availableAt = nil
+	delete(m.clearedFields, imagesynctask.FieldAvailableAt)
+}
+
+// SetAttempts sets the "attempts" field.
+func (m *ImageSyncTaskMutation) SetAttempts(i int) {
+	m.attempts = &i
+	m.addattempts = nil
+}
+
+// Attempts returns the value of the "attempts" field in the mutation.
+func (m *ImageSyncTaskMutation) Attempts() (r int, exists bool) {
+	v := m.attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttempts returns the old "attempts" field's value of the ImageSyncTask entity.
+// If the ImageSyncTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ImageSyncTaskMutation) OldAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttempts: %w", err)
+	}
+	return oldValue.Attempts, nil
+}
+
+// AddAttempts adds i to the "attempts" field.
+func (m *ImageSyncTaskMutation) AddAttempts(i int) {
+	if m.addattempts != nil {
+		*m.addattempts += i
+	} else {
+		m.addattempts = &i
+	}
+}
+
+// AddedAttempts returns the value that was added to the "attempts" field in this mutation.
+func (m *ImageSyncTaskMutation) AddedAttempts() (r int, exists bool) {
+	v := m.addattempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttempts resets all changes to the "attempts" field.
+func (m *ImageSyncTaskMutation) ResetAttempts() {
+	m.attempts = nil
+	m.addattempts = nil
+}
+
 // SetCreatedAt sets the "createdAt" field.
 func (m *ImageSyncTaskMutation) SetCreatedAt(t time.Time) {
 	m.createdAt = &t
@@ -2766,7 +3024,7 @@ func (m *ImageSyncTaskMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ImageSyncTaskMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 12)
 	if m.source != nil {
 		fields = append(fields, imagesynctask.FieldSource)
 	}
@@ -2781,6 +3039,21 @@ func (m *ImageSyncTaskMutation) Fields() []string {
 	}
 	if m.retryCount != nil {
 		fields = append(fields, imagesynctask.FieldRetryCount)
+	}
+	if m.targetKey != nil {
+		fields = append(fields, imagesynctask.FieldTargetKey)
+	}
+	if m.claimedBy != nil {
+		fields = append(fields, imagesynctask.FieldClaimedBy)
+	}
+	if m.leaseUntil != nil {
+		fields = append(fields, imagesynctask.FieldLeaseUntil)
+	}
+	if m.availableAt != nil {
+		fields = append(fields, imagesynctask.FieldAvailableAt)
+	}
+	if m.attempts != nil {
+		fields = append(fields, imagesynctask.FieldAttempts)
 	}
 	if m.createdAt != nil {
 		fields = append(fields, imagesynctask.FieldCreatedAt)
@@ -2806,6 +3079,16 @@ func (m *ImageSyncTaskMutation) Field(name string) (ent.Value, bool) {
 		return m.ErrMsg()
 	case imagesynctask.FieldRetryCount:
 		return m.RetryCount()
+	case imagesynctask.FieldTargetKey:
+		return m.TargetKey()
+	case imagesynctask.FieldClaimedBy:
+		return m.ClaimedBy()
+	case imagesynctask.FieldLeaseUntil:
+		return m.LeaseUntil()
+	case imagesynctask.FieldAvailableAt:
+		return m.AvailableAt()
+	case imagesynctask.FieldAttempts:
+		return m.Attempts()
 	case imagesynctask.FieldCreatedAt:
 		return m.CreatedAt()
 	case imagesynctask.FieldUpdatedAt:
@@ -2829,6 +3112,16 @@ func (m *ImageSyncTaskMutation) OldField(ctx context.Context, name string) (ent.
 		return m.OldErrMsg(ctx)
 	case imagesynctask.FieldRetryCount:
 		return m.OldRetryCount(ctx)
+	case imagesynctask.FieldTargetKey:
+		return m.OldTargetKey(ctx)
+	case imagesynctask.FieldClaimedBy:
+		return m.OldClaimedBy(ctx)
+	case imagesynctask.FieldLeaseUntil:
+		return m.OldLeaseUntil(ctx)
+	case imagesynctask.FieldAvailableAt:
+		return m.OldAvailableAt(ctx)
+	case imagesynctask.FieldAttempts:
+		return m.OldAttempts(ctx)
 	case imagesynctask.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case imagesynctask.FieldUpdatedAt:
@@ -2877,6 +3170,41 @@ func (m *ImageSyncTaskMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRetryCount(v)
 		return nil
+	case imagesynctask.FieldTargetKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetKey(v)
+		return nil
+	case imagesynctask.FieldClaimedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimedBy(v)
+		return nil
+	case imagesynctask.FieldLeaseUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseUntil(v)
+		return nil
+	case imagesynctask.FieldAvailableAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAvailableAt(v)
+		return nil
+	case imagesynctask.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttempts(v)
+		return nil
 	case imagesynctask.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -2902,6 +3230,9 @@ func (m *ImageSyncTaskMutation) AddedFields() []string {
 	if m.addretryCount != nil {
 		fields = append(fields, imagesynctask.FieldRetryCount)
 	}
+	if m.addattempts != nil {
+		fields = append(fields, imagesynctask.FieldAttempts)
+	}
 	return fields
 }
 
@@ -2912,6 +3243,8 @@ func (m *ImageSyncTaskMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case imagesynctask.FieldRetryCount:
 		return m.AddedRetryCount()
+	case imagesynctask.FieldAttempts:
+		return m.AddedAttempts()
 	}
 	return nil, false
 }
@@ -2928,6 +3261,13 @@ func (m *ImageSyncTaskMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRetryCount(v)
 		return nil
+	case imagesynctask.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttempts(v)
+		return nil
 	}
 	return fmt.Errorf("unknown ImageSyncTask numeric field %s", name)
 }
@@ -2938,6 +3278,18 @@ func (m *ImageSyncTaskMutation) ClearedFields() []string {
 	var fields []string
 	if m.FieldCleared(imagesynctask.FieldErrMsg) {
 		fields = append(fields, imagesynctask.FieldErrMsg)
+	}
+	if m.FieldCleared(imagesynctask.FieldTargetKey) {
+		fields = append(fields, imagesynctask.FieldTargetKey)
+	}
+	if m.FieldCleared(imagesynctask.FieldClaimedBy) {
+		fields = append(fields, imagesynctask.FieldClaimedBy)
+	}
+	if m.FieldCleared(imagesynctask.FieldLeaseUntil) {
+		fields = append(fields, imagesynctask.FieldLeaseUntil)
+	}
+	if m.FieldCleared(imagesynctask.FieldAvailableAt) {
+		fields = append(fields, imagesynctask.FieldAvailableAt)
 	}
 	return fields
 }
@@ -2955,6 +3307,18 @@ func (m *ImageSyncTaskMutation) ClearField(name string) error {
 	switch name {
 	case imagesynctask.FieldErrMsg:
 		m.ClearErrMsg()
+		return nil
+	case imagesynctask.FieldTargetKey:
+		m.ClearTargetKey()
+		return nil
+	case imagesynctask.FieldClaimedBy:
+		m.ClearClaimedBy()
+		return nil
+	case imagesynctask.FieldLeaseUntil:
+		m.ClearLeaseUntil()
+		return nil
+	case imagesynctask.FieldAvailableAt:
+		m.ClearAvailableAt()
 		return nil
 	}
 	return fmt.Errorf("unknown ImageSyncTask nullable field %s", name)
@@ -2978,6 +3342,21 @@ func (m *ImageSyncTaskMutation) ResetField(name string) error {
 		return nil
 	case imagesynctask.FieldRetryCount:
 		m.ResetRetryCount()
+		return nil
+	case imagesynctask.FieldTargetKey:
+		m.ResetTargetKey()
+		return nil
+	case imagesynctask.FieldClaimedBy:
+		m.ResetClaimedBy()
+		return nil
+	case imagesynctask.FieldLeaseUntil:
+		m.ResetLeaseUntil()
+		return nil
+	case imagesynctask.FieldAvailableAt:
+		m.ResetAvailableAt()
+		return nil
+	case imagesynctask.FieldAttempts:
+		m.ResetAttempts()
 		return nil
 	case imagesynctask.FieldCreatedAt:
 		m.ResetCreatedAt()

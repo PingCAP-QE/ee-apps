@@ -28,6 +28,9 @@ func TestWorkerApplyDefaults(t *testing.T) {
 	if got := w.HeartbeatDuration(); got != 30*time.Second {
 		t.Fatalf("HeartbeatDuration() = %v, want 30s", got)
 	}
+	if got := w.HardTimeoutDuration(); got != 0 {
+		t.Fatalf("HardTimeoutDuration() = %v, want 0 (disabled)", got)
+	}
 	if w.MaxAttempts != 3 {
 		t.Fatalf("MaxAttempts = %d, want 3", w.MaxAttempts)
 	}
@@ -51,6 +54,7 @@ func TestWorkerApplyDefaultsKeepsExplicitValues(t *testing.T) {
 		PollInterval:         "2s",
 		Lease:                "120s",
 		Heartbeat:            "40s",
+		HardTimeout:          "50s",
 		MaxAttempts:          5,
 		Kinds:                []string{"image_copy"},
 		LegacyStartupReclaim: &disabled,
@@ -63,6 +67,9 @@ func TestWorkerApplyDefaultsKeepsExplicitValues(t *testing.T) {
 	}
 	if got := w.PollEvery(); got != 2*time.Second {
 		t.Fatalf("PollEvery() = %v, want 2s", got)
+	}
+	if got := w.HardTimeoutDuration(); got != 50*time.Second {
+		t.Fatalf("HardTimeoutDuration() = %v, want 50s", got)
 	}
 	if w.LegacyReclaimEnabled() || w.InProcessEnabled() {
 		t.Fatal("explicit false switches must be honored")
@@ -102,5 +109,20 @@ func TestWorkerValidateRejectsMalformedDurations(t *testing.T) {
 				t.Fatalf("Validate() = nil, want error for %s", name)
 			}
 		})
+	}
+}
+
+func TestWorkerValidateHardTimeout(t *testing.T) {
+	valid := Worker{Lease: "90s", Heartbeat: "30s", HardTimeout: "60s"}
+	if err := valid.Validate(nil); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	tooLong := Worker{Lease: "90s", Heartbeat: "30s", HardTimeout: "90s"}
+	if err := tooLong.Validate(nil); err == nil {
+		t.Fatal("Validate() = nil, want hard_timeout error")
+	}
+	malformed := Worker{Lease: "90s", Heartbeat: "30s", HardTimeout: "soon"}
+	if err := malformed.Validate(nil); err == nil {
+		t.Fatal("Validate() = nil, want duration error")
 	}
 }

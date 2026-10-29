@@ -64,6 +64,7 @@ type artifactsrvc struct {
 
 	pollingRate time.Duration
 	workerCfg   config.Worker
+	nowFn       func() time.Time
 	inflight    sync.WaitGroup
 }
 
@@ -181,13 +182,16 @@ func (s *artifactsrvc) SyncImage(ctx context.Context, p *artifact.ImageSyncReque
 		return nil, err
 	}
 
-	task, err := s.db.ImageSyncTask.Create().
+	create := s.db.ImageSyncTask.Create().
 		SetSource(p.Source).
 		SetTarget(p.Target).
 		SetStatus(TaskStatusPending).
 		SetCreatedAt(time.Now()).
-		SetUpdatedAt(time.Now()).
-		Save(ctx)
+		SetUpdatedAt(time.Now())
+	if targetKey := imageTargetKey(p.Target); targetKey != "" {
+		create.SetTargetKey(targetKey)
+	}
+	task, err := create.Save(ctx)
 	if err != nil {
 		s.logger.Err(err).
 			Str("source", p.Source).

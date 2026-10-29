@@ -32,6 +32,9 @@ type Worker struct {
 	Lease string `yaml:"lease,omitempty" json:"lease,omitempty"`
 	// Heartbeat is the lease renewal interval (e.g. "30s").
 	Heartbeat string `yaml:"heartbeat,omitempty" json:"heartbeat,omitempty"`
+	// HardTimeout bounds a single execution (e.g. "45s"). Empty disables it.
+	// When set it must be less than lease*0.8.
+	HardTimeout string `yaml:"hard_timeout,omitempty" json:"hard_timeout,omitempty"`
 	// MaxAttempts is the number of attempts before a task is marked FAILED.
 	MaxAttempts int `yaml:"max_attempts,omitempty" json:"max_attempts,omitempty"`
 	// Kinds restricts which task kinds this worker executes.
@@ -96,6 +99,15 @@ func (w Worker) Validate(knownTargets []string) error {
 	if lease < 2*heartbeat {
 		return fmt.Errorf("invalid worker lease: lease %s must be at least 2x heartbeat %s", lease, heartbeat)
 	}
+	if normalized.HardTimeout != "" {
+		hardTimeout, err := time.ParseDuration(normalized.HardTimeout)
+		if err != nil || hardTimeout <= 0 {
+			return fmt.Errorf("invalid worker.hard_timeout %q: must be a positive duration", normalized.HardTimeout)
+		}
+		if hardTimeout >= lease*4/5 {
+			return fmt.Errorf("invalid worker.hard_timeout %s: must be less than lease*0.8 (%s)", hardTimeout, lease*4/5)
+		}
+	}
 	if normalized.Concurrency < 1 {
 		return fmt.Errorf("invalid worker.concurrency %d: must be at least 1", normalized.Concurrency)
 	}
@@ -144,6 +156,12 @@ func (w Worker) LeaseDuration() time.Duration {
 // HeartbeatDuration returns the parsed heartbeat interval.
 func (w Worker) HeartbeatDuration() time.Duration {
 	return parseWorkerDuration(w.Heartbeat, defaultWorkerHeartbeat)
+}
+
+// HardTimeoutDuration returns the parsed execution timeout. Zero means
+// disabled.
+func (w Worker) HardTimeoutDuration() time.Duration {
+	return parseWorkerDuration(w.HardTimeout, 0)
 }
 
 // LegacyReclaimEnabled reports whether startup must reset PROCESSING rows.

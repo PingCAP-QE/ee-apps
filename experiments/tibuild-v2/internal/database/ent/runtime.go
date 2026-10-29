@@ -137,12 +137,24 @@ func init() {
 	imagesynctaskDescRetryCount := imagesynctaskFields[4].Descriptor()
 	// imagesynctask.DefaultRetryCount holds the default value on creation for the retryCount field.
 	imagesynctask.DefaultRetryCount = imagesynctaskDescRetryCount.Default.(int)
+	// imagesynctaskDescTargetKey is the schema descriptor for targetKey field.
+	imagesynctaskDescTargetKey := imagesynctaskFields[5].Descriptor()
+	// imagesynctask.TargetKeyValidator is a validator for the "targetKey" field. It is called by the builders before save.
+	imagesynctask.TargetKeyValidator = imagesynctaskDescTargetKey.Validators[0].(func(string) error)
+	// imagesynctaskDescClaimedBy is the schema descriptor for claimedBy field.
+	imagesynctaskDescClaimedBy := imagesynctaskFields[6].Descriptor()
+	// imagesynctask.ClaimedByValidator is a validator for the "claimedBy" field. It is called by the builders before save.
+	imagesynctask.ClaimedByValidator = imagesynctaskDescClaimedBy.Validators[0].(func(string) error)
+	// imagesynctaskDescAttempts is the schema descriptor for attempts field.
+	imagesynctaskDescAttempts := imagesynctaskFields[9].Descriptor()
+	// imagesynctask.DefaultAttempts holds the default value on creation for the attempts field.
+	imagesynctask.DefaultAttempts = imagesynctaskDescAttempts.Default.(int)
 	// imagesynctaskDescCreatedAt is the schema descriptor for createdAt field.
-	imagesynctaskDescCreatedAt := imagesynctaskFields[5].Descriptor()
+	imagesynctaskDescCreatedAt := imagesynctaskFields[10].Descriptor()
 	// imagesynctask.DefaultCreatedAt holds the default value on creation for the createdAt field.
 	imagesynctask.DefaultCreatedAt = imagesynctaskDescCreatedAt.Default.(func() time.Time)
 	// imagesynctaskDescUpdatedAt is the schema descriptor for updatedAt field.
-	imagesynctaskDescUpdatedAt := imagesynctaskFields[6].Descriptor()
+	imagesynctaskDescUpdatedAt := imagesynctaskFields[11].Descriptor()
 	// imagesynctask.DefaultUpdatedAt holds the default value on creation for the updatedAt field.
 	imagesynctask.DefaultUpdatedAt = imagesynctaskDescUpdatedAt.Default.(func() time.Time)
 	// imagesynctask.UpdateDefaultUpdatedAt holds the default value on update for the updatedAt field.

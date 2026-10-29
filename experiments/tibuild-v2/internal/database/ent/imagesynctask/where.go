@@ -79,6 +79,31 @@ func RetryCount(v int) predicate.ImageSyncTask {
 	return predicate.ImageSyncTask(sql.FieldEQ(FieldRetryCount, v))
 }
 
+// TargetKey applies equality check predicate on the "targetKey" field. It's identical to TargetKeyEQ.
+func TargetKey(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldTargetKey, v))
+}
+
+// ClaimedBy applies equality check predicate on the "claimedBy" field. It's identical to ClaimedByEQ.
+func ClaimedBy(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldClaimedBy, v))
+}
+
+// LeaseUntil applies equality check predicate on the "leaseUntil" field. It's identical to LeaseUntilEQ.
+func LeaseUntil(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldLeaseUntil, v))
+}
+
+// AvailableAt applies equality check predicate on the "availableAt" field. It's identical to AvailableAtEQ.
+func AvailableAt(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldAvailableAt, v))
+}
+
+// Attempts applies equality check predicate on the "attempts" field. It's identical to AttemptsEQ.
+func Attempts(v int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldAttempts, v))
+}
+
 // CreatedAt applies equality check predicate on the "createdAt" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.ImageSyncTask {
 	return predicate.ImageSyncTask(sql.FieldEQ(FieldCreatedAt, v))
@@ -397,6 +422,296 @@ func RetryCountLT(v int) predicate.ImageSyncTask {
 // RetryCountLTE applies the LTE predicate on the "retryCount" field.
 func RetryCountLTE(v int) predicate.ImageSyncTask {
 	return predicate.ImageSyncTask(sql.FieldLTE(FieldRetryCount, v))
+}
+
+// TargetKeyEQ applies the EQ predicate on the "targetKey" field.
+func TargetKeyEQ(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldTargetKey, v))
+}
+
+// TargetKeyNEQ applies the NEQ predicate on the "targetKey" field.
+func TargetKeyNEQ(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNEQ(FieldTargetKey, v))
+}
+
+// TargetKeyIn applies the In predicate on the "targetKey" field.
+func TargetKeyIn(vs ...string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIn(FieldTargetKey, vs...))
+}
+
+// TargetKeyNotIn applies the NotIn predicate on the "targetKey" field.
+func TargetKeyNotIn(vs ...string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotIn(FieldTargetKey, vs...))
+}
+
+// TargetKeyGT applies the GT predicate on the "targetKey" field.
+func TargetKeyGT(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGT(FieldTargetKey, v))
+}
+
+// TargetKeyGTE applies the GTE predicate on the "targetKey" field.
+func TargetKeyGTE(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGTE(FieldTargetKey, v))
+}
+
+// TargetKeyLT applies the LT predicate on the "targetKey" field.
+func TargetKeyLT(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLT(FieldTargetKey, v))
+}
+
+// TargetKeyLTE applies the LTE predicate on the "targetKey" field.
+func TargetKeyLTE(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLTE(FieldTargetKey, v))
+}
+
+// TargetKeyContains applies the Contains predicate on the "targetKey" field.
+func TargetKeyContains(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldContains(FieldTargetKey, v))
+}
+
+// TargetKeyHasPrefix applies the HasPrefix predicate on the "targetKey" field.
+func TargetKeyHasPrefix(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldHasPrefix(FieldTargetKey, v))
+}
+
+// TargetKeyHasSuffix applies the HasSuffix predicate on the "targetKey" field.
+func TargetKeyHasSuffix(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldHasSuffix(FieldTargetKey, v))
+}
+
+// TargetKeyIsNil applies the IsNil predicate on the "targetKey" field.
+func TargetKeyIsNil() predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIsNull(FieldTargetKey))
+}
+
+// TargetKeyNotNil applies the NotNil predicate on the "targetKey" field.
+func TargetKeyNotNil() predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotNull(FieldTargetKey))
+}
+
+// TargetKeyEqualFold applies the EqualFold predicate on the "targetKey" field.
+func TargetKeyEqualFold(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEqualFold(FieldTargetKey, v))
+}
+
+// TargetKeyContainsFold applies the ContainsFold predicate on the "targetKey" field.
+func TargetKeyContainsFold(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldContainsFold(FieldTargetKey, v))
+}
+
+// ClaimedByEQ applies the EQ predicate on the "claimedBy" field.
+func ClaimedByEQ(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldClaimedBy, v))
+}
+
+// ClaimedByNEQ applies the NEQ predicate on the "claimedBy" field.
+func ClaimedByNEQ(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNEQ(FieldClaimedBy, v))
+}
+
+// ClaimedByIn applies the In predicate on the "claimedBy" field.
+func ClaimedByIn(vs ...string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIn(FieldClaimedBy, vs...))
+}
+
+// ClaimedByNotIn applies the NotIn predicate on the "claimedBy" field.
+func ClaimedByNotIn(vs ...string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotIn(FieldClaimedBy, vs...))
+}
+
+// ClaimedByGT applies the GT predicate on the "claimedBy" field.
+func ClaimedByGT(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGT(FieldClaimedBy, v))
+}
+
+// ClaimedByGTE applies the GTE predicate on the "claimedBy" field.
+func ClaimedByGTE(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGTE(FieldClaimedBy, v))
+}
+
+// ClaimedByLT applies the LT predicate on the "claimedBy" field.
+func ClaimedByLT(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLT(FieldClaimedBy, v))
+}
+
+// ClaimedByLTE applies the LTE predicate on the "claimedBy" field.
+func ClaimedByLTE(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLTE(FieldClaimedBy, v))
+}
+
+// ClaimedByContains applies the Contains predicate on the "claimedBy" field.
+func ClaimedByContains(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldContains(FieldClaimedBy, v))
+}
+
+// ClaimedByHasPrefix applies the HasPrefix predicate on the "claimedBy" field.
+func ClaimedByHasPrefix(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldHasPrefix(FieldClaimedBy, v))
+}
+
+// ClaimedByHasSuffix applies the HasSuffix predicate on the "claimedBy" field.
+func ClaimedByHasSuffix(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldHasSuffix(FieldClaimedBy, v))
+}
+
+// ClaimedByIsNil applies the IsNil predicate on the "claimedBy" field.
+func ClaimedByIsNil() predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIsNull(FieldClaimedBy))
+}
+
+// ClaimedByNotNil applies the NotNil predicate on the "claimedBy" field.
+func ClaimedByNotNil() predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotNull(FieldClaimedBy))
+}
+
+// ClaimedByEqualFold applies the EqualFold predicate on the "claimedBy" field.
+func ClaimedByEqualFold(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEqualFold(FieldClaimedBy, v))
+}
+
+// ClaimedByContainsFold applies the ContainsFold predicate on the "claimedBy" field.
+func ClaimedByContainsFold(v string) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldContainsFold(FieldClaimedBy, v))
+}
+
+// LeaseUntilEQ applies the EQ predicate on the "leaseUntil" field.
+func LeaseUntilEQ(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldLeaseUntil, v))
+}
+
+// LeaseUntilNEQ applies the NEQ predicate on the "leaseUntil" field.
+func LeaseUntilNEQ(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNEQ(FieldLeaseUntil, v))
+}
+
+// LeaseUntilIn applies the In predicate on the "leaseUntil" field.
+func LeaseUntilIn(vs ...time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIn(FieldLeaseUntil, vs...))
+}
+
+// LeaseUntilNotIn applies the NotIn predicate on the "leaseUntil" field.
+func LeaseUntilNotIn(vs ...time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotIn(FieldLeaseUntil, vs...))
+}
+
+// LeaseUntilGT applies the GT predicate on the "leaseUntil" field.
+func LeaseUntilGT(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGT(FieldLeaseUntil, v))
+}
+
+// LeaseUntilGTE applies the GTE predicate on the "leaseUntil" field.
+func LeaseUntilGTE(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGTE(FieldLeaseUntil, v))
+}
+
+// LeaseUntilLT applies the LT predicate on the "leaseUntil" field.
+func LeaseUntilLT(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLT(FieldLeaseUntil, v))
+}
+
+// LeaseUntilLTE applies the LTE predicate on the "leaseUntil" field.
+func LeaseUntilLTE(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLTE(FieldLeaseUntil, v))
+}
+
+// LeaseUntilIsNil applies the IsNil predicate on the "leaseUntil" field.
+func LeaseUntilIsNil() predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIsNull(FieldLeaseUntil))
+}
+
+// LeaseUntilNotNil applies the NotNil predicate on the "leaseUntil" field.
+func LeaseUntilNotNil() predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotNull(FieldLeaseUntil))
+}
+
+// AvailableAtEQ applies the EQ predicate on the "availableAt" field.
+func AvailableAtEQ(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldAvailableAt, v))
+}
+
+// AvailableAtNEQ applies the NEQ predicate on the "availableAt" field.
+func AvailableAtNEQ(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNEQ(FieldAvailableAt, v))
+}
+
+// AvailableAtIn applies the In predicate on the "availableAt" field.
+func AvailableAtIn(vs ...time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIn(FieldAvailableAt, vs...))
+}
+
+// AvailableAtNotIn applies the NotIn predicate on the "availableAt" field.
+func AvailableAtNotIn(vs ...time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotIn(FieldAvailableAt, vs...))
+}
+
+// AvailableAtGT applies the GT predicate on the "availableAt" field.
+func AvailableAtGT(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGT(FieldAvailableAt, v))
+}
+
+// AvailableAtGTE applies the GTE predicate on the "availableAt" field.
+func AvailableAtGTE(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGTE(FieldAvailableAt, v))
+}
+
+// AvailableAtLT applies the LT predicate on the "availableAt" field.
+func AvailableAtLT(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLT(FieldAvailableAt, v))
+}
+
+// AvailableAtLTE applies the LTE predicate on the "availableAt" field.
+func AvailableAtLTE(v time.Time) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLTE(FieldAvailableAt, v))
+}
+
+// AvailableAtIsNil applies the IsNil predicate on the "availableAt" field.
+func AvailableAtIsNil() predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIsNull(FieldAvailableAt))
+}
+
+// AvailableAtNotNil applies the NotNil predicate on the "availableAt" field.
+func AvailableAtNotNil() predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotNull(FieldAvailableAt))
+}
+
+// AttemptsEQ applies the EQ predicate on the "attempts" field.
+func AttemptsEQ(v int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldEQ(FieldAttempts, v))
+}
+
+// AttemptsNEQ applies the NEQ predicate on the "attempts" field.
+func AttemptsNEQ(v int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNEQ(FieldAttempts, v))
+}
+
+// AttemptsIn applies the In predicate on the "attempts" field.
+func AttemptsIn(vs ...int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldIn(FieldAttempts, vs...))
+}
+
+// AttemptsNotIn applies the NotIn predicate on the "attempts" field.
+func AttemptsNotIn(vs ...int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldNotIn(FieldAttempts, vs...))
+}
+
+// AttemptsGT applies the GT predicate on the "attempts" field.
+func AttemptsGT(v int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGT(FieldAttempts, v))
+}
+
+// AttemptsGTE applies the GTE predicate on the "attempts" field.
+func AttemptsGTE(v int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldGTE(FieldAttempts, v))
+}
+
+// AttemptsLT applies the LT predicate on the "attempts" field.
+func AttemptsLT(v int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLT(FieldAttempts, v))
+}
+
+// AttemptsLTE applies the LTE predicate on the "attempts" field.
+func AttemptsLTE(v int) predicate.ImageSyncTask {
+	return predicate.ImageSyncTask(sql.FieldLTE(FieldAttempts, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "createdAt" field.

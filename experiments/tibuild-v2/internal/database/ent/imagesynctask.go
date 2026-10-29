@@ -27,6 +27,16 @@ type ImageSyncTask struct {
 	ErrMsg string `json:"errMsg,omitempty"`
 	// Number of times the task has been retried
 	RetryCount int `json:"retryCount,omitempty"`
+	// Target key (registry host) used for worker sharding
+	TargetKey string `json:"targetKey,omitempty"`
+	// Worker identity currently holding the lease
+	ClaimedBy string `json:"claimedBy,omitempty"`
+	// Lease expiry; expired PROCESSING rows are reclaimed by the reaper
+	LeaseUntil time.Time `json:"leaseUntil,omitempty"`
+	// Earliest time the task may be claimed again after a failure
+	AvailableAt time.Time `json:"availableAt,omitempty"`
+	// Claim attempts, incremented atomically on claim
+	Attempts int `json:"attempts,omitempty"`
 	// Time when the task was created
 	CreatedAt time.Time `json:"createdAt,omitempty"`
 	// Time when the task was last updated
@@ -39,11 +49,11 @@ func (*ImageSyncTask) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case imagesynctask.FieldID, imagesynctask.FieldRetryCount:
+		case imagesynctask.FieldID, imagesynctask.FieldRetryCount, imagesynctask.FieldAttempts:
 			values[i] = new(sql.NullInt64)
-		case imagesynctask.FieldSource, imagesynctask.FieldTarget, imagesynctask.FieldStatus, imagesynctask.FieldErrMsg:
+		case imagesynctask.FieldSource, imagesynctask.FieldTarget, imagesynctask.FieldStatus, imagesynctask.FieldErrMsg, imagesynctask.FieldTargetKey, imagesynctask.FieldClaimedBy:
 			values[i] = new(sql.NullString)
-		case imagesynctask.FieldCreatedAt, imagesynctask.FieldUpdatedAt:
+		case imagesynctask.FieldLeaseUntil, imagesynctask.FieldAvailableAt, imagesynctask.FieldCreatedAt, imagesynctask.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -95,6 +105,36 @@ func (_m *ImageSyncTask) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field retryCount", values[i])
 			} else if value.Valid {
 				_m.RetryCount = int(value.Int64)
+			}
+		case imagesynctask.FieldTargetKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field targetKey", values[i])
+			} else if value.Valid {
+				_m.TargetKey = value.String
+			}
+		case imagesynctask.FieldClaimedBy:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field claimedBy", values[i])
+			} else if value.Valid {
+				_m.ClaimedBy = value.String
+			}
+		case imagesynctask.FieldLeaseUntil:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field leaseUntil", values[i])
+			} else if value.Valid {
+				_m.LeaseUntil = value.Time
+			}
+		case imagesynctask.FieldAvailableAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field availableAt", values[i])
+			} else if value.Valid {
+				_m.AvailableAt = value.Time
+			}
+		case imagesynctask.FieldAttempts:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field attempts", values[i])
+			} else if value.Valid {
+				_m.Attempts = int(value.Int64)
 			}
 		case imagesynctask.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -158,6 +198,21 @@ func (_m *ImageSyncTask) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("retryCount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RetryCount))
+	builder.WriteString(", ")
+	builder.WriteString("targetKey=")
+	builder.WriteString(_m.TargetKey)
+	builder.WriteString(", ")
+	builder.WriteString("claimedBy=")
+	builder.WriteString(_m.ClaimedBy)
+	builder.WriteString(", ")
+	builder.WriteString("leaseUntil=")
+	builder.WriteString(_m.LeaseUntil.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("availableAt=")
+	builder.WriteString(_m.AvailableAt.Format(time.ANSIC))
+	builder.WriteString(", ")
+	builder.WriteString("attempts=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Attempts))
 	builder.WriteString(", ")
 	builder.WriteString("createdAt=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

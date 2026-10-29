@@ -7,6 +7,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // ImageSyncTask holds the schema definition for the ImageSyncTask entity.
@@ -40,6 +41,28 @@ func (ImageSyncTask) Fields() []ent.Field {
 			Default(0).
 			Comment("Number of times the task has been retried"),
 
+		field.String("targetKey").
+			Optional().
+			MaxLen(64).
+			Comment("Target key (registry host) used for worker sharding"),
+
+		field.String("claimedBy").
+			Optional().
+			MaxLen(128).
+			Comment("Worker identity currently holding the lease"),
+
+		field.Time("leaseUntil").
+			Optional().
+			Comment("Lease expiry; expired PROCESSING rows are reclaimed by the reaper"),
+
+		field.Time("availableAt").
+			Optional().
+			Comment("Earliest time the task may be claimed again after a failure"),
+
+		field.Int("attempts").
+			Default(0).
+			Comment("Claim attempts, incremented atomically on claim"),
+
 		field.Time("createdAt").
 			Default(time.Now).
 			Comment("Time when the task was created"),
@@ -48,6 +71,14 @@ func (ImageSyncTask) Fields() []ent.Field {
 			Default(time.Now).
 			UpdateDefault(time.Now).
 			Comment("Time when the task was last updated"),
+	}
+}
+
+// Indexes of the ImageSyncTask.
+func (ImageSyncTask) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("targetKey", "status", "availableAt", "id").
+			StorageKey("idx_claim"),
 	}
 }
 

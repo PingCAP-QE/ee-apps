@@ -23,6 +23,16 @@ const (
 	FieldErrMsg = "err_msg"
 	// FieldRetryCount holds the string denoting the retrycount field in the database.
 	FieldRetryCount = "retry_count"
+	// FieldTargetKey holds the string denoting the targetkey field in the database.
+	FieldTargetKey = "target_key"
+	// FieldClaimedBy holds the string denoting the claimedby field in the database.
+	FieldClaimedBy = "claimed_by"
+	// FieldLeaseUntil holds the string denoting the leaseuntil field in the database.
+	FieldLeaseUntil = "lease_until"
+	// FieldAvailableAt holds the string denoting the availableat field in the database.
+	FieldAvailableAt = "available_at"
+	// FieldAttempts holds the string denoting the attempts field in the database.
+	FieldAttempts = "attempts"
 	// FieldCreatedAt holds the string denoting the createdat field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updatedat field in the database.
@@ -39,6 +49,11 @@ var Columns = []string{
 	FieldStatus,
 	FieldErrMsg,
 	FieldRetryCount,
+	FieldTargetKey,
+	FieldClaimedBy,
+	FieldLeaseUntil,
+	FieldAvailableAt,
+	FieldAttempts,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -66,6 +81,12 @@ var (
 	ErrMsgValidator func(string) error
 	// DefaultRetryCount holds the default value on creation for the "retryCount" field.
 	DefaultRetryCount int
+	// TargetKeyValidator is a validator for the "targetKey" field. It is called by the builders before save.
+	TargetKeyValidator func(string) error
+	// ClaimedByValidator is a validator for the "claimedBy" field. It is called by the builders before save.
+	ClaimedByValidator func(string) error
+	// DefaultAttempts holds the default value on creation for the "attempts" field.
+	DefaultAttempts int
 	// DefaultCreatedAt holds the default value on creation for the "createdAt" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updatedAt" field.
@@ -105,6 +126,31 @@ func ByErrMsg(opts ...sql.OrderTermOption) OrderOption {
 // ByRetryCount orders the results by the retryCount field.
 func ByRetryCount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRetryCount, opts...).ToFunc()
+}
+
+// ByTargetKey orders the results by the targetKey field.
+func ByTargetKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTargetKey, opts...).ToFunc()
+}
+
+// ByClaimedBy orders the results by the claimedBy field.
+func ByClaimedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClaimedBy, opts...).ToFunc()
+}
+
+// ByLeaseUntil orders the results by the leaseUntil field.
+func ByLeaseUntil(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLeaseUntil, opts...).ToFunc()
+}
+
+// ByAvailableAt orders the results by the availableAt field.
+func ByAvailableAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAvailableAt, opts...).ToFunc()
+}
+
+// ByAttempts orders the results by the attempts field.
+func ByAttempts(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAttempts, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the createdAt field.
