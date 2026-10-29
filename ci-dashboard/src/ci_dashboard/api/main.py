@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
 
 from ci_dashboard import __version__
+from ci_dashboard.api.auth import CompanyIdentityMiddleware, get_identity_verifier
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.routes.builds import router as builds_router
 from ci_dashboard.api.routes.failures import router as failures_router
@@ -44,6 +45,7 @@ def _check_database() -> None:
 
 
 async def readyz() -> dict[str, str]:
+    get_identity_verifier()
     try:
         await run_in_threadpool(_check_database)
     except (SQLAlchemyError, ValueError):
@@ -124,6 +126,7 @@ def _attach_frontend(app: FastAPI) -> None:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="CI Dashboard", version=__version__)
+    app.add_middleware(CompanyIdentityMiddleware)
 
     app.include_router(status_router)
     app.include_router(filters_router)

@@ -40,6 +40,14 @@ Not implemented yet:
 - deeper build/failure drill-down pages and richer table views
 - infra / Jenkins specific pages
 
+## Backend authentication
+
+The app requires a verified company Google ID token by default, including on
+in-cluster Service/Pod requests. Deployment needs Envoy ID-token forwarding and
+explicit client-ID/Workspace-domain configuration; merging code alone is not a
+production fix. See [the authentication and rollout contract](docs/backend-auth.md).
+`make api` / `make api-tidb` opt out only for loopback local development.
+
 ## Local Test Run
 
 This scaffold supports local unit tests with sqlite and does not require a remote TiDB instance.
@@ -49,7 +57,7 @@ Recommended local setup:
 ```bash
 cd ci-dashboard
 python3 -m venv .venv
-./.venv/bin/pip install fastapi uvicorn SQLAlchemy PyMySQL pytest pytest-cov ruff coverage httpx
+./.venv/bin/pip install -e '.[dev]'
 PYTHONPATH=src ./.venv/bin/python -m pytest --cov=src/ci_dashboard --cov-report=term-missing
 make sync-builds
 make sync-pr-events

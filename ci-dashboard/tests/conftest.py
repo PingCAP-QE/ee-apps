@@ -9,6 +9,19 @@ from sqlalchemy.engine import Engine
 from ci_dashboard.common.db import install_sqlite_functions
 
 
+@pytest.fixture(autouse=True)
+def local_api_auth(monkeypatch):
+    # Query tests use explicit local-development mode; auth tests re-enable the gate.
+    from ci_dashboard.api.auth import _warn_configuration, get_identity_verifier
+
+    monkeypatch.setenv("CI_DASHBOARD_AUTH_DISABLED", "true")
+    get_identity_verifier.cache_clear()
+    _warn_configuration.cache_clear()
+    yield
+    get_identity_verifier.cache_clear()
+    _warn_configuration.cache_clear()
+
+
 def _create_test_schema(engine: Engine) -> None:
     statements = [
         """
