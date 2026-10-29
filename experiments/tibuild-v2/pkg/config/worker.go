@@ -39,11 +39,6 @@ type Worker struct {
 	MaxAttempts int `yaml:"max_attempts,omitempty" json:"max_attempts,omitempty"`
 	// Kinds restricts which task kinds this worker executes.
 	Kinds []string `yaml:"kinds,omitempty" json:"kinds,omitempty"`
-	// LegacyStartupReclaim keeps the pre-lease behavior of resetting all
-	// PROCESSING rows on startup. It exists as a rollback switch for Phase 1.
-	LegacyStartupReclaim *bool `yaml:"legacy_startup_reclaim,omitempty" json:"legacy_startup_reclaim,omitempty"`
-	// InProcess controls whether cmd/tibuild starts the worker in-process.
-	InProcess *bool `yaml:"in_process,omitempty" json:"in_process,omitempty"`
 }
 
 // ApplyDefaults fills zero values with the defaults documented in the spec.
@@ -162,16 +157,6 @@ func (w Worker) HeartbeatDuration() time.Duration {
 // disabled.
 func (w Worker) HardTimeoutDuration() time.Duration {
 	return parseWorkerDuration(w.HardTimeout, 0)
-}
-
-// LegacyReclaimEnabled reports whether startup must reset PROCESSING rows.
-func (w Worker) LegacyReclaimEnabled() bool {
-	return w.LegacyStartupReclaim == nil || *w.LegacyStartupReclaim
-}
-
-// InProcessEnabled reports whether cmd/tibuild runs the worker in-process.
-func (w Worker) InProcessEnabled() bool {
-	return w.InProcess == nil || *w.InProcess
 }
 
 func parseWorkerDuration(value string, fallback time.Duration) time.Duration {

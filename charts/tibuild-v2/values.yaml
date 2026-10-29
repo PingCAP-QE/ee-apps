@@ -168,12 +168,9 @@ server:
   volumeMounts: []
 
 # Standalone background worker (cmd/tibuild-worker).
-# Disabled by default: the API keeps running the worker in-process
-# (worker.in_process: true in the config). When enabling this deployment,
-# set worker.in_process: false in the config secret so exactly one process
-# consumes tasks.
+# The API does not execute tasks, so the worker deployment is required.
 worker:
-  enabled: false
+  enabled: true
   replicaCount: 1
   # The worker runs a separate binary/image built from cmd/tibuild-worker.
   image:
