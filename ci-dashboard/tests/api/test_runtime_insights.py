@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from unittest.mock import Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +10,8 @@ from sqlalchemy import text
 from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.main import app
 from ci_dashboard.api.queries import runtime as runtime_queries
-from ci_dashboard.api.queries.base import CommonFilters
+from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT, CommonFilters
+from ci_dashboard.api.routes import pages as page_routes
 
 DEFAULT_COMPLETION_TIME = object()
 
@@ -616,6 +618,59 @@ def test_runtime_error_builds_defaults_to_latest_15_records(sqlite_engine) -> No
     assert len(body["items"]) == 15
     assert body["items"][0]["build_number"] == "2016"
     assert body["items"][-1]["build_number"] == "2002"
+
+
+@pytest.mark.parametrize("endpoint", ["runtime-error-top-jobs", "runtime-error-builds"])
+@pytest.mark.parametrize("limit", [-1, 0])
+def test_runtime_error_routes_reject_nonpositive_limits_before_query(
+    monkeypatch, endpoint, limit,
+) -> None:
+    query = Mock(return_value={"items": []})
+    monkeypatch.setattr(page_routes, "get_error_top_jobs", query)
+    monkeypatch.setattr(page_routes, "get_error_builds", query)
+    app.dependency_overrides[get_engine] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/api/v1/pages/{endpoint}",
+                params={"limit": limit, "selected_job_name": "pingcap/tidb/ghpr_check2"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert any(error["loc"] == ["query", "limit"] for error in response.json()["detail"])
+    query.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "query_name", "default_limit"),
+    [
+        ("runtime-error-top-jobs", "get_error_top_jobs", 10),
+        ("runtime-error-builds", "get_error_builds", 15),
+    ],
+)
+@pytest.mark.parametrize("limit", [None, 1, MAX_RANKING_LIMIT, MAX_RANKING_LIMIT + 1])
+def test_runtime_error_routes_preserve_valid_limits_and_upper_cap(
+    monkeypatch, endpoint, query_name, default_limit, limit,
+) -> None:
+    query = Mock(return_value={"items": []})
+    monkeypatch.setattr(page_routes, query_name, query)
+    app.dependency_overrides[get_engine] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/api/v1/pages/{endpoint}",
+                params={} if limit is None else {"limit": limit},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    query.assert_called_once()
+    assert query.call_args.kwargs["limit"] == (
+        default_limit if limit is None else min(limit, MAX_RANKING_LIMIT)
+    )
 
 
 def test_runtime_insights_rolls_pods_to_builds_and_uses_effective_categories(sqlite_engine) -> None:
