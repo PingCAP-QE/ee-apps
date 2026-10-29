@@ -15,6 +15,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
+	entimagesynctask "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
@@ -151,6 +152,12 @@ func TestWorkerMultiReplicaAndLeaseRecoveryMySQL(t *testing.T) {
 	for id, count := range executed {
 		require.Equalf(t, 1, count, "task %d was executed %d times", id, count)
 	}
+
+	residual, err := db.ImageSyncTask.Query().
+		Where(entimagesynctask.Status(TaskStatusProcessing)).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, residual, "no PROCESSING row may remain after the stress run")
 
 	// Pod-kill simulation: claim with a short lease, never heartbeat, let the
 	// reaper reclaim it, then let another worker finish it.
