@@ -17,6 +17,7 @@ require (
 	github.com/larksuite/oapi-sdk-go/v3 v3.9.7
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/migueleliasweb/go-github-mock v1.5.0
+	github.com/prometheus/client_golang v1.23.2
 	github.com/rs/zerolog v1.33.0
 	github.com/stretchr/testify v1.11.1
 	github.com/tektoncd/pipeline v1.13.1
@@ -117,7 +118,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
