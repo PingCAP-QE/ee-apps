@@ -92,6 +92,8 @@ worker:
   poll_interval: "10s"
   lease: "90s"
   heartbeat: "30s"
+  # Optional execution timeout; must be less than lease*0.8. Empty disables it.
+  # hard_timeout: "60s"
   max_attempts: 3
   kinds: ["image_copy"]
   # Phase 1 rollback switch: reset PROCESSING rows on startup.

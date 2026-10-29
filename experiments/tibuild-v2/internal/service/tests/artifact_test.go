@@ -353,6 +353,6 @@ func TestWorker_ReclaimsInterruptedTasks(t *testing.T) {
 	go worker.Start(ctx)
 	defer worker.Stop()
 
-	final := waitForStatus(t, svc, task.ID, []string{"SUCCEEDED", "FAILED"}, 30*time.Second)
+	final := waitForStatus(t, svc, task.ID, []string{"SUCCEEDED", "FAILED"}, 2*time.Minute)
 	assert.Equal(t, "FAILED", final.Status, "interrupted task should be reclaimed and finish")
 }

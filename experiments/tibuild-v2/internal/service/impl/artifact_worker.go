@@ -2,6 +2,8 @@ package impl
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/crane"
@@ -14,68 +16,72 @@ import (
 const (
 	defaultPollingRate = 10 * time.Second
 	defaultBatchSize   = 5
-	defaultMaxRetries  = 3
 )
 
-// Start launches the image sync worker in the background. It polls the
-// database for PENDING tasks and copies the images, so tasks survive a
-// service restart (residual PROCESSING tasks are reclaimed on startup).
-// It blocks until the context is cancelled.
+// Start launches the image sync workers in the background. Each concurrency
+// slot runs the shared polling loop; the reaper returns expired leases to
+// PENDING. In lease mode nothing is reset on startup, so a restart cannot
+// steal another region's in-flight tasks.
 func (s *artifactsrvc) Start(ctx context.Context) {
+	cfg := s.workerConfig()
+
+	if cfg.LegacyReclaimEnabled() {
+		updated, err := s.db.ImageSyncTask.Update().
+			Where(entimagesynctask.Status(TaskStatusProcessing)).
+			SetStatus(TaskStatusPending).
+			ClearClaimedBy().
+			ClearLeaseUntil().
+			Save(ctx)
+		if err != nil {
+			s.logger.Err(err).Msg("failed to reclaim interrupted image sync tasks")
+		} else {
+			s.logger.Info().Int("count", updated).Msg("reclaimed interrupted image sync tasks on startup")
+		}
+	}
+
+	go s.runReaper(ctx)
+
 	s.mu.RLock()
-	workerCfg := s.workerCfg
 	pollingRate := s.pollingRate
 	s.mu.RUnlock()
 
-	// Phase 1 keeps the legacy startup reclaim behind a switch so the new
-	// binary can be rolled back without a schema change.
-	if workerCfg.LegacyReclaimEnabled() {
-		if _, err := s.db.ImageSyncTask.Update().
-			Where(entimagesynctask.Status(TaskStatusProcessing)).
-			SetStatus(TaskStatusPending).
-			Save(ctx); err != nil {
-			s.logger.Err(err).Msg("failed to reclaim interrupted image sync tasks")
-		} else {
-			s.logger.Info().Msg("reclaimed interrupted image sync tasks on startup")
-		}
+	var wg sync.WaitGroup
+	for i := 0; i < cfg.Concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runner := &workerpkg.Runner{
+				Logger:       s.logger,
+				PollInterval: pollingRate,
+				Consume:      s.pollOnce,
+			}
+			runner.Run(ctx)
+		}()
 	}
-
-	runner := &workerpkg.Runner{
-		Logger:       s.logger,
-		PollInterval: pollingRate,
-		Consume:      s.pollOnce,
-	}
-	runner.Run(ctx)
+	wg.Wait()
 }
 
-// pollOnce claims and processes a batch of PENDING tasks.
+// pollOnce drains a small batch of claimable tasks before waiting for the next
+// poll interval.
 func (s *artifactsrvc) pollOnce(ctx context.Context) {
-	tasks, err := s.db.ImageSyncTask.Query().
-		Where(entimagesynctask.Status(TaskStatusPending)).
-		Order(entimagesynctask.ByID()).
-		Limit(defaultBatchSize).
-		All(ctx)
-	if err != nil {
-		s.logger.Err(err).Msg("failed to query pending image sync tasks")
-		return
-	}
-
-	for _, task := range tasks {
-		// Claim the task optimistically: only a task still in PENDING state is
-		// taken, which guards against concurrent workers picking it up twice.
-		claimed, err := s.db.ImageSyncTask.UpdateOneID(task.ID).
-			Where(entimagesynctask.Status(TaskStatusPending)).
-			SetStatus(TaskStatusProcessing).
-			SetUpdatedAt(time.Now()).
-			Save(ctx)
-		if err != nil || claimed == nil {
-			continue
+	for i := 0; i < defaultBatchSize; i++ {
+		if ctx.Err() != nil {
+			return
 		}
-		s.process(ctx, claimed)
+		task, err := s.claimOne(ctx)
+		if err != nil {
+			s.logger.Err(err).Msg("failed to claim an image sync task")
+			return
+		}
+		if task == nil {
+			return
+		}
+		s.process(ctx, task)
 	}
 }
 
-// process copies the image for a claimed task and updates its status.
+// process copies the image for a claimed task and records the result with a
+// fencing check.
 func (s *artifactsrvc) process(ctx context.Context, task *ent.ImageSyncTask) {
 	s.inflight.Add(1)
 	defer s.inflight.Done()
@@ -86,37 +92,67 @@ func (s *artifactsrvc) process(ctx context.Context, task *ent.ImageSyncTask) {
 		Str("target", task.Target).
 		Logger()
 
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	copyCtx := runCtx
+	hardTimeout := s.workerConfig().HardTimeoutDuration()
+	if hardTimeout > 0 {
+		timeoutCtx, timeoutCancel := context.WithTimeout(runCtx, hardTimeout)
+		defer timeoutCancel()
+		copyCtx = timeoutCtx
+	}
+
+	// Keep the lease alive for the whole copy. A failed renewal cancels the
+	// copy early; the result is then discarded instead of overwriting the
+	// next owner's work.
+	if task.ClaimedBy != "" {
+		go s.heartbeat(runCtx, cancel, task.ID, task.ClaimedBy)
+	}
+
 	l.Info().Msg("Syncing Docker image")
 
-	err := crane.Copy(task.Source, task.Target, crane.WithContext(ctx))
+	err := crane.Copy(task.Source, task.Target, crane.WithContext(copyCtx))
+	if ctx.Err() != nil {
+		l.Info().Msg("worker stopping, discarding image sync result")
+		return
+	}
+	if runCtx.Err() != nil && err != nil {
+		l.Warn().Msg("task lease lost, discarding image sync result")
+		return
+	}
+	if hardTimeout > 0 && copyCtx.Err() == context.DeadlineExceeded {
+		err = fmt.Errorf("image sync exceeded hard timeout %s: %w", hardTimeout, err)
+	}
+
 	if err != nil {
-		retryCount := task.RetryCount + 1
-		if retryCount < defaultMaxRetries {
-			l.Warn().Err(err).Int("retry_count", retryCount).Msg("Failed to sync image, re-enqueuing")
-			_, _ = s.db.ImageSyncTask.UpdateOneID(task.ID).
-				SetStatus(TaskStatusPending).
-				SetRetryCount(retryCount).
-				SetErrMsg(err.Error()).
-				SetUpdatedAt(time.Now()).
-				Save(context.Background())
+		ok, updateErr := s.handleFailure(ctx, task, err)
+		if updateErr != nil {
+			l.Err(updateErr).Msg("failed to record image sync failure")
 			return
 		}
-		l.Err(err).Msg("Failed to sync image, giving up")
-		_, _ = s.db.ImageSyncTask.UpdateOneID(task.ID).
-			SetStatus(TaskStatusFailed).
-			SetRetryCount(retryCount).
-			SetErrMsg(err.Error()).
-			SetUpdatedAt(time.Now()).
-			Save(context.Background())
+		if !ok {
+			l.Warn().Msg("task lease lost, failure not recorded")
+			return
+		}
+		if task.Attempts >= s.workerConfig().MaxAttempts {
+			l.Err(err).Msg("Failed to sync image, giving up")
+		} else {
+			l.Warn().Err(err).Int("attempt", task.Attempts).Msg("Failed to sync image, re-enqueuing")
+		}
 		return
 	}
 
-	l.Info().Msg("Image successfully synced to DockerHub")
-	_, _ = s.db.ImageSyncTask.UpdateOneID(task.ID).
-		SetStatus(TaskStatusSucceeded).
-		SetErrMsg("").
-		SetUpdatedAt(time.Now()).
-		Save(context.Background())
+	ok, err := s.markSucceeded(ctx, task)
+	if err != nil {
+		l.Err(err).Msg("failed to record image sync success")
+		return
+	}
+	if !ok {
+		l.Warn().Msg("task lease lost, success not recorded")
+		return
+	}
+	l.Info().Msg("Image successfully synced")
 }
 
 // Stop waits for in-flight copies to finish before shutting down.
