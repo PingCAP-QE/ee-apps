@@ -31,6 +31,7 @@ const (
 type Worker interface {
 	Start(context.Context)
 	Stop()
+	MetricsHandler() http.Handler
 }
 
 // DefaultWorkerTargets returns the global target catalogue used for startup
@@ -65,6 +66,9 @@ type artifactsrvc struct {
 	pollingRate time.Duration
 	workerCfg   config.Worker
 	nowFn       func() time.Time
+	metrics     *artifactMetrics
+	alerts      *alertTracker
+	alerter     AlertNotifier
 	inflight    sync.WaitGroup
 }
 
@@ -79,6 +83,11 @@ func NewArtifact(logger *zerolog.Logger, cfg *config.Service) artifact.Service {
 	s := &artifactsrvc{
 		logger: logger,
 		db:     dbClient,
+	}
+	s.metrics = newArtifactMetrics()
+	s.alerts = newAlertTracker()
+	if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
+		s.alerter = NewLarkNotifier(cfg.Lark.AppID, cfg.Lark.AppSecret, cfg.Lark.Channels, logger)
 	}
 	s.applyConfig(cfg)
 	return s

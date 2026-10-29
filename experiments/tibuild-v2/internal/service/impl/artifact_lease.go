@@ -168,6 +168,12 @@ func (s *artifactsrvc) runReaper(ctx context.Context) {
 			}
 			if n > 0 {
 				s.logger.Warn().Int("count", n).Msg("reclaimed expired task leases")
+				if s.metrics != nil {
+					s.metrics.recordReclaimed(n)
+				}
+				if s.alerts != nil {
+					s.alerts.noteLeaseReclaim(n, s.now())
+				}
 			}
 		}
 	}
@@ -224,6 +230,13 @@ func (s *artifactsrvc) handleFailure(ctx context.Context, task *ent.ImageSyncTas
 	}
 
 	updated, err := update.Save(ctx)
+	if err == nil && updated == 1 && task.Attempts >= cfg.MaxAttempts && s.metrics != nil {
+		target := task.TargetKey
+		if target == "" {
+			target = "unknown"
+		}
+		s.metrics.recordFailed(target, "max_attempts")
+	}
 	return updated == 1, err
 }
 

@@ -65,7 +65,7 @@ func main() {
 	if *healthAddr != "" {
 		server := &http.Server{
 			Addr:              *healthAddr,
-			Handler:           newHealthMux(),
+			Handler:           newHealthMux(worker.MetricsHandler()),
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		go func() {
@@ -93,7 +93,7 @@ func main() {
 	logger.Info().Msg("tibuild worker stopped")
 }
 
-func newHealthMux() http.Handler {
+func newHealthMux(metrics http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	ok := func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -101,5 +101,8 @@ func newHealthMux() http.Handler {
 	}
 	mux.HandleFunc("/livez", ok)
 	mux.HandleFunc("/healthz", ok)
+	if metrics != nil {
+		mux.Handle("/metrics", metrics)
+	}
 	return mux
 }

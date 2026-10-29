@@ -40,6 +40,8 @@ func (s *artifactsrvc) Start(ctx context.Context) {
 	}
 
 	go s.runReaper(ctx)
+	s.ensureObservability()
+	go s.runMetrics(ctx)
 
 	s.mu.RLock()
 	pollingRate := s.pollingRate

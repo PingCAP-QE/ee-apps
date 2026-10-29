@@ -3,6 +3,8 @@ package impl
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sync/atomic"
 
@@ -179,4 +181,39 @@ func newLarkMsgUUID(buildID int, receiver string) string {
 	h := sha1.New()
 	fmt.Fprintf(h, "devbuild-%d-%s", buildID, receiver)
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// SendAlert sends a plain-text alert to every configured Lark channel.
+func (n *LarkNotifier) SendAlert(ctx context.Context, title, body string) error {
+	client := n.client.Load().(*larksdk.Client)
+	if client == nil {
+		n.logger.Debug().Msg("lark client not configured, skipping alert")
+		return nil
+	}
+	content, err := json.Marshal(map[string]string{"text": title + "\n" + body})
+	if err != nil {
+		return err
+	}
+
+	var errs []error
+	for _, channel := range n.channels {
+		req := larkim.NewCreateMessageReqBuilder().
+			ReceiveIdType(getLarkReceiverIDType(channel.ChatID)).
+			Body(larkim.NewCreateMessageReqBodyBuilder().
+				MsgType(larkim.MsgTypeText).
+				ReceiveId(channel.ChatID).
+				Content(string(content)).
+				Build()).
+			Build()
+
+		resp, err := client.Im.Message.Create(ctx, req)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("channel %s: %w", channel.Name, err))
+			continue
+		}
+		if !resp.Success() {
+			errs = append(errs, fmt.Errorf("channel %s: lark code=%d msg=%s", channel.Name, resp.Code, resp.Msg))
+		}
+	}
+	return errors.Join(errs...)
 }
