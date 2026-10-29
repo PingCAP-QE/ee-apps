@@ -108,6 +108,27 @@ func TestLeaseReclaimAlertIsDedupedPerWindow(t *testing.T) {
 	require.Equal(t, 2, notifier.count(), "a new reclaim window should alert again")
 }
 
+func TestReapAndRecordIncrementsMetric(t *testing.T) {
+	ctx := context.Background()
+	db := serverlessTestDB(t)
+	s := newLeaseTestService(t, db, config.Worker{ID: "worker-a", Lease: "90s", Heartbeat: "30s"})
+	s.ensureObservability()
+
+	task := createLeaseTestTask(t, db, "docker.io", TaskStatusProcessing)
+	_, err := task.Update().
+		SetClaimedBy("worker-old").
+		SetLeaseUntil(time.Now().Add(-time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	n, err := s.reapAndRecord(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+
+	body := scrapeMetrics(t, s)
+	require.Contains(t, body, "publish_task_lease_expired_total 1")
+}
+
 func TestHandleFailureRecordsFailedMetric(t *testing.T) {
 	ctx := context.Background()
 	db := serverlessTestDB(t)
