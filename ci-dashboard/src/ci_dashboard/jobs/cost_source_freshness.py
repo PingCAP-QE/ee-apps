@@ -27,13 +27,48 @@ class CostSourceResult:
 
     @property
     def passed(self) -> bool | None:
-        if self.status in {"excluded", "non_bigquery", "waiting_import_lag"}:
+        if self.status in {"excluded", "non_bigquery", "waiting_import_lag"} or (
+            self.status == "scope_unverified" and self.scope == "accountwide_diagnostic_only"
+        ):
             return None
         return self.status in {"ok", "within_import_lag"}
 
     @property
     def level(self) -> str:
         return "LOW" if self.status == "scope_unverified" else "MEDIUM"
+
+    def brief(self) -> str:
+        """Actionable alert text, without repeating account IDs or SQL diagnostics."""
+        summary, attr = self.summary_latest, self.attribution_latest
+        if self.status == "ingestion_delay" and self.eligible_latest and summary:
+            gap = (self.eligible_latest - summary).days
+            message = f"导入落后 {gap} 天（允许 1 天，超出 {gap - 1} 天）"
+            if attr and attr < summary:
+                message += f"；归因落后 {(summary - attr).days} 天（允许 0 天）"
+            return message
+        if self.status in {"attribution_delay", "attribution_ahead"} and summary and attr:
+            direction = "落后" if attr < summary else "超前"
+            return f"归因比汇总{direction} {abs((summary - attr).days)} 天（允许 0 天）"
+        if self.status == "local_ahead" and self.source_latest:
+            latest = max(d for d in (summary, attr) if d is not None)
+            return f"本地水位超前源数据 {(latest - self.source_latest).days} 天，需核对口径"
+        if self.status in {"source_stale_or_no_recent_usage", "source_stale_with_import_gap"}:
+            message = f"源数据停在 {self.source_latest}，超过 7 天未更新（或无消费）"
+            if self.status == "source_stale_with_import_gap" and self.source_latest and summary:
+                message += f"；导入落后 {(self.source_latest - summary).days} 天"
+            return message
+        if self.scope == "unknown_vendor":
+            return "成本数据源厂商不受支持，需检查配置"
+        return {
+            "source_empty": "观察窗口内无源数据，差值未知（需确认是否无消费/停用）",
+            "missing_summary": f"缺少导入数据，源最新 {self.source_latest}",
+            "missing_attribution": f"缺少归因数据，汇总最新 {summary}",
+            "registry_empty": "没有启用的成本数据源，需检查配置",
+            "registry_error": "成本数据源配置读取失败，详见任务日志",
+            "local_query_error": "本地水位检查失败，详见任务日志",
+            "client_error": "BigQuery 连接失败，详见任务日志",
+            "query_error": "BigQuery 水位检查失败，详见任务日志",
+        }.get(self.status, self.status)
 
     def describe(self) -> str:
         def diff(left: date | None, right: date | None) -> str:

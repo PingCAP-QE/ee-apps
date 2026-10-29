@@ -170,6 +170,48 @@ def test_watermark_policy(engine, raw, eligible, summary, attr, status, passed):
     assert result.level == "MEDIUM"
 
 
+@pytest.mark.parametrize("attr,suffix", [
+    ("2026-10-25", ""),
+    ("2026-10-24", "；归因落后 1 天（允许 0 天）"),
+])
+def test_ingestion_delay_description_uses_classified_watermarks(engine, attr, suffix):
+    seed(engine, "aws", summary="2026-10-25", attr=attr)
+    (result,) = run(engine, FakeClient({
+        "aws": [watermark(raw="2026-10-28", eligible="2026-10-28")],
+    }))
+    assert result.status == "ingestion_delay"
+    assert result.passed is False
+    assert result.brief() == f"导入落后 3 天（允许 1 天，超出 2 天）{suffix}"
+
+
+@pytest.mark.parametrize("status,expected", [
+    ("attribution_delay", "归因比汇总落后 1 天"),
+    ("attribution_ahead", "归因比汇总超前 1 天"),
+    ("local_ahead", "本地水位超前源数据 1 天"),
+    ("source_stale_or_no_recent_usage", "超过 7 天未更新（或无消费）"),
+    ("source_stale_with_import_gap", "导入落后 1 天"),
+    ("missing_summary", "缺少导入数据"),
+    ("missing_attribution", "缺少归因数据"),
+    ("registry_error", "配置读取失败"),
+    ("client_error", "BigQuery 连接失败"),
+    ("local_query_error", "本地水位检查失败"),
+    ("registry_empty", "没有启用的成本数据源"),
+])
+def test_concise_failure_description(status, expected):
+    result = checks.CostSourceResult("aws", "account", source_latest=date(2026, 10, 28),
+        eligible_latest=date(2026, 10, 28), summary_latest=date(2026, 10, 25),
+        attribution_latest=date(2026, 10, 24), status=status, detail="verbose diagnostics")
+    if status == "attribution_ahead":
+        result.attribution_latest = date(2026, 10, 26)
+    elif status == "local_ahead":
+        result.source_latest = date(2026, 10, 24)
+    elif status == "source_stale_with_import_gap":
+        result.source_latest = date(2026, 10, 26)
+    message = result.brief()
+    assert expected in message
+    assert "verbose diagnostics" not in message and "aws/account" not in message
+
+
 def test_accounts_active_and_vendor_case_isolation(engine):
     seed(engine, "GCP", "a", "2026-10-20", "2026-10-20", local_vendor="gcp")
     seed(engine, "gcp", "b", "2026-10-27", "2026-10-27", local_vendor="GCP")
@@ -200,8 +242,7 @@ def test_aws_uncomparable_profiles_are_diagnostics_not_healthy(engine, profile):
     assert result.status == "scope_unverified"
     assert result.scope == "accountwide_diagnostic_only"
     assert result.source_latest == date(2026, 10, 27)
-    assert result.passed is False
-    assert result.level == "LOW"
+    assert result.passed is None
     assert "do not verify" in result.describe()
 
 
@@ -220,10 +261,11 @@ def test_unknown_nonaws_profile_not_guessed(engine, vendor):
     assert result.status == "scope_unverified"
 
 
-def test_skip_excluded_and_unknown_never_create_client(engine):
+@pytest.mark.parametrize("unknown_vendor", ["AliCloud", "mystery"])
+def test_skip_excluded_and_unknown_never_create_client(engine, unknown_vendor):
     seed(engine, "tencent")
     seed(engine, "gcp", "excluded")
-    seed(engine, "mystery")
+    seed(engine, unknown_vendor)
     with patch("google.cloud.bigquery.Client", side_effect=AssertionError("No ADC")):
         results = checks.run_cost_source_checks(
             engine, replace(SETTINGS, excluded_sources=("gcp/excluded",)), today=TODAY
@@ -234,8 +276,11 @@ def test_skip_excluded_and_unknown_never_create_client(engine):
     assert by_vendor["gcp"].status == "excluded"
     assert by_vendor["gcp"].passed is None
     assert "Explicitly" in by_vendor["gcp"].detail
-    assert by_vendor["mystery"].status == "scope_unverified"
-    assert by_vendor["mystery"].passed is False
+    unknown = by_vendor[unknown_vendor.lower()]
+    assert unknown.status == "scope_unverified"
+    assert unknown.scope == "unknown_vendor"
+    assert unknown.passed is False
+    assert unknown.level == "LOW"
 
 
 def test_sql_is_bounded_parameterized_canonical_and_no_raw_cur(engine):

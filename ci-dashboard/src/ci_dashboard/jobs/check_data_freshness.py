@@ -44,6 +44,8 @@ class Check:
     db: str = "ci"
     # If True, the SQL returns a COUNT rather than a timestamp — check value > 0 → fail.
     is_count_check: bool = False
+    # DATE watermarks use UTC calendar days, not elapsed time since midnight.
+    is_date_check: bool = False
     # Optional: override the formatter for the failure message.
     # Receives the raw query result value.
     format_failure: Callable[[Any], str] | None = None
@@ -145,6 +147,7 @@ CHECKS: list[Check] = [
         level="MEDIUM",
         description="Latest GCP usage_date in cost_bq_export_summary_daily",
         threshold_description="4 days",
+        is_date_check=True,
         sql=(
             "SELECT MAX(usage_date) FROM cost_bq_export_summary_daily"
             " WHERE vendor = 'GCP'"
@@ -156,6 +159,7 @@ CHECKS: list[Check] = [
         level="MEDIUM",
         description="Latest usage_date in cost_attribution_daily",
         threshold_description="4 days",
+        is_date_check=True,
         sql="SELECT MAX(usage_date) FROM cost_attribution_daily",
         db="cost",
     ),
@@ -164,6 +168,7 @@ CHECKS: list[Check] = [
         level="LOW",
         description="Latest usage_date in cost_unmatched_resource_daily",
         threshold_description="10 days",
+        is_date_check=True,
         sql="SELECT MAX(usage_date) FROM cost_unmatched_resource_daily",
         db="cost",
     ),
@@ -244,6 +249,7 @@ class CheckResult:
     value: Any  # raw DB result
     lag_description: str  # human-readable lag, e.g. "6h 30m" or "—"
     error: str | None = None
+    excess_description: str | None = None
 
 
 @dataclass
@@ -264,6 +270,18 @@ class Report:
 # ---------------------------------------------------------------------------
 # Core logic
 # ---------------------------------------------------------------------------
+
+
+def _format_lag(lag: timedelta, date_only: bool = False) -> str:
+    seconds = max(0, int(lag.total_seconds()))
+    if date_only:
+        return f"{seconds // 86400}d"
+    hours, remainder = divmod(seconds, 3600)
+    minutes = remainder // 60
+    if hours >= 24:
+        days, hours = divmod(hours, 24)
+        return f"{days}d {hours}h {minutes}m"
+    return f"{hours}h {minutes}m"
 
 
 def run_check(connection: Connection, check: Check) -> CheckResult:
@@ -310,6 +328,7 @@ def run_check(connection: Connection, check: Check) -> CheckResult:
             value=count,
             lag_description=f"{count} pending",
             error=None if passed else f"{count} pending (max allowed: {max_allowed})",
+            excess_description=None if passed else str(count - max_allowed),
         )
 
     # Timestamp check — coerce string / date → datetime so subtraction works.
@@ -320,22 +339,12 @@ def run_check(connection: Connection, check: Check) -> CheckResult:
     # DB stores naive UTC; compare against naive UTC now to avoid timezone skew.
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    lag: timedelta = now - raw_value  # type: ignore[operator]
+    lag = (
+        timedelta(days=(now.date() - raw_value.date()).days)
+        if check.is_date_check else now - raw_value
+    )
     threshold = _threshold_timedelta(check.threshold_description)
-
-    total_seconds = int(lag.total_seconds())
-    if total_seconds < 0:
-        total_seconds = 0
-
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes = remainder // 60
-    if hours >= 24:
-        days = hours // 24
-        hours = hours % 24
-        lag_desc = f"{days}d {hours}h {minutes}m"
-    else:
-        lag_desc = f"{hours}h {minutes}m"
-
+    lag_desc = _format_lag(lag, check.is_date_check)
     passed = lag <= threshold
 
     if check.format_failure:
@@ -346,6 +355,7 @@ def run_check(connection: Connection, check: Check) -> CheckResult:
         passed=passed,
         value=raw_value,
         lag_description=lag_desc,
+        excess_description=None if passed else _format_lag(lag - threshold, check.is_date_check),
     )
 
 
@@ -363,51 +373,29 @@ def run_all_checks(engine: Engine) -> Report:
 
 
 def _format_lark_message(report: Report) -> str:
-    """Format the freshness report for a Lark text message.
-
-    Summary line at the top, followed by failure details grouped by severity.
-    """
-    # report.timestamp is UTC; convert to CST for display.
+    """One summary and one line per failure; full diagnostics stay in logs."""
     cst = report.timestamp + timedelta(hours=8)
     date_str = cst.strftime("%Y-%m-%d %H:%M CST")
-    passed = [r for r in report.results if r.passed]
     failed = report.failed
-
-    failed_by_level: dict[str, list[CheckResult]] = {}
-    for r in failed:
-        failed_by_level.setdefault(r.check.level, []).append(r)
-
-    lines: list[str] = []
-
-    # Summary line (always first).
-    parts = [f"📊 Daily Freshness — {date_str}"]
-    parts.append(f"{len(failed)} failed, {len(passed)} passed")
-    lines.append(" | ".join(parts))
-
     if not failed:
-        lines.append("✅ All evaluated checks passed." if report.cost_sources else "✅ All pipelines are fresh.")
+        return f"✅ 数据新鲜度正常（已评估项） · {date_str}"
 
-    # Failure details, grouped by severity.
-    lines.append("")
-    for level in ("HIGH", "MEDIUM", "LOW"):
-        items = failed_by_level.get(level, [])
-        if not items:
-            continue
-        emoji = {"HIGH": "🔴", "MEDIUM": "🟡", "LOW": "⚪"}.get(level, "❓")
-        lines.append(f"{emoji} {level} ({len(items)}):")
-        for r in items:
-            lines.append(
-                f"  • {r.check.name}: {r.lag_description}"
-                f" (threshold: {r.check.threshold_description})"
-            )
-
-    if report.cost_sources:
-        lines.append("💰 BigQuery → imported summary → attribution (UTC dates):")
-        for result in report.cost_sources:
-            lines.append(f"  • {result.describe()}")
-        lines.append("Watermarks only; not a completeness or amount reconciliation check.")
-
-    return "\n".join(lines).rstrip()
+    lines = [f"⚠️ 数据新鲜度：{len(failed)} 项异常 · {date_str}"]
+    for level, emoji in (("HIGH", "🔴"), ("MEDIUM", "🟡"), ("LOW", "⚪")):
+        for r in failed:
+            if r.check.level != level:
+                continue
+            name = r.check.name.removeprefix("cost_source_diff:")
+            detail = r.lag_description
+            if r.excess_description is not None:
+                allowance = r.check.threshold_description
+                if r.check.is_count_check:
+                    allowance = str(_parse_count_threshold(allowance))
+                elif r.check.is_date_check:
+                    allowance = _format_lag(_threshold_timedelta(allowance), date_only=True)
+                detail += f"（允许 {allowance}，超出 {r.excess_description}）"
+            lines.append(f"{emoji} {name}: {detail}")
+    return "\n".join(lines)
 
 
 def _send_lark_dm(text: str) -> bool:
@@ -524,7 +512,7 @@ def run_check_data_freshness(settings: Settings) -> Report:
                         ),
                         passed=result.passed,
                         value=asdict(result),
-                        lag_description=result.describe(),
+                        lag_description=result.brief(),
                         error=None if result.passed else result.detail,
                     ))
             except Exception as exc:
@@ -540,7 +528,7 @@ def run_check_data_freshness(settings: Settings) -> Report:
                     ),
                     passed=False,
                     value=None,
-                    lag_description=f"runner error: {exc}",
+                    lag_description="成本检查执行失败，详见任务日志",
                     error=str(exc),
                 ))
     finally:
@@ -548,7 +536,7 @@ def run_check_data_freshness(settings: Settings) -> Report:
 
     dry_run = os.getenv("FRESHNESS_DRY_RUN", "false").lower() == "true"
 
-    if report.failed or report.cost_sources:
+    if report.failed:
         message = _format_lark_message(report)
         if dry_run:
             logger.info("DRY RUN — would send:\n%s", message)
