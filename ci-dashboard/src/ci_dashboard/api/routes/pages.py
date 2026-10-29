@@ -251,7 +251,7 @@ def runtime_error_top_jobs(
     filters: CommonFilters = Depends(get_common_filters),
     error_l1_category: str | None = None,
     error_l2_subcategory: str | None = None,
-    limit: int = Query(default=10),
+    limit: int = Query(default=10, ge=1),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_error_top_jobs(
@@ -269,7 +269,7 @@ def runtime_error_builds(
     selected_job_name: str | None = None,
     error_l1_category: str | None = None,
     error_l2_subcategory: str | None = None,
-    limit: int = Query(default=15),
+    limit: int = Query(default=15, ge=1),
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_error_builds(
