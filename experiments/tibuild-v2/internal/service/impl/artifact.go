@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -24,6 +25,34 @@ const (
 	TaskStatusFailed     = "FAILED"
 )
 
+// Worker is the background execution surface of the artifact service. It is
+// implemented by artifactsrvc and shared by cmd/tibuild (in-process) and
+// cmd/tibuild-worker (standalone).
+type Worker interface {
+	Start(context.Context)
+	Stop()
+}
+
+// DefaultWorkerTargets returns the global target catalogue used for startup
+// validation. Only the wildcard exists until pkg/delivery owns the catalogue;
+// concrete per-target workers arrive with the image delivery track.
+func DefaultWorkerTargets() []string {
+	return []string{"*"}
+}
+
+// NewWorker builds the standalone artifact worker.
+func NewWorker(logger *zerolog.Logger, cfg *config.Service) (Worker, error) {
+	svc := NewArtifact(logger, cfg)
+	if svc == nil {
+		return nil, errors.New("failed to initialize artifact service")
+	}
+	worker, ok := svc.(Worker)
+	if !ok {
+		return nil, errors.New("artifact service does not implement Worker")
+	}
+	return worker, nil
+}
+
 // artifactsrvc is the artifact service implementation.
 type artifactsrvc struct {
 	logger *zerolog.Logger
@@ -34,6 +63,7 @@ type artifactsrvc struct {
 	targetRegx *regexp.Regexp
 
 	pollingRate time.Duration
+	workerCfg   config.Worker
 	inflight    sync.WaitGroup
 }
 
@@ -93,6 +123,17 @@ func (s *artifactsrvc) applyConfig(cfg *config.Service) {
 			s.logger.Warn().Str("polling_rate", cfg.ImageSync.PollingRate).Msg("invalid image_sync.polling_rate, keeping previous value")
 		}
 	}
+	// worker.poll_interval takes precedence over image_sync.polling_rate.
+	if cfg.Worker.PollInterval != "" {
+		if d, err := time.ParseDuration(cfg.Worker.PollInterval); err == nil && d > 0 {
+			s.pollingRate = d
+		} else {
+			s.logger.Warn().Str("poll_interval", cfg.Worker.PollInterval).Msg("invalid worker.poll_interval, keeping previous value")
+		}
+	}
+	workerCfg := cfg.Worker
+	workerCfg.ApplyDefaults()
+	s.workerCfg = workerCfg
 	if s.pollingRate <= 0 {
 		s.pollingRate = defaultPollingRate
 	}

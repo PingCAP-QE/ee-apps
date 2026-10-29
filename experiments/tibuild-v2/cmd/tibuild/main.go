@@ -193,17 +193,20 @@ func main() {
 
 	// Start the image sync worker so that tasks survive a service restart.
 	// It processes tasks from the database queue in the background.
+	// worker.in_process=false moves execution to cmd/tibuild-worker.
 	var stopWorker func()
-	if worker, ok := artifactSvc.(interface {
-		Start(context.Context)
-		Stop()
-	}); ok {
-		stopWorker = worker.Stop
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			worker.Start(ctx)
-		}()
+	if cfg.Get().Worker.InProcessEnabled() {
+		if worker, ok := artifactSvc.(interface {
+			Start(context.Context)
+			Stop()
+		}); ok {
+			stopWorker = worker.Stop
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				worker.Start(ctx)
+			}()
+		}
 	}
 
 	// Start background config file watcher (polls every 30 seconds).

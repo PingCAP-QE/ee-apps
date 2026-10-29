@@ -79,3 +79,21 @@ image_sync:
   target_regx: '^((docker\.io/)?pingcap/[\w-]+|gcr\.io/pingcap-public/dbaas/[\w-]+):v\d+\.\d+\.\d+-\d{8,}.*$'
   # Worker polling interval for the async task queue (default: 10s).
   polling_rate: "10s"
+
+# Background task executor. cmd/tibuild runs it in-process by default; set
+# in_process: false when the standalone cmd/tibuild-worker deployment is
+# enabled (charts/tibuild-v2 worker.enabled=true).
+worker:
+  # Unique worker identity written to claimed_by. Defaults to the hostname.
+  id: ""
+  # Target keys this worker claims. Empty means ["*"] (all targets).
+  targets: []
+  concurrency: 1
+  poll_interval: "10s"
+  lease: "90s"
+  heartbeat: "30s"
+  max_attempts: 3
+  kinds: ["image_copy"]
+  # Phase 1 rollback switch: reset PROCESSING rows on startup.
+  legacy_startup_reclaim: true
+  in_process: true

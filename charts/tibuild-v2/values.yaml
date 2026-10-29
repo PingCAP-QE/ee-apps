@@ -166,3 +166,30 @@ server:
   #       readOnly: true
   volumes: []
   volumeMounts: []
+
+# Standalone background worker (cmd/tibuild-worker).
+# Disabled by default: the API keeps running the worker in-process
+# (worker.in_process: true in the config). When enabling this deployment,
+# set worker.in_process: false in the config secret so exactly one process
+# consumes tasks.
+worker:
+  enabled: false
+  replicaCount: 1
+  # Worker identity written to claimed_by. Defaults to the pod name.
+  workerID: ""
+  healthPort: 8081
+  podAnnotations: {}
+  podLabels: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  livenessProbe:
+    httpGet:
+      path: /livez
+      port: health
+  readinessProbe:
+    httpGet:
+      path: /healthz
+      port: health

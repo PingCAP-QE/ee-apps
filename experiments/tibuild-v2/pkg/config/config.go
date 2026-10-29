@@ -16,6 +16,8 @@ type Service struct {
 	ImageMirrorURLMap map[string]string `yaml:"image_mirror_url_map" json:"image_mirror_url_map"`
 	// ImageSync holds the image sync (copy) service configuration.
 	ImageSync ImageSync `yaml:"image_sync" json:"image_sync"`
+	// Worker holds the background task executor configuration.
+	Worker Worker `yaml:"worker,omitempty" json:"worker,omitempty"`
 }
 
 // IdentityHeaders configures the trusted ingress headers consumed by TiBuild.
