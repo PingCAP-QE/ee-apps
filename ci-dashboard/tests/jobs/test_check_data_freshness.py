@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
@@ -296,6 +297,9 @@ class TestRunCheckCount:
             result = run_check(conn, check)
         assert result.passed is False
         assert result.value == 3
+        assert result.excess_description == "1"
+        message = _format_lark_message(Report(timestamp=_utcnow(), results=[result]))
+        assert "test_count: 3 pending（允许 2，超出 1）" in message
 
     def test_count_check_passes_at_threshold(self, fresh_engine: Engine) -> None:
         for _ in range(5):
@@ -375,9 +379,10 @@ class TestFormatLarkMessage:
         ]
         report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
         msg = _format_lark_message(report)
-        assert "✅" in msg
-        assert "0 failed" in msg
-        assert "2 passed" in msg
+        assert "✅ 数据新鲜度正常" in msg
+        assert len(msg.splitlines()) == 1
+        assert "passed" not in msg
+        assert "ci_l1_builds" not in msg
 
     def test_summary_at_top_details_below(self) -> None:
         """Summary line is first, then failure details."""
@@ -394,17 +399,11 @@ class TestFormatLarkMessage:
         report = Report(timestamp=datetime(2026, 6, 25, 7, 0), results=results)
         msg = _format_lark_message(report)
         lines = msg.split("\n")
-        # Summary line contains the date, failed/passed counts
-        assert "📊 Daily Freshness" in lines[0]
-        assert "3 failed" in lines[0]
-        assert "1 passed" in lines[0]
-        # Severity emojis in details
-        assert "🔴" in msg
-        assert "HIGH" in msg
-        assert "🟡" in msg
-        assert "MEDIUM" in msg
-        assert "⚪" in msg
-        assert "LOW" in msg
+        assert "3 项异常" in lines[0]
+        assert "passed" not in msg
+        assert "ci_l1_pod_lifecycle" not in msg
+        assert len(lines) == 4
+        assert "🔴" in msg and "🟡" in msg and "⚪" in msg
 
 
 
@@ -747,6 +746,46 @@ class TestRunCheckExternalTables:
 
 
 class TestRunCheckCostAndRoster:
+    @pytest.mark.parametrize("name", [
+        "cost_bq_export_summary_daily", "cost_attribution_daily", "cost_unmatched_resource_daily",
+    ])
+    @pytest.mark.parametrize("hour,minute,extra_days", [(1, 10, 0), (23, 59, 0), (1, 10, 1)])
+    def test_cost_dates_use_utc_calendar_days(
+        self, fresh_engine: Engine, name: str, hour: int, minute: int, extra_days: int,
+    ) -> None:
+        class FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 10, 29, hour, minute, tzinfo=tz)
+
+        check = CHECKS_BY_NAME[name]
+        allowed = _threshold_timedelta(check.threshold_description).days
+        latest = date(2026, 10, 29) - timedelta(days=allowed + extra_days)
+        check = replace(check, sql=f"SELECT '{latest.isoformat()}'")
+        with patch("ci_dashboard.jobs.check_data_freshness.datetime", FrozenDatetime):
+            with fresh_engine.connect() as conn:
+                result = run_check(conn, check)
+        assert result.passed is (extra_days == 0)
+        assert result.lag_description == f"{allowed + extra_days}d"
+        if extra_days:
+            assert result.excess_description == "1d"
+            message = _format_lark_message(Report(timestamp=_utcnow(), results=[result]))
+            assert f"{name}: {allowed + extra_days}d（允许 {allowed}d，超出 1d）" in message
+
+    def test_timestamp_threshold_still_uses_elapsed_hours(self, fresh_engine: Engine) -> None:
+        check = replace(CHECKS_BY_NAME["ci_l1_builds"],
+                        sql="SELECT '2026-10-29 00:00:00'")
+        class FrozenDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 10, 29, 4, 10, tzinfo=tz)
+
+        with patch("ci_dashboard.jobs.check_data_freshness.datetime", FrozenDatetime):
+            with fresh_engine.connect() as conn:
+                result = run_check(conn, check)
+        assert result.passed is False
+        assert result.excess_description == "0h 10m"
+
     def test_bq_export_summary_passes(self, fresh_engine: Engine) -> None:
         _exec(fresh_engine,
               "INSERT INTO cost_bq_export_summary_daily"

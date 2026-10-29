@@ -195,8 +195,10 @@ The existing `check-data-freshness` job can also compare each active cost accoun
 BigQuery availability against imported summary and attribution dates. It is opt-in:
 set `FRESHNESS_COST_BQ_ENABLED=true`, an explicit `FRESHNESS_COST_BQ_PROJECT`, and
 `FRESHNESS_COST_BQ_LOCATION=us-west1`. Use the existing dedicated warehouse Workload
-Identity, not shared-account impersonation. Enabled runs include signed date diffs
-in the daily Lark report; `FRESHNESS_DRY_RUN=true` reads and prints without sending.
+Identity, not shared-account impersonation. Lark messages contain only failures
+and concise delay/allowance details; healthy runs send nothing. Full signed date
+diffs and scope diagnostics stay in logs. Cost DATE checks use UTC calendar-day
+allowances; `FRESHNESS_DRY_RUN=true` reads and prints without sending.
 
 See [the design and rollout contract](docs/cost-source-freshness-design.md) for
 bounded query budgets, importer eligibility, explicit dormant-source exceptions,

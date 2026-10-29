@@ -7,7 +7,9 @@
 新增的可选 BigQuery → 本地成本水位对比，按 vendor/account 区分源延迟、导入延迟和归因延迟；
 其有界查询、导入可摄入窗口、AWS 特殊 scope 限制及部署配置见
 [Account-scoped BigQuery cost freshness](cost-source-freshness-design.md)。启用后沿用本 CronJob
-及飞书接收人，每日发送含 source diff 的报告；不执行导入、补数或自动修复。
+及飞书接收人，只发送异常摘要，全部正常时不发送；详细 source diff 保留在任务日志中。
+结构化结果仅存在于进程内的 `Report.cost_sources`，CLI 不持久化或对外提供，部署验证应查任务日志。
+不执行导入、补数或自动修复。
 
 ## 检查范围
 
@@ -26,9 +28,9 @@
 | 7 | `ci_l1_pr_events` | github_tickets → sync-pr-events | `MAX(event_time)` vs NOW | **4 小时** | MEDIUM |
 | 8 | `problem_case_runs` | cloudevents-server CloudEvents | `MAX(report_time)` vs NOW | **4 小时** | MEDIUM |
 | 9 | `ci_l1_builds` 派生列 | refresh-build-derived | `ci_job_state` 中 `ci-refresh-build-derived` 的 `last_succeeded_at` | **4 小时** | MEDIUM |
-| 10 | `cost_bq_export_summary_daily` | GCP/AWS Billing Export（daily） | `MAX(usage_date)` vs NOW（GCP 源） | **4 天** | MEDIUM |
-| 11 | `cost_attribution_daily` | cost_bq_export_summary_daily + roster（daily） | `MAX(usage_date)` vs NOW | **4 天** | MEDIUM |
-| 12 | `cost_unmatched_resource_daily` | GCP/AWS Unmatched Detection（weekly） | `MAX(usage_date)` vs NOW | **10 天** | LOW |
+| 10 | `cost_bq_export_summary_daily` | GCP/AWS Billing Export（daily） | `MAX(usage_date)` vs UTC 当日（GCP 源） | **4 个日历日** | MEDIUM |
+| 11 | `cost_attribution_daily` | cost_bq_export_summary_daily + roster（daily） | `MAX(usage_date)` vs UTC 当日 | **4 个日历日** | MEDIUM |
+| 12 | `cost_unmatched_resource_daily` | GCP/AWS Unmatched Detection（weekly） | `MAX(usage_date)` vs UTC 当日 | **10 个日历日** | LOW |
 | 13 | `sync-gcs-cache-last-seen` | BigQuery GCS Audit Logs → BigQuery last-seen 表 | `cost_job_state` 中 `sync-gcs-cache-last-seen` 的 `last_succeeded_at` | **30 小时** | LOW |
 | 14 | `roster_employees` | Lark 飞书通讯录 API（daily） | `MAX(updated_at)` vs NOW | **30 小时** | MEDIUM |
 
@@ -147,7 +149,10 @@ WHERE vendor = 'GCP';
 
 如果 `latest_usage_date < CURDATE() - INTERVAL 4 DAY` → 告警。
 
-> GCP billing export 本身有 1-2 天延迟，加上每日 sync job，4 天容忍度覆盖了 1 次 sync 失败 + billing 数据源延迟的缓冲。AWS 源单独检查需要更长的容忍度（~5 天），可后续按需添加。
+> 当前检查在 09:10 Asia/Shanghai，早于 12:10 的 GCP 导入；导入按 export partition 延迟 3 天，
+> 因此前一次导入对应 D−4 是正常水位。按 UTC 日历日比较，D−4 当天不告警，D−5 才告警；
+> 不能把 DATE 的午夜当成精确更新时间，因多出的小时数误报。按账号的 BigQuery 比较仍使用
+> importer-eligible 水位，允许导入差 1 天、归因差 0 天，不盲目放宽所有数据源阈值。
 
 ### 11. `cost_attribution_daily` — 成本归属最新日期
 
@@ -196,23 +201,17 @@ FROM roster_employees;
 
 ## 告警输出格式
 
-飞书消息示例：
+仅在异常时发送；不列成功项、不重复附完整成本水位。示例：
 
 ```
-📊 Daily Data Freshness Check — 2026-06-25
-
-🔴 HIGH (1):
-  • ci_l1_builds: latest build at 2026-06-25 02:15, lag = 6h 30m (threshold: 4h)
-
-🟡 MEDIUM (2):
-  • ci_l1_flaky_issues: last sync at 2026-06-23 02:00, lag = 32h (threshold: 30h)
-  • roster_employees: last update at 2026-06-23 03:00, lag = 31h (threshold: 30h)
-
-✅ All clear (11): ci_l1_pod_lifecycle, archive_error_logs, prow_jobs, github_tickets,
-   ci_l1_pr_events, problem_case_runs, ci-refresh-build-derived,
-   cost_bq_export_summary_daily, cost_attribution_daily,
-   cost_unmatched_resource_daily, sync-gcs-cache-last-seen
+⚠️ 数据新鲜度：2 项异常 · 2026-10-29 09:10 CST
+🔴 ci_l1_builds: 6h 30m（允许 4 hours，超出 2h 30m）
+🟡 aws/示例账号: 导入落后 3 天（允许 1 天，超出 2 天）
 ```
+
+无法比较的 AWS split/F04 口径只留诊断记录，不算失败或成功；可确认的本地归因差距仍告警。
+不支持的厂商属于配置错误，仍发送 LOW 告警并返回非零 CLI 退出码。
+空源写明“差值未知”，不能直接断言导入故障或推断账号已停用。
 
 ## 实现计划
 
@@ -234,10 +233,14 @@ subparsers.add_parser("check-data-freshness", help="Daily data freshness check a
 ### CronJob 调度
 
 ```
-Schedule: 0 7 * * *  # 每天北京时间 07:00（UTC+8）
+Schedule: 10 9 * * *  # 每天北京时间 09:10（UTC+8），timeZone: Asia/Shanghai
 ```
 
-早上 7 点执行，这样前一天的数据和凌晨的 daily job 都已经完成，且有足够时间在上班前处理告警。
+09:10 执行，早于 12:10 的 GCP 导入，检查前一次导入的水位。上述 D−4/D−5 口径要求检查在
+北京时间 08:00（UTC 零点）或之后运行；07:00 时仍是前一个 UTC 日期，会使按北京时间计算的 D−5 被判为 D−4。
+
+渲染脚本仍默认 `0 7 * * *`，使用时必须显式传入 `--schedule '10 9 * * *' --time-zone Asia/Shanghai`，
+不要沿用其旧调度默认值。
 
 ### 环境变量
 

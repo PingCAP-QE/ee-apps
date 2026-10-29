@@ -12,7 +12,11 @@ coverage or amount reconciliation. A newest date can coexist with historical
 holes or a partially published day. No importer, backfill, IAM change, schema
 migration or automatic repair runs from this checker.
 
-The existing SQL checks remain unchanged. The new comparison is opt-in, so an
+The existing SQL queries remain unchanged. Cost `usage_date` checks compare UTC
+calendar dates, not elapsed hours since midnight: at the 09:10 CST check, D−4 is
+within the four-day allowance for the previous day's GCP importer (three-day
+export lag). D−5 fails. Timestamp-based CI checks still use elapsed hours.
+The new comparison is opt-in, so an
 older CronJob identity without BigQuery access does not unexpectedly start
 cloud queries when the application image is upgraded.
 
@@ -57,13 +61,17 @@ all importer dimensions or identical monetary facts.
 `aws_split_cost_v1`, `aws_tidb_cloud_f04_v1` and other unverified profiles retain
 account-wide source dates **only as diagnostics**. The mart lacks split lineage
 and F04's `usedby=prod-us-west-2-f04` tenant boundary. These rows are
-`scope_unverified` (LOW, not healthy), pending an authorized stable source with
-that exact scope. Local summary-to-attribution mismatches can still be reported
+`scope_unverified` (diagnostic only, neither failed nor healthy), pending an
+authorized stable source with that exact scope. Account-wide date differences
+must not trigger import-delay alerts for these profiles. Local
+summary-to-attribution mismatches can still be reported
 as real failures. Expiring `_stage_*` tables are never scheduled sources.
 
 Tencent uses its billing API, not BigQuery. Its row is explicitly `non_bigquery`
 and is not added to the healthy comparison count. Unknown vendors/profiles
-must not be guessed into a supported scope.
+must not be guessed into a supported scope. An unsupported vendor is a LOW
+configuration failure (`scope=unknown_vendor`), not a log-only scope diagnostic;
+it triggers an alert and a nonzero CLI exit.
 
 ### Eligibility and the existing morning schedule
 
@@ -82,8 +90,10 @@ The policy mirrors this deployment's cadence; moving the check after the
 importers or changing their lag requires reviewing this policy together.
 Ingestion is delayed when `eligible-summary > 1 day`; the one-day grace avoids
 calling an export update between daily runs a failed import. Attribution must
-keep up with the available summary (zero-day allowance). An attribution date
-newer than summary is also a lineage anomaly.
+keep up with the available summary (zero-day allowance). When both import and
+attribution lag, the status is `ingestion_delay` and the alert shows both gaps
+and their allowances. An attribution date newer than summary is also a lineage
+anomaly.
 
 A new source with no eligible export yet and no local rows is
 `waiting_import_lag`, not an ingestion failure or a healthy check. Empty source
@@ -129,7 +139,7 @@ MAX or infer completeness for prepaid usage exported outside that window.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `FRESHNESS_COST_BQ_ENABLED` | `false` | Opt in to source comparisons and the daily cost report |
+| `FRESHNESS_COST_BQ_ENABLED` | `false` | Opt in to source comparisons and failure-only alerts |
 | `FRESHNESS_COST_BQ_PROJECT` | unset | Required explicit warehouse/query project when enabled |
 | `FRESHNESS_COST_BQ_LOCATION` | `us-west1` | Explicit BigQuery query location |
 | `FRESHNESS_COST_BQ_LOOKBACK_DAYS` | `14` | Bounded usage window; validated 8..62 |
@@ -137,18 +147,26 @@ MAX or infer completeness for prepaid usage exported outside that window.
 | `FRESHNESS_COST_BQ_TIMEOUT_SECONDS` | `30` | Individual query/result operation timeout |
 | `FRESHNESS_COST_BQ_EXCLUDED_SOURCES` | empty | Explicit comma-separated `vendor/account` exceptions |
 
-Exclusions are printed, not counted as healthy. For example, the production
+Exclusions are retained in job logs and the in-process report, not counted as
+healthy. For example, the production
 Azure subscription `azure/abd27163-b965-4217-8cba-2a4c799579fe` was independently
 confirmed to have no new consumption since June 24; if operators approve
 excluding it, declare that exception rather than inferring dormancy from an
 empty query or changing `cost_sources.is_active` from this job.
 
-When enabled, the existing Lark notifier sends one daily report including all
-cost rows, even when healthy. Logs also contain every comparison. Existing
-failure-only notifications remain unchanged when disabled. `FRESHNESS_DRY_RUN`
-still performs the bounded reads, but prints the report and sends no message.
-Source failures participate in the existing failed count and nonzero CLI exit.
-Explicit skips/pending eligibility do not inflate the healthy count.
+The Lark notifier sends only when an evaluated check fails, whether or not
+BigQuery comparison is enabled. Messages contain one summary and one short line
+per failure, with the affected account, delay and allowance/excess where known.
+Healthy accounts, exclusions, pending eligibility and scope diagnostics are not
+sent; full watermarks, profiles, date windows and errors remain in job logs.
+Structured rows exist only in the returned in-process `Report.cost_sources`;
+the CLI does not persist or expose them. Use job logs for rollout verification.
+`FRESHNESS_DRY_RUN` still performs the bounded reads, prints the concise alert
+(or a one-line all-clear for evaluated checks), and sends no
+message. Source failures participate in the failed count and nonzero CLI exit.
+Explicit skips, pending eligibility and unverified scopes are not counted as
+healthy. An empty active source still alerts with an unknown gap until its
+no-consumption/retirement status is confirmed and explicitly excluded.
 
 ## Deployment and rollback
 
@@ -162,6 +180,7 @@ Explicit skips/pending eligibility do not inflate the healthy count.
    IAM expansion is needed. Validate 09:10 scheduling and allow a 900-second
    job deadline if operators want room for multiple timeout reports.
 3. Use `scripts/render_data_freshness_check_cronjob.sh --image <released-tag>
+   --schedule "10 9 * * *" --time-zone Asia/Shanghai
    --service-account cost-insight-gcp-billing --cost-bq-project warehouse-f80fbbe8e8`
    as a rendering example. The script requires an explicit KSA when enabling
    cloud reads; do not apply its unrelated defaults over existing production
