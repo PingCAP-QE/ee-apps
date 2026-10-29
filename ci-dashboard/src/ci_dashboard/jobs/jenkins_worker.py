@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -205,6 +205,9 @@ UPDATE_BUILD_FROM_JENKINS = text(
         END,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = :id
+      AND normalized_build_url = :matched_build_url
+      AND (:source_prow_job_id IS NULL OR source_prow_job_id IS NULL
+           OR source_prow_job_id = :source_prow_job_id)
     """
 )
 
@@ -222,6 +225,7 @@ class ParsedJenkinsFinishedEvent:
     event_type: str
     event_time: datetime | None
     build_url: str
+    controller_ambiguous: bool
     normalized_build_url: str
     source_prow_job_id: str | None
     jenkins_result: str | None
@@ -392,7 +396,7 @@ def process_jenkins_event_message(
     try:
         parsed = parse_jenkins_finished_event(payload, settings)
         with engine.begin() as connection:
-            build_id = _upsert_build_from_jenkins_event(connection, parsed)
+            build_id, parsed = _upsert_build_from_jenkins_event(connection, parsed)
             connection.execute(
                 MARK_AUDIT_PROCESSED,
                 parsed.as_audit_params(
@@ -458,6 +462,9 @@ def parse_jenkins_finished_event(
     if build_url is None:
         raise ValueError("missing Jenkins build URL in finished event")
 
+    controller_ambiguous = urlsplit(build_url).hostname in {
+        None, "jenkins.jenkins.svc.cluster.local",
+    }
     normalized_build_url = normalize_build_url(build_url)
     if normalized_build_url is None:
         raise ValueError(f"failed to normalize Jenkins build URL: {build_url!r}")
@@ -562,6 +569,7 @@ def parse_jenkins_finished_event(
         event_type=envelope.event_type or settings.jenkins_ingest.finished_event_type,
         event_time=envelope.event_time,
         build_url=build_url,
+        controller_ambiguous=controller_ambiguous,
         normalized_build_url=normalized_build_url,
         source_prow_job_id=source_prow_job_id,
         jenkins_result=jenkins_result,
@@ -615,13 +623,42 @@ def map_jenkins_result_to_state(result: str | None) -> str:
 def _upsert_build_from_jenkins_event(
     connection: Connection,
     parsed: ParsedJenkinsFinishedEvent,
-) -> int:
-    build_params = parsed.as_build_row_params()
+) -> tuple[int, ParsedJenkinsFinishedEvent]:
     existing_by_prow_job_id, existing_by_build_url = fetch_existing_build_targets(
         connection,
         normalized_build_urls=[parsed.normalized_build_url],
         source_prow_job_ids=[parsed.source_prow_job_id] if parsed.source_prow_job_id else [],
     )
+    existing_prow_target = (
+        existing_by_prow_job_id.get(parsed.source_prow_job_id)
+        if parsed.source_prow_job_id else None
+    )
+    if existing_prow_target is not None:
+        stored_canonical_url = normalize_build_url(existing_prow_target["normalized_build_url"])
+        if (
+            parsed.controller_ambiguous
+            and stored_canonical_url is not None
+            and urlsplit(stored_canonical_url).path == urlsplit(parsed.normalized_build_url).path
+        ):
+            # A host-less/internal URL identifies a path, not a controller. Keep Prow's host.
+            parsed = replace(
+                parsed,
+                build_url=stored_canonical_url,
+                normalized_build_url=stored_canonical_url,
+                cloud_phase=classify_cloud_phase(stored_canonical_url),
+                build_system=classify_build_system(stored_canonical_url),
+            )
+        if stored_canonical_url != parsed.normalized_build_url or (
+            not parsed.controller_ambiguous
+            and urlsplit(parsed.build_url).hostname != urlsplit(stored_canonical_url).hostname
+        ):
+            raise ValueError(
+                "Jenkins event source_prow_job_id conflicts with the canonical build URL: "
+                f"row_id={existing_prow_target['id']}, source_prow_job_id={parsed.source_prow_job_id!r}, "
+                f"event_url={parsed.normalized_build_url!r}, "
+                f"stored_canonical_url={stored_canonical_url!r}"
+            )
+
     target_id = resolve_merge_target_id(
         normalized_build_url=parsed.normalized_build_url,
         source_prow_job_id=parsed.source_prow_job_id,
@@ -629,16 +666,31 @@ def _upsert_build_from_jenkins_event(
         existing_by_build_url=existing_by_build_url,
         log_context={"job_name": JOB_NAME},
     )
+    build_params = parsed.as_build_row_params()
     if target_id is None:
         result = connection.execute(INSERT_BUILD_FROM_JENKINS, build_params)
         inserted_id = result.lastrowid
         if inserted_id is None:
             raise RuntimeError("Jenkins build insert did not return a row id")
-        return int(inserted_id)
+        return int(inserted_id), parsed
 
+    matched_target = existing_prow_target or next(
+        candidate for candidate in existing_by_build_url[parsed.normalized_build_url]
+        if int(candidate["id"]) == target_id
+    )
     build_params["id"] = target_id
-    connection.execute(UPDATE_BUILD_FROM_JENKINS, build_params)
-    return target_id
+    build_params["matched_build_url"] = matched_target["normalized_build_url"]
+    result = connection.execute(UPDATE_BUILD_FROM_JENKINS, build_params)
+    # SQLAlchemy enables MySQL/PyMySQL CLIENT_FOUND_ROWS, so unchanged matches still count.
+    if result.rowcount != 1:
+        raise ValueError(
+            "Jenkins event merge target changed before update: "
+            f"target_id={target_id}, "
+            f"matched_source_prow_job_id={matched_target['source_prow_job_id']!r}, "
+            f"event_url={parsed.normalized_build_url!r}, "
+            f"stored_canonical_url={normalize_build_url(matched_target['normalized_build_url'])!r}"
+        )
+    return target_id, parsed
 
 
 def _ensure_audit_row(connection: Connection, *, envelope: CloudEventEnvelope, payload_json: str) -> str | None:
