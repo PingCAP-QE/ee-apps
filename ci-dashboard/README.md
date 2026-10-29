@@ -112,6 +112,15 @@ Notes:
 - `CI_DASHBOARD_JENKINS_INTERNAL_BASE_URL` overrides only `prow.tidb.net` (GCP)
   Jenkins requests. `do.pingcap.net` (Tencent) and other controllers keep their
   original host for console logs, pipeline-node APIs, and timings.
+- Jenkins console-signal enrichment scans a bounded prefix, not just the tail:
+  at most 8 MiB of UTF-8 log data, with one lookahead byte and a streaming chunk
+  of at most 64 KiB of read-ahead. OOM/eviction signals within that window retain
+  their surrounding lines; the excerpt remains capped at 16 KiB. Larger logs
+  include an explicit scan-truncation notice, so missing later signals are not
+  presented as a complete scan. This `consoleText` request requires identity
+  encoding and rejects unexpected compression before reading the body to avoid
+  decompression bypassing the byte budget. Existing tail and pipeline-node log
+  retrieval are separate paths and are unchanged by this enrichment limit.
 - Error Catalog excludes effective `OTHERS / SUPERSEDED_BY_NEWER_BUILD`
   cancellations, including from its trends, rankings, drilldowns, and coverage.
   Raw build states and taxonomy records remain unchanged. Historical Tencent
