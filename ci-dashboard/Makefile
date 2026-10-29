@@ -31,7 +31,7 @@ refresh-build-derived:
 
 .PHONY: api
 api:
-	PYTHONPATH=src $(PYTHON) -m uvicorn ci_dashboard.api.main:app --reload
+	CI_DASHBOARD_AUTH_DISABLED=true PYTHONPATH=src $(PYTHON) -m uvicorn ci_dashboard.api.main:app --host 127.0.0.1 --reload
 
 .PHONY: prepare-local-tidb-env
 prepare-local-tidb-env:
@@ -41,7 +41,7 @@ prepare-local-tidb-env:
 api-tidb:
 	@./scripts/prepare_local_tidb_env.sh >/dev/null && \
 	set -a && . $(LOCAL_TIDB_ENV_FILE) && set +a && \
-	PYTHONPATH=src $(PYTHON) -m uvicorn ci_dashboard.api.main:app --reload
+	CI_DASHBOARD_AUTH_DISABLED=true PYTHONPATH=src $(PYTHON) -m uvicorn ci_dashboard.api.main:app --host 127.0.0.1 --reload
 
 .PHONY: web-install
 web-install:
