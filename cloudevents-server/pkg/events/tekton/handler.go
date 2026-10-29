@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -24,9 +25,13 @@ import (
 )
 
 const (
-	eventContextAnnotationKey          = "tekton.dev/ce-context"
-	eventContextAnnotationInnerKeyUser = "user"
+	eventContextAnnotationKey = "tekton.dev/ce-context"
 )
+
+// devbuildSourceReg matches the cloud event sources of devbuilds created by
+// both tibuild v1 (tibuild.pingcap.net/api/devbuilds/<id>) and tibuild-v2
+// (tibuild.pingcap.net/api/v2/devbuilds/<id>).
+var devbuildSourceReg = regexp.MustCompile(`^tibuild\.pingcap\.net/api/(v2/)?devbuilds/`)
 
 func NewHandler(cfg config.Tekton) (handler.EventHandler, error) {
 	larkClient := lark.NewClient(cfg.Lark.AppID, cfg.Lark.AppSecret)
@@ -38,18 +43,50 @@ func NewHandler(cfg config.Tekton) (handler.EventHandler, error) {
 	return ret, nil
 }
 
-func getTriggerUser(run AnnotationsGetter) string {
-	eventContext := run.GetAnnotations()[eventContextAnnotationKey]
-	if eventContext == "" {
-		return ""
+// eventContext is the JSON payload stored in the `tekton.dev/ce-context`
+// annotation. The Tekton EventListener writes it when the run is created from a
+// cloud event.
+type eventContext struct {
+	Source  string `json:"source"`
+	Subject string `json:"subject"`
+	User    string `json:"user"`
+}
+
+func getEventContext(run AnnotationsGetter) eventContext {
+	var ret eventContext
+
+	raw := run.GetAnnotations()[eventContextAnnotationKey]
+	if raw == "" {
+		return ret
 	}
 
-	contextData := make(map[string]string)
-	if err := json.Unmarshal([]byte(eventContext), &contextData); err != nil {
-		return ""
+	_ = json.Unmarshal([]byte(raw), &ret)
+	return ret
+}
+
+func isDevbuildSource(source string) bool {
+	return devbuildSourceReg.MatchString(source)
+}
+
+// skipTriggerUser reports whether the event's trigger user must not be used as
+// a notification receiver. Devbuilds are already notified by tibuild-v2 with a
+// single, continuously updated card, so notifying the trigger user here would
+// only duplicate it.
+func skipTriggerUser(ctx eventContext) bool {
+	return isDevbuildSource(ctx.Source)
+}
+
+// resolveReceivers decides who should receive the notification for a run:
+//   - devbuild events: fall back to the configured notification receivers;
+//   - other events: the trigger user from the ce-context when it exists,
+//     otherwise the configured notification receivers.
+func resolveReceivers(run AnnotationsGetter, event cloudevents.Event, cfgs []config.TektonNotification) []string {
+	ctx := getEventContext(run)
+	if ctx.User != "" && !skipTriggerUser(ctx) {
+		return []string{ctx.User}
 	}
 
-	return contextData[eventContextAnnotationInnerKeyUser]
+	return getReceivers(event, cfgs)
 }
 
 func getReceivers(event cloudevents.Event, cfgs []config.TektonNotification) []string {

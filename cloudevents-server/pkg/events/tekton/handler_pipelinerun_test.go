@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	lark "github.com/larksuite/oapi-sdk-go/v3"
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
@@ -29,11 +28,6 @@ var (
 )
 
 func Test_pipelineRunHandler_Handle(t *testing.T) {
-	type fields struct {
-		LarkClient *lark.Client
-	}
-	type args struct {
-	}
 	tests := []struct {
 		name      tektoncloudevent.TektonEventType
 		eventJSON []byte
@@ -51,10 +45,12 @@ func Test_pipelineRunHandler_Handle(t *testing.T) {
 	}
 
 	h := &pipelineRunHandler{
-		LarkClient: lark.NewClient(larkAppID, larkAppSecret, lark.WithLogReqAtDebug(true), lark.WithEnableTokenCache(true)),
 		Tekton: config.Tekton{
 			Notifications:    []config.TektonNotification{{Receivers: []string{receiver}}},
 			DashboardBaseURL: baseURL,
+		},
+		notify: func(receivers []string, infos *cardMessageInfos) cloudevents.Result {
+			return cloudevents.ResultACK
 		},
 	}
 	for _, tt := range tests {

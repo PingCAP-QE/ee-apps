@@ -23,6 +23,10 @@ type LarkBotApp struct {
 }
 
 // TektonNotification notify config for tekton run events, the `Type` and `Subject` is "AND" logic.
+// NOTE: devbuild-triggered PipelineRun events (ce-context source matches
+// `tibuild.pingcap.net/api[/v2]/devbuilds/*`) never notify their trigger user;
+// they only use the receivers configured here, because tibuild-v2 already
+// notifies the devbuild creator with its own card.
 type TektonNotification struct {
 	// EventType of the cloud event, if you want it send all types, set value as "*".
 	EventType string `yaml:"event_type,omitempty" json:"event_type,omitempty"`
