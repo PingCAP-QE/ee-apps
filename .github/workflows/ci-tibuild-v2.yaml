@@ -53,4 +53,5 @@ jobs:
         working-directory: experiments/tibuild-v2
         run: |
           go build ./cmd/tibuild && \
-          go build ./cmd/tibuild-cli
+          go build ./cmd/tibuild-cli && \
+          go build ./cmd/tibuild-worker

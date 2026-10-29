@@ -46,7 +46,8 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- $workerRepo := .Values.worker.image.repository | default .Values.image.repository }}
+          image: "{{ $workerRepo }}:{{ .Values.worker.image.tag | default .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
             - -worker-id={{ default "$(POD_NAME)" .Values.worker.workerID }}
