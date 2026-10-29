@@ -145,18 +145,20 @@ def normalize_cost_date_range(
     start_date: date | None,
     end_date: date | None,
     granularity: str,
-) -> tuple[date | None, date | None, str]:
-    if start_date is None and end_date is None and granularity == "week":
-        end_date = _last_completed_week_end(date.today())
-        start_date = end_date - timedelta(days=55)
+) -> tuple[date, date, str]:
+    if start_date is None and end_date is None:
+        if granularity == "week":
+            end_date = _last_completed_week_end(date.today())
+            start_date = end_date - timedelta(days=55)
+        elif granularity == "month":
+            end_date = date.today().replace(day=1) - timedelta(days=1)
+            start_date = _add_months_clamped(end_date.replace(day=1), -11)
 
     if start_date is None or end_date is None:
-        if granularity in {"day", "week"}:
-            raise HTTPException(
-                status_code=422,
-                detail="start_date and end_date are required for day and week cost granularity",
-            )
-        return start_date, end_date, granularity
+        raise HTTPException(
+            status_code=422,
+            detail="start_date and end_date are required for cost granularity",
+        )
 
     if start_date > end_date:
         raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
@@ -164,11 +166,18 @@ def normalize_cost_date_range(
     if granularity == "day" and (end_date - start_date).days + 1 > 14:
         raise HTTPException(status_code=422, detail="day cost granularity supports at most 14 days")
 
-    if granularity == "week" and end_date >= _add_months_clamped(start_date, 2):
-        raise HTTPException(
-            status_code=422,
-            detail="week cost granularity requires end_date before start_date plus 2 calendar months",
-        )
+    if granularity in {"week", "month"}:
+        max_months = 2 if granularity == "week" else 12
+        month_span = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
+        # Only shift when the target month is representable (including near date.max).
+        if month_span >= max_months and end_date >= _add_months_clamped(start_date, max_months):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"{granularity} cost granularity requires end_date before start_date "
+                    f"plus {max_months} calendar months"
+                ),
+            )
 
     return start_date, end_date, granularity
 
