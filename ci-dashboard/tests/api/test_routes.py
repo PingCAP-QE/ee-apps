@@ -60,15 +60,29 @@ def test_cost_resource_cursor_rejects_bad_request(api_client: TestClient) -> Non
     assert response.json()["detail"] == "invalid resource cursor"
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/pages/cost",
+        "/api/v1/pages/cost-filter-values",
+        "/api/v1/pages/cost-trend",
+        "/api/v1/pages/cost-share",
+        "/api/v1/pages/cost-budget-pace",
+        "/api/v1/pages/cost-weekly-account-summaries",
+        "/api/v1/pages/cost-repo-group-stack",
+        "/api/v1/pages/cost-engineering-group-share",
+        "/api/v1/pages/cost-unmatched-resources",
+    ],
+)
 def test_cost_route_date_policy_rejects_invalid_ranges_before_db_reads(
+    path: str,
     sqlite_engine,
     api_client: TestClient,
 ) -> None:
     reads: list[str] = []
 
     def record_read(_conn, _cursor, statement, _parameters, _context, _executemany):
-        if "cost_attribution_daily" in statement.lower() or "cost_budgets" in statement.lower():
-            reads.append(statement)
+        reads.append(statement)
 
     event.listen(sqlite_engine, "before_cursor_execute", record_read)
     try:
@@ -80,10 +94,18 @@ def test_cost_route_date_policy_rejects_invalid_ranges_before_db_reads(
             {"granularity": "week", "start_date": "2023-12-31", "end_date": "2024-02-29"},
             {"granularity": "week", "start_date": "2026-07-02"},
             {"granularity": "week", "start_date": "not-a-date", "end_date": "2026-07-02"},
+            {"granularity": "month", "start_date": "2026-07-01"},
+            {"granularity": "month", "end_date": "2026-07-01"},
+            {"granularity": "month", "start_date": "2026-07-02", "end_date": "2026-07-01"},
+            {"granularity": "month", "start_date": "2025-07-01", "end_date": "2026-07-01"},
+            {"granularity": "month", "start_date": "2024-02-29", "end_date": "2025-02-28"},
+            {"granularity": "month", "start_date": "2000-01-01", "end_date": "2026-07-01"},
+            {"granularity": "month", "start_date": "not-a-date", "end_date": "2026-07-01"},
+            {"granularity": "month", "start_date": "0001-01-01", "end_date": "9999-12-31"},
         ]
         for params in invalid_requests:
-            response = api_client.get("/api/v1/pages/cost-trend", params=params)
-            assert response.status_code == 422
+            response = api_client.get(path, params=params)
+            assert response.status_code == 422, (path, params, response.text)
     finally:
         event.remove(sqlite_engine, "before_cursor_execute", record_read)
 
@@ -99,6 +121,9 @@ def test_cost_route_date_policy_allows_daily_weekly_and_default_ranges(
         {"granularity": "week", "start_date": "2026-12-01", "end_date": "2027-01-31"},
         {"granularity": "week", "start_date": "2026-01-31", "end_date": "2026-03-30"},
         {"granularity": "week", "start_date": "2023-12-31", "end_date": "2024-02-28"},
+        {"granularity": "month", "start_date": "2025-07-01", "end_date": "2026-06-30"},
+        {"granularity": "month", "start_date": "2024-02-29", "end_date": "2025-02-27"},
+        {"granularity": "month", "start_date": "2025-02-28", "end_date": "2026-02-27"},
         {"granularity": "month"},
     ]:
         response = api_client.get("/api/v1/pages/cost-trend", params=params)
@@ -109,6 +134,46 @@ def test_cost_route_date_policy_allows_daily_weekly_and_default_ranges(
     assert default_response.json()["meta"]["granularity"] == "week"
     assert default_response.json()["meta"]["start_date"] is not None
     assert default_response.json()["meta"]["end_date"] is not None
+
+    monthly_response = api_client.get("/api/v1/pages/cost-trend", params={"granularity": "month"})
+    assert monthly_response.status_code == 200
+    assert monthly_response.json()["meta"]["start_date"] is not None
+    assert monthly_response.json()["meta"]["end_date"] is not None
+
+
+@pytest.mark.parametrize(
+    ("today", "expected_start", "expected_end"),
+    [
+        (date(2026, 10, 29), date(2025, 10, 1), date(2026, 9, 30)),
+        (date(2026, 1, 1), date(2025, 1, 1), date(2025, 12, 31)),
+        (date(2024, 3, 1), date(2023, 3, 1), date(2024, 2, 29)),
+    ],
+)
+def test_cost_month_default_is_twelve_complete_months(
+    today: date,
+    expected_start: date,
+    expected_end: date,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FixedDate(date):
+        @classmethod
+        def today(cls):
+            return today
+
+    monkeypatch.setattr(common_routes, "date", FixedDate)
+    assert common_routes.normalize_cost_date_range(None, None, "month") == (
+        expected_start, expected_end, "month",
+    )
+
+
+@pytest.mark.parametrize("granularity", ["week", "month"])
+def test_cost_date_window_near_max_year_does_not_overflow(granularity: str) -> None:
+    start = date(9999, 12, 1)
+    end = date.max
+
+    assert common_routes.normalize_cost_date_range(start, end, granularity) == (
+        start, end, granularity,
+    )
 
 
 def test_get_engine_dependency_caches_underlying_engine(monkeypatch: pytest.MonkeyPatch) -> None:
