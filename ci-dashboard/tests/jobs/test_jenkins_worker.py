@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime
+from urllib.parse import urlsplit
 
+import pytest
+from pymysql.constants import CLIENT
 from sqlalchemy import text
 
 from ci_dashboard.common.config import DatabaseSettings, JobSettings, KafkaSettings, Settings
+from ci_dashboard.common.db import build_engine
+from ci_dashboard.jobs import jenkins_worker as worker
 from ci_dashboard.jobs.jenkins_worker import (
     _build_kafka_consumer,
     map_jenkins_result_to_state,
@@ -414,6 +420,297 @@ def test_process_jenkins_event_message_uses_prow_job_id_to_resolve_duplicate_bui
     assert rows[1]["completion_time"] is not None
     assert rows[1]["build_system"] == "JENKINS"
     assert rows[1]["cloud_phase"] == "GCP"
+
+
+@pytest.mark.parametrize(
+    "existing_url,event_url_kind",
+    [
+        ("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1817/", "relative"),
+        ("http://jenkins.jenkins.svc.cluster.local/job/pingcap/job/tidb/job/pull_mysql_client_test/1817/", "internal"),
+        ("https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/another_job/1816/", "relative"),
+        ("https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/", "absolute"),
+        ("https://prow.tidb.net/jenkins-staging/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/", "relative"),
+        ("https://prow.tidb.net/view/gs/prow-tidb-logs/1816/", "relative"),
+        ("https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1817/", "relative"),
+        ("https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/another_job/1816/", "internal"),
+        ("https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/", "relative"),
+        (None, "relative"),
+        ("", "relative"),
+        ("not-a-build-url", "relative"),
+    ],
+)
+@pytest.mark.parametrize("has_url_fallback", [False, True])
+def test_jenkins_event_rejects_prow_id_url_conflict_without_build_writes(
+    sqlite_engine, existing_url: str | None, event_url_kind: str, has_url_fallback: bool,
+) -> None:
+    payload = _real_jenkins_plugin_finished_event_payload()
+    if event_url_kind == "absolute":
+        # An explicit GCP controller must still conflict with the same path on Tencent.
+        payload["subject"] = worker.normalize_build_url(payload["source"])
+    elif event_url_kind == "internal":
+        payload["source"] = f"http://jenkins.jenkins.svc.cluster.local/{payload['source']}"
+    parsed = parse_jenkins_finished_event(payload, _settings())
+    enricher = _NoopTimingsEnricher()
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text("""
+                INSERT INTO ci_l1_builds (source_prow_job_id, normalized_build_url, state)
+                VALUES (:prow_id, :url, 'pending')
+            """),
+            {"prow_id": parsed.source_prow_job_id, "url": existing_url},
+        )
+        if has_url_fallback:
+            connection.execute(
+                text("""
+                    INSERT INTO ci_l1_builds (normalized_build_url, state)
+                    VALUES (:url, 'pending')
+                """),
+                {"url": parsed.normalized_build_url},
+            )
+        original_builds = connection.execute(
+            text("SELECT * FROM ci_l1_builds ORDER BY id")
+        ).mappings().all()
+
+    for _ in range(2):
+        assert process_jenkins_event_message(
+            sqlite_engine, _settings(), payload, timings_enricher=enricher,
+        ) == "failed"
+        with sqlite_engine.begin() as connection:
+            assert connection.execute(
+                text("SELECT * FROM ci_l1_builds ORDER BY id")
+            ).mappings().all() == original_builds
+            audit = connection.execute(
+                text("SELECT * FROM ci_l1_jenkins_build_events")
+            ).mappings().one()
+        assert audit["processing_status"] == "FAILED"
+        assert audit["event_id"] == parsed.event_id
+        assert audit["normalized_build_url"] == parsed.normalized_build_url
+        assert "source_prow_job_id conflicts with the canonical build URL" in audit["last_error"]
+        assert f"row_id={original_builds[0]['id']}" in audit["last_error"]
+        assert f"source_prow_job_id={parsed.source_prow_job_id!r}" in audit["last_error"]
+        assert f"event_url={parsed.normalized_build_url!r}" in audit["last_error"]
+        assert f"stored_canonical_url={worker.normalize_build_url(existing_url)!r}" in audit["last_error"]
+        assert enricher.calls == []
+
+    # A trusted sync repairs the identity; replaying the same event can now succeed.
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text("UPDATE ci_l1_builds SET normalized_build_url = :url WHERE id = :id"),
+            {"url": parsed.normalized_build_url, "id": original_builds[0]["id"]},
+        )
+    assert process_jenkins_event_message(
+        sqlite_engine, _settings(), payload, timings_enricher=enricher,
+    ) == "processed"
+    with sqlite_engine.begin() as connection:
+        builds = connection.execute(
+            text("SELECT * FROM ci_l1_builds ORDER BY id")
+        ).mappings().all()
+        audit = connection.execute(
+            text("SELECT * FROM ci_l1_jenkins_build_events")
+        ).mappings().one()
+    assert len(builds) == len(original_builds)
+    assert builds[0]["id"] == original_builds[0]["id"]
+    assert builds[0]["state"] == "success"
+    assert builds[1:] == original_builds[1:]
+    assert audit["event_id"] == parsed.event_id
+    assert audit["processing_status"] == "PROCESSED"
+    assert audit["last_error"] is None
+    assert enricher.calls == [(original_builds[0]["id"], parsed.normalized_build_url)]
+
+
+@pytest.mark.parametrize(
+    "existing_url",
+    [
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/",
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816",
+        "https://prow.tidb.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/display/redirect",
+        "/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/",
+        "http://jenkins.jenkins.svc.cluster.local/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/",
+        "https://do.pingcap.net/jenkins/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/",
+        "https://do.pingcap.net/jenkins-staging/job/pingcap/job/tidb/job/pull_mysql_client_test/1816/",
+    ],
+)
+@pytest.mark.parametrize("event_url_kind", ["absolute", "relative", "internal"])
+def test_jenkins_event_accepts_matching_prow_id_with_canonical_url_alias(
+    sqlite_engine, existing_url: str, event_url_kind: str,
+) -> None:
+    payload = _real_jenkins_plugin_finished_event_payload()
+    canonical_url = worker.normalize_build_url(existing_url)
+    event_path = urlsplit(canonical_url).path
+    if event_url_kind == "absolute":
+        payload["subject"] = canonical_url
+    elif event_url_kind == "internal":
+        payload["source"] = f"http://jenkins.jenkins.svc.cluster.local{event_path}"
+    elif event_path.startswith("/jenkins-staging/"):
+        payload["source"] = event_path
+    # Otherwise keep the real plugin's unmodified, host-less source.
+    parsed = parse_jenkins_finished_event(payload, _settings())
+    enricher = _NoopTimingsEnricher()
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text("""
+                INSERT INTO ci_l1_builds (source_prow_job_id, normalized_build_url, state)
+                VALUES (:prow_id, :url, 'pending')
+            """),
+            {"prow_id": parsed.source_prow_job_id, "url": existing_url},
+        )
+        build_id = connection.execute(text("SELECT id FROM ci_l1_builds")).scalar_one()
+
+    assert process_jenkins_event_message(
+        sqlite_engine, _settings(), payload, timings_enricher=enricher,
+    ) == "processed"
+    assert process_jenkins_event_message(
+        sqlite_engine, _settings(), payload, timings_enricher=enricher,
+    ) == "skipped"
+
+    with sqlite_engine.begin() as connection:
+        build = connection.execute(text("SELECT * FROM ci_l1_builds")).mappings().one()
+        audit = connection.execute(
+            text("SELECT * FROM ci_l1_jenkins_build_events")
+        ).mappings().one()
+    assert build["id"] == build_id
+    assert build["state"] == "success"
+    assert build["source_prow_job_id"] == parsed.source_prow_job_id
+    assert build["normalized_build_url"] == canonical_url
+    assert build["cloud_phase"] == worker.classify_cloud_phase(canonical_url)
+    assert build["build_system"] == worker.classify_build_system(canonical_url)
+    assert audit["processing_status"] == "PROCESSED"
+    assert audit["normalized_build_url"] == canonical_url
+    assert enricher.calls == [(build_id, canonical_url)]
+
+
+def test_jenkins_event_does_not_treat_unknown_controller_as_gcp(sqlite_engine) -> None:
+    payload = _real_jenkins_plugin_finished_event_payload()
+    assert process_jenkins_event_message(sqlite_engine, _settings(), payload) == "processed"
+    with sqlite_engine.begin() as connection:
+        original = connection.execute(text("SELECT * FROM ci_l1_builds")).mappings().one()
+
+    payload["id"] = "evt-unknown-controller"
+    payload["subject"] = original["normalized_build_url"].replace(
+        "prow.tidb.net", "unrelated-controller.example.net",
+    )
+    enricher = _NoopTimingsEnricher()
+    assert process_jenkins_event_message(
+        sqlite_engine, _settings(), payload, timings_enricher=enricher,
+    ) == "failed"
+    with sqlite_engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT * FROM ci_l1_builds")
+        ).mappings().one() == original
+        audit = connection.execute(
+            text("SELECT processing_status, last_error FROM ci_l1_jenkins_build_events WHERE event_id = :id"),
+            {"id": payload["id"]},
+        ).mappings().one()
+    assert audit["processing_status"] == "FAILED"
+    assert "source_prow_job_id conflicts" in audit["last_error"]
+    assert enricher.calls == []
+
+
+@pytest.mark.parametrize("has_prow_id", [False, True])
+def test_jenkins_event_accepts_identical_delivery_with_unchanged_build(
+    sqlite_engine, has_prow_id: bool,
+) -> None:
+    payload = (
+        _real_jenkins_plugin_finished_event_payload() if has_prow_id else _finished_event_payload()
+    )
+    parsed = parse_jenkins_finished_event(payload, _settings())
+    enricher = _NoopTimingsEnricher()
+    assert process_jenkins_event_message(
+        sqlite_engine, _settings(), payload, timings_enricher=enricher,
+    ) == "processed"
+    with sqlite_engine.begin() as connection:
+        original = connection.execute(text("SELECT * FROM ci_l1_builds")).mappings().one()
+
+    payload["id"] = "evt-identical-redelivery"
+    assert process_jenkins_event_message(
+        sqlite_engine, _settings(), payload, timings_enricher=enricher,
+    ) == "processed"
+    with sqlite_engine.begin() as connection:
+        repeated = connection.execute(text("SELECT * FROM ci_l1_builds")).mappings().one()
+        # updated_at is second-precision wall time, not part of the build identity.
+        assert {key: value for key, value in repeated.items() if key != "updated_at"} == {
+            key: value for key, value in original.items() if key != "updated_at"
+        }
+        audits = connection.execute(
+            text("SELECT processing_status, last_error FROM ci_l1_jenkins_build_events")
+        ).mappings().all()
+    assert len(audits) == 2
+    assert all(audit["processing_status"] == "PROCESSED" for audit in audits)
+    assert all(audit["last_error"] is None for audit in audits)
+    assert enricher.calls == [(original["id"], parsed.normalized_build_url)] * 2
+
+
+@pytest.mark.parametrize("explicit_url", [False, True])
+def test_production_mysql_engine_counts_matched_not_changed_rows(explicit_url: bool) -> None:
+    settings = _settings()
+    database = replace(
+        settings.database,
+        url="mysql+pymysql://dashboard@db.invalid/ci" if explicit_url else None,
+        host="db.invalid", port=3306, user="dashboard", database="ci",
+    )
+    engine = build_engine(replace(settings, database=database))
+    try:
+        # Inspect the real SQLAlchemy dialect's DBAPI args without opening a connection.
+        _args, kwargs = engine.dialect.create_connect_args(engine.url)
+        assert kwargs["client_flag"] & CLIENT.FOUND_ROWS
+        assert engine.dialect.supports_sane_rowcount
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("changed_field", ["normalized_build_url", "source_prow_job_id"])
+def test_jenkins_event_rejects_merge_target_changed_since_lookup(
+    sqlite_engine, monkeypatch: pytest.MonkeyPatch, changed_field: str,
+) -> None:
+    payload = _real_jenkins_plugin_finished_event_payload()
+    parsed = parse_jenkins_finished_event(payload, _settings())
+    current_identity = {
+        "normalized_build_url": parsed.normalized_build_url,
+        "source_prow_job_id": parsed.source_prow_job_id,
+    }
+    current_identity[changed_field] = (
+        parsed.normalized_build_url.replace("/1816/", "/1817/")
+        if changed_field == "normalized_build_url" else "another-prow-job"
+    )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text("""
+                INSERT INTO ci_l1_builds (source_prow_job_id, normalized_build_url, state)
+                VALUES (:source_prow_job_id, :normalized_build_url, 'pending')
+            """),
+            current_identity,
+        )
+        original = connection.execute(text("SELECT * FROM ci_l1_builds")).mappings().one()
+
+    # Model a stale, previously matching read while the database identity has moved on.
+    stale_target = {
+        "id": original["id"],
+        "source_prow_job_id": parsed.source_prow_job_id,
+        "normalized_build_url": parsed.normalized_build_url,
+    }
+    monkeypatch.setattr(worker, "fetch_existing_build_targets", lambda *args, **kwargs: (
+        {parsed.source_prow_job_id: stale_target},
+        {parsed.normalized_build_url: [stale_target]},
+    ))
+    enricher = _NoopTimingsEnricher()
+    assert process_jenkins_event_message(
+        sqlite_engine, _settings(), payload, timings_enricher=enricher,
+    ) == "failed"
+
+    with sqlite_engine.begin() as connection:
+        assert connection.execute(
+            text("SELECT * FROM ci_l1_builds")
+        ).mappings().one() == original
+        audit = connection.execute(
+            text("SELECT processing_status, last_error FROM ci_l1_jenkins_build_events")
+        ).mappings().one()
+    assert audit["processing_status"] == "FAILED"
+    assert "merge target changed before update" in audit["last_error"]
+    assert f"target_id={original['id']}" in audit["last_error"]
+    assert f"matched_source_prow_job_id={stale_target['source_prow_job_id']!r}" in audit["last_error"]
+    assert f"event_url={parsed.normalized_build_url!r}" in audit["last_error"]
+    assert f"stored_canonical_url={parsed.normalized_build_url!r}" in audit["last_error"]
+    assert enricher.calls == []
 
 
 def test_process_jenkins_event_message_skips_duplicate_processed_event(sqlite_engine) -> None:

@@ -104,6 +104,32 @@ Notes:
 - `scripts/render_flaky_issue_sync_cronjob.sh` renders a recurring Kubernetes CronJob manifest for daily flaky issue sync
 - `scripts/render_jenkins_worker_deployment.sh` renders the V3 Jenkins event worker Deployment manifest
 - `scripts/render_archive_error_logs_cronjob.sh` renders the V3 Jenkins error-log archive CronJob manifest
+- When a Jenkins finished event's `PROW_JOB_ID` matches an existing build, its
+  canonical build URL must also agree. Relative URLs and
+  `jenkins.jenkins.svc.cluster.local` URLs are controller-ambiguous: their full
+  canonical path must match, then the worker keeps the Prow-matched row's
+  controller for the build, audit URL, cloud phase, and timings request. This
+  includes Tencent (`do.pingcap.net`); the topic is not assumed to be GCP-only.
+  Explicit public controller URLs must agree with the stored controller too.
+  Normalization accepts trailing-slash/redirect variants while keeping different
+  jobs, build numbers, and staging paths distinct. A conflicting, missing, or
+  invalid stored URL fails closed: no build row is updated or inserted via a
+  fallback, and no timings enrichment is queued.
+  The failed event remains in the audit table; Kafka offsets follow the existing
+  audited-failure commit policy, so these events are not retried automatically.
+  Repair the stored identity using the trusted Prow sync, then explicitly replay
+  the failed event with the same event ID; replay stays failed until the conflict
+  is resolved. Without a Prow-ID match, existing new-build and URL-only merge
+  behavior (including the GCP default for ambiguous URLs) is unchanged.
+- Jenkins updates also check the matched URL and compatible Prow ID in the write
+  predicate so a stale lookup cannot overwrite a changed merge target. SQLAlchemy
+  enables MySQL/PyMySQL matched-row counting, so identical deliveries still match
+  rather than being mistaken for identity changes. Conflict audit reasons include
+  the row/Prow IDs and canonical event/stored URLs, not raw URL credentials. The
+  authoritative `sync-builds` reconciliation rules, new-build ingestion, and
+  URL-based merging of events without a Prow ID are unchanged. These checks
+  are defense in depth, not producer authentication: `/events` authentication,
+  producer authorization, and Kafka producer ACLs still require separate review.
 - Jenkins finished events asynchronously enrich the canonical build row from the
   Jenkins `/timings/` page. This fetch is best-effort and does not block Kafka
   offset commits.
