@@ -18,6 +18,17 @@ const (
 type pipelineRunHandler struct {
 	config.Tekton
 	LarkClient *lark.Client
+	// notify sends the lark notifications. It is only overridden in tests;
+	// when nil, composeAndSendLarkMessages is used.
+	notify func(receivers []string, infos *cardMessageInfos) cloudevents.Result
+}
+
+func (h *pipelineRunHandler) sendNotifications(receivers []string, infos *cardMessageInfos) cloudevents.Result {
+	if h.notify != nil {
+		return h.notify(receivers, infos)
+	}
+
+	return composeAndSendLarkMessages(h.LarkClient, receivers, infos)
 }
 
 type AnnotationsGetter interface {
@@ -51,10 +62,14 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 		tektoncloudevent.PipelineRunSuccessfulEventV1:
 		var receivers []string
 		// send notify to the trigger user if it's existed, else send to the receivers configurated by type.
-		if receiver := getTriggerUser(data.PipelineRun); receiver != "" {
-			receivers = []string{receiver}
-		} else {
-			receivers = getReceivers(event, h.Notifications)
+		// devbuild events fall back to the configured receivers because tibuild-v2 already notifies the creator.
+		ctx := getEventContext(data.PipelineRun)
+		receivers = resolveReceivers(data.PipelineRun, event, h.Notifications)
+		if ctx.User != "" && skipTriggerUser(ctx) {
+			handlerLog.Info().
+				Str("event-source", ctx.Source).
+				Strs("receivers", receivers).
+				Msg("skip trigger user for devbuild event")
 		}
 		if len(receivers) == 0 {
 			return cloudevents.ResultACK
@@ -72,7 +87,7 @@ func (h *pipelineRunHandler) Handle(event cloudevents.Event) cloudevents.Result 
 		handlerLog.Debug().
 			Str("receivers", strings.Join(receivers, ",")).
 			Msg("send notification for the event type.")
-		return composeAndSendLarkMessages(h.LarkClient, receivers, infos)
+		return h.sendNotifications(receivers, infos)
 	default:
 		handlerLog.Debug().Msg("skip notifing for the event type.")
 		return cloudevents.ResultACK
