@@ -13,19 +13,15 @@ from ci_dashboard.common.config import JenkinsSettings
 DEFAULT_FAILED_NODE_LOG_LIMIT = 4
 DEFAULT_FAILED_NODE_LOG_BYTES = 64 * 1024
 DEFAULT_CONSOLE_SIGNAL_EXCERPT_BYTES = 16 * 1024
+DEFAULT_CONSOLE_SIGNAL_SCAN_BYTES = 8 * 1024 * 1024
 DEFAULT_CONSOLE_SIGNAL_CONTEXT_LINES = 4
 DEFAULT_CONSOLE_SIGNAL_MATCH_LIMIT = 6
 CONSOLE_OUTPUT_RE = re.compile(r'<pre class="console-output">(.*?)</pre>', flags=re.DOTALL)
-CONSOLE_SIGNAL_PATTERNS = (
-    re.compile(r"Container \[[^\]]+\] terminated \[OOMKilled\]", flags=re.IGNORECASE),
-    re.compile(r"Pod \[Failed\]\[[^\]]*OOMKilled[^\]]*\]", flags=re.IGNORECASE),
-    re.compile(r"Reason: OOMKilled", flags=re.IGNORECASE),
-    re.compile(r"Pod \[Failed\]\[TerminationByKubelet\]", flags=re.IGNORECASE),
-    re.compile(r"The node was low on resource: memory", flags=re.IGNORECASE),
-    re.compile(r"Container .* was using .* request is .* larger consumption of memory", flags=re.IGNORECASE),
-    re.compile(r"Pod \[Failed\]\[[^\]]*Evicted[^\]]*\]", flags=re.IGNORECASE),
-    re.compile(r"Container \[[^\]]+\] terminated \[Evicted\]", flags=re.IGNORECASE),
-    re.compile(r"Reason: Evicted", flags=re.IGNORECASE),
+CONSOLE_SIGNAL_MARKERS = (
+    "reason: oomkilled",
+    "pod [failed][terminationbykubelet]",
+    "the node was low on resource: memory",
+    "reason: evicted",
 )
 
 
@@ -142,15 +138,35 @@ class JenkinsClient:
         build_url: str,
         *,
         max_bytes: int = DEFAULT_CONSOLE_SIGNAL_EXCERPT_BYTES,
+        max_scan_bytes: int = DEFAULT_CONSOLE_SIGNAL_SCAN_BYTES,
     ) -> str:
+        if max_scan_bytes < 1:
+            raise ValueError("max_scan_bytes must be positive")
         console_url = build_api_url(
             build_url,
             "consoleText",
             internal_base_url=self._settings.internal_base_url,
         )
-        response = self._client.get(console_url)
-        response.raise_for_status()
-        return extract_console_signal_excerpts(response.text, max_bytes=max_bytes)
+        # Avoid implicit decompression before the byte budget can be enforced.
+        with self._client.stream(
+            "GET", console_url, headers={"Accept-Encoding": "identity"},
+        ) as response:
+            response.raise_for_status()
+            if response.headers.get("Content-Encoding", "identity").strip().lower() not in {
+                "", "identity",
+            }:
+                raise httpx.DecodingError("Unexpected consoleText Content-Encoding")
+            content = bytearray()
+            # One lookahead byte distinguishes an exact-size body from a truncated scan.
+            for chunk in response.iter_bytes(chunk_size=min(64 * 1024, max_scan_bytes + 1)):
+                content.extend(chunk[:max_scan_bytes + 1 - len(content)])
+                if len(content) > max_scan_bytes:
+                    break
+        return extract_console_signal_excerpts(
+            content.decode("utf-8", errors="replace"),
+            max_bytes=max_bytes,
+            max_scan_bytes=max_scan_bytes,
+        )
 
     def fetch_timings_html(self, build_url: str, *, timeout_seconds: int = 5) -> str:
         timings_url = build_api_url(
@@ -246,18 +262,60 @@ def rewrite_build_url_host(build_url: str, *, internal_base_url: str) -> str:
     return rewritten
 
 
+def _has_console_signal(line: str) -> bool:
+    lowered = line.lower()
+    if any(marker in lowered for marker in CONSOLE_SIGNAL_MARKERS):
+        return True
+
+    position = 0
+    for fragment in ("container ", " was using ", " request is ", " larger consumption of memory"):
+        position = lowered.find(fragment, position)
+        if position < 0:
+            break
+        position += len(fragment)
+    else:
+        return True
+
+    # Split once: repeated unterminated Container/Pod prefixes must not restart a regex scan.
+    parts = lowered.split("]")
+    for index in range(len(parts) - 1):
+        part = parts[index]
+        container_start = part.find("container [")
+        if (
+            container_start >= 0
+            and container_start + len("container [") < len(part)
+            and index + 2 < len(parts)
+            and parts[index + 1] in {" terminated [oomkilled", " terminated [evicted"}
+        ):
+            return True
+        if (
+            index > 0
+            and parts[index - 1].endswith("pod [failed")
+            and part.startswith("[")
+            and ("oomkilled" in part or "evicted" in part)
+        ):
+            return True
+    return False
+
+
 def extract_console_signal_excerpts(
     console_text: str,
     *,
     context_lines: int = DEFAULT_CONSOLE_SIGNAL_CONTEXT_LINES,
     max_matches: int = DEFAULT_CONSOLE_SIGNAL_MATCH_LIMIT,
     max_bytes: int = DEFAULT_CONSOLE_SIGNAL_EXCERPT_BYTES,
+    max_scan_bytes: int = DEFAULT_CONSOLE_SIGNAL_SCAN_BYTES,
 ) -> str:
-    lines = console_text.splitlines()
+    if max_scan_bytes < 1:
+        raise ValueError("max_scan_bytes must be positive")
+    # Slice characters before encoding, so even direct callers only allocate bounded buffers.
+    prefix = console_text[:max_scan_bytes + 1].encode("utf-8", errors="replace")
+    truncated = len(prefix) > max_scan_bytes
+    lines = prefix[:max_scan_bytes].decode("utf-8", errors="ignore").splitlines()
     matched_ranges: list[tuple[int, int]] = []
 
     for index, line in enumerate(lines):
-        if not any(pattern.search(line) for pattern in CONSOLE_SIGNAL_PATTERNS):
+        if not _has_console_signal(line):
             continue
         matched_ranges.append(
             (
@@ -269,20 +327,22 @@ def extract_console_signal_excerpts(
             break
 
     merged_ranges = _merge_line_ranges(matched_ranges)
-    if not merged_ranges:
+    if not merged_ranges and not truncated:
         return ""
 
     parts = ["===== Jenkins console signal excerpts ====="]
-    for start, end in merged_ranges:
+    if truncated:
+        parts.append("[console scan truncated; later signals may be missing]")
+    for block_index, (start, end) in enumerate(merged_ranges):
         block = [f"----- lines {start + 1}-{end} -----", *lines[start:end]]
         candidate = "\n".join([*parts, *block])
         if len(candidate.encode("utf-8", errors="replace")) > max_bytes:
-            if len(parts) == 1:
+            if block_index == 0:
                 return _head_text(candidate, max_bytes=max_bytes)
             break
         parts.extend(block)
 
-    return "\n".join(parts)
+    return _head_text("\n".join(parts), max_bytes=max_bytes)
 
 
 def _failed_flow_nodes(stage_description: dict[str, Any]) -> list[dict[str, Any]]:
@@ -315,7 +375,7 @@ def _head_text(text: str, *, max_bytes: int) -> str:
     encoded = text.encode("utf-8", errors="replace")
     if len(encoded) <= max_bytes:
         return text
-    return encoded[:max_bytes].decode("utf-8", errors="replace")
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
 
 
 def _merge_line_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:

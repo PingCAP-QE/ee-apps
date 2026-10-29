@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import gzip
+import subprocess
+import sys
+
 import httpx
 import pytest
 
@@ -366,3 +370,159 @@ def test_jenkins_client_fetch_console_signal_excerpts_uses_console_text_endpoint
     assert seen_paths == [
         "/jenkins/job/pingcap/job/tiflow/job/pull_cdc_storage_integration_light/1357/consoleText"
     ]
+
+
+@pytest.mark.parametrize(
+    "signal",
+    [
+        "Container golang was using 12Gi, request is 8Gi, larger consumption of memory",
+        "CONTAINER golang WAS USING 12Gi, REQUEST IS 8Gi, LARGER CONSUMPTION OF MEMORY",
+        "Container [golang] terminated [OOMKilled]",
+        "Container [jnlp] terminated [Evicted]",
+        "Pod [Failed][OOMKilled: exit 137]",
+        "Pod [Failed][Evicted: resource pressure]",
+        "Pod [Failed][TerminationByKubelet]",
+        "Reason: OOMKilled",
+        "Reason: Evicted",
+        "The node was low on resource: memory",
+    ],
+)
+def test_console_signals_preserve_middle_of_log(signal) -> None:
+    log = "startup\n" * 500 + signal + "\n" + "cleanup\n" * 500
+    excerpt = extract_console_signal_excerpts(log, context_lines=1)
+    assert signal in excerpt
+    assert "startup" in excerpt
+    assert "cleanup" in excerpt
+
+
+def test_console_memory_signal_requires_ordered_fragments() -> None:
+    assert extract_console_signal_excerpts(
+        "Container golang request is 8Gi was using 12Gi larger consumption of memory"
+    ) == ""
+
+
+def test_console_signal_scan_handles_adversarial_lines_with_bounded_runtime() -> None:
+    # A subprocess deadline kills a reintroduced backtracking regex instead of hanging pytest.
+    result = subprocess.run(
+        [sys.executable, "-c", """
+from ci_dashboard.jobs.jenkins_client import extract_console_signal_excerpts
+for line in (
+    'Container ' + ' was using request is ' * 4000,
+    'Container [' * 10000,
+    'Pod [Failed][' * 10000,
+):
+    assert extract_console_signal_excerpts(line) == ''
+"""],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("prefix", ["x", "中"])
+def test_console_signal_extraction_bounds_scanned_bytes_and_reports_truncation(prefix) -> None:
+    excerpt = extract_console_signal_excerpts(
+        prefix * 200 + "\nReason: OOMKilled\n",
+        max_scan_bytes=128,
+        max_bytes=96,
+    )
+    assert "scan truncated" in excerpt
+    assert "OOMKilled" not in excerpt
+    assert len(excerpt.encode("utf-8")) <= 96
+
+
+def test_console_signal_excerpt_respects_utf8_output_byte_limit() -> None:
+    excerpt = extract_console_signal_excerpts(
+        "Reason: OOMKilled " + "中" * 100,
+        max_bytes=91,
+    )
+    assert "Reason: OOMKilled" in excerpt
+    assert len(excerpt.encode("utf-8")) <= 91
+
+
+class _TrackedConsoleStream(httpx.SyncByteStream):
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.read_bytes = 0
+        self.closed = False
+
+    def __iter__(self):
+        for chunk in self.chunks:
+            self.read_bytes += len(chunk)
+            yield chunk
+
+    def close(self):
+        self.closed = True
+
+
+def test_console_signal_fetch_stops_reading_and_closes_oversized_response() -> None:
+    signal = b"Reason: OOMKilled\n"
+    stream = _TrackedConsoleStream([signal] + [b"x" * 16] * 10000)
+
+    def handler(request):
+        assert request.headers["Accept-Encoding"] == "identity"
+        return httpx.Response(200, stream=stream)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        client = JenkinsClient(JenkinsSettings(), client=http_client)
+        excerpt = client.fetch_console_signal_excerpts(
+            "https://prow.tidb.net/jenkins/job/test/1/", max_scan_bytes=128,
+        )
+
+    assert "Reason: OOMKilled" in excerpt
+    assert "scan truncated" in excerpt
+    assert stream.read_bytes <= 128 + 16
+    assert stream.closed
+
+
+@pytest.mark.parametrize("body", [b"", b"x" * 128, "中".encode("utf-8") * 42 + b"xx"])
+def test_console_signal_fetch_does_not_mark_complete_bounded_body_as_truncated(body) -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=body))
+    with httpx.Client(transport=transport) as http_client:
+        client = JenkinsClient(JenkinsSettings(), client=http_client)
+        assert client.fetch_console_signal_excerpts(
+            "https://prow.tidb.net/jenkins/job/test/1/", max_scan_bytes=128,
+        ) == ""
+
+
+@pytest.mark.parametrize("limit", [0, -1])
+def test_console_signal_scan_rejects_nonpositive_budgets_before_http(limit) -> None:
+    def unexpected_request(request):
+        pytest.fail("invalid scan budget reached HTTP")
+
+    with httpx.Client(transport=httpx.MockTransport(unexpected_request)) as http_client:
+        client = JenkinsClient(JenkinsSettings(), client=http_client)
+        with pytest.raises(ValueError, match="max_scan_bytes"):
+            client.fetch_console_signal_excerpts(
+                "https://prow.tidb.net/jenkins/job/test/1/", max_scan_bytes=limit,
+            )
+    with pytest.raises(ValueError, match="max_scan_bytes"):
+        extract_console_signal_excerpts("Reason: OOMKilled", max_scan_bytes=limit)
+
+
+def test_console_signal_fetch_rejects_unexpected_compression_before_reading() -> None:
+    stream = _TrackedConsoleStream([gzip.compress(b"x" * 100000)])
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, stream=stream, headers={"Content-Encoding": "gzip"}),
+    )
+    with httpx.Client(transport=transport) as http_client:
+        client = JenkinsClient(JenkinsSettings(), client=http_client)
+        with pytest.raises(httpx.DecodingError, match="Content-Encoding"):
+            client.fetch_console_signal_excerpts("https://prow.tidb.net/jenkins/job/test/1/")
+
+    assert stream.read_bytes == 0
+    assert stream.closed
+
+
+@pytest.mark.parametrize("status", [403, 500])
+def test_console_signal_fetch_closes_http_error_without_reading(status) -> None:
+    stream = _TrackedConsoleStream([b"error body"])
+    transport = httpx.MockTransport(lambda request: httpx.Response(status, stream=stream))
+    with httpx.Client(transport=transport) as http_client:
+        client = JenkinsClient(JenkinsSettings(), client=http_client)
+        with pytest.raises(httpx.HTTPStatusError):
+            client.fetch_console_signal_excerpts("https://prow.tidb.net/jenkins/job/test/1/")
+    assert stream.read_bytes == 0
+    assert stream.closed
