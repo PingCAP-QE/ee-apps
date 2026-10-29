@@ -80,9 +80,8 @@ image_sync:
   # Worker polling interval for the async task queue (default: 10s).
   polling_rate: "10s"
 
-# Background task executor. cmd/tibuild runs it in-process by default; set
-# in_process: false when the standalone cmd/tibuild-worker deployment is
-# enabled (charts/tibuild-v2 worker.enabled=true).
+# Background task executor. It runs as the standalone cmd/tibuild-worker
+# deployment (charts/tibuild-v2 worker.enabled=true).
 worker:
   # Unique worker identity written to claimed_by. Defaults to the hostname.
   id: ""
@@ -96,6 +95,3 @@ worker:
   # hard_timeout: "60s"
   max_attempts: 3
   kinds: ["image_copy"]
-  # Phase 1 rollback switch: reset PROCESSING rows on startup.
-  legacy_startup_reclaim: true
-  in_process: true

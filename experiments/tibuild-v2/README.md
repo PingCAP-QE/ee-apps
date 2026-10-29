@@ -57,9 +57,10 @@ TiBuild v2 runs two binaries:
 | `cmd/tibuild` | HTTP API (Goa), stateless | 2+ replicas |
 | `cmd/tibuild-worker` | image-sync executor, lease-based | 1+ replicas per target set |
 
-The API can still run the worker in-process for local development. Production
-sets `worker.in_process: false` and runs the standalone image
-`exp-tibuild-worker` (built from `./cmd/tibuild-worker`).
+The API no longer executes image sync tasks. Every environment runs the
+standalone image `exp-tibuild-worker` (built from `./cmd/tibuild-worker`);
+the chart defaults `worker.enabled=true`. Rollback is a chart/image rollback,
+not an in-process fallback.
 
 ### Queue semantics
 
@@ -84,8 +85,6 @@ worker:
   heartbeat: "30s"
   max_attempts: 3
   kinds: ["image_copy"]
-  legacy_startup_reclaim: false  # rollback switch
-  in_process: false              # set true to run inside cmd/tibuild
 ```
 
 `worker.targets` must be a subset of the global target catalogue; an unknown

@@ -9,7 +9,6 @@ import (
 	"github.com/google/go-containerregistry/pkg/crane"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
-	entimagesynctask "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 	workerpkg "github.com/PingCAP-QE/ee-apps/tibuild/internal/worker"
 )
 
@@ -24,20 +23,6 @@ const (
 // steal another region's in-flight tasks.
 func (s *artifactsrvc) Start(ctx context.Context) {
 	cfg := s.workerConfig()
-
-	if cfg.LegacyReclaimEnabled() {
-		updated, err := s.db.ImageSyncTask.Update().
-			Where(entimagesynctask.Status(TaskStatusProcessing)).
-			SetStatus(TaskStatusPending).
-			ClearClaimedBy().
-			ClearLeaseUntil().
-			Save(ctx)
-		if err != nil {
-			s.logger.Err(err).Msg("failed to reclaim interrupted image sync tasks")
-		} else {
-			s.logger.Info().Int("count", updated).Msg("reclaimed interrupted image sync tasks on startup")
-		}
-	}
 
 	go s.runReaper(ctx)
 	s.ensureObservability()

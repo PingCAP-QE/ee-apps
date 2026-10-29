@@ -37,28 +37,19 @@ func TestWorkerApplyDefaults(t *testing.T) {
 	if len(w.Kinds) != 1 || w.Kinds[0] != "image_copy" {
 		t.Fatalf("Kinds = %v, want [image_copy]", w.Kinds)
 	}
-	if !w.LegacyReclaimEnabled() {
-		t.Fatal("LegacyReclaimEnabled() should default to true")
-	}
-	if !w.InProcessEnabled() {
-		t.Fatal("InProcessEnabled() should default to true")
-	}
 }
 
 func TestWorkerApplyDefaultsKeepsExplicitValues(t *testing.T) {
-	disabled := false
 	w := Worker{
-		ID:                   "tke-bj-image-0",
-		Targets:              []string{"gcr.io"},
-		Concurrency:          4,
-		PollInterval:         "2s",
-		Lease:                "120s",
-		Heartbeat:            "40s",
-		HardTimeout:          "50s",
-		MaxAttempts:          5,
-		Kinds:                []string{"image_copy"},
-		LegacyStartupReclaim: &disabled,
-		InProcess:            &disabled,
+		ID:           "tke-bj-image-0",
+		Targets:      []string{"gcr.io"},
+		Concurrency:  4,
+		PollInterval: "2s",
+		Lease:        "120s",
+		Heartbeat:    "40s",
+		HardTimeout:  "50s",
+		MaxAttempts:  5,
+		Kinds:        []string{"image_copy"},
 	}
 	w.ApplyDefaults()
 
@@ -70,9 +61,6 @@ func TestWorkerApplyDefaultsKeepsExplicitValues(t *testing.T) {
 	}
 	if got := w.HardTimeoutDuration(); got != 50*time.Second {
 		t.Fatalf("HardTimeoutDuration() = %v, want 50s", got)
-	}
-	if w.LegacyReclaimEnabled() || w.InProcessEnabled() {
-		t.Fatal("explicit false switches must be honored")
 	}
 }
 
