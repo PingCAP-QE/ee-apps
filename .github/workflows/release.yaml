@@ -112,11 +112,13 @@ jobs:
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
       - name: Publish image - ci-dashboard
+        timeout-minutes: 20
         if: steps.changes.outputs.ci-dashboard == 'true'
         working-directory: ci-dashboard
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
       - name: Publish image - cost-insight
+        timeout-minutes: 20
         if: steps.changes.outputs.cost-insight == 'true'
         working-directory: cost-insight
         run: |
