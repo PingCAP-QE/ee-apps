@@ -48,6 +48,64 @@ go run ./cmd/server
 
 After waiting a few seconds, application is available and can be visited in the browser:[localhost:8080](http://localhost:8080/)
 
+## Worker deployment model
+
+TiBuild v2 runs two binaries:
+
+| Binary | Role | State |
+| --- | --- | --- |
+| `cmd/tibuild` | HTTP API (Goa), stateless | 2+ replicas |
+| `cmd/tibuild-worker` | image-sync executor, lease-based | 1+ replicas per target set |
+
+The API can still run the worker in-process for local development. Production
+sets `worker.in_process: false` and runs the standalone image
+`exp-tibuild-worker` (built from `./cmd/tibuild-worker`).
+
+### Queue semantics
+
+`image_sync_tasks` is the queue. A claim sets `claimed_by`, `lease_until`,
+`available_at`, and increments `attempts` in one guarded update. The worker
+renews the lease with a heartbeat; every result write requires the same
+`claimed_by` token, so an expired owner cannot overwrite the next owner's
+result. A reaper returns rows whose `lease_until` has passed to `PENDING`.
+
+Failures retry with exponential backoff (10s, 20s, ... capped at 5min, ±20%
+jitter) and become `FAILED` after `worker.max_attempts`.
+
+### Configuration
+
+```yaml
+worker:
+  id: ""                    # defaults to the hostname
+  targets: ["*"]            # registry hosts this worker claims
+  concurrency: 4            # polling loops
+  poll_interval: "10s"
+  lease: "90s"
+  heartbeat: "30s"
+  max_attempts: 3
+  kinds: ["image_copy"]
+  legacy_startup_reclaim: false  # rollback switch
+  in_process: false              # set true to run inside cmd/tibuild
+```
+
+`worker.targets` must be a subset of the global target catalogue; an unknown
+target fails fast at startup. Until the target catalogue lands in
+`pkg/delivery`, only `"*"` is accepted.
+
+### Metrics and alerts
+
+The worker serves `/metrics` on its health port (8081):
+
+- `publish_task_backlog{target}`
+- `publish_task_oldest_pending_seconds{target}`
+- `publish_task_inflight{target}`
+- `publish_task_lease_expired_total`
+- `publish_task_failed_total{target,reason}`
+
+Alerts reuse the Lark notifier: backlog > 0 for 10 minutes, oldest PENDING
+over 30 minutes, or a lease reclaimed in the last 5 minutes. Configure
+`lark.channels` to give the alerts recipients.
+
 ## Testing
 
 ```bash
@@ -57,6 +115,13 @@ go test ./...
 Integration tests (e.g. `internal/service/tests/artifact_test.go`) spin up a
 real registry via [testcontainers](https://golang.testcontainers.org/), so they
 require a running Docker daemon and are skipped with `go test -short ./...`.
+
+The multi-worker zero-duplicate gate uses a MySQL container and is opt-in:
+
+```bash
+TESTCONTAINERS_RYUK_DISABLED=true go test -tags=integration \
+  ./internal/service/impl -run TestWorkerMultiReplicaAndLeaseRecoveryMySQL -timeout=600s
+```
 
 When using [colima](https://github.com/abiosoft/colima) as the Docker backend
 on macOS, set the following env vars so testcontainers can reach the daemon and
