@@ -51,8 +51,10 @@ def list_branches(
     engine: Engine,
     *,
     repo: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> dict[str, object]:
-    filters = CommonFilters(repo=repo)
+    filters = CommonFilters(repo=repo, start_date=start_date, end_date=end_date)
     where_clause, params = build_common_where(filters, table_alias="b")
 
     with engine.begin() as connection:

@@ -16,7 +16,11 @@ from ci_dashboard.api.queries.flaky import (
     get_flaky_trend,
     get_issue_filtered_weekly_case_rates,
 )
-from ci_dashboard.api.routes.common import get_common_filters, validate_date_range
+from ci_dashboard.api.routes.common import (
+    get_common_filters,
+    normalize_ci_date_range,
+    validate_filter_limits,
+)
 
 
 router = APIRouter(prefix="/api/v1/flaky", tags=["flaky"])
@@ -85,8 +89,9 @@ def flaky_period_comparison(
     cloud_phase: str | None = None,
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
-    validate_date_range(period_a_start, period_a_end)
-    validate_date_range(period_b_start, period_b_end)
+    normalize_ci_date_range(period_a_start, period_a_end)
+    normalize_ci_date_range(period_b_start, period_b_end)
+    validate_filter_limits(job_name=job_name)
     return get_flaky_period_comparison(
         engine,
         repo=repo,

@@ -78,6 +78,23 @@ Notes:
 - local development can use `CI_DASHBOARD_DB_URL=sqlite+pysqlite:///./ci-dashboard.sqlite`; MySQL/TiDB pool and timeout controls are ignored for SQLite URLs
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
+- CI analytics and filter-option APIs default omitted dates to the last 30 UTC
+  calendar days including today, and accept at most 90 days inclusive for every
+  bucket granularity. Both dates must be supplied together; a single date or
+  an oversized range returns HTTP 422 before SQL. Reversed ranges retain HTTP
+  400. Dates must fall between `1970-01-01` and `9999-12-24` inclusive to leave
+  room for previous-period windows, two-day lookahead and weekly arithmetic.
+  Flaky period comparison applies the same limits to each period. Undated direct
+  migration-comparison requests also use today's UTC date as their end anchor;
+  the UI already sends explicit dates. Fixed historical baseline windows are
+  unchanged. Branch choices are scoped to the selected dates, matching job/cloud-phase choices.
+- comma-separated `job_name`, `cost_source`, and owner/team/project include/exclude
+  filters accept at most 100 raw entries and 8192 UTF-8 bytes per parameter;
+  empty and duplicate entries count toward the request budget before normal
+  trimming/deduplication. These limits apply to CI, filter-option, comparison
+  job lists, and shared Cost filter parsing; Cost date-window rules are unchanged.
+  Oversized filters return HTTP 422 before splitting, SQL bind expansion or DB
+  reads. Background jobs and direct query helpers retain their existing behavior.
 - the Cost and CI details insight tabs are always available
 - the Cost tab prioritizes its top spend/breakdown requests: share and trend
   charts have independent loading/error states, and Engineering Group shares

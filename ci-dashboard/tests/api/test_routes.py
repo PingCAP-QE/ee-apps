@@ -1316,6 +1316,10 @@ def api_client(sqlite_engine, monkeypatch):
         "ci_dashboard.api.queries.status.utcnow",
         lambda: datetime(2026, 4, 12, 10, 0, 0, tzinfo=UTC),
     )
+    # Keep undated CI requests on the same deterministic clock as the fixture data.
+    monkeypatch.setattr(
+        common_routes, "utcnow", lambda: datetime(2026, 4, 12, 10, 0, 0, tzinfo=UTC),
+    )
 
     app.dependency_overrides[get_engine] = lambda: sqlite_engine
     with TestClient(app) as client:
@@ -7948,6 +7952,7 @@ def test_migration_fixed_window_comparison_rows(
         "/api/v1/pages/ci-status",
         params={
             "repo": "pingcap/tidb",
+            "start_date": "2026-08-10",
             "end_date": "2026-09-14",
         },
     )

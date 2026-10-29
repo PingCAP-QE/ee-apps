@@ -86,6 +86,49 @@ function weeklyCostHistory(series = []) {
   };
 }
 
+test("CI filters use the historical date window and ignore clearing either date", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const requests = [];
+  let renderer;
+  globalThis.window = { scrollY: 0, addEventListener() {}, removeEventListener() {} };
+  globalThis.fetch = async (url) => {
+    requests.push(new URL(url, "https://example.test"));
+    return { ok: true, json: async () => ({ items: [] }) };
+  };
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(
+        MemoryRouter,
+        { initialEntries: ["/ci-status?repo=pingcap%2Ftidb&start_date=2024-02-01&end_date=2024-02-29"] },
+        React.createElement(App),
+      ));
+    });
+    const branchRequests = requests.filter((url) => url.pathname === "/api/v1/filters/branches");
+    assert.ok(branchRequests.length > 0);
+    assert.ok(branchRequests.every((url) =>
+      url.searchParams.get("start_date") === "2024-02-01"
+      && url.searchParams.get("end_date") === "2024-02-29"
+      && url.searchParams.get("repo") === "pingcap/tidb"));
+    const requestCount = requests.length;
+    for (const index of [0, 1]) {
+      await act(async () => {
+        renderer.root.findAllByProps({ type: "date" })[index].props.onChange({ target: { value: "" } });
+      });
+      assert.deepEqual(
+        renderer.root.findAllByProps({ type: "date" }).map((input) => input.props.value),
+        ["2024-02-01", "2024-02-29"],
+      );
+    }
+    assert.equal(requests.length, requestCount);
+    assert.match(JSON.stringify(renderer.toJSON()), /CI queries require both dates and at most 90 days/);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+  }
+});
+
 test("dashboard version uses the runtime meta value and falls back locally", () => {
   const originalDocument = globalThis.document;
   try {
