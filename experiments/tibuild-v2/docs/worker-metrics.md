@@ -15,37 +15,53 @@ Every replica exposes the same series for the shared queue, so dashboards should
 aggregate with `max by (target)` (or scrape a single replica) to avoid summing
 the same task three times.
 
-## prod2: PodMonitor
+## prod2: ServiceMonitor
 
-The chart renders a `PodMonitor` when `worker.podMonitor.enabled=true`:
+prod2 runs the KSY MSP vmagent (`prom-89e6db30/msp-vmagent-0`), which builds its
+scrape config from `ServiceMonitor` objects only. The `PodMonitor` CRD happens to
+be installed, but the generated config has eight `serviceMonitor/` jobs and no
+`podMonitor` job, so a PodMonitor there is inert:
+
+```console
+$ kubectl -n prom-89e6db30 exec deploy/msp-vmagent-0 -c vmagent -- \
+    grep -oE "job_name: [a-zA-Z]+/" /etc/vmagent/config_out/scrape.yml | sort | uniq -c
+      8 job_name: serviceMonitor/
+```
+
+The worker has no Service in the chart (the API never calls it), so the metrics
+pair lives in the delivery repo, `PingCAP-QE/ee-ops`,
+`apps/prod2/tibuild/v2/worker-metrics.yaml`:
+
+- Service `v2-tibuild-v2-worker-metrics` selects the worker pods and exposes the
+  named `health` port
+- ServiceMonitor `v2-tibuild-v2-worker` scrapes `/metrics` every 30s
+
+Check the target:
+
+```bash
+kubectl -n tibuild get svc v2-tibuild-v2-worker-metrics
+kubectl -n tibuild get servicemonitor v2-tibuild-v2-worker
+# in the vmagent API:
+#   job=serviceMonitor/tibuild/v2-tibuild-v2-worker/0, health=up
+```
+
+## Other clusters: opt-in PodMonitor
+
+Where a real Prometheus Operator runs, the chart can render a `PodMonitor`
+instead of the Service/ServiceMonitor pair:
 
 ```yaml
 worker:
   podMonitor:
     enabled: true
     interval: 30s
-    # Must match the Prometheus instance's podMonitorSelector; ask the platform
-    # owner for the label, e.g. release: kube-prometheus-stack
+    # Must match the instance's podMonitorSelector.
     additionalLabels: {}
 ```
 
-The PodMonitor selects the worker pods by
-`app.kubernetes.io/name=<chart>-worker` + `app.kubernetes.io/instance=<release>`
-and scrapes the named `health` port, so it keeps working when `healthPort`
-changes.
-
-Check that the target is up:
-
-```bash
-kubectl -n tibuild get podmonitor v2-tibuild-v2-worker -o yaml | head -30
-# in the Prometheus UI / API:
-#   up{namespace="tibuild", pod=~"v2-tibuild-v2-worker-.*"} == 1
-```
-
-If the target is missing, the usual cause is that the Prometheus instance's
-`podMonitorSelector` does not match the PodMonitor labels; read it with
-`kubectl get prometheus -A -o yaml` and mirror the label in
-`worker.podMonitor.additionalLabels`.
+It selects the worker pods by `app.kubernetes.io/name=<chart>-worker` +
+`app.kubernetes.io/instance=<release>` and scrapes the named `health` port, so it
+keeps working when `healthPort` changes. No cluster uses it today.
 
 ## tke / gcp: no Prometheus Operator CRDs
 
