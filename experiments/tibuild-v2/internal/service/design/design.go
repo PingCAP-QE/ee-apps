@@ -617,6 +617,79 @@ var TiDBxBumpTagMeta = Type("TiDBxBumpTagMeta", func() {
 	})
 })
 
+var TiUPFaultError = Type("TiUPFaultError", func() {
+	Description("Fault envelope of the legacy publisher.")
+	Attribute("name", String, func() { Meta("struct:tag:json", "name") })
+	Attribute("id", String, func() { Meta("struct:tag:json", "id,omitempty") })
+	Attribute("message", String, func() { Meta("struct:tag:json", "message") })
+	Attribute("temporary", Boolean, func() {
+		Default(false)
+		Meta("struct:tag:json", "temporary")
+	})
+	Attribute("timeout", Boolean, func() {
+		Default(false)
+		Meta("struct:tag:json", "timeout")
+	})
+	Attribute("fault", Boolean, func() {
+		Default(true)
+		Meta("struct:tag:json", "fault")
+	})
+	Required("name", "message")
+})
+
+var TiUPMirrorEnum = func() {
+	Description("`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.")
+	Enum("staging", "prod")
+	Default("staging")
+}
+
+var TiUPRequestState = Type("TiUPRequestState", String, func() {
+	Description("Legacy state of one publish request.")
+	Enum("queued", "processing", "success", "failed", "canceled")
+})
+
+var TiUPFromHTTP = Type("TiUPFromHTTP", func() {
+	Attribute("url", String, func() { Meta("struct:tag:json", "url,omitempty") })
+})
+
+var TiUPFromOCI = Type("TiUPFromOCI", func() {
+	Attribute("repo", String, func() { Meta("struct:tag:json", "repo,omitempty") })
+	Attribute("tag", String, func() { Meta("struct:tag:json", "tag,omitempty") })
+	Attribute("file", String, func() { Meta("struct:tag:json", "file,omitempty") })
+})
+
+var TiUPFrom = Type("TiUPFrom", func() {
+	Description("Source of the package: a direct HTTP URL or an OCI layer.")
+	Attribute("type", String, func() {
+		Enum("http", "oci")
+		Meta("struct:tag:json", "type,omitempty")
+	})
+	Attribute("http", TiUPFromHTTP, func() { Meta("struct:tag:json", "http,omitempty") })
+	Attribute("oci", TiUPFromOCI, func() { Meta("struct:tag:json", "oci,omitempty") })
+	Required("type")
+})
+
+var TiUPPublishInfo = Type("TiUPPublishInfo", func() {
+	Attribute("name", String, func() { Meta("struct:tag:json", "name,omitempty") })
+	Attribute("os", String, func() { Meta("struct:tag:json", "os,omitempty") })
+	Attribute("arch", String, func() { Meta("struct:tag:json", "arch,omitempty") })
+	Attribute("version", String, func() { Meta("struct:tag:json", "version,omitempty") })
+	Attribute("description", String, func() { Meta("struct:tag:json", "description,omitempty") })
+	Attribute("entry_point", String, func() { Meta("struct:tag:json", "entry_point,omitempty") })
+	Attribute("standalone", Boolean, func() { Meta("struct:tag:json", "standalone,omitempty") })
+	Required("name", "os", "arch", "version", "entry_point")
+})
+
+var TiUPPublishRequest = Type("TiUPPublishRequest", func() {
+	Attribute("from", TiUPFrom, func() { Meta("struct:tag:json", "from,omitempty") })
+	Attribute("publish", TiUPPublishInfo, func() { Meta("struct:tag:json", "publish,omitempty") })
+	Attribute("tiup_mirror", String, func() {
+		TiUPMirrorEnum()
+		Meta("struct:tag:json", "tiup_mirror,omitempty")
+	})
+	Required("from", "publish")
+})
+
 var _ = Service("publish", func() {
 	Description("The publish service plans artifact publications and tracks their per-target steps.")
 	// One type per status: the HTTP encoder picks the status from the error
@@ -626,9 +699,7 @@ var _ = Service("publish", func() {
 	Error("NotFound", PublishNotFoundError, "Not Found")
 	Error("BadGateway", PublishBadGatewayError, "The artifact registry could not be queried")
 	Error("InternalServerError", PublishInternalServerError, "Internal Server Error")
-	HTTP(func() {
-		Path("/publish")
-	})
+	Error("fault", TiUPFaultError, "Internal fault")
 
 	Method("publishImages", func() {
 		Description("Plan the delivery of an image and enqueue one step per destination registry.")
@@ -638,7 +709,7 @@ var _ = Service("publish", func() {
 		})
 		Result(PublishUnit)
 		HTTP(func() {
-			POST("/images")
+			POST("/publish/images")
 			Response(StatusAccepted)
 			Response("BadRequest", StatusBadRequest)
 			Response("BadGateway", StatusBadGateway)
@@ -654,7 +725,7 @@ var _ = Service("publish", func() {
 		})
 		Result(PublishUnit)
 		HTTP(func() {
-			GET("/units/{id}")
+			GET("/publish/units/{id}")
 			Response(StatusOK)
 			Response("NotFound", StatusNotFound)
 			Response("InternalServerError", StatusInternalServerError)
@@ -674,7 +745,7 @@ var _ = Service("publish", func() {
 		})
 		Result(ArrayOf(PublishUnit), "Matching units, newest first")
 		HTTP(func() {
-			GET("/units")
+			GET("/publish/units")
 			Param("status")
 			Param("kind")
 			Param("limit")
@@ -692,11 +763,120 @@ var _ = Service("publish", func() {
 		})
 		Result(PublishUnit)
 		HTTP(func() {
-			POST("/units/{id}/retry")
+			POST("/publish/units/{id}/retry")
 			Response(StatusAccepted)
 			Response("BadRequest", StatusBadRequest)
 			Response("NotFound", StatusNotFound)
 			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+
+	Method("deliveryByRules", func() {
+		Description("Publish an artifact to every mirror the delivery rules select.")
+		Payload(func() {
+			Attribute("artifact_url", String, func() {
+				Description("Full OCI reference of the pushed artifact, including the tag.")
+				Meta("struct:tag:json", "artifact_url")
+			})
+			Required("artifact_url")
+		})
+		Result(ArrayOf(String))
+		HTTP(func() {
+			POST("/tiup/delivery-by-rules")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("fault", StatusInternalServerError)
+		})
+	})
+
+	Method("requestToPublish", func() {
+		Description("Publish an artifact to one explicit mirror.")
+		Payload(func() {
+			Attribute("artifact_url", String, func() { Meta("struct:tag:json", "artifact_url") })
+			Attribute("tiup_mirror", String, func() {
+				TiUPMirrorEnum()
+				Meta("struct:tag:json", "tiup_mirror")
+			})
+			Attribute("version", String, func() {
+				Description("Force the published version instead of the artifact's own.")
+				Meta("struct:tag:json", "version,omitempty")
+			})
+			Required("artifact_url", "tiup_mirror")
+		})
+		Result(ArrayOf(String))
+		HTTP(func() {
+			POST("/tiup/publish-request")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("fault", StatusInternalServerError)
+		})
+	})
+
+	Method("requestToPublishSingle", func() {
+		Description("Publish one package from a tarball URL.")
+		Payload(TiUPPublishRequest)
+		Result(String)
+		HTTP(func() {
+			POST("/tiup/publish-request-single")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("fault", StatusInternalServerError)
+		})
+	})
+
+	Method("queryPublishingStatus", func() {
+		Description("Legacy status lookup; accepts a unit id or a step id.")
+		Payload(func() {
+			Attribute("request_id", String, func() {
+				Meta("struct:tag:json", "request_id")
+			})
+			Required("request_id")
+		})
+		Result(TiUPRequestState)
+		HTTP(func() {
+			GET("/tiup/publish-request/{request_id}")
+			Response(StatusOK)
+			Response("fault", StatusInternalServerError)
+		})
+	})
+
+	Method("resetRateLimit", func() {
+		Description("Kept for compatibility; the publish domain has no rate limiting.")
+		HTTP(func() {
+			POST("/tiup/reset-rate-limit")
+			Response(StatusOK)
+		})
+	})
+
+	Method("getPublishUnit", func() {
+		Description("Get a publication unit and its steps.")
+		Payload(func() {
+			Attribute("id", String)
+			Required("id")
+		})
+		Result(PublishUnit)
+		HTTP(func() {
+			GET("/tiup/publish-units/{id}")
+			Response(StatusOK)
+			Response("NotFound", StatusNotFound)
+			Response("BadRequest", StatusBadRequest)
+			Response("fault", StatusInternalServerError)
+		})
+	})
+
+	Method("resumePublishUnit", func() {
+		Description("Resume the failed steps of a partial publication unit.")
+		Payload(func() {
+			Attribute("id", String)
+			Required("id")
+		})
+		Result(PublishUnit)
+		HTTP(func() {
+			POST("/tiup/publish-units/{id}/resume")
+			Response(StatusOK)
+			Response("NotFound", StatusNotFound)
+			Response("BadRequest", StatusBadRequest)
+			Response("fault", StatusInternalServerError)
 		})
 	})
 })

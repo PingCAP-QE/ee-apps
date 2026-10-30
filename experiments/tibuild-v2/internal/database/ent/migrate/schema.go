@@ -104,6 +104,29 @@ var (
 			},
 		},
 	}
+	// PublishLaneColumns holds the columns for the "publish_lane" table.
+	PublishLaneColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "lane", Type: field.TypeString, Size: 32},
+		{Name: "unit_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "holder", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "lease_until", Type: field.TypeTime, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// PublishLaneTable holds the schema information for the "publish_lane" table.
+	PublishLaneTable = &schema.Table{
+		Name:       "publish_lane",
+		Columns:    PublishLaneColumns,
+		PrimaryKey: []*schema.Column{PublishLaneColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "uk_lane",
+				Unique:  true,
+				Columns: []*schema.Column{PublishLaneColumns[1]},
+			},
+		},
+	}
 	// PublishStepColumns holds the columns for the "publish_step" table.
 	PublishStepColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Size: 36},
@@ -186,6 +209,7 @@ var (
 		AlertLeasesTable,
 		DevBuildsV2Table,
 		ImageSyncTasksTable,
+		PublishLaneTable,
 		PublishStepTable,
 		PublishUnitTable,
 	}
@@ -197,6 +221,9 @@ func init() {
 	}
 	ImageSyncTasksTable.Annotation = &entsql.Annotation{
 		Table: "image_sync_tasks",
+	}
+	PublishLaneTable.Annotation = &entsql.Annotation{
+		Table: "publish_lane",
 	}
 	PublishStepTable.Annotation = &entsql.Annotation{
 		Table: "publish_step",

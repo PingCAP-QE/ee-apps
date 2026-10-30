@@ -16,19 +16,33 @@ import (
 
 // Endpoints wraps the "publish" service endpoints.
 type Endpoints struct {
-	PublishImages goa.Endpoint
-	GetUnit       goa.Endpoint
-	ListUnits     goa.Endpoint
-	RetryUnit     goa.Endpoint
+	PublishImages          goa.Endpoint
+	GetUnit                goa.Endpoint
+	ListUnits              goa.Endpoint
+	RetryUnit              goa.Endpoint
+	DeliveryByRules        goa.Endpoint
+	RequestToPublish       goa.Endpoint
+	RequestToPublishSingle goa.Endpoint
+	QueryPublishingStatus  goa.Endpoint
+	ResetRateLimit         goa.Endpoint
+	GetPublishUnit         goa.Endpoint
+	ResumePublishUnit      goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "publish" service with endpoints.
 func NewEndpoints(s Service) *Endpoints {
 	return &Endpoints{
-		PublishImages: NewPublishImagesEndpoint(s),
-		GetUnit:       NewGetUnitEndpoint(s),
-		ListUnits:     NewListUnitsEndpoint(s),
-		RetryUnit:     NewRetryUnitEndpoint(s),
+		PublishImages:          NewPublishImagesEndpoint(s),
+		GetUnit:                NewGetUnitEndpoint(s),
+		ListUnits:              NewListUnitsEndpoint(s),
+		RetryUnit:              NewRetryUnitEndpoint(s),
+		DeliveryByRules:        NewDeliveryByRulesEndpoint(s),
+		RequestToPublish:       NewRequestToPublishEndpoint(s),
+		RequestToPublishSingle: NewRequestToPublishSingleEndpoint(s),
+		QueryPublishingStatus:  NewQueryPublishingStatusEndpoint(s),
+		ResetRateLimit:         NewResetRateLimitEndpoint(s),
+		GetPublishUnit:         NewGetPublishUnitEndpoint(s),
+		ResumePublishUnit:      NewResumePublishUnitEndpoint(s),
 	}
 }
 
@@ -38,6 +52,13 @@ func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.GetUnit = m(e.GetUnit)
 	e.ListUnits = m(e.ListUnits)
 	e.RetryUnit = m(e.RetryUnit)
+	e.DeliveryByRules = m(e.DeliveryByRules)
+	e.RequestToPublish = m(e.RequestToPublish)
+	e.RequestToPublishSingle = m(e.RequestToPublishSingle)
+	e.QueryPublishingStatus = m(e.QueryPublishingStatus)
+	e.ResetRateLimit = m(e.ResetRateLimit)
+	e.GetPublishUnit = m(e.GetPublishUnit)
+	e.ResumePublishUnit = m(e.ResumePublishUnit)
 }
 
 // NewPublishImagesEndpoint returns an endpoint function that calls the method
@@ -73,5 +94,67 @@ func NewRetryUnitEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*RetryUnitPayload)
 		return s.RetryUnit(ctx, p)
+	}
+}
+
+// NewDeliveryByRulesEndpoint returns an endpoint function that calls the
+// method "deliveryByRules" of service "publish".
+func NewDeliveryByRulesEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*DeliveryByRulesPayload)
+		return s.DeliveryByRules(ctx, p)
+	}
+}
+
+// NewRequestToPublishEndpoint returns an endpoint function that calls the
+// method "requestToPublish" of service "publish".
+func NewRequestToPublishEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*RequestToPublishPayload)
+		return s.RequestToPublish(ctx, p)
+	}
+}
+
+// NewRequestToPublishSingleEndpoint returns an endpoint function that calls
+// the method "requestToPublishSingle" of service "publish".
+func NewRequestToPublishSingleEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*TiUPPublishRequest)
+		return s.RequestToPublishSingle(ctx, p)
+	}
+}
+
+// NewQueryPublishingStatusEndpoint returns an endpoint function that calls the
+// method "queryPublishingStatus" of service "publish".
+func NewQueryPublishingStatusEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*QueryPublishingStatusPayload)
+		return s.QueryPublishingStatus(ctx, p)
+	}
+}
+
+// NewResetRateLimitEndpoint returns an endpoint function that calls the method
+// "resetRateLimit" of service "publish".
+func NewResetRateLimitEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		return nil, s.ResetRateLimit(ctx)
+	}
+}
+
+// NewGetPublishUnitEndpoint returns an endpoint function that calls the method
+// "getPublishUnit" of service "publish".
+func NewGetPublishUnitEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*GetPublishUnitPayload)
+		return s.GetPublishUnit(ctx, p)
+	}
+}
+
+// NewResumePublishUnitEndpoint returns an endpoint function that calls the
+// method "resumePublishUnit" of service "publish".
+func NewResumePublishUnitEndpoint(s Service) goa.Endpoint {
+	return func(ctx context.Context, req any) (any, error) {
+		p := req.(*ResumePublishUnitPayload)
+		return s.ResumePublishUnit(ctx, p)
 	}
 }

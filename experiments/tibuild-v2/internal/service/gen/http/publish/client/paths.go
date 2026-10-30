@@ -31,3 +31,38 @@ func ListUnitsPublishPath() string {
 func RetryUnitPublishPath(id string) string {
 	return fmt.Sprintf("/api/v2/publish/units/%v/retry", id)
 }
+
+// DeliveryByRulesPublishPath returns the URL path to the publish service deliveryByRules HTTP endpoint.
+func DeliveryByRulesPublishPath() string {
+	return "/api/v2/tiup/delivery-by-rules"
+}
+
+// RequestToPublishPublishPath returns the URL path to the publish service requestToPublish HTTP endpoint.
+func RequestToPublishPublishPath() string {
+	return "/api/v2/tiup/publish-request"
+}
+
+// RequestToPublishSinglePublishPath returns the URL path to the publish service requestToPublishSingle HTTP endpoint.
+func RequestToPublishSinglePublishPath() string {
+	return "/api/v2/tiup/publish-request-single"
+}
+
+// QueryPublishingStatusPublishPath returns the URL path to the publish service queryPublishingStatus HTTP endpoint.
+func QueryPublishingStatusPublishPath(requestID string) string {
+	return fmt.Sprintf("/api/v2/tiup/publish-request/%v", requestID)
+}
+
+// ResetRateLimitPublishPath returns the URL path to the publish service resetRateLimit HTTP endpoint.
+func ResetRateLimitPublishPath() string {
+	return "/api/v2/tiup/reset-rate-limit"
+}
+
+// GetPublishUnitPublishPath returns the URL path to the publish service getPublishUnit HTTP endpoint.
+func GetPublishUnitPublishPath(id string) string {
+	return fmt.Sprintf("/api/v2/tiup/publish-units/%v", id)
+}
+
+// ResumePublishUnitPublishPath returns the URL path to the publish service resumePublishUnit HTTP endpoint.
+func ResumePublishUnitPublishPath(id string) string {
+	return fmt.Sprintf("/api/v2/tiup/publish-units/%v/resume", id)
+}

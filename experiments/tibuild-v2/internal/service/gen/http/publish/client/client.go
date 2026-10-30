@@ -34,6 +34,34 @@ type Client struct {
 	// endpoint.
 	RetryUnitDoer goahttp.Doer
 
+	// DeliveryByRules Doer is the HTTP client used to make requests to the
+	// deliveryByRules endpoint.
+	DeliveryByRulesDoer goahttp.Doer
+
+	// RequestToPublish Doer is the HTTP client used to make requests to the
+	// requestToPublish endpoint.
+	RequestToPublishDoer goahttp.Doer
+
+	// RequestToPublishSingle Doer is the HTTP client used to make requests to the
+	// requestToPublishSingle endpoint.
+	RequestToPublishSingleDoer goahttp.Doer
+
+	// QueryPublishingStatus Doer is the HTTP client used to make requests to the
+	// queryPublishingStatus endpoint.
+	QueryPublishingStatusDoer goahttp.Doer
+
+	// ResetRateLimit Doer is the HTTP client used to make requests to the
+	// resetRateLimit endpoint.
+	ResetRateLimitDoer goahttp.Doer
+
+	// GetPublishUnit Doer is the HTTP client used to make requests to the
+	// getPublishUnit endpoint.
+	GetPublishUnitDoer goahttp.Doer
+
+	// ResumePublishUnit Doer is the HTTP client used to make requests to the
+	// resumePublishUnit endpoint.
+	ResumePublishUnitDoer goahttp.Doer
+
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -54,15 +82,22 @@ func NewClient(
 	restoreBody bool,
 ) *Client {
 	return &Client{
-		PublishImagesDoer:   doer,
-		GetUnitDoer:         doer,
-		ListUnitsDoer:       doer,
-		RetryUnitDoer:       doer,
-		RestoreResponseBody: restoreBody,
-		scheme:              scheme,
-		host:                host,
-		decoder:             dec,
-		encoder:             enc,
+		PublishImagesDoer:          doer,
+		GetUnitDoer:                doer,
+		ListUnitsDoer:              doer,
+		RetryUnitDoer:              doer,
+		DeliveryByRulesDoer:        doer,
+		RequestToPublishDoer:       doer,
+		RequestToPublishSingleDoer: doer,
+		QueryPublishingStatusDoer:  doer,
+		ResetRateLimitDoer:         doer,
+		GetPublishUnitDoer:         doer,
+		ResumePublishUnitDoer:      doer,
+		RestoreResponseBody:        restoreBody,
+		scheme:                     scheme,
+		host:                       host,
+		decoder:                    dec,
+		encoder:                    enc,
 	}
 }
 
@@ -147,6 +182,154 @@ func (c *Client) RetryUnit() goa.Endpoint {
 		resp, err := c.RetryUnitDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("publish", "retryUnit", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// DeliveryByRules returns an endpoint that makes HTTP requests to the publish
+// service deliveryByRules server.
+func (c *Client) DeliveryByRules() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeDeliveryByRulesRequest(c.encoder)
+		decodeResponse = DecodeDeliveryByRulesResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildDeliveryByRulesRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.DeliveryByRulesDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("publish", "deliveryByRules", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// RequestToPublish returns an endpoint that makes HTTP requests to the publish
+// service requestToPublish server.
+func (c *Client) RequestToPublish() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeRequestToPublishRequest(c.encoder)
+		decodeResponse = DecodeRequestToPublishResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildRequestToPublishRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.RequestToPublishDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("publish", "requestToPublish", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// RequestToPublishSingle returns an endpoint that makes HTTP requests to the
+// publish service requestToPublishSingle server.
+func (c *Client) RequestToPublishSingle() goa.Endpoint {
+	var (
+		encodeRequest  = EncodeRequestToPublishSingleRequest(c.encoder)
+		decodeResponse = DecodeRequestToPublishSingleResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildRequestToPublishSingleRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		err = encodeRequest(req, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.RequestToPublishSingleDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("publish", "requestToPublishSingle", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// QueryPublishingStatus returns an endpoint that makes HTTP requests to the
+// publish service queryPublishingStatus server.
+func (c *Client) QueryPublishingStatus() goa.Endpoint {
+	var (
+		decodeResponse = DecodeQueryPublishingStatusResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildQueryPublishingStatusRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.QueryPublishingStatusDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("publish", "queryPublishingStatus", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// ResetRateLimit returns an endpoint that makes HTTP requests to the publish
+// service resetRateLimit server.
+func (c *Client) ResetRateLimit() goa.Endpoint {
+	var (
+		decodeResponse = DecodeResetRateLimitResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildResetRateLimitRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.ResetRateLimitDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("publish", "resetRateLimit", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// GetPublishUnit returns an endpoint that makes HTTP requests to the publish
+// service getPublishUnit server.
+func (c *Client) GetPublishUnit() goa.Endpoint {
+	var (
+		decodeResponse = DecodeGetPublishUnitResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildGetPublishUnitRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.GetPublishUnitDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("publish", "getPublishUnit", err)
+		}
+		return decodeResponse(resp)
+	}
+}
+
+// ResumePublishUnit returns an endpoint that makes HTTP requests to the
+// publish service resumePublishUnit server.
+func (c *Client) ResumePublishUnit() goa.Endpoint {
+	var (
+		decodeResponse = DecodeResumePublishUnitResponse(c.decoder, c.RestoreResponseBody)
+	)
+	return func(ctx context.Context, v any) (any, error) {
+		req, err := c.BuildResumePublishUnitRequest(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.ResumePublishUnitDoer.Do(req)
+		if err != nil {
+			return nil, goahttp.ErrRequestError("publish", "resumePublishUnit", err)
 		}
 		return decodeResponse(resp)
 	}

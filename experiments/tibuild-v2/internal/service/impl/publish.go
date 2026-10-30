@@ -54,6 +54,18 @@ type publishsrvc struct {
 	workerCfg config.Worker
 	images    imageOps
 
+	// lane serializes publication intents that must not overlap; only the TiUP
+	// kind uses it.
+	lane *publishLane
+	// tiup publishes packages to a mirror.
+	tiup *tiupCLI
+	// publishCfg carries the publish-domain configuration used by the legacy
+	// TiUP surface (mirror URLs, dependency seeding).
+	publishCfg config.Publish
+	// fetchConfig reads an OCI artifact config and its manifest digest. It is
+	// a field so tests can replay a recorded artifact without a registry.
+	fetchConfig func(ctx context.Context, artifactURL string) (map[string]any, string, error)
+
 	nowFn func() time.Time
 	newID func() string
 
@@ -84,10 +96,14 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 			rules:    &rulesLoader{path: cfg.Publish.DeliveryConfigPathOrDefault()},
 			resolver: craneImageOps{},
 		},
-		workerCfg: workerCfg,
-		images:    craneImageOps{},
-		nowFn:     time.Now,
-		newID:     newUUID,
+		workerCfg:   workerCfg,
+		images:      craneImageOps{},
+		lane:        newPublishLane(db, PublishLaneTiUP),
+		tiup:        newTiupCLI(cfg.Publish.TiUPBinary),
+		publishCfg:  cfg.Publish,
+		fetchConfig: fetchTiUPArtifactConfig,
+		nowFn:       time.Now,
+		newID:       newUUID,
 	}
 }
 

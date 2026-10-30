@@ -5,6 +5,16 @@ It provide the CD functions for PingCAP, Welcome bros!
 - publish/deliver artifacts.
 
 
+## Publish domain
+
+TiUP package publishing and the TiDB Cloud ops/TCMS integrations live here now
+(formerly in `publisher`). The queue is `publish_unit` + `publish_step`, guarded
+by a single-row lane that keeps the two TiUP mirrors from publishing at the
+same time; `PARTIAL` publications need an operator and are resumed explicitly.
+
+See [docs/publish.md](./docs/publish.md) for the model, targets, failure
+handling and the legacy `/tiup/*` contract.
+
 ## Technologies
 + Backend:
   - Golang & GOA(for design)

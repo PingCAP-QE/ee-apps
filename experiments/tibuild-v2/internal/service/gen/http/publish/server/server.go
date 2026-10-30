@@ -19,11 +19,18 @@ import (
 
 // Server lists the publish service endpoint HTTP handlers.
 type Server struct {
-	Mounts        []*MountPoint
-	PublishImages http.Handler
-	GetUnit       http.Handler
-	ListUnits     http.Handler
-	RetryUnit     http.Handler
+	Mounts                 []*MountPoint
+	PublishImages          http.Handler
+	GetUnit                http.Handler
+	ListUnits              http.Handler
+	RetryUnit              http.Handler
+	DeliveryByRules        http.Handler
+	RequestToPublish       http.Handler
+	RequestToPublishSingle http.Handler
+	QueryPublishingStatus  http.Handler
+	ResetRateLimit         http.Handler
+	GetPublishUnit         http.Handler
+	ResumePublishUnit      http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -57,11 +64,25 @@ func New(
 			{"GetUnit", "GET", "/api/v2/publish/units/{id}"},
 			{"ListUnits", "GET", "/api/v2/publish/units"},
 			{"RetryUnit", "POST", "/api/v2/publish/units/{id}/retry"},
+			{"DeliveryByRules", "POST", "/api/v2/tiup/delivery-by-rules"},
+			{"RequestToPublish", "POST", "/api/v2/tiup/publish-request"},
+			{"RequestToPublishSingle", "POST", "/api/v2/tiup/publish-request-single"},
+			{"QueryPublishingStatus", "GET", "/api/v2/tiup/publish-request/{request_id}"},
+			{"ResetRateLimit", "POST", "/api/v2/tiup/reset-rate-limit"},
+			{"GetPublishUnit", "GET", "/api/v2/tiup/publish-units/{id}"},
+			{"ResumePublishUnit", "POST", "/api/v2/tiup/publish-units/{id}/resume"},
 		},
-		PublishImages: NewPublishImagesHandler(e.PublishImages, mux, decoder, encoder, errhandler, formatter),
-		GetUnit:       NewGetUnitHandler(e.GetUnit, mux, decoder, encoder, errhandler, formatter),
-		ListUnits:     NewListUnitsHandler(e.ListUnits, mux, decoder, encoder, errhandler, formatter),
-		RetryUnit:     NewRetryUnitHandler(e.RetryUnit, mux, decoder, encoder, errhandler, formatter),
+		PublishImages:          NewPublishImagesHandler(e.PublishImages, mux, decoder, encoder, errhandler, formatter),
+		GetUnit:                NewGetUnitHandler(e.GetUnit, mux, decoder, encoder, errhandler, formatter),
+		ListUnits:              NewListUnitsHandler(e.ListUnits, mux, decoder, encoder, errhandler, formatter),
+		RetryUnit:              NewRetryUnitHandler(e.RetryUnit, mux, decoder, encoder, errhandler, formatter),
+		DeliveryByRules:        NewDeliveryByRulesHandler(e.DeliveryByRules, mux, decoder, encoder, errhandler, formatter),
+		RequestToPublish:       NewRequestToPublishHandler(e.RequestToPublish, mux, decoder, encoder, errhandler, formatter),
+		RequestToPublishSingle: NewRequestToPublishSingleHandler(e.RequestToPublishSingle, mux, decoder, encoder, errhandler, formatter),
+		QueryPublishingStatus:  NewQueryPublishingStatusHandler(e.QueryPublishingStatus, mux, decoder, encoder, errhandler, formatter),
+		ResetRateLimit:         NewResetRateLimitHandler(e.ResetRateLimit, mux, decoder, encoder, errhandler, formatter),
+		GetPublishUnit:         NewGetPublishUnitHandler(e.GetPublishUnit, mux, decoder, encoder, errhandler, formatter),
+		ResumePublishUnit:      NewResumePublishUnitHandler(e.ResumePublishUnit, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -74,6 +95,13 @@ func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.GetUnit = m(s.GetUnit)
 	s.ListUnits = m(s.ListUnits)
 	s.RetryUnit = m(s.RetryUnit)
+	s.DeliveryByRules = m(s.DeliveryByRules)
+	s.RequestToPublish = m(s.RequestToPublish)
+	s.RequestToPublishSingle = m(s.RequestToPublishSingle)
+	s.QueryPublishingStatus = m(s.QueryPublishingStatus)
+	s.ResetRateLimit = m(s.ResetRateLimit)
+	s.GetPublishUnit = m(s.GetPublishUnit)
+	s.ResumePublishUnit = m(s.ResumePublishUnit)
 }
 
 // MethodNames returns the methods served.
@@ -85,6 +113,13 @@ func Mount(mux goahttp.Muxer, h *Server) {
 	MountGetUnitHandler(mux, h.GetUnit)
 	MountListUnitsHandler(mux, h.ListUnits)
 	MountRetryUnitHandler(mux, h.RetryUnit)
+	MountDeliveryByRulesHandler(mux, h.DeliveryByRules)
+	MountRequestToPublishHandler(mux, h.RequestToPublish)
+	MountRequestToPublishSingleHandler(mux, h.RequestToPublishSingle)
+	MountQueryPublishingStatusHandler(mux, h.QueryPublishingStatus)
+	MountResetRateLimitHandler(mux, h.ResetRateLimit)
+	MountGetPublishUnitHandler(mux, h.GetPublishUnit)
+	MountResumePublishUnitHandler(mux, h.ResumePublishUnit)
 }
 
 // Mount configures the mux to serve the publish endpoints.
@@ -281,6 +316,370 @@ func NewRetryUnitHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "retryUnit")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountDeliveryByRulesHandler configures the mux to serve the "publish"
+// service "deliveryByRules" endpoint.
+func MountDeliveryByRulesHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/api/v2/tiup/delivery-by-rules", f)
+}
+
+// NewDeliveryByRulesHandler creates a HTTP handler which loads the HTTP
+// request and calls the "publish" service "deliveryByRules" endpoint.
+func NewDeliveryByRulesHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeDeliveryByRulesRequest(mux, decoder)
+		encodeResponse = EncodeDeliveryByRulesResponse(encoder)
+		encodeError    = EncodeDeliveryByRulesError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "deliveryByRules")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountRequestToPublishHandler configures the mux to serve the "publish"
+// service "requestToPublish" endpoint.
+func MountRequestToPublishHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/api/v2/tiup/publish-request", f)
+}
+
+// NewRequestToPublishHandler creates a HTTP handler which loads the HTTP
+// request and calls the "publish" service "requestToPublish" endpoint.
+func NewRequestToPublishHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeRequestToPublishRequest(mux, decoder)
+		encodeResponse = EncodeRequestToPublishResponse(encoder)
+		encodeError    = EncodeRequestToPublishError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "requestToPublish")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountRequestToPublishSingleHandler configures the mux to serve the "publish"
+// service "requestToPublishSingle" endpoint.
+func MountRequestToPublishSingleHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/api/v2/tiup/publish-request-single", f)
+}
+
+// NewRequestToPublishSingleHandler creates a HTTP handler which loads the HTTP
+// request and calls the "publish" service "requestToPublishSingle" endpoint.
+func NewRequestToPublishSingleHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeRequestToPublishSingleRequest(mux, decoder)
+		encodeResponse = EncodeRequestToPublishSingleResponse(encoder)
+		encodeError    = EncodeRequestToPublishSingleError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "requestToPublishSingle")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountQueryPublishingStatusHandler configures the mux to serve the "publish"
+// service "queryPublishingStatus" endpoint.
+func MountQueryPublishingStatusHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("GET", "/api/v2/tiup/publish-request/{request_id}", f)
+}
+
+// NewQueryPublishingStatusHandler creates a HTTP handler which loads the HTTP
+// request and calls the "publish" service "queryPublishingStatus" endpoint.
+func NewQueryPublishingStatusHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeQueryPublishingStatusRequest(mux, decoder)
+		encodeResponse = EncodeQueryPublishingStatusResponse(encoder)
+		encodeError    = EncodeQueryPublishingStatusError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "queryPublishingStatus")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountResetRateLimitHandler configures the mux to serve the "publish" service
+// "resetRateLimit" endpoint.
+func MountResetRateLimitHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/api/v2/tiup/reset-rate-limit", f)
+}
+
+// NewResetRateLimitHandler creates a HTTP handler which loads the HTTP request
+// and calls the "publish" service "resetRateLimit" endpoint.
+func NewResetRateLimitHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		encodeResponse = EncodeResetRateLimitResponse(encoder)
+		encodeError    = goahttp.ErrorEncoder(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "resetRateLimit")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
+		var err error
+		res, err := endpoint(ctx, nil)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountGetPublishUnitHandler configures the mux to serve the "publish" service
+// "getPublishUnit" endpoint.
+func MountGetPublishUnitHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("GET", "/api/v2/tiup/publish-units/{id}", f)
+}
+
+// NewGetPublishUnitHandler creates a HTTP handler which loads the HTTP request
+// and calls the "publish" service "getPublishUnit" endpoint.
+func NewGetPublishUnitHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeGetPublishUnitRequest(mux, decoder)
+		encodeResponse = EncodeGetPublishUnitResponse(encoder)
+		encodeError    = EncodeGetPublishUnitError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "getPublishUnit")
+		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
+		payload, err := decodeRequest(r)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		res, err := endpoint(ctx, payload)
+		if err != nil {
+			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+			return
+		}
+		if err := encodeResponse(ctx, w, res); err != nil {
+			if errhandler != nil {
+				errhandler(ctx, w, err)
+			}
+		}
+	})
+}
+
+// MountResumePublishUnitHandler configures the mux to serve the "publish"
+// service "resumePublishUnit" endpoint.
+func MountResumePublishUnitHandler(mux goahttp.Muxer, h http.Handler) {
+	f, ok := h.(http.HandlerFunc)
+	if !ok {
+		f = func(w http.ResponseWriter, r *http.Request) {
+			h.ServeHTTP(w, r)
+		}
+	}
+	mux.Handle("POST", "/api/v2/tiup/publish-units/{id}/resume", f)
+}
+
+// NewResumePublishUnitHandler creates a HTTP handler which loads the HTTP
+// request and calls the "publish" service "resumePublishUnit" endpoint.
+func NewResumePublishUnitHandler(
+	endpoint goa.Endpoint,
+	mux goahttp.Muxer,
+	decoder func(*http.Request) goahttp.Decoder,
+	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
+	errhandler func(context.Context, http.ResponseWriter, error),
+	formatter func(ctx context.Context, err error) goahttp.Statuser,
+) http.Handler {
+	var (
+		decodeRequest  = DecodeResumePublishUnitRequest(mux, decoder)
+		encodeResponse = EncodeResumePublishUnitResponse(encoder)
+		encodeError    = EncodeResumePublishUnitError(encoder, formatter)
+	)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
+		ctx = context.WithValue(ctx, goa.MethodKey, "resumePublishUnit")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
 		payload, err := decodeRequest(r)
 		if err != nil {

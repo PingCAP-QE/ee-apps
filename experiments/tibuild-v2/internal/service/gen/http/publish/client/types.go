@@ -22,6 +22,34 @@ type PublishImagesRequestBody struct {
 	Image *string `form:"image,omitempty" json:"image,omitempty" xml:"image,omitempty"`
 }
 
+// DeliveryByRulesRequestBody is the type of the "publish" service
+// "deliveryByRules" endpoint HTTP request body.
+type DeliveryByRulesRequestBody struct {
+	// Full OCI reference of the pushed artifact, including the tag.
+	ArtifactURL string `json:"artifact_url"`
+}
+
+// RequestToPublishRequestBody is the type of the "publish" service
+// "requestToPublish" endpoint HTTP request body.
+type RequestToPublishRequestBody struct {
+	ArtifactURL string `json:"artifact_url"`
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
+	// http://tiup.pingcap.net:8987.
+	TiupMirror string `json:"tiup_mirror"`
+	// Force the published version instead of the artifact's own.
+	Version *string `json:"version,omitempty"`
+}
+
+// RequestToPublishSingleRequestBody is the type of the "publish" service
+// "requestToPublishSingle" endpoint HTTP request body.
+type RequestToPublishSingleRequestBody struct {
+	From    *TiUPFromRequestBody        `json:"from,omitempty"`
+	Publish *TiUPPublishInfoRequestBody `json:"publish,omitempty"`
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
+	// http://tiup.pingcap.net:8987.
+	TiupMirror string `json:"tiup_mirror,omitempty"`
+}
+
 // PublishImagesResponseBody is the type of the "publish" service
 // "publishImages" endpoint HTTP response body.
 type PublishImagesResponseBody struct {
@@ -65,6 +93,46 @@ type GetUnitResponseBody struct {
 // RetryUnitResponseBody is the type of the "publish" service "retryUnit"
 // endpoint HTTP response body.
 type RetryUnitResponseBody struct {
+	// Unit id; this is the request id returned to callers
+	ID *string `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
+	// Publication kind, for example image_copy
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty" xml:"kind,omitempty"`
+	// Source artifact reference
+	ArtifactURL *string `form:"artifactUrl,omitempty" json:"artifactUrl,omitempty" xml:"artifactUrl,omitempty"`
+	// Source digest pinned at planning time
+	Digest *string `form:"digest,omitempty" json:"digest,omitempty" xml:"digest,omitempty"`
+	// Aggregated state of the steps
+	State *string `form:"state,omitempty" json:"state,omitempty" xml:"state,omitempty"`
+	// Caller identity, when known
+	RequestedBy *string                    `form:"requestedBy,omitempty" json:"requestedBy,omitempty" xml:"requestedBy,omitempty"`
+	CreatedAt   *string                    `form:"createdAt,omitempty" json:"createdAt,omitempty" xml:"createdAt,omitempty"`
+	FinishedAt  *string                    `form:"finishedAt,omitempty" json:"finishedAt,omitempty" xml:"finishedAt,omitempty"`
+	Steps       []*PublishStepResponseBody `form:"steps,omitempty" json:"steps,omitempty" xml:"steps,omitempty"`
+}
+
+// GetPublishUnitResponseBody is the type of the "publish" service
+// "getPublishUnit" endpoint HTTP response body.
+type GetPublishUnitResponseBody struct {
+	// Unit id; this is the request id returned to callers
+	ID *string `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
+	// Publication kind, for example image_copy
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty" xml:"kind,omitempty"`
+	// Source artifact reference
+	ArtifactURL *string `form:"artifactUrl,omitempty" json:"artifactUrl,omitempty" xml:"artifactUrl,omitempty"`
+	// Source digest pinned at planning time
+	Digest *string `form:"digest,omitempty" json:"digest,omitempty" xml:"digest,omitempty"`
+	// Aggregated state of the steps
+	State *string `form:"state,omitempty" json:"state,omitempty" xml:"state,omitempty"`
+	// Caller identity, when known
+	RequestedBy *string                    `form:"requestedBy,omitempty" json:"requestedBy,omitempty" xml:"requestedBy,omitempty"`
+	CreatedAt   *string                    `form:"createdAt,omitempty" json:"createdAt,omitempty" xml:"createdAt,omitempty"`
+	FinishedAt  *string                    `form:"finishedAt,omitempty" json:"finishedAt,omitempty" xml:"finishedAt,omitempty"`
+	Steps       []*PublishStepResponseBody `form:"steps,omitempty" json:"steps,omitempty" xml:"steps,omitempty"`
+}
+
+// ResumePublishUnitResponseBody is the type of the "publish" service
+// "resumePublishUnit" endpoint HTTP response body.
+type ResumePublishUnitResponseBody struct {
 	// Unit id; this is the request id returned to callers
 	ID *string `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
 	// Publication kind, for example image_copy
@@ -155,6 +223,122 @@ type RetryUnitNotFoundResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
+// DeliveryByRulesBadRequestResponseBody is the type of the "publish" service
+// "deliveryByRules" endpoint HTTP response body for the "BadRequest" error.
+type DeliveryByRulesBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// DeliveryByRulesFaultResponseBody is the type of the "publish" service
+// "deliveryByRules" endpoint HTTP response body for the "fault" error.
+type DeliveryByRulesFaultResponseBody struct {
+	Name      *string `json:"name"`
+	ID        *string `json:"id,omitempty"`
+	Message   *string `json:"message"`
+	Temporary *bool   `json:"temporary"`
+	Timeout   *bool   `json:"timeout"`
+	Fault     *bool   `json:"fault"`
+}
+
+// RequestToPublishBadRequestResponseBody is the type of the "publish" service
+// "requestToPublish" endpoint HTTP response body for the "BadRequest" error.
+type RequestToPublishBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// RequestToPublishFaultResponseBody is the type of the "publish" service
+// "requestToPublish" endpoint HTTP response body for the "fault" error.
+type RequestToPublishFaultResponseBody struct {
+	Name      *string `json:"name"`
+	ID        *string `json:"id,omitempty"`
+	Message   *string `json:"message"`
+	Temporary *bool   `json:"temporary"`
+	Timeout   *bool   `json:"timeout"`
+	Fault     *bool   `json:"fault"`
+}
+
+// RequestToPublishSingleBadRequestResponseBody is the type of the "publish"
+// service "requestToPublishSingle" endpoint HTTP response body for the
+// "BadRequest" error.
+type RequestToPublishSingleBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// RequestToPublishSingleFaultResponseBody is the type of the "publish" service
+// "requestToPublishSingle" endpoint HTTP response body for the "fault" error.
+type RequestToPublishSingleFaultResponseBody struct {
+	Name      *string `json:"name"`
+	ID        *string `json:"id,omitempty"`
+	Message   *string `json:"message"`
+	Temporary *bool   `json:"temporary"`
+	Timeout   *bool   `json:"timeout"`
+	Fault     *bool   `json:"fault"`
+}
+
+// QueryPublishingStatusFaultResponseBody is the type of the "publish" service
+// "queryPublishingStatus" endpoint HTTP response body for the "fault" error.
+type QueryPublishingStatusFaultResponseBody struct {
+	Name      *string `json:"name"`
+	ID        *string `json:"id,omitempty"`
+	Message   *string `json:"message"`
+	Temporary *bool   `json:"temporary"`
+	Timeout   *bool   `json:"timeout"`
+	Fault     *bool   `json:"fault"`
+}
+
+// GetPublishUnitBadRequestResponseBody is the type of the "publish" service
+// "getPublishUnit" endpoint HTTP response body for the "BadRequest" error.
+type GetPublishUnitBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// GetPublishUnitNotFoundResponseBody is the type of the "publish" service
+// "getPublishUnit" endpoint HTTP response body for the "NotFound" error.
+type GetPublishUnitNotFoundResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// GetPublishUnitFaultResponseBody is the type of the "publish" service
+// "getPublishUnit" endpoint HTTP response body for the "fault" error.
+type GetPublishUnitFaultResponseBody struct {
+	Name      *string `json:"name"`
+	ID        *string `json:"id,omitempty"`
+	Message   *string `json:"message"`
+	Temporary *bool   `json:"temporary"`
+	Timeout   *bool   `json:"timeout"`
+	Fault     *bool   `json:"fault"`
+}
+
+// ResumePublishUnitBadRequestResponseBody is the type of the "publish" service
+// "resumePublishUnit" endpoint HTTP response body for the "BadRequest" error.
+type ResumePublishUnitBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// ResumePublishUnitNotFoundResponseBody is the type of the "publish" service
+// "resumePublishUnit" endpoint HTTP response body for the "NotFound" error.
+type ResumePublishUnitNotFoundResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// ResumePublishUnitFaultResponseBody is the type of the "publish" service
+// "resumePublishUnit" endpoint HTTP response body for the "fault" error.
+type ResumePublishUnitFaultResponseBody struct {
+	Name      *string `json:"name"`
+	ID        *string `json:"id,omitempty"`
+	Message   *string `json:"message"`
+	Temporary *bool   `json:"temporary"`
+	Timeout   *bool   `json:"timeout"`
+	Fault     *bool   `json:"fault"`
+}
+
 // PublishStepResponseBody is used to define fields on response body types.
 type PublishStepResponseBody struct {
 	// Step id
@@ -228,12 +412,83 @@ type PublishStepResponse struct {
 	FinishedAt *string `form:"finishedAt,omitempty" json:"finishedAt,omitempty" xml:"finishedAt,omitempty"`
 }
 
+// TiUPFromRequestBody is used to define fields on request body types.
+type TiUPFromRequestBody struct {
+	Type string                   `json:"type,omitempty"`
+	HTTP *TiUPFromHTTPRequestBody `json:"http,omitempty"`
+	Oci  *TiUPFromOCIRequestBody  `json:"oci,omitempty"`
+}
+
+// TiUPFromHTTPRequestBody is used to define fields on request body types.
+type TiUPFromHTTPRequestBody struct {
+	URL *string `json:"url,omitempty"`
+}
+
+// TiUPFromOCIRequestBody is used to define fields on request body types.
+type TiUPFromOCIRequestBody struct {
+	Repo *string `json:"repo,omitempty"`
+	Tag  *string `json:"tag,omitempty"`
+	File *string `json:"file,omitempty"`
+}
+
+// TiUPPublishInfoRequestBody is used to define fields on request body types.
+type TiUPPublishInfoRequestBody struct {
+	Name        string  `json:"name,omitempty"`
+	Os          string  `json:"os,omitempty"`
+	Arch        string  `json:"arch,omitempty"`
+	Version     string  `json:"version,omitempty"`
+	Description *string `json:"description,omitempty"`
+	EntryPoint  string  `json:"entry_point,omitempty"`
+	Standalone  *bool   `json:"standalone,omitempty"`
+}
+
 // NewPublishImagesRequestBody builds the HTTP request body from the payload of
 // the "publishImages" endpoint of the "publish" service.
 func NewPublishImagesRequestBody(p *publish.PublishImagesPayload) *PublishImagesRequestBody {
 	body := &PublishImagesRequestBody{
 		ArtifactURL: p.ArtifactURL,
 		Image:       p.Image,
+	}
+	return body
+}
+
+// NewDeliveryByRulesRequestBody builds the HTTP request body from the payload
+// of the "deliveryByRules" endpoint of the "publish" service.
+func NewDeliveryByRulesRequestBody(p *publish.DeliveryByRulesPayload) *DeliveryByRulesRequestBody {
+	body := &DeliveryByRulesRequestBody{
+		ArtifactURL: p.ArtifactURL,
+	}
+	return body
+}
+
+// NewRequestToPublishRequestBody builds the HTTP request body from the payload
+// of the "requestToPublish" endpoint of the "publish" service.
+func NewRequestToPublishRequestBody(p *publish.RequestToPublishPayload) *RequestToPublishRequestBody {
+	body := &RequestToPublishRequestBody{
+		ArtifactURL: p.ArtifactURL,
+		TiupMirror:  p.TiupMirror,
+		Version:     p.Version,
+	}
+	return body
+}
+
+// NewRequestToPublishSingleRequestBody builds the HTTP request body from the
+// payload of the "requestToPublishSingle" endpoint of the "publish" service.
+func NewRequestToPublishSingleRequestBody(p *publish.TiUPPublishRequest) *RequestToPublishSingleRequestBody {
+	body := &RequestToPublishSingleRequestBody{
+		TiupMirror: p.TiupMirror,
+	}
+	if p.From != nil {
+		body.From = marshalPublishTiUPFromToTiUPFromRequestBody(p.From)
+	}
+	if p.Publish != nil {
+		body.Publish = marshalPublishTiUPPublishInfoToTiUPPublishInfoRequestBody(p.Publish)
+	}
+	{
+		var zero string
+		if body.TiupMirror == zero {
+			body.TiupMirror = "staging"
+		}
 	}
 	return body
 }
@@ -443,6 +698,325 @@ func NewRetryUnitNotFound(body *RetryUnitNotFoundResponseBody) *publish.PublishN
 	return v
 }
 
+// NewDeliveryByRulesBadRequest builds a publish service deliveryByRules
+// endpoint BadRequest error.
+func NewDeliveryByRulesBadRequest(body *DeliveryByRulesBadRequestResponseBody) *publish.PublishBadRequestError {
+	v := &publish.PublishBadRequestError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewDeliveryByRulesFault builds a publish service deliveryByRules endpoint
+// fault error.
+func NewDeliveryByRulesFault(body *DeliveryByRulesFaultResponseBody) *publish.TiUPFaultError {
+	v := &publish.TiUPFaultError{
+		Name:    *body.Name,
+		ID:      body.ID,
+		Message: *body.Message,
+	}
+	if body.Temporary != nil {
+		v.Temporary = *body.Temporary
+	}
+	if body.Timeout != nil {
+		v.Timeout = *body.Timeout
+	}
+	if body.Fault != nil {
+		v.Fault = *body.Fault
+	}
+	if body.Temporary == nil {
+		v.Temporary = false
+	}
+	if body.Timeout == nil {
+		v.Timeout = false
+	}
+	if body.Fault == nil {
+		v.Fault = true
+	}
+
+	return v
+}
+
+// NewRequestToPublishBadRequest builds a publish service requestToPublish
+// endpoint BadRequest error.
+func NewRequestToPublishBadRequest(body *RequestToPublishBadRequestResponseBody) *publish.PublishBadRequestError {
+	v := &publish.PublishBadRequestError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewRequestToPublishFault builds a publish service requestToPublish endpoint
+// fault error.
+func NewRequestToPublishFault(body *RequestToPublishFaultResponseBody) *publish.TiUPFaultError {
+	v := &publish.TiUPFaultError{
+		Name:    *body.Name,
+		ID:      body.ID,
+		Message: *body.Message,
+	}
+	if body.Temporary != nil {
+		v.Temporary = *body.Temporary
+	}
+	if body.Timeout != nil {
+		v.Timeout = *body.Timeout
+	}
+	if body.Fault != nil {
+		v.Fault = *body.Fault
+	}
+	if body.Temporary == nil {
+		v.Temporary = false
+	}
+	if body.Timeout == nil {
+		v.Timeout = false
+	}
+	if body.Fault == nil {
+		v.Fault = true
+	}
+
+	return v
+}
+
+// NewRequestToPublishSingleBadRequest builds a publish service
+// requestToPublishSingle endpoint BadRequest error.
+func NewRequestToPublishSingleBadRequest(body *RequestToPublishSingleBadRequestResponseBody) *publish.PublishBadRequestError {
+	v := &publish.PublishBadRequestError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewRequestToPublishSingleFault builds a publish service
+// requestToPublishSingle endpoint fault error.
+func NewRequestToPublishSingleFault(body *RequestToPublishSingleFaultResponseBody) *publish.TiUPFaultError {
+	v := &publish.TiUPFaultError{
+		Name:    *body.Name,
+		ID:      body.ID,
+		Message: *body.Message,
+	}
+	if body.Temporary != nil {
+		v.Temporary = *body.Temporary
+	}
+	if body.Timeout != nil {
+		v.Timeout = *body.Timeout
+	}
+	if body.Fault != nil {
+		v.Fault = *body.Fault
+	}
+	if body.Temporary == nil {
+		v.Temporary = false
+	}
+	if body.Timeout == nil {
+		v.Timeout = false
+	}
+	if body.Fault == nil {
+		v.Fault = true
+	}
+
+	return v
+}
+
+// NewQueryPublishingStatusTiUPRequestStateOK builds a "publish" service
+// "queryPublishingStatus" endpoint result from a HTTP "OK" response.
+func NewQueryPublishingStatusTiUPRequestStateOK(body string) publish.TiUPRequestState {
+	v := publish.TiUPRequestState(body)
+
+	return v
+}
+
+// NewQueryPublishingStatusFault builds a publish service queryPublishingStatus
+// endpoint fault error.
+func NewQueryPublishingStatusFault(body *QueryPublishingStatusFaultResponseBody) *publish.TiUPFaultError {
+	v := &publish.TiUPFaultError{
+		Name:    *body.Name,
+		ID:      body.ID,
+		Message: *body.Message,
+	}
+	if body.Temporary != nil {
+		v.Temporary = *body.Temporary
+	}
+	if body.Timeout != nil {
+		v.Timeout = *body.Timeout
+	}
+	if body.Fault != nil {
+		v.Fault = *body.Fault
+	}
+	if body.Temporary == nil {
+		v.Temporary = false
+	}
+	if body.Timeout == nil {
+		v.Timeout = false
+	}
+	if body.Fault == nil {
+		v.Fault = true
+	}
+
+	return v
+}
+
+// NewGetPublishUnitPublishUnitOK builds a "publish" service "getPublishUnit"
+// endpoint result from a HTTP "OK" response.
+func NewGetPublishUnitPublishUnitOK(body *GetPublishUnitResponseBody) *publish.PublishUnit {
+	v := &publish.PublishUnit{
+		ID:          *body.ID,
+		Kind:        *body.Kind,
+		ArtifactURL: *body.ArtifactURL,
+		Digest:      body.Digest,
+		State:       publish.PublishState(*body.State),
+		RequestedBy: body.RequestedBy,
+		CreatedAt:   body.CreatedAt,
+		FinishedAt:  body.FinishedAt,
+	}
+	if body.Steps != nil {
+		v.Steps = make([]*publish.PublishStep, len(body.Steps))
+		for i, val := range body.Steps {
+			if val == nil {
+				v.Steps[i] = nil
+				continue
+			}
+			v.Steps[i] = unmarshalPublishStepResponseBodyToPublishPublishStep(val)
+		}
+	}
+
+	return v
+}
+
+// NewGetPublishUnitBadRequest builds a publish service getPublishUnit endpoint
+// BadRequest error.
+func NewGetPublishUnitBadRequest(body *GetPublishUnitBadRequestResponseBody) *publish.PublishBadRequestError {
+	v := &publish.PublishBadRequestError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewGetPublishUnitNotFound builds a publish service getPublishUnit endpoint
+// NotFound error.
+func NewGetPublishUnitNotFound(body *GetPublishUnitNotFoundResponseBody) *publish.PublishNotFoundError {
+	v := &publish.PublishNotFoundError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewGetPublishUnitFault builds a publish service getPublishUnit endpoint
+// fault error.
+func NewGetPublishUnitFault(body *GetPublishUnitFaultResponseBody) *publish.TiUPFaultError {
+	v := &publish.TiUPFaultError{
+		Name:    *body.Name,
+		ID:      body.ID,
+		Message: *body.Message,
+	}
+	if body.Temporary != nil {
+		v.Temporary = *body.Temporary
+	}
+	if body.Timeout != nil {
+		v.Timeout = *body.Timeout
+	}
+	if body.Fault != nil {
+		v.Fault = *body.Fault
+	}
+	if body.Temporary == nil {
+		v.Temporary = false
+	}
+	if body.Timeout == nil {
+		v.Timeout = false
+	}
+	if body.Fault == nil {
+		v.Fault = true
+	}
+
+	return v
+}
+
+// NewResumePublishUnitPublishUnitOK builds a "publish" service
+// "resumePublishUnit" endpoint result from a HTTP "OK" response.
+func NewResumePublishUnitPublishUnitOK(body *ResumePublishUnitResponseBody) *publish.PublishUnit {
+	v := &publish.PublishUnit{
+		ID:          *body.ID,
+		Kind:        *body.Kind,
+		ArtifactURL: *body.ArtifactURL,
+		Digest:      body.Digest,
+		State:       publish.PublishState(*body.State),
+		RequestedBy: body.RequestedBy,
+		CreatedAt:   body.CreatedAt,
+		FinishedAt:  body.FinishedAt,
+	}
+	if body.Steps != nil {
+		v.Steps = make([]*publish.PublishStep, len(body.Steps))
+		for i, val := range body.Steps {
+			if val == nil {
+				v.Steps[i] = nil
+				continue
+			}
+			v.Steps[i] = unmarshalPublishStepResponseBodyToPublishPublishStep(val)
+		}
+	}
+
+	return v
+}
+
+// NewResumePublishUnitBadRequest builds a publish service resumePublishUnit
+// endpoint BadRequest error.
+func NewResumePublishUnitBadRequest(body *ResumePublishUnitBadRequestResponseBody) *publish.PublishBadRequestError {
+	v := &publish.PublishBadRequestError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewResumePublishUnitNotFound builds a publish service resumePublishUnit
+// endpoint NotFound error.
+func NewResumePublishUnitNotFound(body *ResumePublishUnitNotFoundResponseBody) *publish.PublishNotFoundError {
+	v := &publish.PublishNotFoundError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewResumePublishUnitFault builds a publish service resumePublishUnit
+// endpoint fault error.
+func NewResumePublishUnitFault(body *ResumePublishUnitFaultResponseBody) *publish.TiUPFaultError {
+	v := &publish.TiUPFaultError{
+		Name:    *body.Name,
+		ID:      body.ID,
+		Message: *body.Message,
+	}
+	if body.Temporary != nil {
+		v.Temporary = *body.Temporary
+	}
+	if body.Timeout != nil {
+		v.Timeout = *body.Timeout
+	}
+	if body.Fault != nil {
+		v.Fault = *body.Fault
+	}
+	if body.Temporary == nil {
+		v.Temporary = false
+	}
+	if body.Timeout == nil {
+		v.Timeout = false
+	}
+	if body.Fault == nil {
+		v.Fault = true
+	}
+
+	return v
+}
+
 // ValidatePublishImagesResponseBody runs the validations defined on
 // PublishImagesResponseBody
 func ValidatePublishImagesResponseBody(body *PublishImagesResponseBody) (err error) {
@@ -518,6 +1092,78 @@ func ValidateGetUnitResponseBody(body *GetUnitResponseBody) (err error) {
 // ValidateRetryUnitResponseBody runs the validations defined on
 // RetryUnitResponseBody
 func ValidateRetryUnitResponseBody(body *RetryUnitResponseBody) (err error) {
+	if body.ID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("id", "body"))
+	}
+	if body.Kind == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("kind", "body"))
+	}
+	if body.ArtifactURL == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("artifactUrl", "body"))
+	}
+	if body.State == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("state", "body"))
+	}
+	if body.State != nil {
+		if !(*body.State == "queued" || *body.State == "running" || *body.State == "succeeded" || *body.State == "partial" || *body.State == "failed" || *body.State == "canceled") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.state", *body.State, []any{"queued", "running", "succeeded", "partial", "failed", "canceled"}))
+		}
+	}
+	if body.CreatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdAt", *body.CreatedAt, goa.FormatDateTime))
+	}
+	if body.FinishedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.finishedAt", *body.FinishedAt, goa.FormatDateTime))
+	}
+	for _, e := range body.Steps {
+		if e != nil {
+			if err2 := ValidatePublishStepResponseBody(e); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+	}
+	return
+}
+
+// ValidateGetPublishUnitResponseBody runs the validations defined on
+// GetPublishUnitResponseBody
+func ValidateGetPublishUnitResponseBody(body *GetPublishUnitResponseBody) (err error) {
+	if body.ID == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("id", "body"))
+	}
+	if body.Kind == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("kind", "body"))
+	}
+	if body.ArtifactURL == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("artifactUrl", "body"))
+	}
+	if body.State == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("state", "body"))
+	}
+	if body.State != nil {
+		if !(*body.State == "queued" || *body.State == "running" || *body.State == "succeeded" || *body.State == "partial" || *body.State == "failed" || *body.State == "canceled") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.state", *body.State, []any{"queued", "running", "succeeded", "partial", "failed", "canceled"}))
+		}
+	}
+	if body.CreatedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.createdAt", *body.CreatedAt, goa.FormatDateTime))
+	}
+	if body.FinishedAt != nil {
+		err = goa.MergeErrors(err, goa.ValidateFormat("body.finishedAt", *body.FinishedAt, goa.FormatDateTime))
+	}
+	for _, e := range body.Steps {
+		if e != nil {
+			if err2 := ValidatePublishStepResponseBody(e); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+	}
+	return
+}
+
+// ValidateResumePublishUnitResponseBody runs the validations defined on
+// ResumePublishUnitResponseBody
+func ValidateResumePublishUnitResponseBody(body *ResumePublishUnitResponseBody) (err error) {
 	if body.ID == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("id", "body"))
 	}
@@ -671,6 +1317,162 @@ func ValidateRetryUnitNotFoundResponseBody(body *RetryUnitNotFoundResponseBody) 
 	return
 }
 
+// ValidateDeliveryByRulesBadRequestResponseBody runs the validations defined
+// on deliveryByRules_BadRequest_response_body
+func ValidateDeliveryByRulesBadRequestResponseBody(body *DeliveryByRulesBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateDeliveryByRulesFaultResponseBody runs the validations defined on
+// deliveryByRules_fault_response_body
+func ValidateDeliveryByRulesFaultResponseBody(body *DeliveryByRulesFaultResponseBody) (err error) {
+	if body.Name == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateRequestToPublishBadRequestResponseBody runs the validations defined
+// on requestToPublish_BadRequest_response_body
+func ValidateRequestToPublishBadRequestResponseBody(body *RequestToPublishBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateRequestToPublishFaultResponseBody runs the validations defined on
+// requestToPublish_fault_response_body
+func ValidateRequestToPublishFaultResponseBody(body *RequestToPublishFaultResponseBody) (err error) {
+	if body.Name == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateRequestToPublishSingleBadRequestResponseBody runs the validations
+// defined on requestToPublishSingle_BadRequest_response_body
+func ValidateRequestToPublishSingleBadRequestResponseBody(body *RequestToPublishSingleBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateRequestToPublishSingleFaultResponseBody runs the validations defined
+// on requestToPublishSingle_fault_response_body
+func ValidateRequestToPublishSingleFaultResponseBody(body *RequestToPublishSingleFaultResponseBody) (err error) {
+	if body.Name == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryPublishingStatusFaultResponseBody runs the validations defined
+// on queryPublishingStatus_fault_response_body
+func ValidateQueryPublishingStatusFaultResponseBody(body *QueryPublishingStatusFaultResponseBody) (err error) {
+	if body.Name == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateGetPublishUnitBadRequestResponseBody runs the validations defined on
+// getPublishUnit_BadRequest_response_body
+func ValidateGetPublishUnitBadRequestResponseBody(body *GetPublishUnitBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateGetPublishUnitNotFoundResponseBody runs the validations defined on
+// getPublishUnit_NotFound_response_body
+func ValidateGetPublishUnitNotFoundResponseBody(body *GetPublishUnitNotFoundResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateGetPublishUnitFaultResponseBody runs the validations defined on
+// getPublishUnit_fault_response_body
+func ValidateGetPublishUnitFaultResponseBody(body *GetPublishUnitFaultResponseBody) (err error) {
+	if body.Name == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateResumePublishUnitBadRequestResponseBody runs the validations defined
+// on resumePublishUnit_BadRequest_response_body
+func ValidateResumePublishUnitBadRequestResponseBody(body *ResumePublishUnitBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateResumePublishUnitNotFoundResponseBody runs the validations defined
+// on resumePublishUnit_NotFound_response_body
+func ValidateResumePublishUnitNotFoundResponseBody(body *ResumePublishUnitNotFoundResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateResumePublishUnitFaultResponseBody runs the validations defined on
+// resumePublishUnit_fault_response_body
+func ValidateResumePublishUnitFaultResponseBody(body *ResumePublishUnitFaultResponseBody) (err error) {
+	if body.Name == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
 // ValidatePublishStepResponseBody runs the validations defined on
 // PublishStepResponseBody
 func ValidatePublishStepResponseBody(body *PublishStepResponseBody) (err error) {
@@ -767,6 +1569,15 @@ func ValidatePublishStepResponse(body *PublishStepResponse) (err error) {
 	}
 	if body.FinishedAt != nil {
 		err = goa.MergeErrors(err, goa.ValidateFormat("body.finishedAt", *body.FinishedAt, goa.FormatDateTime))
+	}
+	return
+}
+
+// ValidateTiUPFromRequestBody runs the validations defined on
+// TiUPFromRequestBody
+func ValidateTiUPFromRequestBody(body *TiUPFromRequestBody) (err error) {
+	if !(body.Type == "http" || body.Type == "oci") {
+		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.type", body.Type, []any{"http", "oci"}))
 	}
 	return
 }

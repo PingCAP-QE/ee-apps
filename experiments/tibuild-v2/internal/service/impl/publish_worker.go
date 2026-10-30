@@ -176,6 +176,13 @@ func (s *publishsrvc) markUnitRunning(ctx context.Context, unitID string) error 
 // fenced by claimed_by, so a worker that lost its lease cannot overwrite the
 // work of the worker that took over.
 func (s *publishsrvc) executeStep(ctx context.Context, step *ent.PublishStep) {
+	// The kind decides how the step is executed; a TiUP step owns a lane and
+	// may publish several packages at once, so it has its own runner.
+	if unit, err := s.db.PublishUnit.Get(ctx, step.UnitID); err == nil && unit.Kind == PublishKindTiUP {
+		s.runTiUPStep(ctx, step)
+		return
+	}
+
 	s.inflight.Add(1)
 	defer s.inflight.Done()
 
@@ -341,6 +348,11 @@ func (s *publishsrvc) markStepSucceeded(ctx context.Context, step *ent.PublishSt
 		ClearLeaseUntil().
 		SetFinishedAt(s.now()).
 		Save(ctx)
+	if updated == 1 {
+		if err := s.promoteDependents(ctx, step.ID); err != nil {
+			return false, err
+		}
+	}
 	return updated == 1, err
 }
 
@@ -374,6 +386,11 @@ func (s *publishsrvc) handleStepFailure(ctx context.Context, step *ent.PublishSt
 	}
 
 	updated, err := update.Save(ctx)
+	if err == nil && updated == 1 && step.Attempts >= s.workerCfg.MaxAttempts {
+		if skipErr := s.skipDependents(ctx, step.ID); skipErr != nil {
+			return false, skipErr
+		}
+	}
 	return updated == 1, err
 }
 
@@ -514,23 +531,41 @@ func (s *publishsrvc) reapExpiredSteps(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
-	updated, err := s.db.PublishStep.Update().
-		Where(
-			entpublishstep.State(PublishStepStateClaimed),
-			entpublishstep.LeaseUntilNotNil(),
-			entpublishstep.LeaseUntilLT(now),
-		).
-		SetState(PublishStepStatePending).
-		ClearClaimedBy().
-		ClearLeaseUntil().
-		Save(ctx)
-	if err != nil {
-		return 0, err
-	}
-
+	var updated int
 	units := map[string]struct{}{}
 	for _, step := range expired {
 		units[step.UnitID] = struct{}{}
+
+		update := s.db.PublishStep.Update().
+			Where(
+				entpublishstep.ID(step.ID),
+				entpublishstep.State(PublishStepStateClaimed),
+				entpublishstep.LeaseUntilLT(now),
+			)
+		if step.Attempts >= s.workerCfg.MaxAttempts {
+			update = update.
+				SetState(PublishStepStateFailed).
+				SetLastError("lease expired after repeated attempts").
+				SetFinishedAt(now).
+				ClearClaimedBy().
+				ClearLeaseUntil()
+		} else {
+			update = update.
+				SetState(PublishStepStatePending).
+				SetAvailableAt(now.Add(s.publishBackoff(step.Attempts))).
+				ClearClaimedBy().
+				ClearLeaseUntil()
+		}
+		n, err := update.Save(ctx)
+		if err != nil {
+			return updated, err
+		}
+		updated += n
+		if n == 1 && step.Attempts >= s.workerCfg.MaxAttempts {
+			if err := s.skipDependents(ctx, step.ID); err != nil {
+				return updated, err
+			}
+		}
 	}
 	for unitID := range units {
 		s.refreshUnit(ctx, unitID)

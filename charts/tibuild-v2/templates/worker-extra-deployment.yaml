@@ -1,0 +1,136 @@
+{{- /*
+Extra worker deployments.
+
+The default worker executes the image-delivery queue. Kinds that need their own
+credentials or their own queue shard (TiUP mirrors) run as separate Deployments
+so a busy or broken target cannot starve the other kinds, and so each pod mounts
+only the credential of the mirror it publishes to.
+
+Each entry mirrors the fields of `worker` that matter per deployment:
+  name           required; used as the Deployment name suffix
+  replicaCount   defaults to worker.replicaCount
+  workerID       defaults to the pod name
+  config         {secretName, secretKey} of this worker's config file
+  volumes        extra volumes (credentials)
+  volumeMounts   mounts inside the worker container
+  resources      defaults to worker.resources
+*/ -}}
+{{- if .Values.worker.enabled }}
+{{- $root := . }}
+{{- range .Values.worker.extraDeployments }}
+{{- $cfg := .config | default dict }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tibuild-v2.fullname" $root }}-worker-{{ .name }}
+  labels:
+    {{- include "tibuild-v2.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/worker: {{ .name }}
+spec:
+  replicas: {{ .replicaCount | default $root.Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "tibuild-v2.name" $root }}-worker-{{ .name }}
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+  template:
+    metadata:
+      labels:
+        helm.sh/chart: {{ include "tibuild-v2.chart" $root }}
+        app.kubernetes.io/name: {{ include "tibuild-v2.name" $root }}-worker-{{ .name }}
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/worker: {{ .name }}
+        {{- if $root.Chart.AppVersion }}
+        app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
+        {{- end }}
+        app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+        {{- with $root.Values.worker.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "tibuild-v2.serviceAccountName" $root }}
+      {{- with $root.Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          {{- with $root.Values.worker.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- $workerRepo := $root.Values.worker.image.repository | default $root.Values.image.repository }}
+          image: "{{ $workerRepo }}:{{ $root.Values.worker.image.tag | default $root.Values.image.tag | default $root.Chart.AppVersion }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          args:
+            - -worker-id={{ default "$(POD_NAME)" .workerID }}
+            {{- with $cfg.secretKey }}
+            - -config=/etc/config/{{ . }}
+            {{- end }}
+            - -health-addr=:{{ $root.Values.worker.healthPort }}
+            {{- if $root.Values.server.debug }}
+            - -debug
+            {{- end }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: health
+              containerPort: {{ $root.Values.worker.healthPort }}
+              protocol: TCP
+          {{- with $root.Values.worker.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $root.Values.worker.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (.resources | default $root.Values.worker.resources) }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or .volumeMounts $cfg.secretName }}
+          volumeMounts:
+            {{- if $cfg.secretName }}
+            - name: vol-{{ $cfg.secretName }}
+              mountPath: /etc/config
+              readOnly: true
+            {{- end }}
+            {{- with .volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or .volumes $cfg.secretName }}
+      volumes:
+        {{- if $cfg.secretName }}
+        - name: vol-{{ $cfg.secretName }}
+          secret:
+            secretName: {{ $cfg.secretName }}
+        {{- end }}
+        {{- with .volumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with $root.Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

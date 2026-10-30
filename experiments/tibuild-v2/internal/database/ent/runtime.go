@@ -9,6 +9,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishlane"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
@@ -195,6 +196,30 @@ func init() {
 	imagesynctask.DefaultUpdatedAt = imagesynctaskDescUpdatedAt.Default.(func() time.Time)
 	// imagesynctask.UpdateDefaultUpdatedAt holds the default value on update for the updatedAt field.
 	imagesynctask.UpdateDefaultUpdatedAt = imagesynctaskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	publishlaneFields := schema.PublishLane{}.Fields()
+	_ = publishlaneFields
+	// publishlaneDescLane is the schema descriptor for lane field.
+	publishlaneDescLane := publishlaneFields[1].Descriptor()
+	// publishlane.LaneValidator is a validator for the "lane" field. It is called by the builders before save.
+	publishlane.LaneValidator = publishlaneDescLane.Validators[0].(func(string) error)
+	// publishlaneDescUnitID is the schema descriptor for unit_id field.
+	publishlaneDescUnitID := publishlaneFields[2].Descriptor()
+	// publishlane.UnitIDValidator is a validator for the "unit_id" field. It is called by the builders before save.
+	publishlane.UnitIDValidator = publishlaneDescUnitID.Validators[0].(func(string) error)
+	// publishlaneDescHolder is the schema descriptor for holder field.
+	publishlaneDescHolder := publishlaneFields[3].Descriptor()
+	// publishlane.HolderValidator is a validator for the "holder" field. It is called by the builders before save.
+	publishlane.HolderValidator = publishlaneDescHolder.Validators[0].(func(string) error)
+	// publishlaneDescCreatedAt is the schema descriptor for created_at field.
+	publishlaneDescCreatedAt := publishlaneFields[5].Descriptor()
+	// publishlane.DefaultCreatedAt holds the default value on creation for the created_at field.
+	publishlane.DefaultCreatedAt = publishlaneDescCreatedAt.Default.(func() time.Time)
+	// publishlaneDescUpdatedAt is the schema descriptor for updated_at field.
+	publishlaneDescUpdatedAt := publishlaneFields[6].Descriptor()
+	// publishlane.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	publishlane.DefaultUpdatedAt = publishlaneDescUpdatedAt.Default.(func() time.Time)
+	// publishlane.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	publishlane.UpdateDefaultUpdatedAt = publishlaneDescUpdatedAt.UpdateDefault.(func() time.Time)
 	publishstepFields := schema.PublishStep{}.Fields()
 	_ = publishstepFields
 	// publishstepDescUnitID is the schema descriptor for unit_id field.

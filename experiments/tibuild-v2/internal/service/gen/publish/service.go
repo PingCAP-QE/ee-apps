@@ -23,6 +23,20 @@ type Service interface {
 	ListUnits(context.Context, *ListUnitsPayload) (res []*PublishUnit, err error)
 	// Retry the failed steps of a unit. Succeeded steps are left untouched.
 	RetryUnit(context.Context, *RetryUnitPayload) (res *PublishUnit, err error)
+	// Publish an artifact to every mirror the delivery rules select.
+	DeliveryByRules(context.Context, *DeliveryByRulesPayload) (res []string, err error)
+	// Publish an artifact to one explicit mirror.
+	RequestToPublish(context.Context, *RequestToPublishPayload) (res []string, err error)
+	// Publish one package from a tarball URL.
+	RequestToPublishSingle(context.Context, *TiUPPublishRequest) (res string, err error)
+	// Legacy status lookup; accepts a unit id or a step id.
+	QueryPublishingStatus(context.Context, *QueryPublishingStatusPayload) (res TiUPRequestState, err error)
+	// Kept for compatibility; the publish domain has no rate limiting.
+	ResetRateLimit(context.Context) (err error)
+	// Get a publication unit and its steps.
+	GetPublishUnit(context.Context, *GetPublishUnitPayload) (res *PublishUnit, err error)
+	// Resume the failed steps of a partial publication unit.
+	ResumePublishUnit(context.Context, *ResumePublishUnitPayload) (res *PublishUnit, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -39,7 +53,20 @@ const ServiceName = "publish"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [4]string{"publishImages", "getUnit", "listUnits", "retryUnit"}
+var MethodNames = [11]string{"publishImages", "getUnit", "listUnits", "retryUnit", "deliveryByRules", "requestToPublish", "requestToPublishSingle", "queryPublishingStatus", "resetRateLimit", "getPublishUnit", "resumePublishUnit"}
+
+// DeliveryByRulesPayload is the payload type of the publish service
+// deliveryByRules method.
+type DeliveryByRulesPayload struct {
+	// Full OCI reference of the pushed artifact, including the tag.
+	ArtifactURL string `json:"artifact_url"`
+}
+
+// GetPublishUnitPayload is the payload type of the publish service
+// getPublishUnit method.
+type GetPublishUnitPayload struct {
+	ID string
+}
 
 // GetUnitPayload is the payload type of the publish service getUnit method.
 type GetUnitPayload struct {
@@ -136,11 +163,85 @@ type PublishUnit struct {
 	Steps       []*PublishStep
 }
 
+// QueryPublishingStatusPayload is the payload type of the publish service
+// queryPublishingStatus method.
+type QueryPublishingStatusPayload struct {
+	RequestID string `json:"request_id"`
+}
+
+// RequestToPublishPayload is the payload type of the publish service
+// requestToPublish method.
+type RequestToPublishPayload struct {
+	ArtifactURL string `json:"artifact_url"`
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
+	// http://tiup.pingcap.net:8987.
+	TiupMirror string `json:"tiup_mirror"`
+	// Force the published version instead of the artifact's own.
+	Version *string `json:"version,omitempty"`
+}
+
+// ResumePublishUnitPayload is the payload type of the publish service
+// resumePublishUnit method.
+type ResumePublishUnitPayload struct {
+	ID string
+}
+
 // RetryUnitPayload is the payload type of the publish service retryUnit method.
 type RetryUnitPayload struct {
 	// Unit id
 	ID string
 }
+
+// Fault envelope of the legacy publisher.
+type TiUPFaultError struct {
+	Name      string  `json:"name"`
+	ID        *string `json:"id,omitempty"`
+	Message   string  `json:"message"`
+	Temporary bool    `json:"temporary"`
+	Timeout   bool    `json:"timeout"`
+	Fault     bool    `json:"fault"`
+}
+
+// Source of the package: a direct HTTP URL or an OCI layer.
+type TiUPFrom struct {
+	Type string        `json:"type,omitempty"`
+	HTTP *TiUPFromHTTP `json:"http,omitempty"`
+	Oci  *TiUPFromOCI  `json:"oci,omitempty"`
+}
+
+type TiUPFromHTTP struct {
+	URL *string `json:"url,omitempty"`
+}
+
+type TiUPFromOCI struct {
+	Repo *string `json:"repo,omitempty"`
+	Tag  *string `json:"tag,omitempty"`
+	File *string `json:"file,omitempty"`
+}
+
+type TiUPPublishInfo struct {
+	Name        string  `json:"name,omitempty"`
+	Os          string  `json:"os,omitempty"`
+	Arch        string  `json:"arch,omitempty"`
+	Version     string  `json:"version,omitempty"`
+	Description *string `json:"description,omitempty"`
+	EntryPoint  string  `json:"entry_point,omitempty"`
+	Standalone  *bool   `json:"standalone,omitempty"`
+}
+
+// TiUPPublishRequest is the payload type of the publish service
+// requestToPublishSingle method.
+type TiUPPublishRequest struct {
+	From    *TiUPFrom        `json:"from,omitempty"`
+	Publish *TiUPPublishInfo `json:"publish,omitempty"`
+	// `staging` is http://tiup.pingcap.net:8988, `prod` is
+	// http://tiup.pingcap.net:8987.
+	TiupMirror string `json:"tiup_mirror,omitempty"`
+}
+
+// TiUPRequestState is the result type of the publish service
+// queryPublishingStatus method.
+type TiUPRequestState string
 
 // Error returns an error description.
 func (e *PublishBadGatewayError) Error() string {
@@ -208,4 +309,21 @@ func (e *PublishNotFoundError) ErrorName() string {
 // GoaErrorName returns the error name.
 func (e *PublishNotFoundError) GoaErrorName() string {
 	return "NotFound"
+}
+
+// Error returns an error description.
+func (e *TiUPFaultError) Error() string {
+	return "Fault envelope of the legacy publisher."
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *TiUPFaultError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *TiUPFaultError) GoaErrorName() string {
+	return "fault"
 }

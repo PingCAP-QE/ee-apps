@@ -16,6 +16,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/predicate"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishlane"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
@@ -34,6 +35,7 @@ const (
 	TypeAlertLease    = "AlertLease"
 	TypeDevBuild      = "DevBuild"
 	TypeImageSyncTask = "ImageSyncTask"
+	TypePublishLane   = "PublishLane"
 	TypePublishStep   = "PublishStep"
 	TypePublishUnit   = "PublishUnit"
 )
@@ -4434,6 +4436,668 @@ func (m *ImageSyncTaskMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ImageSyncTaskMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ImageSyncTask edge %s", name)
+}
+
+// PublishLaneMutation represents an operation that mutates the PublishLane nodes in the graph.
+type PublishLaneMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int
+	lane          *string
+	unit_id       *string
+	holder        *string
+	lease_until   *time.Time
+	created_at    *time.Time
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*PublishLane, error)
+	predicates    []predicate.PublishLane
+}
+
+var _ ent.Mutation = (*PublishLaneMutation)(nil)
+
+// publishlaneOption allows management of the mutation configuration using functional options.
+type publishlaneOption func(*PublishLaneMutation)
+
+// newPublishLaneMutation creates new mutation for the PublishLane entity.
+func newPublishLaneMutation(c config, op Op, opts ...publishlaneOption) *PublishLaneMutation {
+	m := &PublishLaneMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePublishLane,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPublishLaneID sets the ID field of the mutation.
+func withPublishLaneID(id int) publishlaneOption {
+	return func(m *PublishLaneMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PublishLane
+		)
+		m.oldValue = func(ctx context.Context) (*PublishLane, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PublishLane.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPublishLane sets the old PublishLane of the mutation.
+func withPublishLane(node *PublishLane) publishlaneOption {
+	return func(m *PublishLaneMutation) {
+		m.oldValue = func(context.Context) (*PublishLane, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PublishLaneMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PublishLaneMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PublishLane entities.
+func (m *PublishLaneMutation) SetID(id int) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PublishLaneMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PublishLaneMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PublishLane.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetLane sets the "lane" field.
+func (m *PublishLaneMutation) SetLane(s string) {
+	m.lane = &s
+}
+
+// Lane returns the value of the "lane" field in the mutation.
+func (m *PublishLaneMutation) Lane() (r string, exists bool) {
+	v := m.lane
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLane returns the old "lane" field's value of the PublishLane entity.
+// If the PublishLane object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishLaneMutation) OldLane(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLane is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLane requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLane: %w", err)
+	}
+	return oldValue.Lane, nil
+}
+
+// ResetLane resets all changes to the "lane" field.
+func (m *PublishLaneMutation) ResetLane() {
+	m.lane = nil
+}
+
+// SetUnitID sets the "unit_id" field.
+func (m *PublishLaneMutation) SetUnitID(s string) {
+	m.unit_id = &s
+}
+
+// UnitID returns the value of the "unit_id" field in the mutation.
+func (m *PublishLaneMutation) UnitID() (r string, exists bool) {
+	v := m.unit_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnitID returns the old "unit_id" field's value of the PublishLane entity.
+// If the PublishLane object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishLaneMutation) OldUnitID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnitID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnitID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnitID: %w", err)
+	}
+	return oldValue.UnitID, nil
+}
+
+// ClearUnitID clears the value of the "unit_id" field.
+func (m *PublishLaneMutation) ClearUnitID() {
+	m.unit_id = nil
+	m.clearedFields[publishlane.FieldUnitID] = struct{}{}
+}
+
+// UnitIDCleared returns if the "unit_id" field was cleared in this mutation.
+func (m *PublishLaneMutation) UnitIDCleared() bool {
+	_, ok := m.clearedFields[publishlane.FieldUnitID]
+	return ok
+}
+
+// ResetUnitID resets all changes to the "unit_id" field.
+func (m *PublishLaneMutation) ResetUnitID() {
+	m.unit_id = nil
+	delete(m.clearedFields, publishlane.FieldUnitID)
+}
+
+// SetHolder sets the "holder" field.
+func (m *PublishLaneMutation) SetHolder(s string) {
+	m.holder = &s
+}
+
+// Holder returns the value of the "holder" field in the mutation.
+func (m *PublishLaneMutation) Holder() (r string, exists bool) {
+	v := m.holder
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHolder returns the old "holder" field's value of the PublishLane entity.
+// If the PublishLane object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishLaneMutation) OldHolder(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHolder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHolder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHolder: %w", err)
+	}
+	return oldValue.Holder, nil
+}
+
+// ClearHolder clears the value of the "holder" field.
+func (m *PublishLaneMutation) ClearHolder() {
+	m.holder = nil
+	m.clearedFields[publishlane.FieldHolder] = struct{}{}
+}
+
+// HolderCleared returns if the "holder" field was cleared in this mutation.
+func (m *PublishLaneMutation) HolderCleared() bool {
+	_, ok := m.clearedFields[publishlane.FieldHolder]
+	return ok
+}
+
+// ResetHolder resets all changes to the "holder" field.
+func (m *PublishLaneMutation) ResetHolder() {
+	m.holder = nil
+	delete(m.clearedFields, publishlane.FieldHolder)
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (m *PublishLaneMutation) SetLeaseUntil(t time.Time) {
+	m.lease_until = &t
+}
+
+// LeaseUntil returns the value of the "lease_until" field in the mutation.
+func (m *PublishLaneMutation) LeaseUntil() (r time.Time, exists bool) {
+	v := m.lease_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseUntil returns the old "lease_until" field's value of the PublishLane entity.
+// If the PublishLane object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishLaneMutation) OldLeaseUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseUntil: %w", err)
+	}
+	return oldValue.LeaseUntil, nil
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (m *PublishLaneMutation) ClearLeaseUntil() {
+	m.lease_until = nil
+	m.clearedFields[publishlane.FieldLeaseUntil] = struct{}{}
+}
+
+// LeaseUntilCleared returns if the "lease_until" field was cleared in this mutation.
+func (m *PublishLaneMutation) LeaseUntilCleared() bool {
+	_, ok := m.clearedFields[publishlane.FieldLeaseUntil]
+	return ok
+}
+
+// ResetLeaseUntil resets all changes to the "lease_until" field.
+func (m *PublishLaneMutation) ResetLeaseUntil() {
+	m.lease_until = nil
+	delete(m.clearedFields, publishlane.FieldLeaseUntil)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PublishLaneMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PublishLaneMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PublishLane entity.
+// If the PublishLane object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishLaneMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PublishLaneMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *PublishLaneMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *PublishLaneMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the PublishLane entity.
+// If the PublishLane object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishLaneMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *PublishLaneMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the PublishLaneMutation builder.
+func (m *PublishLaneMutation) Where(ps ...predicate.PublishLane) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PublishLaneMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PublishLaneMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PublishLane, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PublishLaneMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PublishLaneMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PublishLane).
+func (m *PublishLaneMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PublishLaneMutation) Fields() []string {
+	fields := make([]string, 0, 6)
+	if m.lane != nil {
+		fields = append(fields, publishlane.FieldLane)
+	}
+	if m.unit_id != nil {
+		fields = append(fields, publishlane.FieldUnitID)
+	}
+	if m.holder != nil {
+		fields = append(fields, publishlane.FieldHolder)
+	}
+	if m.lease_until != nil {
+		fields = append(fields, publishlane.FieldLeaseUntil)
+	}
+	if m.created_at != nil {
+		fields = append(fields, publishlane.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, publishlane.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PublishLaneMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case publishlane.FieldLane:
+		return m.Lane()
+	case publishlane.FieldUnitID:
+		return m.UnitID()
+	case publishlane.FieldHolder:
+		return m.Holder()
+	case publishlane.FieldLeaseUntil:
+		return m.LeaseUntil()
+	case publishlane.FieldCreatedAt:
+		return m.CreatedAt()
+	case publishlane.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PublishLaneMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case publishlane.FieldLane:
+		return m.OldLane(ctx)
+	case publishlane.FieldUnitID:
+		return m.OldUnitID(ctx)
+	case publishlane.FieldHolder:
+		return m.OldHolder(ctx)
+	case publishlane.FieldLeaseUntil:
+		return m.OldLeaseUntil(ctx)
+	case publishlane.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case publishlane.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PublishLane field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PublishLaneMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case publishlane.FieldLane:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLane(v)
+		return nil
+	case publishlane.FieldUnitID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnitID(v)
+		return nil
+	case publishlane.FieldHolder:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHolder(v)
+		return nil
+	case publishlane.FieldLeaseUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseUntil(v)
+		return nil
+	case publishlane.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case publishlane.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PublishLane field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PublishLaneMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PublishLaneMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PublishLaneMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown PublishLane numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PublishLaneMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(publishlane.FieldUnitID) {
+		fields = append(fields, publishlane.FieldUnitID)
+	}
+	if m.FieldCleared(publishlane.FieldHolder) {
+		fields = append(fields, publishlane.FieldHolder)
+	}
+	if m.FieldCleared(publishlane.FieldLeaseUntil) {
+		fields = append(fields, publishlane.FieldLeaseUntil)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PublishLaneMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PublishLaneMutation) ClearField(name string) error {
+	switch name {
+	case publishlane.FieldUnitID:
+		m.ClearUnitID()
+		return nil
+	case publishlane.FieldHolder:
+		m.ClearHolder()
+		return nil
+	case publishlane.FieldLeaseUntil:
+		m.ClearLeaseUntil()
+		return nil
+	}
+	return fmt.Errorf("unknown PublishLane nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PublishLaneMutation) ResetField(name string) error {
+	switch name {
+	case publishlane.FieldLane:
+		m.ResetLane()
+		return nil
+	case publishlane.FieldUnitID:
+		m.ResetUnitID()
+		return nil
+	case publishlane.FieldHolder:
+		m.ResetHolder()
+		return nil
+	case publishlane.FieldLeaseUntil:
+		m.ResetLeaseUntil()
+		return nil
+	case publishlane.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case publishlane.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PublishLane field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PublishLaneMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PublishLaneMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PublishLaneMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PublishLaneMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PublishLaneMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PublishLaneMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PublishLaneMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PublishLane unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PublishLaneMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PublishLane edge %s", name)
 }
 
 // PublishStepMutation represents an operation that mutates the PublishStep nodes in the graph.
