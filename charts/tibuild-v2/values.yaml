@@ -147,7 +147,10 @@ tolerations: []
 
 affinity: {}
 
+# The API server. Set to false in a cluster that only runs publish workers
+# (the workers talk to the database directly and do not need the API).
 server:
+  enabled: true
   debug: false
   config:
     secretName: ""
@@ -170,7 +173,13 @@ server:
 # Standalone background worker (cmd/tibuild-worker).
 # The API does not execute tasks, so the worker deployment is required.
 worker:
+  # Master switch for every worker Deployment (the default one and
+  # worker.extraDeployments).
   enabled: true
+  # The single default worker (image-copy queue). Turn it off in a cluster that
+  # only runs extraDeployments, e.g. prod2 which publishes TiUP only.
+  default:
+    enabled: true
   replicaCount: 1
   # The worker runs a separate binary/image built from cmd/tibuild-worker.
   image:
@@ -204,8 +213,10 @@ worker:
       path: /healthz
       port: health
   # Additional worker Deployments for task kinds that need their own
-  # credentials or queue shard. Each entry renders
-  # <fullname>-worker-<name>; see templates/worker-extra-deployment.yaml.
+  # credentials or queue shard. They render only when `worker.enabled` is true;
+  # the single default worker can be turned off with `worker.default.enabled`.
+  # Each entry renders <fullname>-worker-<name>; see
+  # templates/worker-extra-deployment.yaml.
   # Example:
   #   extraDeployments:
   #     - name: tiup-staging
