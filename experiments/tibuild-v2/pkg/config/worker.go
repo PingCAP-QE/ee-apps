@@ -7,10 +7,18 @@ import (
 )
 
 const (
-	defaultWorkerPollInterval = 10 * time.Second
-	defaultWorkerLease        = 90 * time.Second
-	defaultWorkerHeartbeat    = 30 * time.Second
-	defaultWorkerMaxAttempts  = 3
+	defaultWorkerPollInterval    = 10 * time.Second
+	defaultWorkerLease           = 90 * time.Second
+	defaultWorkerHeartbeat       = 30 * time.Second
+	defaultWorkerMaxAttempts     = 3
+	defaultWorkerMetricsInterval = 15 * time.Second
+	defaultWorkerReapInterval    = 30 * time.Second
+	defaultWorkerBackoffBase     = 10 * time.Second
+	defaultWorkerBackoffMax      = 5 * time.Minute
+	defaultWorkerBacklogAfter    = 10 * time.Minute
+	defaultOldestPendingAfter    = 30 * time.Minute
+	defaultLeaseReclaimWindow    = 5 * time.Minute
+	defaultWorkerAlertDedupe     = time.Hour
 	// wildcardTarget lets a worker claim tasks for every target. It is the
 	// only target accepted while the global target catalogue does not exist.
 	wildcardTarget = "*"
@@ -39,6 +47,56 @@ type Worker struct {
 	MaxAttempts int `yaml:"max_attempts,omitempty" json:"max_attempts,omitempty"`
 	// Kinds restricts which task kinds this worker executes.
 	Kinds []string `yaml:"kinds,omitempty" json:"kinds,omitempty"`
+	// MetricsInterval is how often task stats are recollected for metrics and
+	// alerts (default: 15s).
+	MetricsInterval string `yaml:"metrics_interval,omitempty" json:"metrics_interval,omitempty"`
+	// ReapInterval is how often expired leases are reclaimed (default: 30s).
+	ReapInterval string `yaml:"reap_interval,omitempty" json:"reap_interval,omitempty"`
+	// BackoffBase is the first retry delay; it doubles per attempt
+	// (default: 10s).
+	BackoffBase string `yaml:"backoff_base,omitempty" json:"backoff_base,omitempty"`
+	// BackoffMax caps the retry delay (default: 5m).
+	BackoffMax string `yaml:"backoff_max,omitempty" json:"backoff_max,omitempty"`
+	// Alerts configures the operational alerts derived from task stats.
+	Alerts WorkerAlerts `yaml:"alerts,omitempty" json:"alerts,omitempty"`
+}
+
+// WorkerAlerts configures the alert thresholds. Empty durations keep the
+// historical defaults, and a nil Enabled keeps alerting on.
+type WorkerAlerts struct {
+	// Enabled toggles alert delivery only; metrics keep refreshing.
+	// It is a pointer so that an omitted key means true while an explicit
+	// "enabled: false" is preserved.
+	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	// BacklogAfter is how long a target may stay backlogged before alerting.
+	BacklogAfter string `yaml:"backlog_after,omitempty" json:"backlog_after,omitempty"`
+	// OldestPendingAfter is the age of the oldest PENDING task that triggers an
+	// alert.
+	OldestPendingAfter string `yaml:"oldest_pending_after,omitempty" json:"oldest_pending_after,omitempty"`
+	// LeaseReclaimWindow is how long after a reaper event the lease alert fires.
+	LeaseReclaimWindow string `yaml:"lease_reclaim_window,omitempty" json:"lease_reclaim_window,omitempty"`
+	// Dedupe is the minimum interval between two alerts with the same key.
+	Dedupe string `yaml:"dedupe,omitempty" json:"dedupe,omitempty"`
+}
+
+// ApplyDefaults fills zero values with the documented defaults.
+func (a *WorkerAlerts) ApplyDefaults() {
+	if a.Enabled == nil {
+		enabled := true
+		a.Enabled = &enabled
+	}
+	if a.BacklogAfter == "" {
+		a.BacklogAfter = defaultWorkerBacklogAfter.String()
+	}
+	if a.OldestPendingAfter == "" {
+		a.OldestPendingAfter = defaultOldestPendingAfter.String()
+	}
+	if a.LeaseReclaimWindow == "" {
+		a.LeaseReclaimWindow = defaultLeaseReclaimWindow.String()
+	}
+	if a.Dedupe == "" {
+		a.Dedupe = defaultWorkerAlertDedupe.String()
+	}
 }
 
 // ApplyDefaults fills zero values with the defaults documented in the spec.
@@ -71,6 +129,19 @@ func (w *Worker) ApplyDefaults() {
 	if len(w.Kinds) == 0 {
 		w.Kinds = []string{"image_copy"}
 	}
+	if w.MetricsInterval == "" {
+		w.MetricsInterval = defaultWorkerMetricsInterval.String()
+	}
+	if w.ReapInterval == "" {
+		w.ReapInterval = defaultWorkerReapInterval.String()
+	}
+	if w.BackoffBase == "" {
+		w.BackoffBase = defaultWorkerBackoffBase.String()
+	}
+	if w.BackoffMax == "" {
+		w.BackoffMax = defaultWorkerBackoffMax.String()
+	}
+	w.Alerts.ApplyDefaults()
 }
 
 // Validate checks the worker configuration. knownTargets is the global target
@@ -112,8 +183,35 @@ func (w Worker) Validate(knownTargets []string) error {
 	if len(normalized.Kinds) == 0 {
 		return fmt.Errorf("invalid worker.kinds: at least one kind is required")
 	}
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{"worker.metrics_interval", normalized.MetricsInterval},
+		{"worker.reap_interval", normalized.ReapInterval},
+		{"worker.backoff_base", normalized.BackoffBase},
+		{"worker.backoff_max", normalized.BackoffMax},
+		{"worker.alerts.backlog_after", normalized.Alerts.BacklogAfter},
+		{"worker.alerts.oldest_pending_after", normalized.Alerts.OldestPendingAfter},
+		{"worker.alerts.lease_reclaim_window", normalized.Alerts.LeaseReclaimWindow},
+		{"worker.alerts.dedupe", normalized.Alerts.Dedupe},
+	} {
+		if err := validatePositiveDuration(field.name, field.value); err != nil {
+			return err
+		}
+	}
 
 	return validateTargets(normalized.Targets, knownTargets)
+}
+
+// validatePositiveDuration rejects malformed and non-positive durations. Zero
+// and negative values would otherwise be silently replaced by the fallback.
+func validatePositiveDuration(name, value string) error {
+	d, err := time.ParseDuration(value)
+	if err != nil || d <= 0 {
+		return fmt.Errorf("invalid %s %q: must be a positive duration", name, value)
+	}
+	return nil
 }
 
 func validateTargets(targets, knownTargets []string) error {
@@ -157,6 +255,59 @@ func (w Worker) HeartbeatDuration() time.Duration {
 // disabled.
 func (w Worker) HardTimeoutDuration() time.Duration {
 	return parseWorkerDuration(w.HardTimeout, 0)
+}
+
+// MetricsEvery returns how often task stats are recollected for metrics and
+// alerts.
+func (w Worker) MetricsEvery() time.Duration {
+	return parseWorkerDuration(w.MetricsInterval, defaultWorkerMetricsInterval)
+}
+
+// ReapEvery returns how often expired leases are reclaimed.
+func (w Worker) ReapEvery() time.Duration {
+	return parseWorkerDuration(w.ReapInterval, defaultWorkerReapInterval)
+}
+
+// BackoffBaseDuration returns the first retry delay.
+func (w Worker) BackoffBaseDuration() time.Duration {
+	return parseWorkerDuration(w.BackoffBase, defaultWorkerBackoffBase)
+}
+
+// BackoffMaxDuration returns the retry delay cap.
+func (w Worker) BackoffMaxDuration() time.Duration {
+	return parseWorkerDuration(w.BackoffMax, defaultWorkerBackoffMax)
+}
+
+// AlertsEnabled reports whether alerts are delivered. An unset value means on.
+func (w Worker) AlertsEnabled() bool {
+	if w.Alerts.Enabled == nil {
+		return true
+	}
+	return *w.Alerts.Enabled
+}
+
+// AlertBacklogAfter returns how long a target may stay backlogged before
+// alerting.
+func (w Worker) AlertBacklogAfter() time.Duration {
+	return parseWorkerDuration(w.Alerts.BacklogAfter, defaultWorkerBacklogAfter)
+}
+
+// AlertOldestPendingAfter returns the age of the oldest PENDING task that
+// triggers an alert.
+func (w Worker) AlertOldestPendingAfter() time.Duration {
+	return parseWorkerDuration(w.Alerts.OldestPendingAfter, defaultOldestPendingAfter)
+}
+
+// AlertLeaseReclaimWindow returns how long after a reaper event the lease alert
+// still fires.
+func (w Worker) AlertLeaseReclaimWindow() time.Duration {
+	return parseWorkerDuration(w.Alerts.LeaseReclaimWindow, defaultLeaseReclaimWindow)
+}
+
+// AlertDedupe returns the minimum interval between two alerts with the same
+// key.
+func (w Worker) AlertDedupe() time.Duration {
+	return parseWorkerDuration(w.Alerts.Dedupe, defaultWorkerAlertDedupe)
 }
 
 func parseWorkerDuration(value string, fallback time.Duration) time.Duration {

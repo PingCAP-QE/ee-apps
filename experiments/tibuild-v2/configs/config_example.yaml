@@ -96,6 +96,23 @@ worker:
   max_attempts: 3
   # Publication kinds this worker executes (publish_step rows).
   kinds: ["image_copy"]
+  # Observability knobs. The defaults below match the values that used to be
+  # hard-coded; override them to shorten an e2e run.
+  metrics_interval: "15s"   # task stats / alert evaluation period
+  reap_interval: "30s"      # expired-lease reclaim period
+  backoff_base: "10s"       # first retry delay (doubles per attempt)
+  backoff_max: "5m"         # retry delay cap
+  alerts:
+    # Alert delivery only; metrics keep refreshing when false.
+    enabled: true
+    # A target must stay backlogged this long before alerting.
+    backlog_after: "10m"
+    # Age of the oldest PENDING task that triggers an alert.
+    oldest_pending_after: "30m"
+    # A reaper event alerts for this long after it happens.
+    lease_reclaim_window: "5m"
+    # Minimum interval between two alerts with the same key.
+    dedupe: "1h"
 
 # Publication planner (POST /api/v2/publish/images).
 publish:

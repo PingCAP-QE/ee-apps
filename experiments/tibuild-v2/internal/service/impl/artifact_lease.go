@@ -16,11 +16,8 @@ import (
 )
 
 const (
-	defaultReapInterval = 30 * time.Second
-	defaultBackoffBase  = 10 * time.Second
-	defaultBackoffMax   = 5 * time.Minute
-	claimRetries        = 5
-	claimTokenBytes     = 8
+	claimRetries    = 5
+	claimTokenBytes = 8
 )
 
 // now returns the service clock. Tests replace nowFn for deterministic leases.
@@ -153,7 +150,7 @@ func (s *artifactsrvc) reapOnce(ctx context.Context) (int, error) {
 }
 
 func (s *artifactsrvc) runReaper(ctx context.Context) {
-	ticker := time.NewTicker(defaultReapInterval)
+	ticker := time.NewTicker(s.workerConfig().ReapEvery())
 	defer ticker.Stop()
 
 	for {
@@ -249,17 +246,21 @@ func (s *artifactsrvc) handleFailure(ctx context.Context, task *ent.ImageSyncTas
 	return updated == 1, err
 }
 
-// backoff grows exponentially and is capped, with +/-20% jitter.
+// backoff grows exponentially from worker.backoff_base, capped by
+// worker.backoff_max, with +/-20% jitter.
 func (s *artifactsrvc) backoff(attempts int) time.Duration {
 	if attempts < 1 {
 		attempts = 1
 	}
-	d := defaultBackoffBase
-	for i := 1; i < attempts && d < defaultBackoffMax; i++ {
+	cfg := s.workerConfig()
+	base := cfg.BackoffBaseDuration()
+	maxDelay := cfg.BackoffMaxDuration()
+	d := base
+	for i := 1; i < attempts && d < maxDelay; i++ {
 		d *= 2
 	}
-	if d <= 0 || d > defaultBackoffMax {
-		d = defaultBackoffMax
+	if d <= 0 || d > maxDelay {
+		d = maxDelay
 	}
 	jitter := d / 5
 	if jitter <= 0 {
