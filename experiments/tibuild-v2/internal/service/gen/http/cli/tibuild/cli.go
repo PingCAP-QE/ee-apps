@@ -17,6 +17,7 @@ import (
 	artifactc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/artifact/client"
 	devbuildc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/client"
 	hotfixc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/client"
+	publishc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/publish/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -29,14 +30,16 @@ func UsageCommands() []string {
 		"artifact (sync-image|get-image-sync-task|list-image-sync-tasks)",
 		"devbuild (list|capabilities|create|get|update|rerun)",
 		"hotfix (bump-tag-for-tidbx|query-tag-of-tidbx)",
+		"publish (publish-images|get-unit|list-units|retry-unit)",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + " " + "artifact sync-image --body '{\n      \"source\": \"Autem explicabo libero.\",\n      \"target\": \"Est id non.\"\n   }'" + "\n" +
-		os.Args[0] + " " + "devbuild list --page 7636384982624082049 --page-size 5038304173885328318 --hotfix true --sort \"createdAt\" --direction \"desc\" --created-by \"Repellendus et error provident.\" --scope \"all\" --status \"PROCESSING\" --product \"Consequatur est incidunt labore.\" --q \"Necessitatibus minus quis qui magnam.\"" + "\n" +
+	return os.Args[0] + " " + "artifact sync-image --body '{\n      \"source\": \"Rerum expedita.\",\n      \"target\": \"Rerum dolore ipsam non sed.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "devbuild list --page 2233265305846996676 --page-size 6186114163992303049 --hotfix false --sort \"updatedAt\" --direction \"desc\" --created-by \"Dignissimos magni atque voluptate dolorum consequuntur fuga.\" --scope \"all\" --status \"PENDING\" --product \"Quia minus odio neque incidunt et.\" --q \"Fugit ea ullam beatae.\"" + "\n" +
 		os.Args[0] + " " + "hotfix bump-tag-for-tidbx --body '{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'" + "\n" +
+		os.Args[0] + " " + "publish publish-images --body '{\n      \"artifactUrl\": \"Sint harum consequatur necessitatibus quia est.\",\n      \"image\": \"Ut nisi sed nihil.\"\n   }'" + "\n" +
 		""
 }
 
@@ -105,6 +108,22 @@ func ParseEndpoint(
 		hotfixQueryTagOfTidbxFlags    = flag.NewFlagSet("query-tag-of-tidbx", flag.ExitOnError)
 		hotfixQueryTagOfTidbxRepoFlag = hotfixQueryTagOfTidbxFlags.String("repo", "REQUIRED", "")
 		hotfixQueryTagOfTidbxTagFlag  = hotfixQueryTagOfTidbxFlags.String("tag", "REQUIRED", "")
+
+		publishFlags = flag.NewFlagSet("publish", flag.ContinueOnError)
+
+		publishPublishImagesFlags    = flag.NewFlagSet("publish-images", flag.ExitOnError)
+		publishPublishImagesBodyFlag = publishPublishImagesFlags.String("body", "REQUIRED", "")
+
+		publishGetUnitFlags  = flag.NewFlagSet("get-unit", flag.ExitOnError)
+		publishGetUnitIDFlag = publishGetUnitFlags.String("id", "REQUIRED", "Unit id")
+
+		publishListUnitsFlags      = flag.NewFlagSet("list-units", flag.ExitOnError)
+		publishListUnitsStatusFlag = publishListUnitsFlags.String("status", "", "")
+		publishListUnitsKindFlag   = publishListUnitsFlags.String("kind", "", "")
+		publishListUnitsLimitFlag  = publishListUnitsFlags.String("limit", "20", "")
+
+		publishRetryUnitFlags  = flag.NewFlagSet("retry-unit", flag.ExitOnError)
+		publishRetryUnitIDFlag = publishRetryUnitFlags.String("id", "REQUIRED", "Unit id")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -122,6 +141,12 @@ func ParseEndpoint(
 	hotfixFlags.Usage = hotfixUsage
 	hotfixBumpTagForTidbxFlags.Usage = hotfixBumpTagForTidbxUsage
 	hotfixQueryTagOfTidbxFlags.Usage = hotfixQueryTagOfTidbxUsage
+
+	publishFlags.Usage = publishUsage
+	publishPublishImagesFlags.Usage = publishPublishImagesUsage
+	publishGetUnitFlags.Usage = publishGetUnitUsage
+	publishListUnitsFlags.Usage = publishListUnitsUsage
+	publishRetryUnitFlags.Usage = publishRetryUnitUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -144,6 +169,8 @@ func ParseEndpoint(
 			svcf = devbuildFlags
 		case "hotfix":
 			svcf = hotfixFlags
+		case "publish":
+			svcf = publishFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -201,6 +228,22 @@ func ParseEndpoint(
 
 			case "query-tag-of-tidbx":
 				epf = hotfixQueryTagOfTidbxFlags
+
+			}
+
+		case "publish":
+			switch epn {
+			case "publish-images":
+				epf = publishPublishImagesFlags
+
+			case "get-unit":
+				epf = publishGetUnitFlags
+
+			case "list-units":
+				epf = publishListUnitsFlags
+
+			case "retry-unit":
+				epf = publishRetryUnitFlags
 
 			}
 
@@ -268,6 +311,22 @@ func ParseEndpoint(
 				endpoint = c.QueryTagOfTidbx()
 				data, err = hotfixc.BuildQueryTagOfTidbxPayload(*hotfixQueryTagOfTidbxRepoFlag, *hotfixQueryTagOfTidbxTagFlag)
 			}
+		case "publish":
+			c := publishc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "publish-images":
+				endpoint = c.PublishImages()
+				data, err = publishc.BuildPublishImagesPayload(*publishPublishImagesBodyFlag)
+			case "get-unit":
+				endpoint = c.GetUnit()
+				data, err = publishc.BuildGetUnitPayload(*publishGetUnitIDFlag)
+			case "list-units":
+				endpoint = c.ListUnits()
+				data, err = publishc.BuildListUnitsPayload(*publishListUnitsStatusFlag, *publishListUnitsKindFlag, *publishListUnitsLimitFlag)
+			case "retry-unit":
+				endpoint = c.RetryUnit()
+				data, err = publishc.BuildRetryUnitPayload(*publishRetryUnitIDFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -304,7 +363,7 @@ func artifactSyncImageUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact sync-image --body '{\n      \"source\": \"Autem explicabo libero.\",\n      \"target\": \"Est id non.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact sync-image --body '{\n      \"source\": \"Rerum expedita.\",\n      \"target\": \"Rerum dolore ipsam non sed.\"\n   }'")
 }
 
 func artifactGetImageSyncTaskUsage() {
@@ -348,7 +407,7 @@ func artifactListImageSyncTasksUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact list-image-sync-tasks --page 3900138138992950853 --page-size 2066391381028925757 --status \"PENDING\" --sort \"updatedAt\" --direction \"asc\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact list-image-sync-tasks --page 1256257568356301441 --page-size 7839302508533908328 --status \"SUCCEEDED\" --sort \"createdAt\" --direction \"asc\"")
 }
 
 // devbuildUsage displays the usage of the devbuild command and its subcommands.
@@ -399,7 +458,7 @@ func devbuildListUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild list --page 7636384982624082049 --page-size 5038304173885328318 --hotfix true --sort \"createdAt\" --direction \"desc\" --created-by \"Repellendus et error provident.\" --scope \"all\" --status \"PROCESSING\" --product \"Consequatur est incidunt labore.\" --q \"Necessitatibus minus quis qui magnam.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild list --page 2233265305846996676 --page-size 6186114163992303049 --hotfix false --sort \"updatedAt\" --direction \"desc\" --created-by \"Dignissimos magni atque voluptate dolorum consequuntur fuga.\" --scope \"all\" --status \"PENDING\" --product \"Quia minus odio neque incidunt et.\" --q \"Fugit ea ullam beatae.\"")
 }
 
 func devbuildCapabilitiesUsage() {
@@ -435,7 +494,7 @@ func devbuildCreateUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild create --body '{\n      \"createdBy\": \"tremayne@wilkinsonohara.name\",\n      \"request\": {\n         \"buildEnv\": \"Voluptatum molestiae minima et sint.\",\n         \"builderImg\": \"Nihil placeat.\",\n         \"edition\": \"enterprise\",\n         \"features\": \"Vero eos et repellendus quis quam dolorem.\",\n         \"gitHash\": \"Magni ducimus.\",\n         \"gitRef\": \"Sit adipisci ut provident ut excepturi qui.\",\n         \"githubRepo\": \"Dolorum fugit.\",\n         \"isHotfix\": false,\n         \"isPushGCR\": true,\n         \"pipelineEngine\": \"jenkins\",\n         \"platform\": \"linux\",\n         \"pluginGitRef\": \"Sit enim itaque.\",\n         \"product\": \"tidb-cse\",\n         \"productBaseImg\": \"Dolorem voluptates.\",\n         \"productDockerfile\": \"Non suscipit veniam laboriosam voluptas asperiores ad.\",\n         \"targetImg\": \"Adipisci voluptatem dicta at.\",\n         \"version\": \"Unde assumenda similique cupiditate.\"\n      }\n   }' --dryrun true")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild create --body '{\n      \"createdBy\": \"ellsworth@stammshields.name\",\n      \"request\": {\n         \"buildEnv\": \"Odio qui repellendus.\",\n         \"builderImg\": \"Amet ipsum nemo qui ea molestiae.\",\n         \"edition\": \"enterprise\",\n         \"features\": \"Reiciendis cumque sapiente.\",\n         \"gitHash\": \"Molestiae quia.\",\n         \"gitRef\": \"Facere quo.\",\n         \"githubRepo\": \"Dolor eaque harum minima.\",\n         \"isHotfix\": false,\n         \"isPushGCR\": true,\n         \"pipelineEngine\": \"tekton\",\n         \"platform\": \"darwin\",\n         \"pluginGitRef\": \"Voluptatem quam ea voluptatem aliquam amet quam.\",\n         \"product\": \"qdrant-on-tidb\",\n         \"productBaseImg\": \"Iure veniam et perspiciatis sunt iste.\",\n         \"productDockerfile\": \"Numquam inventore aliquid ea qui natus in.\",\n         \"targetImg\": \"Expedita sunt at.\",\n         \"version\": \"Rerum rerum.\"\n      }\n   }' --dryrun false")
 }
 
 func devbuildGetUsage() {
@@ -475,7 +534,7 @@ func devbuildUpdateUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild update --body '{\n      \"status\": {\n         \"buildReport\": {\n            \"binaries\": [\n               {\n                  \"component\": \"Ut impedit veniam.\",\n                  \"ociFile\": {\n                     \"file\": \"Quis aut tempora aut delectus adipisci.\",\n                     \"repo\": \"Quam id laudantium ut.\",\n                     \"tag\": \"Est nobis aliquid tempore itaque.\"\n                  },\n                  \"platform\": \"Veniam error qui repudiandae earum.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Quis aut tempora aut delectus adipisci.\",\n                     \"repo\": \"Quam id laudantium ut.\",\n                     \"tag\": \"Est nobis aliquid tempore itaque.\"\n                  },\n                  \"sha256URL\": \"http://heaney.name/anahi.kihn\",\n                  \"url\": \"http://hackett.org/jeramie.stracke\"\n               },\n               {\n                  \"component\": \"Ut impedit veniam.\",\n                  \"ociFile\": {\n                     \"file\": \"Quis aut tempora aut delectus adipisci.\",\n                     \"repo\": \"Quam id laudantium ut.\",\n                     \"tag\": \"Est nobis aliquid tempore itaque.\"\n                  },\n                  \"platform\": \"Veniam error qui repudiandae earum.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Quis aut tempora aut delectus adipisci.\",\n                     \"repo\": \"Quam id laudantium ut.\",\n                     \"tag\": \"Est nobis aliquid tempore itaque.\"\n                  },\n                  \"sha256URL\": \"http://heaney.name/anahi.kihn\",\n                  \"url\": \"http://hackett.org/jeramie.stracke\"\n               },\n               {\n                  \"component\": \"Ut impedit veniam.\",\n                  \"ociFile\": {\n                     \"file\": \"Quis aut tempora aut delectus adipisci.\",\n                     \"repo\": \"Quam id laudantium ut.\",\n                     \"tag\": \"Est nobis aliquid tempore itaque.\"\n                  },\n                  \"platform\": \"Veniam error qui repudiandae earum.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Quis aut tempora aut delectus adipisci.\",\n                     \"repo\": \"Quam id laudantium ut.\",\n                     \"tag\": \"Est nobis aliquid tempore itaque.\"\n                  },\n                  \"sha256URL\": \"http://heaney.name/anahi.kihn\",\n                  \"url\": \"http://hackett.org/jeramie.stracke\"\n               },\n               {\n                  \"component\": \"Ut impedit veniam.\",\n                  \"ociFile\": {\n                     \"file\": \"Quis aut tempora aut delectus adipisci.\",\n                     \"repo\": \"Quam id laudantium ut.\",\n                     \"tag\": \"Est nobis aliquid tempore itaque.\"\n                  },\n                  \"platform\": \"Veniam error qui repudiandae earum.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Quis aut tempora aut delectus adipisci.\",\n                     \"repo\": \"Quam id laudantium ut.\",\n                     \"tag\": \"Est nobis aliquid tempore itaque.\"\n                  },\n                  \"sha256URL\": \"http://heaney.name/anahi.kihn\",\n                  \"url\": \"http://hackett.org/jeramie.stracke\"\n               }\n            ],\n            \"gitHash\": \"mnb\",\n            \"images\": [\n               {\n                  \"internalURL\": \"Aperiam odio delectus vero eos similique exercitationem.\",\n                  \"platform\": \"Eos ut.\",\n                  \"url\": \"Eius minus iure qui officiis eius cum.\"\n               },\n               {\n                  \"internalURL\": \"Aperiam odio delectus vero eos similique exercitationem.\",\n                  \"platform\": \"Eos ut.\",\n                  \"url\": \"Eius minus iure qui officiis eius cum.\"\n               }\n            ],\n            \"pluginGitHash\": \"gfa\",\n            \"printedVersion\": \"Numquam sit minima tenetur ut pariatur.\"\n         },\n         \"errMsg\": \"Perferendis quos et.\",\n         \"pipelineBuildID\": 5160147622007767939,\n         \"pipelineEndAt\": \"2003-07-30T18:35:35Z\",\n         \"pipelineStartAt\": \"1996-12-26T14:31:57Z\",\n         \"pipelineViewURL\": \"http://treutel.biz/arden\",\n         \"pipelineViewURLs\": [\n            \"http://zemlak.biz/lorenzo\",\n            \"http://runte.biz/marisa_white\",\n            \"http://hettinger.org/eric.gulgowski\",\n            \"http://sipes.net/alfonso_waters\"\n         ],\n         \"status\": \"SUCCESS\",\n         \"tektonStatus\": {\n            \"pipelines\": [\n               {\n                  \"endAt\": \"2015-08-01T23:06:32Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Aperiam odio delectus vero eos similique exercitationem.\",\n                        \"platform\": \"Eos ut.\",\n                        \"url\": \"Eius minus iure qui officiis eius cum.\"\n                     },\n                     {\n                        \"internalURL\": \"Aperiam odio delectus vero eos similique exercitationem.\",\n                        \"platform\": \"Eos ut.\",\n                        \"url\": \"Eius minus iure qui officiis eius cum.\"\n                     }\n                  ],\n                  \"name\": \"Ad ea iusto dolorem sapiente provident sed.\",\n                  \"namespace\": \"Rerum fugit.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Ipsa doloribus aut quibusdam facere repellendus.\",\n                           \"Placeat tempora praesentium ea quod.\",\n                           \"Neque fuga quae.\"\n                        ],\n                        \"repo\": \"Aut consequatur.\",\n                        \"tag\": \"Atque alias autem voluptas eum eum suscipit.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Ipsa doloribus aut quibusdam facere repellendus.\",\n                           \"Placeat tempora praesentium ea quod.\",\n                           \"Neque fuga quae.\"\n                        ],\n                        \"repo\": \"Aut consequatur.\",\n                        \"tag\": \"Atque alias autem voluptas eum eum suscipit.\"\n                     }\n                  ],\n                  \"platform\": \"Et unde.\",\n                  \"startAt\": \"1986-03-13T09:16:45Z\",\n                  \"status\": \"TimedOut\",\n                  \"url\": \"http://mcculloughbraun.org/alanis\"\n               },\n               {\n                  \"endAt\": \"2015-08-01T23:06:32Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Aperiam odio delectus vero eos similique exercitationem.\",\n                        \"platform\": \"Eos ut.\",\n                        \"url\": \"Eius minus iure qui officiis eius cum.\"\n                     },\n                     {\n                        \"internalURL\": \"Aperiam odio delectus vero eos similique exercitationem.\",\n                        \"platform\": \"Eos ut.\",\n                        \"url\": \"Eius minus iure qui officiis eius cum.\"\n                     }\n                  ],\n                  \"name\": \"Ad ea iusto dolorem sapiente provident sed.\",\n                  \"namespace\": \"Rerum fugit.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Ipsa doloribus aut quibusdam facere repellendus.\",\n                           \"Placeat tempora praesentium ea quod.\",\n                           \"Neque fuga quae.\"\n                        ],\n                        \"repo\": \"Aut consequatur.\",\n                        \"tag\": \"Atque alias autem voluptas eum eum suscipit.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Ipsa doloribus aut quibusdam facere repellendus.\",\n                           \"Placeat tempora praesentium ea quod.\",\n                           \"Neque fuga quae.\"\n                        ],\n                        \"repo\": \"Aut consequatur.\",\n                        \"tag\": \"Atque alias autem voluptas eum eum suscipit.\"\n                     }\n                  ],\n                  \"platform\": \"Et unde.\",\n                  \"startAt\": \"1986-03-13T09:16:45Z\",\n                  \"status\": \"TimedOut\",\n                  \"url\": \"http://mcculloughbraun.org/alanis\"\n               }\n            ],\n            \"triggersEventIDs\": [\n               \"31f76c1b-e46c-4ae4-9412-77bab0757fee\",\n               \"b9fe474d-2813-45c4-90db-f9443ff377e1\"\n            ]\n         }\n      }\n   }' --id 1 --dryrun true")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild update --body '{\n      \"status\": {\n         \"buildReport\": {\n            \"binaries\": [\n               {\n                  \"component\": \"Aut qui libero ad nihil non.\",\n                  \"ociFile\": {\n                     \"file\": \"Nihil quia.\",\n                     \"repo\": \"Asperiores commodi accusantium recusandae.\",\n                     \"tag\": \"Ipsa ut cupiditate repellat quisquam.\"\n                  },\n                  \"platform\": \"Tempore voluptatem at harum magnam temporibus.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Nihil quia.\",\n                     \"repo\": \"Asperiores commodi accusantium recusandae.\",\n                     \"tag\": \"Ipsa ut cupiditate repellat quisquam.\"\n                  },\n                  \"sha256URL\": \"http://reichert.name/reid.turcotte\",\n                  \"url\": \"http://wunsch.net/yessenia_huel\"\n               },\n               {\n                  \"component\": \"Aut qui libero ad nihil non.\",\n                  \"ociFile\": {\n                     \"file\": \"Nihil quia.\",\n                     \"repo\": \"Asperiores commodi accusantium recusandae.\",\n                     \"tag\": \"Ipsa ut cupiditate repellat quisquam.\"\n                  },\n                  \"platform\": \"Tempore voluptatem at harum magnam temporibus.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Nihil quia.\",\n                     \"repo\": \"Asperiores commodi accusantium recusandae.\",\n                     \"tag\": \"Ipsa ut cupiditate repellat quisquam.\"\n                  },\n                  \"sha256URL\": \"http://reichert.name/reid.turcotte\",\n                  \"url\": \"http://wunsch.net/yessenia_huel\"\n               },\n               {\n                  \"component\": \"Aut qui libero ad nihil non.\",\n                  \"ociFile\": {\n                     \"file\": \"Nihil quia.\",\n                     \"repo\": \"Asperiores commodi accusantium recusandae.\",\n                     \"tag\": \"Ipsa ut cupiditate repellat quisquam.\"\n                  },\n                  \"platform\": \"Tempore voluptatem at harum magnam temporibus.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Nihil quia.\",\n                     \"repo\": \"Asperiores commodi accusantium recusandae.\",\n                     \"tag\": \"Ipsa ut cupiditate repellat quisquam.\"\n                  },\n                  \"sha256URL\": \"http://reichert.name/reid.turcotte\",\n                  \"url\": \"http://wunsch.net/yessenia_huel\"\n               },\n               {\n                  \"component\": \"Aut qui libero ad nihil non.\",\n                  \"ociFile\": {\n                     \"file\": \"Nihil quia.\",\n                     \"repo\": \"Asperiores commodi accusantium recusandae.\",\n                     \"tag\": \"Ipsa ut cupiditate repellat quisquam.\"\n                  },\n                  \"platform\": \"Tempore voluptatem at harum magnam temporibus.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Nihil quia.\",\n                     \"repo\": \"Asperiores commodi accusantium recusandae.\",\n                     \"tag\": \"Ipsa ut cupiditate repellat quisquam.\"\n                  },\n                  \"sha256URL\": \"http://reichert.name/reid.turcotte\",\n                  \"url\": \"http://wunsch.net/yessenia_huel\"\n               }\n            ],\n            \"gitHash\": \"2cz\",\n            \"images\": [\n               {\n                  \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                  \"platform\": \"Qui veniam nostrum error id sed.\",\n                  \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n               },\n               {\n                  \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                  \"platform\": \"Qui veniam nostrum error id sed.\",\n                  \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n               }\n            ],\n            \"pluginGitHash\": \"nri\",\n            \"printedVersion\": \"Excepturi ut sequi voluptatem commodi ea ratione.\"\n         },\n         \"errMsg\": \"Et earum id magnam ab.\",\n         \"pipelineBuildID\": 8873515128698637437,\n         \"pipelineEndAt\": \"2013-09-12T14:14:24Z\",\n         \"pipelineStartAt\": \"1999-05-13T09:20:29Z\",\n         \"pipelineViewURL\": \"http://hamill.com/ewell.huels\",\n         \"pipelineViewURLs\": [\n            \"http://dubuqueleuschke.biz/marietta\",\n            \"http://dare.info/jo_deckow\",\n            \"http://white.info/branson\"\n         ],\n         \"status\": \"PENDING\",\n         \"tektonStatus\": {\n            \"pipelines\": [\n               {\n                  \"endAt\": \"1973-12-01T05:29:51Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                        \"platform\": \"Qui veniam nostrum error id sed.\",\n                        \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n                     },\n                     {\n                        \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                        \"platform\": \"Qui veniam nostrum error id sed.\",\n                        \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n                     }\n                  ],\n                  \"name\": \"Velit animi est id distinctio consequatur eaque.\",\n                  \"namespace\": \"Voluptatibus rerum.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     }\n                  ],\n                  \"platform\": \"Quam blanditiis.\",\n                  \"startAt\": \"2010-03-27T15:49:25Z\",\n                  \"status\": \"Cancelled\",\n                  \"url\": \"http://hilpertlittle.info/betsy\"\n               },\n               {\n                  \"endAt\": \"1973-12-01T05:29:51Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                        \"platform\": \"Qui veniam nostrum error id sed.\",\n                        \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n                     },\n                     {\n                        \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                        \"platform\": \"Qui veniam nostrum error id sed.\",\n                        \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n                     }\n                  ],\n                  \"name\": \"Velit animi est id distinctio consequatur eaque.\",\n                  \"namespace\": \"Voluptatibus rerum.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     }\n                  ],\n                  \"platform\": \"Quam blanditiis.\",\n                  \"startAt\": \"2010-03-27T15:49:25Z\",\n                  \"status\": \"Cancelled\",\n                  \"url\": \"http://hilpertlittle.info/betsy\"\n               },\n               {\n                  \"endAt\": \"1973-12-01T05:29:51Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                        \"platform\": \"Qui veniam nostrum error id sed.\",\n                        \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n                     },\n                     {\n                        \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                        \"platform\": \"Qui veniam nostrum error id sed.\",\n                        \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n                     }\n                  ],\n                  \"name\": \"Velit animi est id distinctio consequatur eaque.\",\n                  \"namespace\": \"Voluptatibus rerum.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     }\n                  ],\n                  \"platform\": \"Quam blanditiis.\",\n                  \"startAt\": \"2010-03-27T15:49:25Z\",\n                  \"status\": \"Cancelled\",\n                  \"url\": \"http://hilpertlittle.info/betsy\"\n               },\n               {\n                  \"endAt\": \"1973-12-01T05:29:51Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                        \"platform\": \"Qui veniam nostrum error id sed.\",\n                        \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n                     },\n                     {\n                        \"internalURL\": \"Nam dolorem et dolores voluptatem ut officiis.\",\n                        \"platform\": \"Qui veniam nostrum error id sed.\",\n                        \"url\": \"Eius velit dignissimos et voluptatem culpa architecto.\"\n                     }\n                  ],\n                  \"name\": \"Velit animi est id distinctio consequatur eaque.\",\n                  \"namespace\": \"Voluptatibus rerum.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Aspernatur ut autem.\",\n                           \"Optio vel.\",\n                           \"Perferendis atque tenetur nisi aut.\",\n                           \"Distinctio natus tempore quis blanditiis autem.\"\n                        ],\n                        \"repo\": \"Laborum voluptatem voluptas modi.\",\n                        \"tag\": \"Quisquam quos saepe ducimus ut.\"\n                     }\n                  ],\n                  \"platform\": \"Quam blanditiis.\",\n                  \"startAt\": \"2010-03-27T15:49:25Z\",\n                  \"status\": \"Cancelled\",\n                  \"url\": \"http://hilpertlittle.info/betsy\"\n               }\n            ],\n            \"triggersEventIDs\": [\n               \"44229cb2-e5c8-4a31-ba5c-06a8932e865a\",\n               \"7230d0db-66b2-4b98-a208-dc03ad83de90\",\n               \"8b2f73e5-9471-48b7-b2ed-17fc26bd28ae\",\n               \"23fcfec4-a00b-4d38-a7dd-716feee71f79\"\n            ]\n         }\n      }\n   }' --id 1 --dryrun false")
 }
 
 func devbuildRerunUsage() {
@@ -495,7 +554,7 @@ func devbuildRerunUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild rerun --id 1 --dryrun true")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild rerun --id 1 --dryrun false")
 }
 
 // hotfixUsage displays the usage of the hotfix command and its subcommands.
@@ -545,4 +604,93 @@ func hotfixQueryTagOfTidbxUsage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
 	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "hotfix query-tag-of-tidbx --repo \"pingcap/tidb\" --tag \"v26.3.1-nextgen\"")
+}
+
+// publishUsage displays the usage of the publish command and its subcommands.
+func publishUsage() {
+	fmt.Fprintln(os.Stderr, `The publish service plans artifact publications and tracks their per-target steps.`)
+	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] publish COMMAND [flags]\n\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "COMMAND:")
+	fmt.Fprintln(os.Stderr, `    publish-images: Plan the delivery of an image and enqueue one step per destination registry.`)
+	fmt.Fprintln(os.Stderr, `    get-unit: Get a publication unit and its steps.`)
+	fmt.Fprintln(os.Stderr, `    list-units: List publication units, newest first.`)
+	fmt.Fprintln(os.Stderr, `    retry-unit: Retry the failed steps of a unit. Succeeded steps are left untouched.`)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Additional help:")
+	fmt.Fprintf(os.Stderr, "    %s publish COMMAND --help\n", os.Args[0])
+}
+func publishPublishImagesUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] publish publish-images", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Plan the delivery of an image and enqueue one step per destination registry.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish publish-images --body '{\n      \"artifactUrl\": \"Sint harum consequatur necessitatibus quia est.\",\n      \"image\": \"Ut nisi sed nihil.\"\n   }'")
+}
+
+func publishGetUnitUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] publish get-unit", os.Args[0])
+	fmt.Fprint(os.Stderr, " -id STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Get a publication unit and its steps.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -id STRING: Unit id`)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish get-unit --id \"Et cumque dolorum perferendis ut consequatur.\"")
+}
+
+func publishListUnitsUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] publish list-units", os.Args[0])
+	fmt.Fprint(os.Stderr, " -status STRING")
+	fmt.Fprint(os.Stderr, " -kind STRING")
+	fmt.Fprint(os.Stderr, " -limit INT")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `List publication units, newest first.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -status STRING: `)
+	fmt.Fprintln(os.Stderr, `    -kind STRING: `)
+	fmt.Fprintln(os.Stderr, `    -limit INT: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish list-units --status \"succeeded\" --kind \"Sapiente voluptatem delectus suscipit.\" --limit 497670713060130694")
+}
+
+func publishRetryUnitUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] publish retry-unit", os.Args[0])
+	fmt.Fprint(os.Stderr, " -id STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Retry the failed steps of a unit. Succeeded steps are left untouched.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -id STRING: Unit id`)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish retry-unit --id \"Eius reiciendis nihil itaque.\"")
 }

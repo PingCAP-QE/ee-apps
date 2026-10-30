@@ -7,6 +7,8 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
 
@@ -159,4 +161,74 @@ func init() {
 	imagesynctask.DefaultUpdatedAt = imagesynctaskDescUpdatedAt.Default.(func() time.Time)
 	// imagesynctask.UpdateDefaultUpdatedAt holds the default value on update for the updatedAt field.
 	imagesynctask.UpdateDefaultUpdatedAt = imagesynctaskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	publishstepFields := schema.PublishStep{}.Fields()
+	_ = publishstepFields
+	// publishstepDescUnitID is the schema descriptor for unit_id field.
+	publishstepDescUnitID := publishstepFields[1].Descriptor()
+	// publishstep.UnitIDValidator is a validator for the "unit_id" field. It is called by the builders before save.
+	publishstep.UnitIDValidator = publishstepDescUnitID.Validators[0].(func(string) error)
+	// publishstepDescTarget is the schema descriptor for target field.
+	publishstepDescTarget := publishstepFields[2].Descriptor()
+	// publishstep.TargetValidator is a validator for the "target" field. It is called by the builders before save.
+	publishstep.TargetValidator = publishstepDescTarget.Validators[0].(func(string) error)
+	// publishstepDescDest is the schema descriptor for dest field.
+	publishstepDescDest := publishstepFields[3].Descriptor()
+	// publishstep.DefaultDest holds the default value on creation for the dest field.
+	publishstep.DefaultDest = publishstepDescDest.Default.(string)
+	// publishstep.DestValidator is a validator for the "dest" field. It is called by the builders before save.
+	publishstep.DestValidator = publishstepDescDest.Validators[0].(func(string) error)
+	// publishstepDescDependsOn is the schema descriptor for depends_on field.
+	publishstepDescDependsOn := publishstepFields[4].Descriptor()
+	// publishstep.DependsOnValidator is a validator for the "depends_on" field. It is called by the builders before save.
+	publishstep.DependsOnValidator = publishstepDescDependsOn.Validators[0].(func(string) error)
+	// publishstepDescState is the schema descriptor for state field.
+	publishstepDescState := publishstepFields[5].Descriptor()
+	// publishstep.StateValidator is a validator for the "state" field. It is called by the builders before save.
+	publishstep.StateValidator = publishstepDescState.Validators[0].(func(string) error)
+	// publishstepDescAttempts is the schema descriptor for attempts field.
+	publishstepDescAttempts := publishstepFields[8].Descriptor()
+	// publishstep.DefaultAttempts holds the default value on creation for the attempts field.
+	publishstep.DefaultAttempts = publishstepDescAttempts.Default.(int)
+	// publishstepDescClaimedBy is the schema descriptor for claimed_by field.
+	publishstepDescClaimedBy := publishstepFields[9].Descriptor()
+	// publishstep.ClaimedByValidator is a validator for the "claimed_by" field. It is called by the builders before save.
+	publishstep.ClaimedByValidator = publishstepDescClaimedBy.Validators[0].(func(string) error)
+	// publishstepDescCreatedAt is the schema descriptor for created_at field.
+	publishstepDescCreatedAt := publishstepFields[13].Descriptor()
+	// publishstep.DefaultCreatedAt holds the default value on creation for the created_at field.
+	publishstep.DefaultCreatedAt = publishstepDescCreatedAt.Default.(func() time.Time)
+	// publishstepDescID is the schema descriptor for id field.
+	publishstepDescID := publishstepFields[0].Descriptor()
+	// publishstep.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	publishstep.IDValidator = publishstepDescID.Validators[0].(func(string) error)
+	publishunitFields := schema.PublishUnit{}.Fields()
+	_ = publishunitFields
+	// publishunitDescKind is the schema descriptor for kind field.
+	publishunitDescKind := publishunitFields[1].Descriptor()
+	// publishunit.KindValidator is a validator for the "kind" field. It is called by the builders before save.
+	publishunit.KindValidator = publishunitDescKind.Validators[0].(func(string) error)
+	// publishunitDescArtifactURL is the schema descriptor for artifact_url field.
+	publishunitDescArtifactURL := publishunitFields[2].Descriptor()
+	// publishunit.ArtifactURLValidator is a validator for the "artifact_url" field. It is called by the builders before save.
+	publishunit.ArtifactURLValidator = publishunitDescArtifactURL.Validators[0].(func(string) error)
+	// publishunitDescDigest is the schema descriptor for digest field.
+	publishunitDescDigest := publishunitFields[3].Descriptor()
+	// publishunit.DigestValidator is a validator for the "digest" field. It is called by the builders before save.
+	publishunit.DigestValidator = publishunitDescDigest.Validators[0].(func(string) error)
+	// publishunitDescState is the schema descriptor for state field.
+	publishunitDescState := publishunitFields[4].Descriptor()
+	// publishunit.StateValidator is a validator for the "state" field. It is called by the builders before save.
+	publishunit.StateValidator = publishunitDescState.Validators[0].(func(string) error)
+	// publishunitDescRequestedBy is the schema descriptor for requested_by field.
+	publishunitDescRequestedBy := publishunitFields[5].Descriptor()
+	// publishunit.RequestedByValidator is a validator for the "requested_by" field. It is called by the builders before save.
+	publishunit.RequestedByValidator = publishunitDescRequestedBy.Validators[0].(func(string) error)
+	// publishunitDescCreatedAt is the schema descriptor for created_at field.
+	publishunitDescCreatedAt := publishunitFields[6].Descriptor()
+	// publishunit.DefaultCreatedAt holds the default value on creation for the created_at field.
+	publishunit.DefaultCreatedAt = publishunitDescCreatedAt.Default.(func() time.Time)
+	// publishunitDescID is the schema descriptor for id field.
+	publishunitDescID := publishunitFields[0].Descriptor()
+	// publishunit.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	publishunit.IDValidator = publishunitDescID.Validators[0].(func(string) error)
 }

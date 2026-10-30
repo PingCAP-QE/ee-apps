@@ -21,6 +21,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/artifact"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/publish"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
@@ -66,6 +67,7 @@ func main() {
 		artifactSvc artifact.Service
 		devbuildSvc devbuild.Service
 		hotfixSvc   hotfix.Service
+		publishSvc  publish.Service
 	)
 	{
 		logLevel := zerolog.InfoLevel
@@ -143,6 +145,13 @@ func main() {
 				cfg.OnReload(func(newCfg *config.Service) { r.Reload(newCfg) })
 			}
 		}
+		{
+			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", publish.ServiceName).Logger()
+			publishSvc = impl.NewPublish(&logger, cfg.Get())
+			if publishSvc == nil {
+				log.Fatalf(ctx, errors.New("failed to initialize publish service"), "please check the configuration")
+			}
+		}
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
@@ -151,6 +160,7 @@ func main() {
 		artifactEndpoints *artifact.Endpoints
 		devbuildEndpoints *devbuild.Endpoints
 		hotfixEndpoints   *hotfix.Endpoints
+		publishEndpoints  *publish.Endpoints
 	)
 	{
 		artifactEndpoints = artifact.NewEndpoints(artifactSvc)
@@ -162,6 +172,9 @@ func main() {
 		hotfixEndpoints = hotfix.NewEndpoints(hotfixSvc)
 		hotfixEndpoints.Use(debug.LogPayloads())
 		hotfixEndpoints.Use(log.Endpoint)
+		publishEndpoints = publish.NewEndpoints(publishSvc)
+		publishEndpoints.Use(debug.LogPayloads())
+		publishEndpoints.Use(log.Endpoint)
 	}
 
 	// Create channel used by both the signal handler and server goroutines
@@ -218,7 +231,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, cfg.Get().IdentityHeaders, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, publishEndpoints, cfg.Get().IdentityHeaders, &wg, errc, *dbgF)
 		}
 
 	case "product":
@@ -243,7 +256,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, cfg.Get().IdentityHeaders, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, publishEndpoints, cfg.Get().IdentityHeaders, &wg, errc, *dbgF)
 		}
 
 	default:

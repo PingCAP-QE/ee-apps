@@ -14,6 +14,8 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/predicate"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 )
 
@@ -28,6 +30,8 @@ const (
 	// Node types.
 	TypeDevBuild      = "DevBuild"
 	TypeImageSyncTask = "ImageSyncTask"
+	TypePublishStep   = "PublishStep"
+	TypePublishUnit   = "PublishUnit"
 )
 
 // DevBuildMutation represents an operation that mutates the DevBuild nodes in the graph.
@@ -3414,4 +3418,1999 @@ func (m *ImageSyncTaskMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ImageSyncTaskMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ImageSyncTask edge %s", name)
+}
+
+// PublishStepMutation represents an operation that mutates the PublishStep nodes in the graph.
+type PublishStepMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	unit_id       *string
+	target        *string
+	dest          *string
+	depends_on    *string
+	state         *string
+	payload       *map[string]interface{}
+	result        *map[string]interface{}
+	attempts      *int
+	addattempts   *int
+	claimed_by    *string
+	lease_until   *time.Time
+	available_at  *time.Time
+	last_error    *string
+	created_at    *time.Time
+	started_at    *time.Time
+	finished_at   *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*PublishStep, error)
+	predicates    []predicate.PublishStep
+}
+
+var _ ent.Mutation = (*PublishStepMutation)(nil)
+
+// publishstepOption allows management of the mutation configuration using functional options.
+type publishstepOption func(*PublishStepMutation)
+
+// newPublishStepMutation creates new mutation for the PublishStep entity.
+func newPublishStepMutation(c config, op Op, opts ...publishstepOption) *PublishStepMutation {
+	m := &PublishStepMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePublishStep,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPublishStepID sets the ID field of the mutation.
+func withPublishStepID(id string) publishstepOption {
+	return func(m *PublishStepMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PublishStep
+		)
+		m.oldValue = func(ctx context.Context) (*PublishStep, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PublishStep.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPublishStep sets the old PublishStep of the mutation.
+func withPublishStep(node *PublishStep) publishstepOption {
+	return func(m *PublishStepMutation) {
+		m.oldValue = func(context.Context) (*PublishStep, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PublishStepMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PublishStepMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PublishStep entities.
+func (m *PublishStepMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PublishStepMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PublishStepMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PublishStep.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetUnitID sets the "unit_id" field.
+func (m *PublishStepMutation) SetUnitID(s string) {
+	m.unit_id = &s
+}
+
+// UnitID returns the value of the "unit_id" field in the mutation.
+func (m *PublishStepMutation) UnitID() (r string, exists bool) {
+	v := m.unit_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUnitID returns the old "unit_id" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldUnitID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUnitID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUnitID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUnitID: %w", err)
+	}
+	return oldValue.UnitID, nil
+}
+
+// ResetUnitID resets all changes to the "unit_id" field.
+func (m *PublishStepMutation) ResetUnitID() {
+	m.unit_id = nil
+}
+
+// SetTarget sets the "target" field.
+func (m *PublishStepMutation) SetTarget(s string) {
+	m.target = &s
+}
+
+// Target returns the value of the "target" field in the mutation.
+func (m *PublishStepMutation) Target() (r string, exists bool) {
+	v := m.target
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTarget returns the old "target" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldTarget(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTarget is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTarget requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTarget: %w", err)
+	}
+	return oldValue.Target, nil
+}
+
+// ResetTarget resets all changes to the "target" field.
+func (m *PublishStepMutation) ResetTarget() {
+	m.target = nil
+}
+
+// SetDest sets the "dest" field.
+func (m *PublishStepMutation) SetDest(s string) {
+	m.dest = &s
+}
+
+// Dest returns the value of the "dest" field in the mutation.
+func (m *PublishStepMutation) Dest() (r string, exists bool) {
+	v := m.dest
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDest returns the old "dest" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldDest(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDest: %w", err)
+	}
+	return oldValue.Dest, nil
+}
+
+// ResetDest resets all changes to the "dest" field.
+func (m *PublishStepMutation) ResetDest() {
+	m.dest = nil
+}
+
+// SetDependsOn sets the "depends_on" field.
+func (m *PublishStepMutation) SetDependsOn(s string) {
+	m.depends_on = &s
+}
+
+// DependsOn returns the value of the "depends_on" field in the mutation.
+func (m *PublishStepMutation) DependsOn() (r string, exists bool) {
+	v := m.depends_on
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDependsOn returns the old "depends_on" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldDependsOn(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDependsOn is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDependsOn requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDependsOn: %w", err)
+	}
+	return oldValue.DependsOn, nil
+}
+
+// ClearDependsOn clears the value of the "depends_on" field.
+func (m *PublishStepMutation) ClearDependsOn() {
+	m.depends_on = nil
+	m.clearedFields[publishstep.FieldDependsOn] = struct{}{}
+}
+
+// DependsOnCleared returns if the "depends_on" field was cleared in this mutation.
+func (m *PublishStepMutation) DependsOnCleared() bool {
+	_, ok := m.clearedFields[publishstep.FieldDependsOn]
+	return ok
+}
+
+// ResetDependsOn resets all changes to the "depends_on" field.
+func (m *PublishStepMutation) ResetDependsOn() {
+	m.depends_on = nil
+	delete(m.clearedFields, publishstep.FieldDependsOn)
+}
+
+// SetState sets the "state" field.
+func (m *PublishStepMutation) SetState(s string) {
+	m.state = &s
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *PublishStepMutation) State() (r string, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *PublishStepMutation) ResetState() {
+	m.state = nil
+}
+
+// SetPayload sets the "payload" field.
+func (m *PublishStepMutation) SetPayload(value map[string]interface{}) {
+	m.payload = &value
+}
+
+// Payload returns the value of the "payload" field in the mutation.
+func (m *PublishStepMutation) Payload() (r map[string]interface{}, exists bool) {
+	v := m.payload
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPayload returns the old "payload" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldPayload(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPayload is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPayload requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPayload: %w", err)
+	}
+	return oldValue.Payload, nil
+}
+
+// ResetPayload resets all changes to the "payload" field.
+func (m *PublishStepMutation) ResetPayload() {
+	m.payload = nil
+}
+
+// SetResult sets the "result" field.
+func (m *PublishStepMutation) SetResult(value map[string]interface{}) {
+	m.result = &value
+}
+
+// Result returns the value of the "result" field in the mutation.
+func (m *PublishStepMutation) Result() (r map[string]interface{}, exists bool) {
+	v := m.result
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldResult returns the old "result" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldResult(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldResult is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldResult requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldResult: %w", err)
+	}
+	return oldValue.Result, nil
+}
+
+// ClearResult clears the value of the "result" field.
+func (m *PublishStepMutation) ClearResult() {
+	m.result = nil
+	m.clearedFields[publishstep.FieldResult] = struct{}{}
+}
+
+// ResultCleared returns if the "result" field was cleared in this mutation.
+func (m *PublishStepMutation) ResultCleared() bool {
+	_, ok := m.clearedFields[publishstep.FieldResult]
+	return ok
+}
+
+// ResetResult resets all changes to the "result" field.
+func (m *PublishStepMutation) ResetResult() {
+	m.result = nil
+	delete(m.clearedFields, publishstep.FieldResult)
+}
+
+// SetAttempts sets the "attempts" field.
+func (m *PublishStepMutation) SetAttempts(i int) {
+	m.attempts = &i
+	m.addattempts = nil
+}
+
+// Attempts returns the value of the "attempts" field in the mutation.
+func (m *PublishStepMutation) Attempts() (r int, exists bool) {
+	v := m.attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttempts returns the old "attempts" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttempts: %w", err)
+	}
+	return oldValue.Attempts, nil
+}
+
+// AddAttempts adds i to the "attempts" field.
+func (m *PublishStepMutation) AddAttempts(i int) {
+	if m.addattempts != nil {
+		*m.addattempts += i
+	} else {
+		m.addattempts = &i
+	}
+}
+
+// AddedAttempts returns the value that was added to the "attempts" field in this mutation.
+func (m *PublishStepMutation) AddedAttempts() (r int, exists bool) {
+	v := m.addattempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttempts resets all changes to the "attempts" field.
+func (m *PublishStepMutation) ResetAttempts() {
+	m.attempts = nil
+	m.addattempts = nil
+}
+
+// SetClaimedBy sets the "claimed_by" field.
+func (m *PublishStepMutation) SetClaimedBy(s string) {
+	m.claimed_by = &s
+}
+
+// ClaimedBy returns the value of the "claimed_by" field in the mutation.
+func (m *PublishStepMutation) ClaimedBy() (r string, exists bool) {
+	v := m.claimed_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClaimedBy returns the old "claimed_by" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldClaimedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClaimedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClaimedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClaimedBy: %w", err)
+	}
+	return oldValue.ClaimedBy, nil
+}
+
+// ClearClaimedBy clears the value of the "claimed_by" field.
+func (m *PublishStepMutation) ClearClaimedBy() {
+	m.claimed_by = nil
+	m.clearedFields[publishstep.FieldClaimedBy] = struct{}{}
+}
+
+// ClaimedByCleared returns if the "claimed_by" field was cleared in this mutation.
+func (m *PublishStepMutation) ClaimedByCleared() bool {
+	_, ok := m.clearedFields[publishstep.FieldClaimedBy]
+	return ok
+}
+
+// ResetClaimedBy resets all changes to the "claimed_by" field.
+func (m *PublishStepMutation) ResetClaimedBy() {
+	m.claimed_by = nil
+	delete(m.clearedFields, publishstep.FieldClaimedBy)
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (m *PublishStepMutation) SetLeaseUntil(t time.Time) {
+	m.lease_until = &t
+}
+
+// LeaseUntil returns the value of the "lease_until" field in the mutation.
+func (m *PublishStepMutation) LeaseUntil() (r time.Time, exists bool) {
+	v := m.lease_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseUntil returns the old "lease_until" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldLeaseUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseUntil: %w", err)
+	}
+	return oldValue.LeaseUntil, nil
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (m *PublishStepMutation) ClearLeaseUntil() {
+	m.lease_until = nil
+	m.clearedFields[publishstep.FieldLeaseUntil] = struct{}{}
+}
+
+// LeaseUntilCleared returns if the "lease_until" field was cleared in this mutation.
+func (m *PublishStepMutation) LeaseUntilCleared() bool {
+	_, ok := m.clearedFields[publishstep.FieldLeaseUntil]
+	return ok
+}
+
+// ResetLeaseUntil resets all changes to the "lease_until" field.
+func (m *PublishStepMutation) ResetLeaseUntil() {
+	m.lease_until = nil
+	delete(m.clearedFields, publishstep.FieldLeaseUntil)
+}
+
+// SetAvailableAt sets the "available_at" field.
+func (m *PublishStepMutation) SetAvailableAt(t time.Time) {
+	m.available_at = &t
+}
+
+// AvailableAt returns the value of the "available_at" field in the mutation.
+func (m *PublishStepMutation) AvailableAt() (r time.Time, exists bool) {
+	v := m.available_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAvailableAt returns the old "available_at" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldAvailableAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAvailableAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAvailableAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAvailableAt: %w", err)
+	}
+	return oldValue.AvailableAt, nil
+}
+
+// ClearAvailableAt clears the value of the "available_at" field.
+func (m *PublishStepMutation) ClearAvailableAt() {
+	m.available_at = nil
+	m.clearedFields[publishstep.FieldAvailableAt] = struct{}{}
+}
+
+// AvailableAtCleared returns if the "available_at" field was cleared in this mutation.
+func (m *PublishStepMutation) AvailableAtCleared() bool {
+	_, ok := m.clearedFields[publishstep.FieldAvailableAt]
+	return ok
+}
+
+// ResetAvailableAt resets all changes to the "available_at" field.
+func (m *PublishStepMutation) ResetAvailableAt() {
+	m.available_at = nil
+	delete(m.clearedFields, publishstep.FieldAvailableAt)
+}
+
+// SetLastError sets the "last_error" field.
+func (m *PublishStepMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *PublishStepMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldLastError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ClearLastError clears the value of the "last_error" field.
+func (m *PublishStepMutation) ClearLastError() {
+	m.last_error = nil
+	m.clearedFields[publishstep.FieldLastError] = struct{}{}
+}
+
+// LastErrorCleared returns if the "last_error" field was cleared in this mutation.
+func (m *PublishStepMutation) LastErrorCleared() bool {
+	_, ok := m.clearedFields[publishstep.FieldLastError]
+	return ok
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *PublishStepMutation) ResetLastError() {
+	m.last_error = nil
+	delete(m.clearedFields, publishstep.FieldLastError)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PublishStepMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PublishStepMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PublishStepMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetStartedAt sets the "started_at" field.
+func (m *PublishStepMutation) SetStartedAt(t time.Time) {
+	m.started_at = &t
+}
+
+// StartedAt returns the value of the "started_at" field in the mutation.
+func (m *PublishStepMutation) StartedAt() (r time.Time, exists bool) {
+	v := m.started_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStartedAt returns the old "started_at" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldStartedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStartedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStartedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStartedAt: %w", err)
+	}
+	return oldValue.StartedAt, nil
+}
+
+// ClearStartedAt clears the value of the "started_at" field.
+func (m *PublishStepMutation) ClearStartedAt() {
+	m.started_at = nil
+	m.clearedFields[publishstep.FieldStartedAt] = struct{}{}
+}
+
+// StartedAtCleared returns if the "started_at" field was cleared in this mutation.
+func (m *PublishStepMutation) StartedAtCleared() bool {
+	_, ok := m.clearedFields[publishstep.FieldStartedAt]
+	return ok
+}
+
+// ResetStartedAt resets all changes to the "started_at" field.
+func (m *PublishStepMutation) ResetStartedAt() {
+	m.started_at = nil
+	delete(m.clearedFields, publishstep.FieldStartedAt)
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *PublishStepMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+}
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *PublishStepMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinishedAt returns the old "finished_at" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+	}
+	return oldValue.FinishedAt, nil
+}
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *PublishStepMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[publishstep.FieldFinishedAt] = struct{}{}
+}
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *PublishStepMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[publishstep.FieldFinishedAt]
+	return ok
+}
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *PublishStepMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, publishstep.FieldFinishedAt)
+}
+
+// Where appends a list predicates to the PublishStepMutation builder.
+func (m *PublishStepMutation) Where(ps ...predicate.PublishStep) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PublishStepMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PublishStepMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PublishStep, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PublishStepMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PublishStepMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PublishStep).
+func (m *PublishStepMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PublishStepMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.unit_id != nil {
+		fields = append(fields, publishstep.FieldUnitID)
+	}
+	if m.target != nil {
+		fields = append(fields, publishstep.FieldTarget)
+	}
+	if m.dest != nil {
+		fields = append(fields, publishstep.FieldDest)
+	}
+	if m.depends_on != nil {
+		fields = append(fields, publishstep.FieldDependsOn)
+	}
+	if m.state != nil {
+		fields = append(fields, publishstep.FieldState)
+	}
+	if m.payload != nil {
+		fields = append(fields, publishstep.FieldPayload)
+	}
+	if m.result != nil {
+		fields = append(fields, publishstep.FieldResult)
+	}
+	if m.attempts != nil {
+		fields = append(fields, publishstep.FieldAttempts)
+	}
+	if m.claimed_by != nil {
+		fields = append(fields, publishstep.FieldClaimedBy)
+	}
+	if m.lease_until != nil {
+		fields = append(fields, publishstep.FieldLeaseUntil)
+	}
+	if m.available_at != nil {
+		fields = append(fields, publishstep.FieldAvailableAt)
+	}
+	if m.last_error != nil {
+		fields = append(fields, publishstep.FieldLastError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, publishstep.FieldCreatedAt)
+	}
+	if m.started_at != nil {
+		fields = append(fields, publishstep.FieldStartedAt)
+	}
+	if m.finished_at != nil {
+		fields = append(fields, publishstep.FieldFinishedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PublishStepMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case publishstep.FieldUnitID:
+		return m.UnitID()
+	case publishstep.FieldTarget:
+		return m.Target()
+	case publishstep.FieldDest:
+		return m.Dest()
+	case publishstep.FieldDependsOn:
+		return m.DependsOn()
+	case publishstep.FieldState:
+		return m.State()
+	case publishstep.FieldPayload:
+		return m.Payload()
+	case publishstep.FieldResult:
+		return m.Result()
+	case publishstep.FieldAttempts:
+		return m.Attempts()
+	case publishstep.FieldClaimedBy:
+		return m.ClaimedBy()
+	case publishstep.FieldLeaseUntil:
+		return m.LeaseUntil()
+	case publishstep.FieldAvailableAt:
+		return m.AvailableAt()
+	case publishstep.FieldLastError:
+		return m.LastError()
+	case publishstep.FieldCreatedAt:
+		return m.CreatedAt()
+	case publishstep.FieldStartedAt:
+		return m.StartedAt()
+	case publishstep.FieldFinishedAt:
+		return m.FinishedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PublishStepMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case publishstep.FieldUnitID:
+		return m.OldUnitID(ctx)
+	case publishstep.FieldTarget:
+		return m.OldTarget(ctx)
+	case publishstep.FieldDest:
+		return m.OldDest(ctx)
+	case publishstep.FieldDependsOn:
+		return m.OldDependsOn(ctx)
+	case publishstep.FieldState:
+		return m.OldState(ctx)
+	case publishstep.FieldPayload:
+		return m.OldPayload(ctx)
+	case publishstep.FieldResult:
+		return m.OldResult(ctx)
+	case publishstep.FieldAttempts:
+		return m.OldAttempts(ctx)
+	case publishstep.FieldClaimedBy:
+		return m.OldClaimedBy(ctx)
+	case publishstep.FieldLeaseUntil:
+		return m.OldLeaseUntil(ctx)
+	case publishstep.FieldAvailableAt:
+		return m.OldAvailableAt(ctx)
+	case publishstep.FieldLastError:
+		return m.OldLastError(ctx)
+	case publishstep.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case publishstep.FieldStartedAt:
+		return m.OldStartedAt(ctx)
+	case publishstep.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PublishStep field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PublishStepMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case publishstep.FieldUnitID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUnitID(v)
+		return nil
+	case publishstep.FieldTarget:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTarget(v)
+		return nil
+	case publishstep.FieldDest:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDest(v)
+		return nil
+	case publishstep.FieldDependsOn:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDependsOn(v)
+		return nil
+	case publishstep.FieldState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case publishstep.FieldPayload:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPayload(v)
+		return nil
+	case publishstep.FieldResult:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetResult(v)
+		return nil
+	case publishstep.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttempts(v)
+		return nil
+	case publishstep.FieldClaimedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClaimedBy(v)
+		return nil
+	case publishstep.FieldLeaseUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseUntil(v)
+		return nil
+	case publishstep.FieldAvailableAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAvailableAt(v)
+		return nil
+	case publishstep.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case publishstep.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case publishstep.FieldStartedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStartedAt(v)
+		return nil
+	case publishstep.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinishedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PublishStep field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PublishStepMutation) AddedFields() []string {
+	var fields []string
+	if m.addattempts != nil {
+		fields = append(fields, publishstep.FieldAttempts)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PublishStepMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case publishstep.FieldAttempts:
+		return m.AddedAttempts()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PublishStepMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case publishstep.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttempts(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PublishStep numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PublishStepMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(publishstep.FieldDependsOn) {
+		fields = append(fields, publishstep.FieldDependsOn)
+	}
+	if m.FieldCleared(publishstep.FieldResult) {
+		fields = append(fields, publishstep.FieldResult)
+	}
+	if m.FieldCleared(publishstep.FieldClaimedBy) {
+		fields = append(fields, publishstep.FieldClaimedBy)
+	}
+	if m.FieldCleared(publishstep.FieldLeaseUntil) {
+		fields = append(fields, publishstep.FieldLeaseUntil)
+	}
+	if m.FieldCleared(publishstep.FieldAvailableAt) {
+		fields = append(fields, publishstep.FieldAvailableAt)
+	}
+	if m.FieldCleared(publishstep.FieldLastError) {
+		fields = append(fields, publishstep.FieldLastError)
+	}
+	if m.FieldCleared(publishstep.FieldStartedAt) {
+		fields = append(fields, publishstep.FieldStartedAt)
+	}
+	if m.FieldCleared(publishstep.FieldFinishedAt) {
+		fields = append(fields, publishstep.FieldFinishedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PublishStepMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PublishStepMutation) ClearField(name string) error {
+	switch name {
+	case publishstep.FieldDependsOn:
+		m.ClearDependsOn()
+		return nil
+	case publishstep.FieldResult:
+		m.ClearResult()
+		return nil
+	case publishstep.FieldClaimedBy:
+		m.ClearClaimedBy()
+		return nil
+	case publishstep.FieldLeaseUntil:
+		m.ClearLeaseUntil()
+		return nil
+	case publishstep.FieldAvailableAt:
+		m.ClearAvailableAt()
+		return nil
+	case publishstep.FieldLastError:
+		m.ClearLastError()
+		return nil
+	case publishstep.FieldStartedAt:
+		m.ClearStartedAt()
+		return nil
+	case publishstep.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PublishStep nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PublishStepMutation) ResetField(name string) error {
+	switch name {
+	case publishstep.FieldUnitID:
+		m.ResetUnitID()
+		return nil
+	case publishstep.FieldTarget:
+		m.ResetTarget()
+		return nil
+	case publishstep.FieldDest:
+		m.ResetDest()
+		return nil
+	case publishstep.FieldDependsOn:
+		m.ResetDependsOn()
+		return nil
+	case publishstep.FieldState:
+		m.ResetState()
+		return nil
+	case publishstep.FieldPayload:
+		m.ResetPayload()
+		return nil
+	case publishstep.FieldResult:
+		m.ResetResult()
+		return nil
+	case publishstep.FieldAttempts:
+		m.ResetAttempts()
+		return nil
+	case publishstep.FieldClaimedBy:
+		m.ResetClaimedBy()
+		return nil
+	case publishstep.FieldLeaseUntil:
+		m.ResetLeaseUntil()
+		return nil
+	case publishstep.FieldAvailableAt:
+		m.ResetAvailableAt()
+		return nil
+	case publishstep.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case publishstep.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case publishstep.FieldStartedAt:
+		m.ResetStartedAt()
+		return nil
+	case publishstep.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PublishStep field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PublishStepMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PublishStepMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PublishStepMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PublishStepMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PublishStepMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PublishStepMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PublishStepMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PublishStep unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PublishStepMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PublishStep edge %s", name)
+}
+
+// PublishUnitMutation represents an operation that mutates the PublishUnit nodes in the graph.
+type PublishUnitMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *string
+	kind          *string
+	artifact_url  *string
+	digest        *string
+	state         *string
+	requested_by  *string
+	created_at    *time.Time
+	finished_at   *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*PublishUnit, error)
+	predicates    []predicate.PublishUnit
+}
+
+var _ ent.Mutation = (*PublishUnitMutation)(nil)
+
+// publishunitOption allows management of the mutation configuration using functional options.
+type publishunitOption func(*PublishUnitMutation)
+
+// newPublishUnitMutation creates new mutation for the PublishUnit entity.
+func newPublishUnitMutation(c config, op Op, opts ...publishunitOption) *PublishUnitMutation {
+	m := &PublishUnitMutation{
+		config:        c,
+		op:            op,
+		typ:           TypePublishUnit,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withPublishUnitID sets the ID field of the mutation.
+func withPublishUnitID(id string) publishunitOption {
+	return func(m *PublishUnitMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *PublishUnit
+		)
+		m.oldValue = func(ctx context.Context) (*PublishUnit, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().PublishUnit.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withPublishUnit sets the old PublishUnit of the mutation.
+func withPublishUnit(node *PublishUnit) publishunitOption {
+	return func(m *PublishUnitMutation) {
+		m.oldValue = func(context.Context) (*PublishUnit, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m PublishUnitMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m PublishUnitMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// SetID sets the value of the id field. Note that this
+// operation is only accepted on creation of PublishUnit entities.
+func (m *PublishUnitMutation) SetID(id string) {
+	m.id = &id
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *PublishUnitMutation) ID() (id string, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *PublishUnitMutation) IDs(ctx context.Context) ([]string, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []string{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().PublishUnit.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetKind sets the "kind" field.
+func (m *PublishUnitMutation) SetKind(s string) {
+	m.kind = &s
+}
+
+// Kind returns the value of the "kind" field in the mutation.
+func (m *PublishUnitMutation) Kind() (r string, exists bool) {
+	v := m.kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKind returns the old "kind" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKind: %w", err)
+	}
+	return oldValue.Kind, nil
+}
+
+// ResetKind resets all changes to the "kind" field.
+func (m *PublishUnitMutation) ResetKind() {
+	m.kind = nil
+}
+
+// SetArtifactURL sets the "artifact_url" field.
+func (m *PublishUnitMutation) SetArtifactURL(s string) {
+	m.artifact_url = &s
+}
+
+// ArtifactURL returns the value of the "artifact_url" field in the mutation.
+func (m *PublishUnitMutation) ArtifactURL() (r string, exists bool) {
+	v := m.artifact_url
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldArtifactURL returns the old "artifact_url" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldArtifactURL(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldArtifactURL is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldArtifactURL requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldArtifactURL: %w", err)
+	}
+	return oldValue.ArtifactURL, nil
+}
+
+// ResetArtifactURL resets all changes to the "artifact_url" field.
+func (m *PublishUnitMutation) ResetArtifactURL() {
+	m.artifact_url = nil
+}
+
+// SetDigest sets the "digest" field.
+func (m *PublishUnitMutation) SetDigest(s string) {
+	m.digest = &s
+}
+
+// Digest returns the value of the "digest" field in the mutation.
+func (m *PublishUnitMutation) Digest() (r string, exists bool) {
+	v := m.digest
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDigest returns the old "digest" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldDigest(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDigest is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDigest requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDigest: %w", err)
+	}
+	return oldValue.Digest, nil
+}
+
+// ClearDigest clears the value of the "digest" field.
+func (m *PublishUnitMutation) ClearDigest() {
+	m.digest = nil
+	m.clearedFields[publishunit.FieldDigest] = struct{}{}
+}
+
+// DigestCleared returns if the "digest" field was cleared in this mutation.
+func (m *PublishUnitMutation) DigestCleared() bool {
+	_, ok := m.clearedFields[publishunit.FieldDigest]
+	return ok
+}
+
+// ResetDigest resets all changes to the "digest" field.
+func (m *PublishUnitMutation) ResetDigest() {
+	m.digest = nil
+	delete(m.clearedFields, publishunit.FieldDigest)
+}
+
+// SetState sets the "state" field.
+func (m *PublishUnitMutation) SetState(s string) {
+	m.state = &s
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *PublishUnitMutation) State() (r string, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *PublishUnitMutation) ResetState() {
+	m.state = nil
+}
+
+// SetRequestedBy sets the "requested_by" field.
+func (m *PublishUnitMutation) SetRequestedBy(s string) {
+	m.requested_by = &s
+}
+
+// RequestedBy returns the value of the "requested_by" field in the mutation.
+func (m *PublishUnitMutation) RequestedBy() (r string, exists bool) {
+	v := m.requested_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRequestedBy returns the old "requested_by" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldRequestedBy(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRequestedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRequestedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRequestedBy: %w", err)
+	}
+	return oldValue.RequestedBy, nil
+}
+
+// ClearRequestedBy clears the value of the "requested_by" field.
+func (m *PublishUnitMutation) ClearRequestedBy() {
+	m.requested_by = nil
+	m.clearedFields[publishunit.FieldRequestedBy] = struct{}{}
+}
+
+// RequestedByCleared returns if the "requested_by" field was cleared in this mutation.
+func (m *PublishUnitMutation) RequestedByCleared() bool {
+	_, ok := m.clearedFields[publishunit.FieldRequestedBy]
+	return ok
+}
+
+// ResetRequestedBy resets all changes to the "requested_by" field.
+func (m *PublishUnitMutation) ResetRequestedBy() {
+	m.requested_by = nil
+	delete(m.clearedFields, publishunit.FieldRequestedBy)
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *PublishUnitMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *PublishUnitMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *PublishUnitMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetFinishedAt sets the "finished_at" field.
+func (m *PublishUnitMutation) SetFinishedAt(t time.Time) {
+	m.finished_at = &t
+}
+
+// FinishedAt returns the value of the "finished_at" field in the mutation.
+func (m *PublishUnitMutation) FinishedAt() (r time.Time, exists bool) {
+	v := m.finished_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFinishedAt returns the old "finished_at" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldFinishedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFinishedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFinishedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFinishedAt: %w", err)
+	}
+	return oldValue.FinishedAt, nil
+}
+
+// ClearFinishedAt clears the value of the "finished_at" field.
+func (m *PublishUnitMutation) ClearFinishedAt() {
+	m.finished_at = nil
+	m.clearedFields[publishunit.FieldFinishedAt] = struct{}{}
+}
+
+// FinishedAtCleared returns if the "finished_at" field was cleared in this mutation.
+func (m *PublishUnitMutation) FinishedAtCleared() bool {
+	_, ok := m.clearedFields[publishunit.FieldFinishedAt]
+	return ok
+}
+
+// ResetFinishedAt resets all changes to the "finished_at" field.
+func (m *PublishUnitMutation) ResetFinishedAt() {
+	m.finished_at = nil
+	delete(m.clearedFields, publishunit.FieldFinishedAt)
+}
+
+// Where appends a list predicates to the PublishUnitMutation builder.
+func (m *PublishUnitMutation) Where(ps ...predicate.PublishUnit) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the PublishUnitMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *PublishUnitMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.PublishUnit, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *PublishUnitMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *PublishUnitMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (PublishUnit).
+func (m *PublishUnitMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *PublishUnitMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.kind != nil {
+		fields = append(fields, publishunit.FieldKind)
+	}
+	if m.artifact_url != nil {
+		fields = append(fields, publishunit.FieldArtifactURL)
+	}
+	if m.digest != nil {
+		fields = append(fields, publishunit.FieldDigest)
+	}
+	if m.state != nil {
+		fields = append(fields, publishunit.FieldState)
+	}
+	if m.requested_by != nil {
+		fields = append(fields, publishunit.FieldRequestedBy)
+	}
+	if m.created_at != nil {
+		fields = append(fields, publishunit.FieldCreatedAt)
+	}
+	if m.finished_at != nil {
+		fields = append(fields, publishunit.FieldFinishedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *PublishUnitMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case publishunit.FieldKind:
+		return m.Kind()
+	case publishunit.FieldArtifactURL:
+		return m.ArtifactURL()
+	case publishunit.FieldDigest:
+		return m.Digest()
+	case publishunit.FieldState:
+		return m.State()
+	case publishunit.FieldRequestedBy:
+		return m.RequestedBy()
+	case publishunit.FieldCreatedAt:
+		return m.CreatedAt()
+	case publishunit.FieldFinishedAt:
+		return m.FinishedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *PublishUnitMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case publishunit.FieldKind:
+		return m.OldKind(ctx)
+	case publishunit.FieldArtifactURL:
+		return m.OldArtifactURL(ctx)
+	case publishunit.FieldDigest:
+		return m.OldDigest(ctx)
+	case publishunit.FieldState:
+		return m.OldState(ctx)
+	case publishunit.FieldRequestedBy:
+		return m.OldRequestedBy(ctx)
+	case publishunit.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case publishunit.FieldFinishedAt:
+		return m.OldFinishedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown PublishUnit field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PublishUnitMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case publishunit.FieldKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKind(v)
+		return nil
+	case publishunit.FieldArtifactURL:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetArtifactURL(v)
+		return nil
+	case publishunit.FieldDigest:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDigest(v)
+		return nil
+	case publishunit.FieldState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case publishunit.FieldRequestedBy:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRequestedBy(v)
+		return nil
+	case publishunit.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case publishunit.FieldFinishedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFinishedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown PublishUnit field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *PublishUnitMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *PublishUnitMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *PublishUnitMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown PublishUnit numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *PublishUnitMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(publishunit.FieldDigest) {
+		fields = append(fields, publishunit.FieldDigest)
+	}
+	if m.FieldCleared(publishunit.FieldRequestedBy) {
+		fields = append(fields, publishunit.FieldRequestedBy)
+	}
+	if m.FieldCleared(publishunit.FieldFinishedAt) {
+		fields = append(fields, publishunit.FieldFinishedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *PublishUnitMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *PublishUnitMutation) ClearField(name string) error {
+	switch name {
+	case publishunit.FieldDigest:
+		m.ClearDigest()
+		return nil
+	case publishunit.FieldRequestedBy:
+		m.ClearRequestedBy()
+		return nil
+	case publishunit.FieldFinishedAt:
+		m.ClearFinishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PublishUnit nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *PublishUnitMutation) ResetField(name string) error {
+	switch name {
+	case publishunit.FieldKind:
+		m.ResetKind()
+		return nil
+	case publishunit.FieldArtifactURL:
+		m.ResetArtifactURL()
+		return nil
+	case publishunit.FieldDigest:
+		m.ResetDigest()
+		return nil
+	case publishunit.FieldState:
+		m.ResetState()
+		return nil
+	case publishunit.FieldRequestedBy:
+		m.ResetRequestedBy()
+		return nil
+	case publishunit.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case publishunit.FieldFinishedAt:
+		m.ResetFinishedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown PublishUnit field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *PublishUnitMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *PublishUnitMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *PublishUnitMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *PublishUnitMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *PublishUnitMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *PublishUnitMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *PublishUnitMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown PublishUnit unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *PublishUnitMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown PublishUnit edge %s", name)
 }

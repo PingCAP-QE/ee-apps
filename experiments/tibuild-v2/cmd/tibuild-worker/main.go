@@ -54,6 +54,17 @@ func main() {
 	// before any goroutine starts.
 	cfg.Get().Worker = workerCfg
 
+	// A publish target typo would leave those steps pending forever, so it is
+	// fatal. The rules file is mounted by Flux and may not exist yet on the
+	// very first start, which is only a warning.
+	if err := impl.ValidatePublishTargets(cfg.Get()); err != nil {
+		if errors.Is(err, impl.ErrPublishRulesUnavailable) {
+			logger.Warn().Err(err).Msg("skipping the publish target validation: delivery rules are not mounted yet")
+		} else {
+			logger.Fatal().Err(err).Msg("invalid publish target configuration")
+		}
+	}
+
 	worker, err := impl.NewWorker(&logger, cfg.Get())
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to initialize worker")

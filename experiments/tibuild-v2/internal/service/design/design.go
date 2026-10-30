@@ -616,3 +616,151 @@ var TiDBxBumpTagMeta = Type("TiDBxBumpTagMeta", func() {
 		Meta("struct:tag:json", "ops_req,omitempty")
 	})
 })
+
+var _ = Service("publish", func() {
+	Description("The publish service plans artifact publications and tracks their per-target steps.")
+	// One type per status: the HTTP encoder picks the status from the error
+	// name, and Goa derives the name from the type, so sharing a type would
+	// collapse every failure into one status.
+	Error("BadRequest", PublishBadRequestError, "Bad Request")
+	Error("NotFound", PublishNotFoundError, "Not Found")
+	Error("BadGateway", PublishBadGatewayError, "The artifact registry could not be queried")
+	Error("InternalServerError", PublishInternalServerError, "Internal Server Error")
+	HTTP(func() {
+		Path("/publish")
+	})
+
+	Method("publishImages", func() {
+		Description("Plan the delivery of an image and enqueue one step per destination registry.")
+		Payload(func() {
+			Attribute("artifactUrl", String, "Image reference, for example us-docker.pkg.dev/hub/pingcap/ticdc/image:v8.5.0")
+			Attribute("image", String, "Alias of artifactUrl; keeps the Tekton task parameter name working")
+		})
+		Result(PublishUnit)
+		HTTP(func() {
+			POST("/images")
+			Response(StatusAccepted)
+			Response("BadRequest", StatusBadRequest)
+			Response("BadGateway", StatusBadGateway)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+
+	Method("getUnit", func() {
+		Description("Get a publication unit and its steps.")
+		Payload(func() {
+			Attribute("id", String, "Unit id")
+			Required("id")
+		})
+		Result(PublishUnit)
+		HTTP(func() {
+			GET("/units/{id}")
+			Response(StatusOK)
+			Response("NotFound", StatusNotFound)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+
+	Method("listUnits", func() {
+		Description("List publication units, newest first.")
+		Payload(func() {
+			Attribute("status", String, "Filter by unit state", func() {
+				Enum("queued", "running", "succeeded", "partial", "failed", "canceled")
+			})
+			Attribute("kind", String, "Filter by publication kind")
+			Attribute("limit", Int, "Maximum number of units", func() {
+				Default(20)
+			})
+		})
+		Result(ArrayOf(PublishUnit), "Matching units, newest first")
+		HTTP(func() {
+			GET("/units")
+			Param("status")
+			Param("kind")
+			Param("limit")
+			Response(StatusOK)
+			Response("BadRequest", StatusBadRequest)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+
+	Method("retryUnit", func() {
+		Description("Retry the failed steps of a unit. Succeeded steps are left untouched.")
+		Payload(func() {
+			Attribute("id", String, "Unit id")
+			Required("id")
+		})
+		Result(PublishUnit)
+		HTTP(func() {
+			POST("/units/{id}/retry")
+			Response(StatusAccepted)
+			Response("BadRequest", StatusBadRequest)
+			Response("NotFound", StatusNotFound)
+			Response("InternalServerError", StatusInternalServerError)
+		})
+	})
+})
+
+var PublishUnit = Type("PublishUnit", func() {
+	Description("One publication intent and the state of every destination.")
+	Attribute("id", String, "Unit id; this is the request id returned to callers")
+	Attribute("kind", String, "Publication kind, for example image_copy")
+	Attribute("artifactUrl", String, "Source artifact reference")
+	Attribute("digest", String, "Source digest pinned at planning time")
+	Attribute("state", PublishState, "Aggregated state of the steps")
+	Attribute("requestedBy", String, "Caller identity, when known")
+	Attribute("createdAt", String, func() { Format(FormatDateTime) })
+	Attribute("finishedAt", String, func() { Format(FormatDateTime) })
+	Attribute("steps", ArrayOf(PublishStep))
+	Required("id", "kind", "artifactUrl", "state")
+})
+
+var PublishStep = Type("PublishStep", func() {
+	Description("One destination of a publication unit.")
+	Attribute("id", String, "Step id")
+	Attribute("unitId", String, "Owning unit id")
+	Attribute("target", String, "Claim shard: registry host, or mirror name for TiUP")
+	Attribute("dest", String, "Destination repository inside the target")
+	Attribute("dependsOn", String, "Previous step of the same unit, when ordered")
+	Attribute("state", PublishStepState, "Step state")
+	Attribute("attempts", Int, "Claim attempts")
+	Attribute("lastError", String, "Last failure message")
+	Attribute("payload", Any, "Full execution parameters")
+	Attribute("result", Any, "Execution outcome, when the step finished")
+	Attribute("createdAt", String, func() { Format(FormatDateTime) })
+	Attribute("startedAt", String, func() { Format(FormatDateTime) })
+	Attribute("finishedAt", String, func() { Format(FormatDateTime) })
+	Required("id", "unitId", "target", "state")
+})
+
+var PublishState = Type("PublishState", String, func() {
+	Enum("queued", "running", "succeeded", "partial", "failed", "canceled")
+})
+
+var PublishStepState = Type("PublishStepState", String, func() {
+	Enum("blocked", "pending", "claimed", "succeeded", "failed", "skipped")
+})
+
+var PublishBadRequestError = Type("PublishBadRequestError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var PublishNotFoundError = Type("PublishNotFoundError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var PublishBadGatewayError = Type("PublishBadGatewayError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var PublishInternalServerError = Type("PublishInternalServerError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})

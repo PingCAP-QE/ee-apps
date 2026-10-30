@@ -94,4 +94,11 @@ worker:
   # Optional execution timeout; must be less than lease*0.8. Empty disables it.
   # hard_timeout: "60s"
   max_attempts: 3
+  # Publication kinds this worker executes (publish_step rows).
   kinds: ["image_copy"]
+
+# Publication planner (POST /api/v2/publish/images).
+publish:
+  # delivery.yaml from PingCAP-QE/artifacts, synced into the cluster by Flux.
+  # The file is reloaded when it changes, so a rule update needs no restart.
+  delivery_config_path: /etc/delivery/delivery.yaml
