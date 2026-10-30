@@ -121,7 +121,7 @@ test("CI filters use the historical date window and ignore clearing either date"
       );
     }
     assert.equal(requests.length, requestCount);
-    assert.match(JSON.stringify(renderer.toJSON()), /CI queries require both dates and at most 90 days/);
+    assert.match(JSON.stringify(renderer.toJSON()), /CI queries require both dates and at most 12 calendar months/);
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;

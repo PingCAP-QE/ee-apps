@@ -79,8 +79,11 @@ Notes:
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout
 - CI analytics and filter-option APIs default omitted dates to the last 30 UTC
-  calendar days including today, and accept at most 90 days inclusive for every
-  bucket granularity. Both dates must be supplied together; a single date or
+  calendar days including today. Every bucket granularity supports up to one
+  calendar year: End must be strictly before Start plus 12 calendar months,
+  clamped to the target month's last day when needed. This permits more than
+  90 days, including 366-day leap-year windows; it is not a fixed 365-day cap.
+  Both dates must be supplied together; a single date or
   an oversized range returns HTTP 422 before SQL. Reversed ranges retain HTTP
   400. Dates must fall between `1970-01-01` and `9999-12-24` inclusive to leave
   room for previous-period windows, two-day lookahead and weekly arithmetic.

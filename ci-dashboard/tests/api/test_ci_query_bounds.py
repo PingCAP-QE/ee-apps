@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 
 import pytest
 from fastapi import HTTPException
@@ -69,7 +69,7 @@ def test_ci_date_budget_rejects_before_sql(path, bounded_client, sql_statements)
         {"start_date": "2026-04-01"},
         {"end_date": "2026-04-30"},
         *[
-            {"start_date": "2026-01-01", "end_date": "2026-04-01", "granularity": unit}
+            {"start_date": "2026-01-01", "end_date": "2027-01-01", "granularity": unit}
             for unit in ("day", "week", "month")
         ],
         {"start_date": "1969-12-31", "end_date": "1970-01-01"},
@@ -102,8 +102,8 @@ def test_ci_extreme_dates_reject_before_sql(
     "/api/v1/flaky/issue-weekly-rates",
 ])
 @pytest.mark.parametrize(("start", "end"), [
-    ("1970-01-01", "1970-03-31"),
-    ("9999-09-26", "9999-12-24"),
+    ("1970-01-01", "1970-12-31"),
+    ("9998-12-25", "9999-12-24"),
 ])
 def test_ci_safe_date_boundaries_are_accepted(path, start, end, bounded_client):
     response = bounded_client.get(path, params={"start_date": start, "end_date": end})
@@ -132,11 +132,11 @@ def test_ci_undated_requests_default_to_thirty_utc_days(bounded_client, monkeypa
 
 
 @pytest.mark.parametrize("unit", ["day", "week", "month"])
-def test_ci_ninety_day_boundary_and_normal_filter_semantics(unit, bounded_client):
+def test_ci_calendar_year_boundary_and_normal_filter_semantics(unit, bounded_client):
     response = bounded_client.get(
         "/api/v1/builds/outcome-trend",
         params={
-            "start_date": "2024-02-01", "end_date": "2024-04-30", "granularity": unit,
+            "start_date": "2024-02-01", "end_date": "2025-01-31", "granularity": unit,
             "job_name": ",".join(f"job-{i}" for i in range(100)),
             "owner_include": "alice, alice, bob",
         },
@@ -144,6 +144,17 @@ def test_ci_ninety_day_boundary_and_normal_filter_semantics(unit, bounded_client
     assert response.status_code == 200
     assert response.json()["meta"]["start_date"] == "2024-02-01"
     assert len(response.json()["meta"]["job_names"]) == 100
+
+
+@pytest.mark.parametrize("path", CI_PATHS)
+def test_ci_routes_allow_cost_navigation_ranges_beyond_ninety_days(path, bounded_client):
+    # The existing navigation carries a valid multi-month Cost range into CI unchanged.
+    for start, end in [("2026-01-01", "2026-09-30"), ("2024-02-01", "2025-01-31")]:
+        for unit in ("day", "week", "month"):
+            response = bounded_client.get(
+                path, params={"start_date": start, "end_date": end, "granularity": unit},
+            )
+            assert response.status_code == 200, (path, unit, start, end, response.text)
 
 
 def test_ci_normalized_lists_preserve_trimming_and_deduplication():
@@ -192,6 +203,7 @@ def test_period_comparison_has_no_date_or_job_list_bypass(
     }
     for start, end in [
         ("2020-01-01", "2026-04-30"),
+        ("2025-04-01", "2026-04-01"),
         ("1969-12-31", "1970-01-01"),
         ("9999-12-01", "9999-12-25"),
     ]:
@@ -206,6 +218,15 @@ def test_period_comparison_has_no_date_or_job_list_bypass(
     )
     assert response.status_code == 422
     assert sql_statements == []
+
+
+def test_period_comparison_accepts_two_calendar_years(bounded_client):
+    response = bounded_client.get(
+        "/api/v1/flaky/period-comparison",
+        params={"period_a_start": "2024-02-01", "period_a_end": "2025-01-31",
+                "period_b_start": "2023-02-01", "period_b_end": "2024-01-31"},
+    )
+    assert response.status_code == 200
 
 
 @pytest.mark.parametrize("path", [
@@ -223,9 +244,28 @@ def test_shared_cost_filter_lists_are_also_bounded(path, bounded_client, sql_sta
     assert sql_statements == []
 
 
-@pytest.mark.parametrize("start", [date(1970, 1, 1), date(2024, 2, 1), date(9999, 8, 1)])
-def test_ci_window_boundaries_do_not_depend_on_month_length(start):
-    end = start + timedelta(days=89)
+@pytest.mark.parametrize(("start", "end"), [
+    (date(1970, 1, 1), date(1970, 12, 31)),
+    (date(2024, 1, 1), date(2024, 12, 31)),
+    (date(2024, 2, 29), date(2025, 2, 27)),
+    (date(9998, 12, 25), date(9999, 12, 24)),
+    (date(9999, 8, 1), date(9999, 12, 24)),
+])
+def test_ci_calendar_year_boundaries_include_leap_days_and_safe_max_year(start, end):
     filters = common.get_common_filters(granularity="day", start_date=start, end_date=end)
     assert filters.start_date == start
     assert filters.end_date == end
+
+
+@pytest.mark.parametrize(("start", "end"), [
+    (date(2025, 1, 1), date(2026, 1, 1)),
+    (date(2024, 2, 1), date(2025, 2, 1)),
+    (date(2024, 2, 29), date(2025, 2, 28)),
+    (date(2025, 2, 28), date(2026, 2, 28)),
+])
+def test_ci_calendar_year_excess_rejects_before_sql(start, end, bounded_client, sql_statements):
+    response = bounded_client.get(
+        "/api/v1/builds/outcome-trend", params={"start_date": start, "end_date": end},
+    )
+    assert response.status_code == 422
+    assert sql_statements == []

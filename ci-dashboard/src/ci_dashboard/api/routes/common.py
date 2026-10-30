@@ -11,7 +11,7 @@ from ci_dashboard.api.queries.base import (
 
 
 DEFAULT_CI_WINDOW_DAYS = 30
-MAX_CI_WINDOW_DAYS = 90
+MAX_CI_WINDOW_MONTHS = 12
 MIN_CI_DATE = date(1970, 1, 1)
 MAX_CI_DATE = date.max - timedelta(days=7)
 MAX_FILTER_ITEMS = 100
@@ -167,9 +167,17 @@ def normalize_ci_date_range(
             status_code=422,
             detail=f"CI dates must be between {MIN_CI_DATE} and {MAX_CI_DATE}",
         )
-    if (end_date - start_date).days + 1 > MAX_CI_WINDOW_DAYS:
+    month_span = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
+    # Only shift when the target month is representable, including near date.max.
+    if month_span >= MAX_CI_WINDOW_MONTHS and end_date >= _add_months_clamped(
+        start_date, MAX_CI_WINDOW_MONTHS,
+    ):
         raise HTTPException(
-            status_code=422, detail=f"CI queries support at most {MAX_CI_WINDOW_DAYS} days",
+            status_code=422,
+            detail=(
+                "CI queries require end_date before start_date "
+                f"plus {MAX_CI_WINDOW_MONTHS} calendar months"
+            ),
         )
     return start_date, end_date
 

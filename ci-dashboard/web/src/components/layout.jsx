@@ -204,7 +204,7 @@ function FilterBar({
       <p className="filter-bar__note">
         {isCostPage
           ? "Each tab keeps its own filter state. Source only changes cost panels."
-          : "Each tab keeps its own filter state. Ingestion stays all-repo and all-branch. CI queries require both dates and at most 90 days, including both dates."}
+          : "Each tab keeps its own filter state. Ingestion stays all-repo and all-branch. CI queries require both dates and at most 12 calendar months."}
       </p>
 
       <div className="filter-grid">
