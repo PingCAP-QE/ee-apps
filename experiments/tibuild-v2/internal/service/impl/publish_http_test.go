@@ -41,11 +41,11 @@ func TestPublishHTTPAPI(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)
 
 	var created struct {
-		ID          string  `json:"id"`
-		Kind        string  `json:"kind"`
-		ArtifactURL string  `json:"artifactUrl"`
-		Digest      string  `json:"digest"`
-		State       string  `json:"state"`
+		ID          string `json:"id"`
+		Kind        string `json:"kind"`
+		ArtifactURL string `json:"artifactUrl"`
+		Digest      string `json:"digest"`
+		State       string `json:"state"`
 		Steps       []struct {
 			ID     string `json:"id"`
 			Target string `json:"target"`
