@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestWorkerApplyDefaults(t *testing.T) {
@@ -112,5 +114,142 @@ func TestWorkerValidateHardTimeout(t *testing.T) {
 	malformed := Worker{Lease: "90s", Heartbeat: "30s", HardTimeout: "soon"}
 	if err := malformed.Validate(nil); err == nil {
 		t.Fatal("Validate() = nil, want duration error")
+	}
+}
+
+// The observability knobs must default to the values that used to be hard-coded
+// constants, so an untouched config keeps the current alerting behaviour.
+func TestWorkerObservabilityDefaults(t *testing.T) {
+	var w Worker
+	w.ApplyDefaults()
+
+	for _, tc := range []struct {
+		name string
+		got  time.Duration
+		want time.Duration
+	}{
+		{"MetricsEvery", w.MetricsEvery(), 15 * time.Second},
+		{"ReapEvery", w.ReapEvery(), 30 * time.Second},
+		{"BackoffBaseDuration", w.BackoffBaseDuration(), 10 * time.Second},
+		{"BackoffMaxDuration", w.BackoffMaxDuration(), 5 * time.Minute},
+		{"AlertBacklogAfter", w.AlertBacklogAfter(), 10 * time.Minute},
+		{"AlertOldestPendingAfter", w.AlertOldestPendingAfter(), 30 * time.Minute},
+		{"AlertLeaseReclaimWindow", w.AlertLeaseReclaimWindow(), 5 * time.Minute},
+		{"AlertDedupe", w.AlertDedupe(), time.Hour},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %v, want %v", tc.name, tc.got, tc.want)
+		}
+	}
+	if !w.AlertsEnabled() {
+		t.Error("AlertsEnabled() = false, want true by default")
+	}
+}
+
+func TestWorkerObservabilityExplicitValues(t *testing.T) {
+	enabled := false
+	w := Worker{
+		MetricsInterval: "5s",
+		ReapInterval:    "7s",
+		BackoffBase:     "1s",
+		BackoffMax:      "2m",
+		Alerts: WorkerAlerts{
+			Enabled:            &enabled,
+			BacklogAfter:       "30s",
+			OldestPendingAfter: "1m",
+			LeaseReclaimWindow: "2m",
+			Dedupe:             "3m",
+		},
+	}
+	w.ApplyDefaults()
+
+	for _, tc := range []struct {
+		name string
+		got  time.Duration
+		want time.Duration
+	}{
+		{"MetricsEvery", w.MetricsEvery(), 5 * time.Second},
+		{"ReapEvery", w.ReapEvery(), 7 * time.Second},
+		{"BackoffBaseDuration", w.BackoffBaseDuration(), time.Second},
+		{"BackoffMaxDuration", w.BackoffMaxDuration(), 2 * time.Minute},
+		{"AlertBacklogAfter", w.AlertBacklogAfter(), 30 * time.Second},
+		{"AlertOldestPendingAfter", w.AlertOldestPendingAfter(), time.Minute},
+		{"AlertLeaseReclaimWindow", w.AlertLeaseReclaimWindow(), 2 * time.Minute},
+		{"AlertDedupe", w.AlertDedupe(), 3 * time.Minute},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %v, want %v", tc.name, tc.got, tc.want)
+		}
+	}
+	if w.AlertsEnabled() {
+		t.Error("AlertsEnabled() = true, want false when explicitly disabled")
+	}
+}
+
+// A missing alerts.enabled key must stay enabled, while an explicit false must
+// survive YAML decoding. That is why the field is a pointer.
+func TestWorkerAlertsEnabledYAML(t *testing.T) {
+	for name, tc := range map[string]struct {
+		raw  string
+		want bool
+	}{
+		"absent":  {raw: "worker: {}\n", want: true},
+		"omitted": {raw: "worker:\n  alerts:\n    dedupe: \"2h\"\n", want: true},
+		"false":   {raw: "worker:\n  alerts:\n    enabled: false\n", want: false},
+		"true":    {raw: "worker:\n  alerts:\n    enabled: true\n", want: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var svc Service
+			if err := yaml.Unmarshal([]byte(tc.raw), &svc); err != nil {
+				t.Fatalf("yaml.Unmarshal() error = %v", err)
+			}
+			svc.Worker.ApplyDefaults()
+			if got := svc.Worker.AlertsEnabled(); got != tc.want {
+				t.Fatalf("AlertsEnabled() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWorkerValidateRejectsInvalidObservabilityDurations(t *testing.T) {
+	cases := map[string]Worker{
+		"metrics_interval malformed":  {MetricsInterval: "soon"},
+		"metrics_interval zero":       {MetricsInterval: "0s"},
+		"metrics_interval negative":   {MetricsInterval: "-5s"},
+		"reap_interval malformed":     {ReapInterval: "soon"},
+		"reap_interval zero":          {ReapInterval: "0s"},
+		"backoff_base negative":       {BackoffBase: "-1s"},
+		"backoff_max zero":            {BackoffMax: "0s"},
+		"alerts.backlog_after":        {Alerts: WorkerAlerts{BacklogAfter: "soon"}},
+		"alerts.oldest_pending":       {Alerts: WorkerAlerts{OldestPendingAfter: "-1m"}},
+		"alerts.lease_reclaim_window": {Alerts: WorkerAlerts{LeaseReclaimWindow: "0s"}},
+		"alerts.dedupe":               {Alerts: WorkerAlerts{Dedupe: "soon"}},
+	}
+	for name, w := range cases {
+		t.Run(name, func(t *testing.T) {
+			if err := w.Validate(nil); err == nil {
+				t.Fatalf("Validate() = nil, want error for %s", name)
+			}
+		})
+	}
+}
+
+func TestWorkerValidateAcceptsObservabilityDurations(t *testing.T) {
+	enabled := false
+	w := Worker{
+		MetricsInterval: "2s",
+		ReapInterval:    "5s",
+		BackoffBase:     "1s",
+		BackoffMax:      "30s",
+		Alerts: WorkerAlerts{
+			Enabled:            &enabled,
+			BacklogAfter:       "30s",
+			OldestPendingAfter: "1m",
+			LeaseReclaimWindow: "2m",
+			Dedupe:             "5m",
+		},
+	}
+	if err := w.Validate(nil); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
 	}
 }

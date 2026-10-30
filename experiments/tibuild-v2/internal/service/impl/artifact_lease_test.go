@@ -308,6 +308,22 @@ func TestBackoffIsBounded(t *testing.T) {
 	}
 }
 
+func TestBackoffUsesConfiguredBaseAndMax(t *testing.T) {
+	s := newLeaseTestService(t, serverlessTestDB(t), config.Worker{
+		ID:          "worker-a",
+		BackoffBase: "1s",
+		BackoffMax:  "3s",
+	})
+
+	first := s.backoff(1)
+	require.GreaterOrEqual(t, first, 800*time.Millisecond)
+	require.LessOrEqual(t, first, 1200*time.Millisecond)
+
+	capped := s.backoff(20)
+	require.GreaterOrEqual(t, capped, 2400*time.Millisecond)
+	require.LessOrEqual(t, capped, 3600*time.Millisecond)
+}
+
 func TestImageTargetKey(t *testing.T) {
 	tests := map[string]string{
 		"docker.io/pingcap/tidb:v1.0.0":             "docker.io",

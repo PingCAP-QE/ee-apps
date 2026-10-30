@@ -71,7 +71,7 @@ func TestAlertsFireAfterThresholdsAndDedupe(t *testing.T) {
 	now := time.Now()
 	logger := zerolog.Nop()
 	notifier := &fakeAlertNotifier{}
-	tracker := newAlertTracker()
+	tracker := newAlertTracker(newAlertSettings(config.Worker{}))
 
 	stats := map[string]taskStats{
 		"docker.io": {Backlog: 2, OldestPending: now.Add(-31 * time.Minute)},
@@ -94,7 +94,7 @@ func TestLeaseReclaimAlertIsDedupedPerWindow(t *testing.T) {
 	now := time.Now()
 	logger := zerolog.Nop()
 	notifier := &fakeAlertNotifier{}
-	tracker := newAlertTracker()
+	tracker := newAlertTracker(newAlertSettings(config.Worker{}))
 	tracker.noteLeaseReclaim(3, now)
 
 	tracker.evaluate(context.Background(), notifier, nil, now.Add(time.Minute), &logger)
@@ -151,4 +151,97 @@ func TestHandleFailureRecordsFailedMetric(t *testing.T) {
 
 	body := scrapeMetrics(t, s)
 	require.Contains(t, body, `publish_task_failed_total{reason="max_attempts",target="docker.io"} 1`)
+}
+
+// The alert thresholds come from worker.alerts, so an e2e run can shorten them
+// without changing code.
+func TestAlertThresholdsFollowWorkerConfig(t *testing.T) {
+	now := time.Now()
+	logger := zerolog.Nop()
+	notifier := &fakeAlertNotifier{}
+	tracker := newAlertTracker(newAlertSettings(config.Worker{
+		Alerts: config.WorkerAlerts{
+			BacklogAfter:       "1m",
+			OldestPendingAfter: "2m",
+			LeaseReclaimWindow: "30s",
+			Dedupe:             "5m",
+		},
+	}))
+
+	stats := map[string]taskStats{
+		"docker.io": {Backlog: 1, OldestPending: now.Add(-3 * time.Minute)},
+	}
+	tracker.evaluate(context.Background(), notifier, stats, now, &logger)
+	require.Equal(t, 1, notifier.count(), "oldest-pending alert fires above the configured 2m")
+
+	tracker.evaluate(context.Background(), notifier, stats, now.Add(30*time.Second), &logger)
+	require.Equal(t, 1, notifier.count(), "backlog must wait for the configured 1m")
+
+	tracker.evaluate(context.Background(), notifier, stats, now.Add(61*time.Second), &logger)
+	require.Equal(t, 2, notifier.count(), "backlog alert fires after the configured 1m")
+
+	tracker.evaluate(context.Background(), notifier, stats, now.Add(4*time.Minute), &logger)
+	require.Equal(t, 2, notifier.count(), "configured 5m dedupe still suppresses repeats")
+}
+
+func TestAlertsDisabledSkipsNotifications(t *testing.T) {
+	now := time.Now()
+	logger := zerolog.Nop()
+	notifier := &fakeAlertNotifier{}
+	disabled := false
+	tracker := newAlertTracker(newAlertSettings(config.Worker{
+		Alerts: config.WorkerAlerts{Enabled: &disabled},
+	}))
+
+	stats := map[string]taskStats{
+		"docker.io": {Backlog: 5, OldestPending: now.Add(-2 * time.Hour)},
+	}
+	tracker.evaluate(context.Background(), notifier, stats, now, &logger)
+	tracker.noteLeaseReclaim(2, now)
+	tracker.evaluate(context.Background(), notifier, stats, now, &logger)
+	require.Zero(t, notifier.count(), "alerts.enabled=false must suppress every alert")
+}
+
+// Disabling alerts must not stop the metrics refresh loop.
+func TestAlertsDisabledStillRefreshesMetrics(t *testing.T) {
+	ctx := context.Background()
+	db := serverlessTestDB(t)
+	disabled := false
+	s := newLeaseTestService(t, db, config.Worker{
+		ID:     "worker-a",
+		Alerts: config.WorkerAlerts{Enabled: &disabled},
+	})
+	s.ensureObservability()
+	notifier := &fakeAlertNotifier{}
+	s.alerter = notifier
+	createLeaseTestTask(t, db, "docker.io", TaskStatusPending)
+
+	s.refreshMetricsAndAlerts(ctx)
+
+	require.Zero(t, notifier.count())
+	require.Contains(t, scrapeMetrics(t, s), `publish_task_backlog{target="docker.io"} 1`)
+}
+
+// A config reload refreshes the thresholds but must keep the dedupe state, so
+// it cannot re-send an alert that was just delivered.
+func TestAlertSettingsReloadKeepsDedupeState(t *testing.T) {
+	now := time.Now()
+	logger := zerolog.Nop()
+	notifier := &fakeAlertNotifier{}
+	tracker := newAlertTracker(newAlertSettings(config.Worker{}))
+	stats := map[string]taskStats{
+		"docker.io": {OldestPending: now.Add(-31 * time.Minute)},
+	}
+
+	tracker.evaluate(context.Background(), notifier, stats, now, &logger)
+	require.Equal(t, 1, notifier.count())
+
+	tracker.setSettings(newAlertSettings(config.Worker{
+		Alerts: config.WorkerAlerts{Dedupe: "5m"},
+	}))
+	tracker.evaluate(context.Background(), notifier, stats, now.Add(time.Minute), &logger)
+	require.Equal(t, 1, notifier.count(), "reload must not drop the dedupe state")
+
+	tracker.evaluate(context.Background(), notifier, stats, now.Add(6*time.Minute), &logger)
+	require.Equal(t, 2, notifier.count(), "the reloaded 5m window allows the next alert")
 }

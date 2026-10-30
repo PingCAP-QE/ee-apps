@@ -7,13 +7,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-)
 
-const (
-	backlogAlertAfter       = 10 * time.Minute
-	oldestPendingAlertAfter = 30 * time.Minute
-	leaseReclaimAlertWindow = 5 * time.Minute
-	alertDedupeWindow       = time.Hour
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 // AlertNotifier sends a plain-text operational alert. LarkNotifier implements
@@ -22,8 +17,32 @@ type AlertNotifier interface {
 	SendAlert(ctx context.Context, title, body string) error
 }
 
+// alertSettings are the alert thresholds resolved from worker.alerts. Defaults
+// match the values that used to be hard-coded constants, so an untouched
+// config keeps the historical behaviour.
+type alertSettings struct {
+	enabled            bool
+	backlogAfter       time.Duration
+	oldestPendingAfter time.Duration
+	leaseReclaimWindow time.Duration
+	dedupe             time.Duration
+}
+
+// newAlertSettings resolves the thresholds, applying defaults for empty fields.
+func newAlertSettings(cfg config.Worker) alertSettings {
+	cfg.ApplyDefaults()
+	return alertSettings{
+		enabled:            cfg.AlertsEnabled(),
+		backlogAfter:       cfg.AlertBacklogAfter(),
+		oldestPendingAfter: cfg.AlertOldestPendingAfter(),
+		leaseReclaimWindow: cfg.AlertLeaseReclaimWindow(),
+		dedupe:             cfg.AlertDedupe(),
+	}
+}
+
 type alertTracker struct {
 	mu               sync.Mutex
+	settings         alertSettings
 	backlogSince     map[string]time.Time
 	lastLeaseReclaim time.Time
 	lastSent         map[string]time.Time
@@ -35,11 +54,20 @@ type pendingAlert struct {
 	body  string
 }
 
-func newAlertTracker() *alertTracker {
+func newAlertTracker(settings alertSettings) *alertTracker {
 	return &alertTracker{
+		settings:     settings,
 		backlogSince: make(map[string]time.Time),
 		lastSent:     make(map[string]time.Time),
 	}
+}
+
+// setSettings swaps the thresholds without dropping the dedupe state, so a
+// config reload cannot re-send an alert that was just delivered.
+func (a *alertTracker) setSettings(settings alertSettings) {
+	a.mu.Lock()
+	a.settings = settings
+	a.mu.Unlock()
 }
 
 // noteLeaseReclaim records a reaper event for the lease alert.
@@ -66,9 +94,15 @@ func (a *alertTracker) evaluate(
 	}
 
 	a.mu.Lock()
+	settings := a.settings
+	if !settings.enabled {
+		a.mu.Unlock()
+		return
+	}
+
 	var pending []pendingAlert
 	send := func(key, title, body string) {
-		if last, ok := a.lastSent[key]; ok && now.Sub(last) < alertDedupeWindow {
+		if last, ok := a.lastSent[key]; ok && now.Sub(last) < settings.dedupe {
 			return
 		}
 		a.lastSent[key] = now
@@ -82,7 +116,7 @@ func (a *alertTracker) evaluate(
 				since = now
 				a.backlogSince[target] = now
 			}
-			if now.Sub(since) >= backlogAlertAfter {
+			if now.Sub(since) >= settings.backlogAfter {
 				send(
 					"backlog:"+target,
 					"[tibuild] publish backlog",
@@ -93,7 +127,7 @@ func (a *alertTracker) evaluate(
 			delete(a.backlogSince, target)
 		}
 
-		if !s.OldestPending.IsZero() && now.Sub(s.OldestPending) >= oldestPendingAlertAfter {
+		if !s.OldestPending.IsZero() && now.Sub(s.OldestPending) >= settings.oldestPendingAfter {
 			send(
 				"oldest:"+target,
 				"[tibuild] oldest pending task",
@@ -102,12 +136,12 @@ func (a *alertTracker) evaluate(
 		}
 	}
 
-	if !a.lastLeaseReclaim.IsZero() && now.Sub(a.lastLeaseReclaim) <= leaseReclaimAlertWindow {
-		bucket := a.lastLeaseReclaim.Unix() / int64(leaseReclaimAlertWindow/time.Second)
+	if settings.leaseReclaimWindow > 0 && !a.lastLeaseReclaim.IsZero() && now.Sub(a.lastLeaseReclaim) <= settings.leaseReclaimWindow {
+		bucket := a.lastLeaseReclaim.Unix() / int64(settings.leaseReclaimWindow/time.Second)
 		send(
 			fmt.Sprintf("lease:%d", bucket),
 			"[tibuild] task lease reclaimed",
-			fmt.Sprintf("an expired task lease was reclaimed within the last %s (last_reclaim=%s)", leaseReclaimAlertWindow, a.lastLeaseReclaim.Format(time.RFC3339)),
+			fmt.Sprintf("an expired task lease was reclaimed within the last %s (last_reclaim=%s)", settings.leaseReclaimWindow, a.lastLeaseReclaim.Format(time.RFC3339)),
 		)
 	}
 	a.mu.Unlock()

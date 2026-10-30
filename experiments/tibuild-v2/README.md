@@ -85,7 +85,22 @@ worker:
   heartbeat: "30s"
   max_attempts: 3
   kinds: ["image_copy"]
+  metrics_interval: "15s"   # task stats / alert evaluation period
+  reap_interval: "30s"      # expired-lease reclaim period
+  backoff_base: "10s"       # first retry delay (doubles per attempt)
+  backoff_max: "5m"         # retry delay cap
+  alerts:
+    enabled: true           # false keeps metrics but stops alert delivery
+    backlog_after: "10m"
+    oldest_pending_after: "30m"
+    lease_reclaim_window: "5m"
+    dedupe: "1h"
 ```
+
+The observability keys default to the values that used to be hard-coded, so an
+untouched config behaves exactly as before. `metrics_interval` and
+`reap_interval` are read when the worker starts; the alert thresholds are
+re-applied on config reload.
 
 `worker.targets` must be a subset of the global target catalogue; an unknown
 target fails fast at startup. Until the target catalogue lands in
@@ -101,9 +116,13 @@ The worker serves `/metrics` on its health port (8081):
 - `publish_task_lease_expired_total`
 - `publish_task_failed_total{target,reason}`
 
-Alerts reuse the Lark notifier: backlog > 0 for 10 minutes, oldest PENDING
-over 30 minutes, or a lease reclaimed in the last 5 minutes. Configure
-`lark.channels` to give the alerts recipients.
+Alerts reuse the Lark notifier and fire when the backlog has been non-empty
+for `worker.alerts.backlog_after` (default 10m), when the oldest PENDING task
+is older than `oldest_pending_after` (default 30m), or when a lease was
+reclaimed within `lease_reclaim_window` (default 5m). Repeats of the same
+condition are suppressed for `dedupe` (default 1h).
+`worker.alerts.enabled: false` stops alert delivery but keeps the metrics
+above refreshing. Configure `lark.channels` to give the alerts recipients.
 
 ## Testing
 
