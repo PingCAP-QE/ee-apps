@@ -70,6 +70,13 @@ func (a *alertTracker) setSettings(settings alertSettings) {
 	a.mu.Unlock()
 }
 
+// isEnabled reports whether alert delivery is configured.
+func (a *alertTracker) isEnabled() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.settings.enabled
+}
+
 // noteLeaseReclaim records a reaper event for the lease alert.
 func (a *alertTracker) noteLeaseReclaim(n int, now time.Time) {
 	if n <= 0 {

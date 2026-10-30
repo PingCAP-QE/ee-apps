@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
@@ -25,6 +26,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// AlertLease is the client for interacting with the AlertLease builders.
+	AlertLease *AlertLeaseClient
 	// DevBuild is the client for interacting with the DevBuild builders.
 	DevBuild *DevBuildClient
 	// ImageSyncTask is the client for interacting with the ImageSyncTask builders.
@@ -44,6 +47,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.AlertLease = NewAlertLeaseClient(c.config)
 	c.DevBuild = NewDevBuildClient(c.config)
 	c.ImageSyncTask = NewImageSyncTaskClient(c.config)
 	c.PublishStep = NewPublishStepClient(c.config)
@@ -140,6 +144,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:           ctx,
 		config:        cfg,
+		AlertLease:    NewAlertLeaseClient(cfg),
 		DevBuild:      NewDevBuildClient(cfg),
 		ImageSyncTask: NewImageSyncTaskClient(cfg),
 		PublishStep:   NewPublishStepClient(cfg),
@@ -163,6 +168,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:           ctx,
 		config:        cfg,
+		AlertLease:    NewAlertLeaseClient(cfg),
 		DevBuild:      NewDevBuildClient(cfg),
 		ImageSyncTask: NewImageSyncTaskClient(cfg),
 		PublishStep:   NewPublishStepClient(cfg),
@@ -173,7 +179,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		DevBuild.
+//		AlertLease.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -195,6 +201,7 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.AlertLease.Use(hooks...)
 	c.DevBuild.Use(hooks...)
 	c.ImageSyncTask.Use(hooks...)
 	c.PublishStep.Use(hooks...)
@@ -204,6 +211,7 @@ func (c *Client) Use(hooks ...Hook) {
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
+	c.AlertLease.Intercept(interceptors...)
 	c.DevBuild.Intercept(interceptors...)
 	c.ImageSyncTask.Intercept(interceptors...)
 	c.PublishStep.Intercept(interceptors...)
@@ -213,6 +221,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *AlertLeaseMutation:
+		return c.AlertLease.mutate(ctx, m)
 	case *DevBuildMutation:
 		return c.DevBuild.mutate(ctx, m)
 	case *ImageSyncTaskMutation:
@@ -223,6 +233,139 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PublishUnit.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// AlertLeaseClient is a client for the AlertLease schema.
+type AlertLeaseClient struct {
+	config
+}
+
+// NewAlertLeaseClient returns a client for the AlertLease from the given config.
+func NewAlertLeaseClient(c config) *AlertLeaseClient {
+	return &AlertLeaseClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `alertlease.Hooks(f(g(h())))`.
+func (c *AlertLeaseClient) Use(hooks ...Hook) {
+	c.hooks.AlertLease = append(c.hooks.AlertLease, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `alertlease.Intercept(f(g(h())))`.
+func (c *AlertLeaseClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AlertLease = append(c.inters.AlertLease, interceptors...)
+}
+
+// Create returns a builder for creating a AlertLease entity.
+func (c *AlertLeaseClient) Create() *AlertLeaseCreate {
+	mutation := newAlertLeaseMutation(c.config, OpCreate)
+	return &AlertLeaseCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AlertLease entities.
+func (c *AlertLeaseClient) CreateBulk(builders ...*AlertLeaseCreate) *AlertLeaseCreateBulk {
+	return &AlertLeaseCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AlertLeaseClient) MapCreateBulk(slice any, setFunc func(*AlertLeaseCreate, int)) *AlertLeaseCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AlertLeaseCreateBulk{err: fmt.Errorf("calling to AlertLeaseClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AlertLeaseCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AlertLeaseCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AlertLease.
+func (c *AlertLeaseClient) Update() *AlertLeaseUpdate {
+	mutation := newAlertLeaseMutation(c.config, OpUpdate)
+	return &AlertLeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AlertLeaseClient) UpdateOne(_m *AlertLease) *AlertLeaseUpdateOne {
+	mutation := newAlertLeaseMutation(c.config, OpUpdateOne, withAlertLease(_m))
+	return &AlertLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AlertLeaseClient) UpdateOneID(id int) *AlertLeaseUpdateOne {
+	mutation := newAlertLeaseMutation(c.config, OpUpdateOne, withAlertLeaseID(id))
+	return &AlertLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AlertLease.
+func (c *AlertLeaseClient) Delete() *AlertLeaseDelete {
+	mutation := newAlertLeaseMutation(c.config, OpDelete)
+	return &AlertLeaseDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AlertLeaseClient) DeleteOne(_m *AlertLease) *AlertLeaseDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AlertLeaseClient) DeleteOneID(id int) *AlertLeaseDeleteOne {
+	builder := c.Delete().Where(alertlease.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AlertLeaseDeleteOne{builder}
+}
+
+// Query returns a query builder for AlertLease.
+func (c *AlertLeaseClient) Query() *AlertLeaseQuery {
+	return &AlertLeaseQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAlertLease},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AlertLease entity by its id.
+func (c *AlertLeaseClient) Get(ctx context.Context, id int) (*AlertLease, error) {
+	return c.Query().Where(alertlease.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AlertLeaseClient) GetX(ctx context.Context, id int) *AlertLease {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AlertLeaseClient) Hooks() []Hook {
+	return c.hooks.AlertLease
+}
+
+// Interceptors returns the client interceptors.
+func (c *AlertLeaseClient) Interceptors() []Interceptor {
+	return c.inters.AlertLease
+}
+
+func (c *AlertLeaseClient) mutate(ctx context.Context, m *AlertLeaseMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AlertLeaseCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AlertLeaseUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AlertLeaseUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AlertLeaseDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AlertLease mutation op: %q", m.Op())
 	}
 }
 
@@ -761,9 +904,9 @@ func (c *PublishUnitClient) mutate(ctx context.Context, m *PublishUnitMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		DevBuild, ImageSyncTask, PublishStep, PublishUnit []ent.Hook
+		AlertLease, DevBuild, ImageSyncTask, PublishStep, PublishUnit []ent.Hook
 	}
 	inters struct {
-		DevBuild, ImageSyncTask, PublishStep, PublishUnit []ent.Interceptor
+		AlertLease, DevBuild, ImageSyncTask, PublishStep, PublishUnit []ent.Interceptor
 	}
 )

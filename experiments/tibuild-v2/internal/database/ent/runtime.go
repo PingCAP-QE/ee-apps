@@ -5,6 +5,7 @@ package ent
 import (
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
@@ -16,6 +17,22 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	alertleaseFields := schema.AlertLease{}.Fields()
+	_ = alertleaseFields
+	// alertleaseDescName is the schema descriptor for name field.
+	alertleaseDescName := alertleaseFields[0].Descriptor()
+	// alertlease.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	alertlease.NameValidator = alertleaseDescName.Validators[0].(func(string) error)
+	// alertleaseDescHolder is the schema descriptor for holder field.
+	alertleaseDescHolder := alertleaseFields[1].Descriptor()
+	// alertlease.HolderValidator is a validator for the "holder" field. It is called by the builders before save.
+	alertlease.HolderValidator = alertleaseDescHolder.Validators[0].(func(string) error)
+	// alertleaseDescUpdatedAt is the schema descriptor for updatedAt field.
+	alertleaseDescUpdatedAt := alertleaseFields[3].Descriptor()
+	// alertlease.DefaultUpdatedAt holds the default value on creation for the updatedAt field.
+	alertlease.DefaultUpdatedAt = alertleaseDescUpdatedAt.Default.(func() time.Time)
+	// alertlease.UpdateDefaultUpdatedAt holds the default value on update for the updatedAt field.
+	alertlease.UpdateDefaultUpdatedAt = alertleaseDescUpdatedAt.UpdateDefault.(func() time.Time)
 	devbuildMixin := schema.DevBuild{}.Mixin()
 	devbuildMixinFields0 := devbuildMixin[0].Fields()
 	_ = devbuildMixinFields0

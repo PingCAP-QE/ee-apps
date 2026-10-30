@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// AlertLease is the predicate function for alertlease builders.
+type AlertLease func(*sql.Selector)
+
 // DevBuild is the predicate function for devbuild builders.
 type DevBuild func(*sql.Selector)
 
