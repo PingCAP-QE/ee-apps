@@ -85,7 +85,7 @@ func NewArtifact(logger *zerolog.Logger, cfg *config.Service) artifact.Service {
 		db:     dbClient,
 	}
 	s.metrics = newArtifactMetrics()
-	s.alerts = newAlertTracker()
+	s.alerts = newAlertTracker(newAlertSettings(cfg.Worker))
 	if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
 		s.alerter = NewLarkNotifier(cfg.Lark.AppID, cfg.Lark.AppSecret, cfg.Lark.Channels, logger)
 	}
@@ -144,6 +144,10 @@ func (s *artifactsrvc) applyConfig(cfg *config.Service) {
 	workerCfg := cfg.Worker
 	workerCfg.ApplyDefaults()
 	s.workerCfg = workerCfg
+	if s.alerts != nil {
+		// Refresh thresholds in place so a reload cannot drop the dedupe state.
+		s.alerts.setSettings(newAlertSettings(workerCfg))
+	}
 	if s.pollingRate <= 0 {
 		s.pollingRate = defaultPollingRate
 	}

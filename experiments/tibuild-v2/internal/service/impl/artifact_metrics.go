@@ -11,8 +11,6 @@ import (
 	entimagesynctask "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
 )
 
-const metricsRefreshInterval = 15 * time.Second
-
 // taskStats is the per-target aggregation used by metrics and alerts.
 type taskStats struct {
 	Backlog       int
@@ -92,7 +90,7 @@ func (s *artifactsrvc) ensureObservability() {
 		s.metrics = newArtifactMetrics()
 	}
 	if s.alerts == nil {
-		s.alerts = newAlertTracker()
+		s.alerts = newAlertTracker(newAlertSettings(s.workerConfig()))
 	}
 }
 
@@ -137,7 +135,8 @@ func (s *artifactsrvc) collectTaskStats(ctx context.Context) (map[string]taskSta
 }
 
 func (s *artifactsrvc) runMetrics(ctx context.Context) {
-	ticker := time.NewTicker(metricsRefreshInterval)
+	// MetricsEvery() always resolves to a positive interval, defaulting to 15s.
+	ticker := time.NewTicker(s.workerConfig().MetricsEvery())
 	defer ticker.Stop()
 
 	s.refreshMetricsAndAlerts(ctx)
