@@ -14,8 +14,8 @@ github.com/Masterminds/semver/v3 v3.3.0 h1:B8LGeaivUe71a5qox1ICM/JLl0NqZSW5CHyL+
 github.com/Masterminds/semver/v3 v3.3.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Masterminds/sprig/v3 v3.3.0 h1:mQh0Yrg1XPo6vjYXgtf5OtijNAKJRNcTdOOGZe3tPhs=
 github.com/Masterminds/sprig/v3 v3.3.0/go.mod h1:Zy1iXRYNqNLUolqCpL4uhk6SHUMAOSCzdgBfDb35Lz0=
-github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261027061731-a270be8e71fc h1:El+a1RpAoKk8nyENbdv3NgLv4bnytn1EffzeNLg9SFU=
-github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261027061731-a270be8e71fc/go.mod h1:3hhDGiWEmmNt/7oOTsrr6qwiTmqdR7EhtdeK/a1TZEw=
+github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261030075037-c6a67e217cc0 h1:DYyVBe4ESnLJ3Ilp8bcyrDwUhv3GYn/zeDp+Ez1cj7I=
+github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261030075037-c6a67e217cc0/go.mod h1:3hhDGiWEmmNt/7oOTsrr6qwiTmqdR7EhtdeK/a1TZEw=
 github.com/allegro/bigcache/v3 v3.1.0 h1:H2Vp8VOvxcrB91o86fUSVJFqeuz8kpyyB02eH3bSzwk=
 github.com/allegro/bigcache/v3 v3.1.0/go.mod h1:aPyh7jEvrog9zAwx5N7+JUQX5dZTSGpxF1LAR4dr35I=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
