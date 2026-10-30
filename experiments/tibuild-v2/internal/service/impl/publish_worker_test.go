@@ -407,21 +407,49 @@ func TestStartHonoursTheConfiguredKinds(t *testing.T) {
 	ops := newRegistryStub(map[string]string{
 		"example.com/hub/pingcap/widget/image:v8.5.0": publishTestDigest,
 	})
-	svc := newPublishWorkerTestService(t, ops, nil)
-	svc.workerCfg.Kinds = []string{"tiup"}
 
-	// Start must return immediately: the worker is disabled for image_copy.
-	done := make(chan struct{})
-	go func() {
-		svc.Start(context.Background())
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Start did not return for a disabled kind")
-	}
-	require.Empty(t, ops.copyList())
+	t.Run("unknown kind returns immediately", func(t *testing.T) {
+		svc := newPublishWorkerTestService(t, ops, nil)
+		svc.workerCfg.Kinds = []string{"unknown"}
+
+		done := make(chan struct{})
+		go func() {
+			svc.Start(context.Background())
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Start did not return for a disabled kind")
+		}
+		require.Empty(t, ops.copyList())
+	})
+
+	t.Run("tiup kind keeps the claim loop running", func(t *testing.T) {
+		svc := newPublishWorkerTestService(t, ops, nil)
+		svc.workerCfg.Kinds = []string{PublishKindTiUP}
+		svc.workerCfg.PollInterval = "10ms"
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			svc.Start(ctx)
+			close(done)
+		}()
+
+		// The loop is alive: it does not return while the context is open.
+		select {
+		case <-done:
+			t.Fatal("Start returned for the tiup kind")
+		case <-time.After(100 * time.Millisecond):
+		}
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Start did not stop after the context was cancelled")
+		}
+	})
 }
 
 func TestRenewStepLeaseIsFencedByTheToken(t *testing.T) {

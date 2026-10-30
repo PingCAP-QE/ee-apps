@@ -20,6 +20,11 @@ var ErrPublishRulesUnavailable = errors.New("delivery rules are not available")
 func ValidatePublishTargets(cfg *config.Service) error {
 	workerCfg := cfg.Worker
 	workerCfg.ApplyDefaults()
+	// Only the image kind claims registry hosts from the delivery rules. A TiUP
+	// worker claims tiup-staging/tiup-prod, which are not rule destinations.
+	if !containsString(workerCfg.Kinds, PublishKindImageCopy) {
+		return nil
+	}
 	targets := cfg.Publish.PublicationTargets(workerCfg.Targets)
 	if len(targets) == 0 || hasWildcardTarget(targets) {
 		return nil
