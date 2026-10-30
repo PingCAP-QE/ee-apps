@@ -9,6 +9,9 @@ import (
 
 	larksdk "github.com/larksuite/oapi-sdk-go/v3"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
+	"github.com/rs/zerolog"
+
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 func TestSendLarkCard_Manual(t *testing.T) {
@@ -140,4 +143,31 @@ func TestSendLarkCard_Success_Manual(t *testing.T) {
 		t.Fatalf("API error: code=%d msg=%s", resp.Code, resp.Msg)
 	}
 	t.Logf("Sent! msg_id=%s", *resp.Data.MessageId)
+}
+
+// TestSendLarkAlert_Manual exercises the worker alert path against the real
+// Lark app. LARK_ALERT_CHAT_ID is the oc_ id stored in the
+// tibuild_v2_lark_channels secret. Run it with:
+//
+//	LARK_APP_ID=... LARK_APP_SECRET=... LARK_ALERT_CHAT_ID=oc_... \
+//	  go test -tags=manual -run TestSendLarkAlert_Manual ./internal/service/impl
+func TestSendLarkAlert_Manual(t *testing.T) {
+	appID := os.Getenv("LARK_APP_ID")
+	appSecret := os.Getenv("LARK_APP_SECRET")
+	chatID := os.Getenv("LARK_ALERT_CHAT_ID")
+	if appID == "" || appSecret == "" || chatID == "" {
+		t.Skip("set LARK_APP_ID, LARK_APP_SECRET and LARK_ALERT_CHAT_ID to run this test")
+	}
+
+	logger := zerolog.Nop()
+	notifier := NewLarkNotifier(appID, appSecret, []config.LarkChannel{
+		{Name: "tibuild-alerts", ChatID: chatID},
+	}, &logger)
+
+	if err := notifier.SendAlert(context.Background(),
+		"[tibuild] worker alert path test",
+		"connectivity check for the tibuild worker alert path; safe to ignore"); err != nil {
+		t.Fatalf("SendAlert: %v", err)
+	}
+	t.Log("alert delivered")
 }

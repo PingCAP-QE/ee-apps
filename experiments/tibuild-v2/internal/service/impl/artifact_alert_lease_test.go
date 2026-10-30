@@ -166,3 +166,39 @@ func TestAlertLeaseTreatsCreateConflictAsLostElection(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, leader, "losing the insert race must not make this worker the leader")
 }
+
+// fakeRecipientNotifier models a Lark notifier that may or may not have rows in
+// lark.channels.
+type fakeRecipientNotifier struct {
+	fakeAlertNotifier
+	recipients bool
+}
+
+func (f *fakeRecipientNotifier) HasRecipients() bool { return f.recipients }
+
+// Only prod2 injects lark.channels today. A cluster without channels must not
+// take the lease, otherwise the whole fleet would go silent while it holds it.
+func TestWorkerWithoutRecipientsSkipsTheElection(t *testing.T) {
+	ctx := context.Background()
+	db := serverlessTestDB(t)
+	now := time.Now()
+
+	task := createLeaseTestTask(t, db, "docker.io", TaskStatusPending)
+	_, err := task.Update().SetCreatedAt(now.Add(-31 * time.Minute)).Save(ctx)
+	require.NoError(t, err)
+
+	silent := newAlertLeaseTestService(t, db, "worker-gcp", now)
+	silent.alerter = &fakeRecipientNotifier{recipients: false}
+	silent.refreshMetricsAndAlerts(ctx)
+
+	require.False(t, silent.canEvaluateAlerts())
+	count, err := db.AlertLease.Query().Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, count, "a worker without recipients must not hold the alert lease")
+
+	talker := newAlertLeaseTestService(t, db, "worker-prod2", now)
+	notifier := &fakeRecipientNotifier{recipients: true}
+	talker.alerter = notifier
+	talker.refreshMetricsAndAlerts(ctx)
+	require.Equal(t, 1, notifier.count(), "the worker with recipients delivers the alert")
+}

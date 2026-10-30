@@ -127,7 +127,12 @@ above refreshing. Configure `lark.channels` to give the alerts recipients.
 Alert evaluation itself is elected through the `alert_leases` table: the
 workers of all clusters share one queue, so only the lease holder calls the
 notifier. The lease TTL is twice `metrics_interval`, and an evicted holder
-loses the election on the next tick instead of double-sending.
+loses the election on the next tick instead of double-sending. A worker without
+`lark.channels` does not compete for the lease, so a cluster that has no
+recipients configured cannot take the lease and silence the others.
+
+Changing recipients, forcing an External Secrets sync and verifying delivery is
+documented in [`docs/worker-alerts.md`](./docs/worker-alerts.md).
 
 ## Testing
 

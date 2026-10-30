@@ -183,6 +183,13 @@ func newLarkMsgUUID(buildID int, receiver string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
+// HasRecipients reports whether at least one Lark channel is configured. A
+// worker that cannot deliver must not compete for the alert lease, otherwise a
+// cluster without channels could hold the lease and silence the whole fleet.
+func (n *LarkNotifier) HasRecipients() bool {
+	return len(n.channels) > 0
+}
+
 // SendAlert sends a plain-text alert to every configured Lark channel.
 func (n *LarkNotifier) SendAlert(ctx context.Context, title, body string) error {
 	client := n.client.Load().(*larksdk.Client)
