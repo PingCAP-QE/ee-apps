@@ -250,3 +250,74 @@ func TestAlertLeaseSingleLeaderMySQL(t *testing.T) {
 	}
 	require.Len(t, second, 1, "the leader must stay stable while its lease is live")
 }
+
+// End-to-end alerting gate: three workers with shortened thresholds share one
+// queue. The same condition must produce exactly one message, including a lease
+// reclaim performed by a worker that is not the elected leader.
+func TestAlertE2EThreeWorkersMySQL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping MySQL integration test in short mode")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	db := startMySQL(t)
+
+	notifier := &fakeAlertNotifier{}
+	services := make([]*artifactsrvc, 0, 3)
+	for i := 0; i < 3; i++ {
+		s := newLeaseTestService(t, db, config.Worker{
+			ID:              fmt.Sprintf("e2e-worker-%d", i),
+			PollInterval:    "1s",
+			Lease:           "5s",
+			Heartbeat:       "2s",
+			MaxAttempts:     3,
+			MetricsInterval: "1s",
+			ReapInterval:    "1s",
+			Alerts: config.WorkerAlerts{
+				BacklogAfter:       "2s",
+				OldestPendingAfter: "1h", // isolate the backlog condition
+				LeaseReclaimWindow: "30s",
+				Dedupe:             "1m",
+			},
+		})
+		s.pollingRate = time.Second
+		s.alerter = notifier
+		services = append(services, s)
+	}
+
+	// available_at in the future keeps the task unclaimable, so no worker tries
+	// to copy an image over the network.
+	backlog := createLeaseTestTask(t, db, "docker.io", TaskStatusPending)
+	_, err := backlog.Update().SetAvailableAt(time.Now().Add(time.Hour)).Save(ctx)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for _, svc := range services {
+		wg.Add(1)
+		go func(s *artifactsrvc) {
+			defer wg.Done()
+			s.Start(ctx)
+		}(svc)
+	}
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
+
+	require.Eventually(t, func() bool { return notifier.count() == 1 }, 30*time.Second, 200*time.Millisecond,
+		"one backlog alert within the shortened threshold")
+	time.Sleep(3 * time.Second)
+	require.Equal(t, 1, notifier.count(), "followers must not duplicate the backlog alert")
+
+	processing := createLeaseTestTask(t, db, "docker.io", TaskStatusProcessing)
+	_, err = processing.Update().
+		SetClaimedBy("gone").
+		SetLeaseUntil(time.Now().Add(-time.Minute)).
+		SetAvailableAt(time.Now().Add(time.Hour)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool { return notifier.count() == 2 }, 30*time.Second, 200*time.Millisecond,
+		"the lease reclaim alert is delivered once")
+	time.Sleep(3 * time.Second)
+	require.Equal(t, 2, notifier.count(), "the lease alert must not be duplicated")
+}

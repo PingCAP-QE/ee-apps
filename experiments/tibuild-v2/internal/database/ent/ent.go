@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertevent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
@@ -75,6 +76,7 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			alertevent.Table:    alertevent.ValidColumn,
 			alertlease.Table:    alertlease.ValidColumn,
 			devbuild.Table:      devbuild.ValidColumn,
 			imagesynctask.Table: imagesynctask.ValidColumn,

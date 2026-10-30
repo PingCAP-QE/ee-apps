@@ -179,8 +179,10 @@ func (s *artifactsrvc) reapAndRecord(ctx context.Context) (int, error) {
 	if s.metrics != nil {
 		s.metrics.recordReclaimed(n)
 	}
-	if s.alerts != nil {
-		s.alerts.noteLeaseReclaim(n, s.now())
+	// Publish the reclaim so the alert leader can report it even when this
+	// worker is a follower; only the leader calls the notifier.
+	if err := s.recordLeaseReclaim(ctx, n, s.now()); err != nil {
+		s.logger.Err(err).Msg("failed to record the lease reclaim alert event")
 	}
 	return n, nil
 }
