@@ -9,6 +9,20 @@ import (
 )
 
 var (
+	// AlertLeasesColumns holds the columns for the "alert_leases" table.
+	AlertLeasesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "name", Type: field.TypeString, Unique: true, Size: 64},
+		{Name: "holder", Type: field.TypeString, Size: 128},
+		{Name: "lease_until", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// AlertLeasesTable holds the schema information for the "alert_leases" table.
+	AlertLeasesTable = &schema.Table{
+		Name:       "alert_leases",
+		Columns:    AlertLeasesColumns,
+		PrimaryKey: []*schema.Column{AlertLeasesColumns[0]},
+	}
 	// DevBuildsV2Columns holds the columns for the "dev_builds_v2" table.
 	DevBuildsV2Columns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -78,6 +92,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		AlertLeasesTable,
 		DevBuildsV2Table,
 		ImageSyncTasksTable,
 	}

@@ -195,3 +195,58 @@ func TestWorkerMultiReplicaAndLeaseRecoveryMySQL(t *testing.T) {
 	body := scrapeMetrics(t, recoveryWorker)
 	require.Contains(t, body, "publish_task_lease_expired_total 1")
 }
+
+// Five workers across replicas share one queue, so the alert election must pick
+// exactly one evaluator even when they all tick at the same moment.
+func TestAlertLeaseSingleLeaderMySQL(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping MySQL integration test in short mode")
+	}
+	ctx := context.Background()
+	db := startMySQL(t)
+	now := time.Now()
+
+	type leaseResult struct {
+		leader bool
+		err    error
+	}
+	services := make([]*artifactsrvc, 0, 5)
+	for i := 0; i < 5; i++ {
+		s := newLeaseTestService(t, db, config.Worker{ID: fmt.Sprintf("worker-%d", i)})
+		s.nowFn = func() time.Time { return now }
+		services = append(services, s)
+	}
+
+	results := make(chan leaseResult, len(services))
+	var wg sync.WaitGroup
+	for _, svc := range services {
+		wg.Add(1)
+		go func(s *artifactsrvc) {
+			defer wg.Done()
+			leader, err := s.acquireAlertLease(ctx, now)
+			results <- leaseResult{leader: leader, err: err}
+		}(svc)
+	}
+	wg.Wait()
+	close(results)
+
+	leaders := 0
+	for res := range results {
+		require.NoError(t, res.err)
+		if res.leader {
+			leaders++
+		}
+	}
+	require.Equal(t, 1, leaders, "exactly one of the five workers may win the election")
+
+	// The winner keeps the lease on the next tick; the losers stay followers.
+	second := make(map[string]int)
+	for _, svc := range services {
+		leader, err := svc.acquireAlertLease(ctx, now.Add(5*time.Second))
+		require.NoError(t, err)
+		if leader {
+			second[svc.workerConfig().ID] = 1
+		}
+	}
+	require.Len(t, second, 1, "the leader must stay stable while its lease is live")
+}
