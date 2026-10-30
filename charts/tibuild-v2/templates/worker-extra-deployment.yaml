@@ -6,6 +6,10 @@ credentials or their own queue shard (TiUP mirrors) run as separate Deployments
 so a busy or broken target cannot starve the other kinds, and so each pod mounts
 only the credential of the mirror it publishes to.
 
+They render only when `worker.enabled` is true; the single default worker can
+be turned off separately with `worker.default.enabled: false` (prod2 runs two
+TiUP workers and no image worker).
+
 Each entry mirrors the fields of `worker` that matter per deployment:
   name           required; used as the Deployment name suffix
   replicaCount   defaults to worker.replicaCount
