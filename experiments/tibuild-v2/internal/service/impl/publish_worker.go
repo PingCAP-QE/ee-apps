@@ -41,7 +41,10 @@ type imageCopyResult struct {
 // targets have no ordering between each other.
 func (s *publishsrvc) Start(ctx context.Context) {
 	cfg := s.workerCfg
-	if !containsString(cfg.Kinds, PublishKindImageCopy) {
+	// One claim loop serves every kind: executeStep dispatches on the unit kind.
+	// The target shard keeps the kinds apart (image workers claim registry
+	// hosts, TiUP workers claim tiup-staging/tiup-prod).
+	if !containsString(cfg.Kinds, PublishKindImageCopy) && !containsString(cfg.Kinds, PublishKindTiUP) {
 		s.logger.Info().Strs("kinds", cfg.Kinds).Msg("publish worker disabled for the configured kinds")
 		return
 	}
