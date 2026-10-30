@@ -16,6 +16,8 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
 )
 
 // Client is the client that holds all ent builders.
@@ -27,6 +29,10 @@ type Client struct {
 	DevBuild *DevBuildClient
 	// ImageSyncTask is the client for interacting with the ImageSyncTask builders.
 	ImageSyncTask *ImageSyncTaskClient
+	// PublishStep is the client for interacting with the PublishStep builders.
+	PublishStep *PublishStepClient
+	// PublishUnit is the client for interacting with the PublishUnit builders.
+	PublishUnit *PublishUnitClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -40,6 +46,8 @@ func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.DevBuild = NewDevBuildClient(c.config)
 	c.ImageSyncTask = NewImageSyncTaskClient(c.config)
+	c.PublishStep = NewPublishStepClient(c.config)
+	c.PublishUnit = NewPublishUnitClient(c.config)
 }
 
 type (
@@ -134,6 +142,8 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		config:        cfg,
 		DevBuild:      NewDevBuildClient(cfg),
 		ImageSyncTask: NewImageSyncTaskClient(cfg),
+		PublishStep:   NewPublishStepClient(cfg),
+		PublishUnit:   NewPublishUnitClient(cfg),
 	}, nil
 }
 
@@ -155,6 +165,8 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		config:        cfg,
 		DevBuild:      NewDevBuildClient(cfg),
 		ImageSyncTask: NewImageSyncTaskClient(cfg),
+		PublishStep:   NewPublishStepClient(cfg),
+		PublishUnit:   NewPublishUnitClient(cfg),
 	}, nil
 }
 
@@ -185,6 +197,8 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	c.DevBuild.Use(hooks...)
 	c.ImageSyncTask.Use(hooks...)
+	c.PublishStep.Use(hooks...)
+	c.PublishUnit.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
@@ -192,6 +206,8 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.DevBuild.Intercept(interceptors...)
 	c.ImageSyncTask.Intercept(interceptors...)
+	c.PublishStep.Intercept(interceptors...)
+	c.PublishUnit.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -201,6 +217,10 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.DevBuild.mutate(ctx, m)
 	case *ImageSyncTaskMutation:
 		return c.ImageSyncTask.mutate(ctx, m)
+	case *PublishStepMutation:
+		return c.PublishStep.mutate(ctx, m)
+	case *PublishUnitMutation:
+		return c.PublishUnit.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -472,12 +492,278 @@ func (c *ImageSyncTaskClient) mutate(ctx context.Context, m *ImageSyncTaskMutati
 	}
 }
 
+// PublishStepClient is a client for the PublishStep schema.
+type PublishStepClient struct {
+	config
+}
+
+// NewPublishStepClient returns a client for the PublishStep from the given config.
+func NewPublishStepClient(c config) *PublishStepClient {
+	return &PublishStepClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `publishstep.Hooks(f(g(h())))`.
+func (c *PublishStepClient) Use(hooks ...Hook) {
+	c.hooks.PublishStep = append(c.hooks.PublishStep, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `publishstep.Intercept(f(g(h())))`.
+func (c *PublishStepClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PublishStep = append(c.inters.PublishStep, interceptors...)
+}
+
+// Create returns a builder for creating a PublishStep entity.
+func (c *PublishStepClient) Create() *PublishStepCreate {
+	mutation := newPublishStepMutation(c.config, OpCreate)
+	return &PublishStepCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PublishStep entities.
+func (c *PublishStepClient) CreateBulk(builders ...*PublishStepCreate) *PublishStepCreateBulk {
+	return &PublishStepCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PublishStepClient) MapCreateBulk(slice any, setFunc func(*PublishStepCreate, int)) *PublishStepCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PublishStepCreateBulk{err: fmt.Errorf("calling to PublishStepClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PublishStepCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PublishStepCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PublishStep.
+func (c *PublishStepClient) Update() *PublishStepUpdate {
+	mutation := newPublishStepMutation(c.config, OpUpdate)
+	return &PublishStepUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PublishStepClient) UpdateOne(_m *PublishStep) *PublishStepUpdateOne {
+	mutation := newPublishStepMutation(c.config, OpUpdateOne, withPublishStep(_m))
+	return &PublishStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PublishStepClient) UpdateOneID(id string) *PublishStepUpdateOne {
+	mutation := newPublishStepMutation(c.config, OpUpdateOne, withPublishStepID(id))
+	return &PublishStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PublishStep.
+func (c *PublishStepClient) Delete() *PublishStepDelete {
+	mutation := newPublishStepMutation(c.config, OpDelete)
+	return &PublishStepDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PublishStepClient) DeleteOne(_m *PublishStep) *PublishStepDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PublishStepClient) DeleteOneID(id string) *PublishStepDeleteOne {
+	builder := c.Delete().Where(publishstep.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PublishStepDeleteOne{builder}
+}
+
+// Query returns a query builder for PublishStep.
+func (c *PublishStepClient) Query() *PublishStepQuery {
+	return &PublishStepQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePublishStep},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PublishStep entity by its id.
+func (c *PublishStepClient) Get(ctx context.Context, id string) (*PublishStep, error) {
+	return c.Query().Where(publishstep.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PublishStepClient) GetX(ctx context.Context, id string) *PublishStep {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PublishStepClient) Hooks() []Hook {
+	return c.hooks.PublishStep
+}
+
+// Interceptors returns the client interceptors.
+func (c *PublishStepClient) Interceptors() []Interceptor {
+	return c.inters.PublishStep
+}
+
+func (c *PublishStepClient) mutate(ctx context.Context, m *PublishStepMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PublishStepCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PublishStepUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PublishStepUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PublishStepDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PublishStep mutation op: %q", m.Op())
+	}
+}
+
+// PublishUnitClient is a client for the PublishUnit schema.
+type PublishUnitClient struct {
+	config
+}
+
+// NewPublishUnitClient returns a client for the PublishUnit from the given config.
+func NewPublishUnitClient(c config) *PublishUnitClient {
+	return &PublishUnitClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `publishunit.Hooks(f(g(h())))`.
+func (c *PublishUnitClient) Use(hooks ...Hook) {
+	c.hooks.PublishUnit = append(c.hooks.PublishUnit, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `publishunit.Intercept(f(g(h())))`.
+func (c *PublishUnitClient) Intercept(interceptors ...Interceptor) {
+	c.inters.PublishUnit = append(c.inters.PublishUnit, interceptors...)
+}
+
+// Create returns a builder for creating a PublishUnit entity.
+func (c *PublishUnitClient) Create() *PublishUnitCreate {
+	mutation := newPublishUnitMutation(c.config, OpCreate)
+	return &PublishUnitCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of PublishUnit entities.
+func (c *PublishUnitClient) CreateBulk(builders ...*PublishUnitCreate) *PublishUnitCreateBulk {
+	return &PublishUnitCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *PublishUnitClient) MapCreateBulk(slice any, setFunc func(*PublishUnitCreate, int)) *PublishUnitCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &PublishUnitCreateBulk{err: fmt.Errorf("calling to PublishUnitClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*PublishUnitCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &PublishUnitCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for PublishUnit.
+func (c *PublishUnitClient) Update() *PublishUnitUpdate {
+	mutation := newPublishUnitMutation(c.config, OpUpdate)
+	return &PublishUnitUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *PublishUnitClient) UpdateOne(_m *PublishUnit) *PublishUnitUpdateOne {
+	mutation := newPublishUnitMutation(c.config, OpUpdateOne, withPublishUnit(_m))
+	return &PublishUnitUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *PublishUnitClient) UpdateOneID(id string) *PublishUnitUpdateOne {
+	mutation := newPublishUnitMutation(c.config, OpUpdateOne, withPublishUnitID(id))
+	return &PublishUnitUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for PublishUnit.
+func (c *PublishUnitClient) Delete() *PublishUnitDelete {
+	mutation := newPublishUnitMutation(c.config, OpDelete)
+	return &PublishUnitDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *PublishUnitClient) DeleteOne(_m *PublishUnit) *PublishUnitDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *PublishUnitClient) DeleteOneID(id string) *PublishUnitDeleteOne {
+	builder := c.Delete().Where(publishunit.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &PublishUnitDeleteOne{builder}
+}
+
+// Query returns a query builder for PublishUnit.
+func (c *PublishUnitClient) Query() *PublishUnitQuery {
+	return &PublishUnitQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypePublishUnit},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a PublishUnit entity by its id.
+func (c *PublishUnitClient) Get(ctx context.Context, id string) (*PublishUnit, error) {
+	return c.Query().Where(publishunit.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *PublishUnitClient) GetX(ctx context.Context, id string) *PublishUnit {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *PublishUnitClient) Hooks() []Hook {
+	return c.hooks.PublishUnit
+}
+
+// Interceptors returns the client interceptors.
+func (c *PublishUnitClient) Interceptors() []Interceptor {
+	return c.inters.PublishUnit
+}
+
+func (c *PublishUnitClient) mutate(ctx context.Context, m *PublishUnitMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&PublishUnitCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&PublishUnitUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&PublishUnitUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&PublishUnitDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown PublishUnit mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		DevBuild, ImageSyncTask []ent.Hook
+		DevBuild, ImageSyncTask, PublishStep, PublishUnit []ent.Hook
 	}
 	inters struct {
-		DevBuild, ImageSyncTask []ent.Interceptor
+		DevBuild, ImageSyncTask, PublishStep, PublishUnit []ent.Interceptor
 	}
 )

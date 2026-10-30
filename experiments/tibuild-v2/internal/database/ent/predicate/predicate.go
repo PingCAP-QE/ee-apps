@@ -11,3 +11,9 @@ type DevBuild func(*sql.Selector)
 
 // ImageSyncTask is the predicate function for imagesynctask builders.
 type ImageSyncTask func(*sql.Selector)
+
+// PublishStep is the predicate function for publishstep builders.
+type PublishStep func(*sql.Selector)
+
+// PublishUnit is the predicate function for publishunit builders.
+type PublishUnit func(*sql.Selector)

@@ -14,6 +14,8 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -76,6 +78,8 @@ func checkColumn(t, c string) error {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			devbuild.Table:      devbuild.ValidColumn,
 			imagesynctask.Table: imagesynctask.ValidColumn,
+			publishstep.Table:   publishstep.ValidColumn,
+			publishunit.Table:   publishunit.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

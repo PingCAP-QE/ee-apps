@@ -18,6 +18,8 @@ type Service struct {
 	ImageSync ImageSync `yaml:"image_sync" json:"image_sync"`
 	// Worker holds the background task executor configuration.
 	Worker Worker `yaml:"worker,omitempty" json:"worker,omitempty"`
+	// Publish holds the publication planning configuration.
+	Publish Publish `yaml:"publish,omitempty" json:"publish,omitempty"`
 }
 
 // IdentityHeaders configures the trusted ingress headers consumed by TiBuild.
@@ -38,6 +40,26 @@ type ImageSync struct {
 	// PollingRate is the worker polling interval (e.g. "10s"). Defaults to 10s.
 	PollingRate string `yaml:"polling_rate,omitempty" json:"polling_rate,omitempty"`
 }
+
+// Publish configures the publication planner.
+type Publish struct {
+	// DeliveryConfigPath is the delivery rules file (packages/delivery.yaml in
+	// PingCAP-QE/artifacts), mounted by the deployment. The rules are reloaded
+	// when the file changes, so a Flux sync takes effect without a restart.
+	DeliveryConfigPath string `yaml:"delivery_config_path,omitempty" json:"delivery_config_path,omitempty"`
+}
+
+// DeliveryConfigPathOrDefault returns the configured rules path, falling back to
+// the path the deployment mounts by default.
+func (p Publish) DeliveryConfigPathOrDefault() string {
+	if p.DeliveryConfigPath != "" {
+		return p.DeliveryConfigPath
+	}
+	return DefaultDeliveryConfigPath
+}
+
+// DefaultDeliveryConfigPath is where the deployment mounts delivery.yaml.
+const DefaultDeliveryConfigPath = "/etc/delivery/delivery.yaml"
 
 type Github struct {
 	Token string `yaml:"token,omitempty" json:"token,omitempty"`
