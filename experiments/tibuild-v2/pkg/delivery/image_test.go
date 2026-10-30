@@ -161,3 +161,11 @@ func TestTargetOf(t *testing.T) {
 		require.Equal(t, want, delivery.TargetOf(dest), dest)
 	}
 }
+
+func TestTargetsReturnsTheDestinationCatalogue(t *testing.T) {
+	cfg := testConfig()
+	require.Equal(t, []string{"docker.io", "gcr.io", "uhub.service.ucloud.cn"}, cfg.Targets())
+
+	var nilCfg *delivery.Config
+	require.Empty(t, nilCfg.Targets())
+}

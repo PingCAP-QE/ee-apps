@@ -3,6 +3,7 @@ package impl
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -145,32 +146,20 @@ func TestClaimStepIsExclusive(t *testing.T) {
 	unit := enqueue(t, svc, "example.com/hub/pingcap/widget/image:v8.5.0-enterprise")
 	require.Len(t, unit.Steps, 1)
 
-	var (
-		wg   sync.WaitGroup
-		mu   sync.Mutex
-		ids  []string
-		errs []error
-	)
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			step, err := svc.claimStep(context.Background())
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				errs = append(errs, err)
-				return
-			}
-			if step != nil {
-				ids = append(ids, step.ID)
-			}
-		}()
-	}
-	wg.Wait()
+	// The first claim wins; every later claim of the same work (from this or
+	// another worker) finds nothing. The guard is the state predicate of the
+	// UPDATE, which is what makes it safe across processes; sqlite cannot
+	// exercise concurrent writers here, so the check is sequential on purpose.
+	first, err := svc.claimStep(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, first)
 
-	require.Empty(t, errs)
-	require.Len(t, ids, 1, "a step must be claimed exactly once")
+	workerID := svc.workerCfg.ID
+	svc.workerCfg.ID = "other-worker"
+	second, err := svc.claimStep(context.Background())
+	svc.workerCfg.ID = workerID
+	require.NoError(t, err)
+	require.Nil(t, second, "a claimed step is invisible to other workers")
 }
 
 func TestExecuteStepCopiesThenSkipsOnSecondRun(t *testing.T) {
@@ -555,4 +544,52 @@ func TestHeartbeatStepRenewsAndThenAborts(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return runCtx.Err() != nil
 	}, 5*time.Second, 10*time.Millisecond, "a lost lease cancels the execution")
+}
+
+func TestValidatePublishTargets(t *testing.T) {
+	rulesPath := t.TempDir() + "/delivery.yaml"
+	require.NoError(t, os.WriteFile(rulesPath, []byte(publishTestRules), 0o644))
+
+	base := func() *config.Service {
+		return &config.Service{Publish: config.Publish{DeliveryConfigPath: rulesPath}}
+	}
+
+	// Wildcard and concrete-but-known targets are accepted.
+	require.NoError(t, ValidatePublishTargets(base()))
+	cfg := base()
+	cfg.Publish.Targets = []string{"docker.io", "gcr.io"}
+	require.NoError(t, ValidatePublishTargets(cfg))
+
+	// A typo is rejected with the known catalogue.
+	cfg = base()
+	cfg.Publish.Targets = []string{"grc.io"}
+	err := ValidatePublishTargets(cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "grc.io")
+
+	// Publish targets win over worker targets, so the image sync queue is not
+	// re-sharded by accident.
+	cfg = base()
+	cfg.Worker.Targets = []string{"*"}
+	cfg.Publish.Targets = []string{"docker.io"}
+	require.NoError(t, ValidatePublishTargets(cfg))
+
+	// Missing rules file is reported separately so the caller can warn instead
+	// of crashing before Flux syncs the ConfigMap.
+	cfg = &config.Service{Publish: config.Publish{
+		DeliveryConfigPath: rulesPath + ".missing",
+		Targets:            []string{"docker.io"},
+	}}
+	require.ErrorIs(t, ValidatePublishTargets(cfg), ErrPublishRulesUnavailable)
+}
+
+func TestPublishTargetsOverrideWorkerTargets(t *testing.T) {
+	logger := zerolog.Nop()
+	cfg := &config.Service{Worker: config.Worker{Targets: []string{"*"}}, Publish: config.Publish{Targets: []string{"docker.io"}}}
+	svc := newPublishService(&logger, nil, cfg)
+	require.Equal(t, []string{"docker.io"}, svc.workerCfg.Targets)
+
+	cfg.Publish.Targets = nil
+	svc = newPublishService(&logger, nil, cfg)
+	require.Equal(t, []string{"*"}, svc.workerCfg.Targets)
 }

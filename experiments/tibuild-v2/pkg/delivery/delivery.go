@@ -11,6 +11,7 @@ package delivery
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -88,4 +89,29 @@ func (c *Config) IsDeprecated(repo string) bool {
 		}
 	}
 	return false
+}
+
+// Targets returns the sorted, de-duplicated registry hosts used as destinations
+// by the image copy rules.
+//
+// Workers declare the targets they serve (credentials + network reachability),
+// so this list is the catalogue their configuration is validated against.
+func (c *Config) Targets() []string {
+	if c == nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, rules := range c.ImageCopyRules {
+		for _, rule := range rules {
+			for _, dest := range rule.DestRepositories {
+				seen[TargetOf(dest)] = struct{}{}
+			}
+		}
+	}
+	targets := make([]string, 0, len(seen))
+	for target := range seen {
+		targets = append(targets, target)
+	}
+	sort.Strings(targets)
+	return targets
 }

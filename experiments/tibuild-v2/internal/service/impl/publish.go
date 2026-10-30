@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -55,6 +56,8 @@ type publishsrvc struct {
 
 	nowFn func() time.Time
 	newID func() string
+
+	inflight sync.WaitGroup
 }
 
 // NewPublish returns the publish service implementation.
@@ -70,6 +73,9 @@ func NewPublish(logger *zerolog.Logger, cfg *config.Service) publish.Service {
 func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Service) *publishsrvc {
 	workerCfg := cfg.Worker
 	workerCfg.ApplyDefaults()
+	// Publication may be concentrated in the regions that can reach each
+	// registry, independently from the image sync queue sharding.
+	workerCfg.Targets = cfg.Publish.PublicationTargets(workerCfg.Targets)
 
 	return &publishsrvc{
 		logger: logger,
