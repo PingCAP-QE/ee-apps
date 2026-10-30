@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261030102029-bd61fde1c9bb
+	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-00010101000000-000000000000
 	github.com/allegro/bigcache/v3 v3.1.0
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/google/go-github/v68 v68.0.0
@@ -44,3 +44,5 @@ require (
 	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 )
+
+replace github.com/PingCAP-QE/ee-apps/github-token-broker/client => ../github-token-broker/client

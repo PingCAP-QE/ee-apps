@@ -10,6 +10,7 @@ on:
       - "chatops-lark/**/*.go"
       - "chatops-lark/**/go.mod"
       - "chatops-lark/**/go.sum"
+      - "github-token-broker/client/**"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
