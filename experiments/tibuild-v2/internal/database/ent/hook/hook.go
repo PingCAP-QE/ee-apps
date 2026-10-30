@@ -9,6 +9,18 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 )
 
+// The AlertEventFunc type is an adapter to allow the use of ordinary
+// function as AlertEvent mutator.
+type AlertEventFunc func(context.Context, *ent.AlertEventMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f AlertEventFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.AlertEventMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.AlertEventMutation", m)
+}
+
 // The AlertLeaseFunc type is an adapter to allow the use of ordinary
 // function as AlertLease mutator.
 type AlertLeaseFunc func(context.Context, *ent.AlertLeaseMutation) (ent.Value, error)

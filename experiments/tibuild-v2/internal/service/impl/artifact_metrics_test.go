@@ -95,7 +95,7 @@ func TestLeaseReclaimAlertIsDedupedPerWindow(t *testing.T) {
 	logger := zerolog.Nop()
 	notifier := &fakeAlertNotifier{}
 	tracker := newAlertTracker(newAlertSettings(config.Worker{}))
-	tracker.noteLeaseReclaim(3, now)
+	tracker.setLastLeaseReclaim(now)
 
 	tracker.evaluate(context.Background(), notifier, nil, now.Add(time.Minute), &logger)
 	require.Equal(t, 1, notifier.count())
@@ -103,7 +103,7 @@ func TestLeaseReclaimAlertIsDedupedPerWindow(t *testing.T) {
 	tracker.evaluate(context.Background(), notifier, nil, now.Add(2*time.Minute), &logger)
 	require.Equal(t, 1, notifier.count(), "same reclaim window must not alert twice")
 
-	tracker.noteLeaseReclaim(1, now.Add(6*time.Minute))
+	tracker.setLastLeaseReclaim(now.Add(6 * time.Minute))
 	tracker.evaluate(context.Background(), notifier, nil, now.Add(6*time.Minute), &logger)
 	require.Equal(t, 2, notifier.count(), "a new reclaim window should alert again")
 }
@@ -197,7 +197,7 @@ func TestAlertsDisabledSkipsNotifications(t *testing.T) {
 		"docker.io": {Backlog: 5, OldestPending: now.Add(-2 * time.Hour)},
 	}
 	tracker.evaluate(context.Background(), notifier, stats, now, &logger)
-	tracker.noteLeaseReclaim(2, now)
+	tracker.setLastLeaseReclaim(now)
 	tracker.evaluate(context.Background(), notifier, stats, now, &logger)
 	require.Zero(t, notifier.count(), "alerts.enabled=false must suppress every alert")
 }
