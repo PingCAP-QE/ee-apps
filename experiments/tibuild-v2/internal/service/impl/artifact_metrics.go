@@ -150,6 +150,25 @@ func (s *artifactsrvc) runMetrics(ctx context.Context) {
 	}
 }
 
+// alertNotifierWithRecipients is implemented by notifiers that can report
+// whether they have anywhere to deliver.
+type alertNotifierWithRecipients interface {
+	HasRecipients() bool
+}
+
+// canEvaluateAlerts reports whether this worker may compete for the alert
+// lease. A notifier without recipients (for example a cluster whose config has
+// no lark.channels) is skipped so it cannot take the lease and drop alerts.
+func (s *artifactsrvc) canEvaluateAlerts() bool {
+	if s.alerter == nil {
+		return false
+	}
+	if reporter, ok := s.alerter.(alertNotifierWithRecipients); ok && !reporter.HasRecipients() {
+		return false
+	}
+	return true
+}
+
 func (s *artifactsrvc) refreshMetricsAndAlerts(ctx context.Context) {
 	stats, err := s.collectTaskStats(ctx)
 	if err != nil {
@@ -162,6 +181,10 @@ func (s *artifactsrvc) refreshMetricsAndAlerts(ctx context.Context) {
 
 	if !s.alerts.isEnabled() {
 		// Metrics keep refreshing; only alert delivery is disabled.
+		return
+	}
+	if !s.canEvaluateAlerts() {
+		// Metrics keep refreshing; this worker has no recipients to alert.
 		return
 	}
 	// Every replica sees the same queue, so only the lease holder may evaluate.
