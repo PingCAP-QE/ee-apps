@@ -131,7 +131,7 @@ func TestTiUPHTTPDeliveryByRules(t *testing.T) {
 func TestTiUPHTTPGetUnitNotFound(t *testing.T) {
 	server, _ := newTiUPHTTPTestServer(t)
 
-	status, body := doJSON(t, http.MethodGet, server.URL+"/api/v2/publish/tiup/units/missing", nil)
+	status, body := doJSON(t, http.MethodGet, server.URL+"/api/v2/publish/units/missing", nil)
 	require.Equal(t, http.StatusNotFound, status)
 	require.Contains(t, body, "message")
 }

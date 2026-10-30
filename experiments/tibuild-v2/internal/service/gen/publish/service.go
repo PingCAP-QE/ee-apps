@@ -33,10 +33,6 @@ type Service interface {
 	QueryPublishingStatus(context.Context, *QueryPublishingStatusPayload) (res TiUPRequestState, err error)
 	// Kept for compatibility; the publish domain has no rate limiting.
 	ResetRateLimit(context.Context) (err error)
-	// Get a publication unit and its steps.
-	GetPublishUnit(context.Context, *GetPublishUnitPayload) (res *PublishUnit, err error)
-	// Resume the failed steps of a partial publication unit.
-	ResumePublishUnit(context.Context, *ResumePublishUnitPayload) (res *PublishUnit, err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -53,19 +49,13 @@ const ServiceName = "publish"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [11]string{"publishImages", "getUnit", "listUnits", "retryUnit", "deliveryByRules", "requestToPublish", "requestToPublishSingle", "queryPublishingStatus", "resetRateLimit", "getPublishUnit", "resumePublishUnit"}
+var MethodNames = [9]string{"publishImages", "getUnit", "listUnits", "retryUnit", "deliveryByRules", "requestToPublish", "requestToPublishSingle", "queryPublishingStatus", "resetRateLimit"}
 
 // DeliveryByRulesPayload is the payload type of the publish service
 // deliveryByRules method.
 type DeliveryByRulesPayload struct {
 	// Full OCI reference of the pushed artifact, including the tag.
 	ArtifactURL string `json:"artifact_url"`
-}
-
-// GetPublishUnitPayload is the payload type of the publish service
-// getPublishUnit method.
-type GetPublishUnitPayload struct {
-	ID string
 }
 
 // GetUnitPayload is the payload type of the publish service getUnit method.
@@ -178,12 +168,6 @@ type RequestToPublishPayload struct {
 	TiupMirror string `json:"tiup_mirror"`
 	// Force the published version instead of the artifact's own.
 	Version *string `json:"version,omitempty"`
-}
-
-// ResumePublishUnitPayload is the payload type of the publish service
-// resumePublishUnit method.
-type ResumePublishUnitPayload struct {
-	ID string
 }
 
 // RetryUnitPayload is the payload type of the publish service retryUnit method.

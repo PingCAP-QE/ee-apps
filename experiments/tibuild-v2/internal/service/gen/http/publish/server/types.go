@@ -114,46 +114,6 @@ type RetryUnitResponseBody struct {
 	Steps       []*PublishStepResponseBody `form:"steps,omitempty" json:"steps,omitempty" xml:"steps,omitempty"`
 }
 
-// GetPublishUnitResponseBody is the type of the "publish" service
-// "getPublishUnit" endpoint HTTP response body.
-type GetPublishUnitResponseBody struct {
-	// Unit id; this is the request id returned to callers
-	ID string `form:"id" json:"id" xml:"id"`
-	// Publication kind, for example image_copy
-	Kind string `form:"kind" json:"kind" xml:"kind"`
-	// Source artifact reference
-	ArtifactURL string `form:"artifactUrl" json:"artifactUrl" xml:"artifactUrl"`
-	// Source digest pinned at planning time
-	Digest *string `form:"digest,omitempty" json:"digest,omitempty" xml:"digest,omitempty"`
-	// Aggregated state of the steps
-	State string `form:"state" json:"state" xml:"state"`
-	// Caller identity, when known
-	RequestedBy *string                    `form:"requestedBy,omitempty" json:"requestedBy,omitempty" xml:"requestedBy,omitempty"`
-	CreatedAt   *string                    `form:"createdAt,omitempty" json:"createdAt,omitempty" xml:"createdAt,omitempty"`
-	FinishedAt  *string                    `form:"finishedAt,omitempty" json:"finishedAt,omitempty" xml:"finishedAt,omitempty"`
-	Steps       []*PublishStepResponseBody `form:"steps,omitempty" json:"steps,omitempty" xml:"steps,omitempty"`
-}
-
-// ResumePublishUnitResponseBody is the type of the "publish" service
-// "resumePublishUnit" endpoint HTTP response body.
-type ResumePublishUnitResponseBody struct {
-	// Unit id; this is the request id returned to callers
-	ID string `form:"id" json:"id" xml:"id"`
-	// Publication kind, for example image_copy
-	Kind string `form:"kind" json:"kind" xml:"kind"`
-	// Source artifact reference
-	ArtifactURL string `form:"artifactUrl" json:"artifactUrl" xml:"artifactUrl"`
-	// Source digest pinned at planning time
-	Digest *string `form:"digest,omitempty" json:"digest,omitempty" xml:"digest,omitempty"`
-	// Aggregated state of the steps
-	State string `form:"state" json:"state" xml:"state"`
-	// Caller identity, when known
-	RequestedBy *string                    `form:"requestedBy,omitempty" json:"requestedBy,omitempty" xml:"requestedBy,omitempty"`
-	CreatedAt   *string                    `form:"createdAt,omitempty" json:"createdAt,omitempty" xml:"createdAt,omitempty"`
-	FinishedAt  *string                    `form:"finishedAt,omitempty" json:"finishedAt,omitempty" xml:"finishedAt,omitempty"`
-	Steps       []*PublishStepResponseBody `form:"steps,omitempty" json:"steps,omitempty" xml:"steps,omitempty"`
-}
-
 // PublishImagesBadGatewayResponseBody is the type of the "publish" service
 // "publishImages" endpoint HTTP response body for the "BadGateway" error.
 type PublishImagesBadGatewayResponseBody struct {
@@ -285,56 +245,6 @@ type RequestToPublishSingleFaultResponseBody struct {
 // QueryPublishingStatusFaultResponseBody is the type of the "publish" service
 // "queryPublishingStatus" endpoint HTTP response body for the "fault" error.
 type QueryPublishingStatusFaultResponseBody struct {
-	Name      string  `json:"name"`
-	ID        *string `json:"id,omitempty"`
-	Message   string  `json:"message"`
-	Temporary bool    `json:"temporary"`
-	Timeout   bool    `json:"timeout"`
-	Fault     bool    `json:"fault"`
-}
-
-// GetPublishUnitBadRequestResponseBody is the type of the "publish" service
-// "getPublishUnit" endpoint HTTP response body for the "BadRequest" error.
-type GetPublishUnitBadRequestResponseBody struct {
-	Code    int    `form:"code" json:"code" xml:"code"`
-	Message string `form:"message" json:"message" xml:"message"`
-}
-
-// GetPublishUnitNotFoundResponseBody is the type of the "publish" service
-// "getPublishUnit" endpoint HTTP response body for the "NotFound" error.
-type GetPublishUnitNotFoundResponseBody struct {
-	Code    int    `form:"code" json:"code" xml:"code"`
-	Message string `form:"message" json:"message" xml:"message"`
-}
-
-// GetPublishUnitFaultResponseBody is the type of the "publish" service
-// "getPublishUnit" endpoint HTTP response body for the "fault" error.
-type GetPublishUnitFaultResponseBody struct {
-	Name      string  `json:"name"`
-	ID        *string `json:"id,omitempty"`
-	Message   string  `json:"message"`
-	Temporary bool    `json:"temporary"`
-	Timeout   bool    `json:"timeout"`
-	Fault     bool    `json:"fault"`
-}
-
-// ResumePublishUnitBadRequestResponseBody is the type of the "publish" service
-// "resumePublishUnit" endpoint HTTP response body for the "BadRequest" error.
-type ResumePublishUnitBadRequestResponseBody struct {
-	Code    int    `form:"code" json:"code" xml:"code"`
-	Message string `form:"message" json:"message" xml:"message"`
-}
-
-// ResumePublishUnitNotFoundResponseBody is the type of the "publish" service
-// "resumePublishUnit" endpoint HTTP response body for the "NotFound" error.
-type ResumePublishUnitNotFoundResponseBody struct {
-	Code    int    `form:"code" json:"code" xml:"code"`
-	Message string `form:"message" json:"message" xml:"message"`
-}
-
-// ResumePublishUnitFaultResponseBody is the type of the "publish" service
-// "resumePublishUnit" endpoint HTTP response body for the "fault" error.
-type ResumePublishUnitFaultResponseBody struct {
 	Name      string  `json:"name"`
 	ID        *string `json:"id,omitempty"`
 	Message   string  `json:"message"`
@@ -516,58 +426,6 @@ func NewListUnitsResponseBody(res []*publish.PublishUnit) ListUnitsResponseBody 
 // the "retryUnit" endpoint of the "publish" service.
 func NewRetryUnitResponseBody(res *publish.PublishUnit) *RetryUnitResponseBody {
 	body := &RetryUnitResponseBody{
-		ID:          res.ID,
-		Kind:        res.Kind,
-		ArtifactURL: res.ArtifactURL,
-		Digest:      res.Digest,
-		State:       string(res.State),
-		RequestedBy: res.RequestedBy,
-		CreatedAt:   res.CreatedAt,
-		FinishedAt:  res.FinishedAt,
-	}
-	if res.Steps != nil {
-		body.Steps = make([]*PublishStepResponseBody, len(res.Steps))
-		for i, val := range res.Steps {
-			if val == nil {
-				body.Steps[i] = nil
-				continue
-			}
-			body.Steps[i] = marshalPublishPublishStepToPublishStepResponseBody(val)
-		}
-	}
-	return body
-}
-
-// NewGetPublishUnitResponseBody builds the HTTP response body from the result
-// of the "getPublishUnit" endpoint of the "publish" service.
-func NewGetPublishUnitResponseBody(res *publish.PublishUnit) *GetPublishUnitResponseBody {
-	body := &GetPublishUnitResponseBody{
-		ID:          res.ID,
-		Kind:        res.Kind,
-		ArtifactURL: res.ArtifactURL,
-		Digest:      res.Digest,
-		State:       string(res.State),
-		RequestedBy: res.RequestedBy,
-		CreatedAt:   res.CreatedAt,
-		FinishedAt:  res.FinishedAt,
-	}
-	if res.Steps != nil {
-		body.Steps = make([]*PublishStepResponseBody, len(res.Steps))
-		for i, val := range res.Steps {
-			if val == nil {
-				body.Steps[i] = nil
-				continue
-			}
-			body.Steps[i] = marshalPublishPublishStepToPublishStepResponseBody(val)
-		}
-	}
-	return body
-}
-
-// NewResumePublishUnitResponseBody builds the HTTP response body from the
-// result of the "resumePublishUnit" endpoint of the "publish" service.
-func NewResumePublishUnitResponseBody(res *publish.PublishUnit) *ResumePublishUnitResponseBody {
-	body := &ResumePublishUnitResponseBody{
 		ID:          res.ID,
 		Kind:        res.Kind,
 		ArtifactURL: res.ArtifactURL,
@@ -851,110 +709,6 @@ func NewQueryPublishingStatusFaultResponseBody(res *publish.TiUPFaultError) *Que
 	return body
 }
 
-// NewGetPublishUnitBadRequestResponseBody builds the HTTP response body from
-// the result of the "getPublishUnit" endpoint of the "publish" service.
-func NewGetPublishUnitBadRequestResponseBody(res *publish.PublishBadRequestError) *GetPublishUnitBadRequestResponseBody {
-	body := &GetPublishUnitBadRequestResponseBody{
-		Code:    res.Code,
-		Message: res.Message,
-	}
-	return body
-}
-
-// NewGetPublishUnitNotFoundResponseBody builds the HTTP response body from the
-// result of the "getPublishUnit" endpoint of the "publish" service.
-func NewGetPublishUnitNotFoundResponseBody(res *publish.PublishNotFoundError) *GetPublishUnitNotFoundResponseBody {
-	body := &GetPublishUnitNotFoundResponseBody{
-		Code:    res.Code,
-		Message: res.Message,
-	}
-	return body
-}
-
-// NewGetPublishUnitFaultResponseBody builds the HTTP response body from the
-// result of the "getPublishUnit" endpoint of the "publish" service.
-func NewGetPublishUnitFaultResponseBody(res *publish.TiUPFaultError) *GetPublishUnitFaultResponseBody {
-	body := &GetPublishUnitFaultResponseBody{
-		Name:      res.Name,
-		ID:        res.ID,
-		Message:   res.Message,
-		Temporary: res.Temporary,
-		Timeout:   res.Timeout,
-		Fault:     res.Fault,
-	}
-	{
-		var zero bool
-		if body.Temporary == zero {
-			body.Temporary = false
-		}
-	}
-	{
-		var zero bool
-		if body.Timeout == zero {
-			body.Timeout = false
-		}
-	}
-	{
-		var zero bool
-		if body.Fault == zero {
-			body.Fault = true
-		}
-	}
-	return body
-}
-
-// NewResumePublishUnitBadRequestResponseBody builds the HTTP response body
-// from the result of the "resumePublishUnit" endpoint of the "publish" service.
-func NewResumePublishUnitBadRequestResponseBody(res *publish.PublishBadRequestError) *ResumePublishUnitBadRequestResponseBody {
-	body := &ResumePublishUnitBadRequestResponseBody{
-		Code:    res.Code,
-		Message: res.Message,
-	}
-	return body
-}
-
-// NewResumePublishUnitNotFoundResponseBody builds the HTTP response body from
-// the result of the "resumePublishUnit" endpoint of the "publish" service.
-func NewResumePublishUnitNotFoundResponseBody(res *publish.PublishNotFoundError) *ResumePublishUnitNotFoundResponseBody {
-	body := &ResumePublishUnitNotFoundResponseBody{
-		Code:    res.Code,
-		Message: res.Message,
-	}
-	return body
-}
-
-// NewResumePublishUnitFaultResponseBody builds the HTTP response body from the
-// result of the "resumePublishUnit" endpoint of the "publish" service.
-func NewResumePublishUnitFaultResponseBody(res *publish.TiUPFaultError) *ResumePublishUnitFaultResponseBody {
-	body := &ResumePublishUnitFaultResponseBody{
-		Name:      res.Name,
-		ID:        res.ID,
-		Message:   res.Message,
-		Temporary: res.Temporary,
-		Timeout:   res.Timeout,
-		Fault:     res.Fault,
-	}
-	{
-		var zero bool
-		if body.Temporary == zero {
-			body.Temporary = false
-		}
-	}
-	{
-		var zero bool
-		if body.Timeout == zero {
-			body.Timeout = false
-		}
-	}
-	{
-		var zero bool
-		if body.Fault == zero {
-			body.Fault = true
-		}
-	}
-	return body
-}
-
 // NewPublishImagesPayload builds a publish service publishImages endpoint
 // payload.
 func NewPublishImagesPayload(body *PublishImagesRequestBody) *publish.PublishImagesPayload {
@@ -1035,24 +789,6 @@ func NewRequestToPublishSingleTiUPPublishRequest(body *RequestToPublishSingleReq
 func NewQueryPublishingStatusPayload(requestID string) *publish.QueryPublishingStatusPayload {
 	v := &publish.QueryPublishingStatusPayload{}
 	v.RequestID = requestID
-
-	return v
-}
-
-// NewGetPublishUnitPayload builds a publish service getPublishUnit endpoint
-// payload.
-func NewGetPublishUnitPayload(id string) *publish.GetPublishUnitPayload {
-	v := &publish.GetPublishUnitPayload{}
-	v.ID = id
-
-	return v
-}
-
-// NewResumePublishUnitPayload builds a publish service resumePublishUnit
-// endpoint payload.
-func NewResumePublishUnitPayload(id string) *publish.ResumePublishUnitPayload {
-	v := &publish.ResumePublishUnitPayload{}
-	v.ID = id
 
 	return v
 }

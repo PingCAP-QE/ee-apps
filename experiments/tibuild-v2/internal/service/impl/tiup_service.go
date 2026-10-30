@@ -231,36 +231,8 @@ func (s *publishsrvc) QueryPublishingStatus(ctx context.Context, p *publish.Quer
 func (s *publishsrvc) ResetRateLimit(context.Context) error { return nil }
 
 // GetPublishUnit returns a unit with its steps.
-func (s *publishsrvc) GetPublishUnit(ctx context.Context, p *publish.GetPublishUnitPayload) (*publish.PublishUnit, error) {
-	unit, steps, err := s.loadUnit(ctx, p.ID)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, notFound(fmt.Sprintf("publish unit %s not found", p.ID))
-		}
-		return nil, publishFault(err)
-	}
-	return s.toPublishUnit(unit, steps), nil
-}
 
 // ResumePublishUnit re-queues the failed steps of a unit.
-func (s *publishsrvc) ResumePublishUnit(ctx context.Context, p *publish.ResumePublishUnitPayload) (*publish.PublishUnit, error) {
-	unit, err := s.resumeUnit(ctx, p.ID)
-	if err != nil {
-		switch {
-		case ent.IsNotFound(err):
-			return nil, notFound(fmt.Sprintf("publish unit %s not found", p.ID))
-		case errors.Is(err, ErrNothingToResume):
-			return nil, badRequest(fmt.Sprintf("publish unit %s has no failed step to resume", p.ID))
-		default:
-			return nil, publishFault(err)
-		}
-	}
-	steps, err := s.loadSteps(ctx, unit.ID)
-	if err != nil {
-		return nil, publishFault(err)
-	}
-	return s.toPublishUnit(unit, steps), nil
-}
 
 // createTiUPUnit persists a unit and its per-target steps, seeding the
 // configured dependency edges (prod before staging by default).

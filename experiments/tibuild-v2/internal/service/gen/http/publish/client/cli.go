@@ -25,7 +25,7 @@ func BuildPublishImagesPayload(publishPublishImagesBody string) (*publish.Publis
 	{
 		err = json.Unmarshal([]byte(publishPublishImagesBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifactUrl\": \"Ullam qui ratione iusto quia odit.\",\n      \"image\": \"Sint voluptatum qui voluptas.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifactUrl\": \"Odit rem sunt aliquam facere temporibus rem.\",\n      \"image\": \"Consectetur voluptatum repudiandae ea quasi.\"\n   }'")
 		}
 	}
 	v := &publish.PublishImagesPayload{
@@ -111,7 +111,7 @@ func BuildDeliveryByRulesPayload(publishDeliveryByRulesBody string) (*publish.De
 	{
 		err = json.Unmarshal([]byte(publishDeliveryByRulesBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Doloremque qui.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Quisquam non ut.\"\n   }'")
 		}
 	}
 	v := &publish.DeliveryByRulesPayload{
@@ -129,7 +129,7 @@ func BuildRequestToPublishPayload(publishRequestToPublishBody string) (*publish.
 	{
 		err = json.Unmarshal([]byte(publishRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Modi et reiciendis porro voluptatibus qui.\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"Maiores necessitatibus est voluptatum.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Odit quas soluta corporis.\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"Soluta tenetur inventore non quis beatae.\"\n   }'")
 		}
 		if !(body.TiupMirror == "staging" || body.TiupMirror == "prod") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", body.TiupMirror, []any{"staging", "prod"}))
@@ -155,7 +155,7 @@ func BuildRequestToPublishSinglePayload(publishRequestToPublishSingleBody string
 	{
 		err = json.Unmarshal([]byte(publishRequestToPublishSingleBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Qui assumenda autem illum quaerat unde.\"\n         },\n         \"oci\": {\n            \"file\": \"Laboriosam ipsa et deserunt.\",\n            \"repo\": \"Explicabo natus sed.\",\n            \"tag\": \"Exercitationem eos voluptatem totam neque possimus odit.\"\n         },\n         \"type\": \"oci\"\n      },\n      \"publish\": {\n         \"arch\": \"Culpa officia dolor illum quia.\",\n         \"description\": \"Repudiandae tempore necessitatibus beatae sit nesciunt.\",\n         \"entry_point\": \"Aut nihil ut aliquam possimus est.\",\n         \"name\": \"In maiores praesentium eius ut aperiam.\",\n         \"os\": \"Est saepe molestiae.\",\n         \"standalone\": false,\n         \"version\": \"Rem rerum.\"\n      },\n      \"tiup_mirror\": \"prod\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Molestiae atque beatae ut.\"\n         },\n         \"oci\": {\n            \"file\": \"Rerum maxime beatae dicta et voluptatibus beatae.\",\n            \"repo\": \"Nam ex.\",\n            \"tag\": \"Nisi hic voluptas asperiores vitae.\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"Natus labore nemo.\",\n         \"description\": \"Pariatur sit quaerat maxime.\",\n         \"entry_point\": \"Cupiditate itaque exercitationem.\",\n         \"name\": \"Odit sequi earum.\",\n         \"os\": \"Omnis sit aut quo aut facere architecto.\",\n         \"standalone\": false,\n         \"version\": \"Et quae ut dolores velit autem illo.\"\n      },\n      \"tiup_mirror\": \"prod\"\n   }'")
 		}
 		if body.From == nil {
 			err = goa.MergeErrors(err, goa.MissingFieldError("from", "body"))
@@ -203,32 +203,6 @@ func BuildQueryPublishingStatusPayload(publishQueryPublishingStatusRequestID str
 	}
 	v := &publish.QueryPublishingStatusPayload{}
 	v.RequestID = requestID
-
-	return v, nil
-}
-
-// BuildGetPublishUnitPayload builds the payload for the publish getPublishUnit
-// endpoint from CLI flags.
-func BuildGetPublishUnitPayload(publishGetPublishUnitID string) (*publish.GetPublishUnitPayload, error) {
-	var id string
-	{
-		id = publishGetPublishUnitID
-	}
-	v := &publish.GetPublishUnitPayload{}
-	v.ID = id
-
-	return v, nil
-}
-
-// BuildResumePublishUnitPayload builds the payload for the publish
-// resumePublishUnit endpoint from CLI flags.
-func BuildResumePublishUnitPayload(publishResumePublishUnitID string) (*publish.ResumePublishUnitPayload, error) {
-	var id string
-	{
-		id = publishResumePublishUnitID
-	}
-	v := &publish.ResumePublishUnitPayload{}
-	v.ID = id
 
 	return v, nil
 }

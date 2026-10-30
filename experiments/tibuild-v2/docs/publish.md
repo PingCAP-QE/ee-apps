@@ -61,15 +61,18 @@ the step lease, and at least `hard_timeout + 2×heartbeat`).
   requeued with a backoff, or failed after `max_attempts`; dependents are
   skipped and the unit converges.
 - **Partial publication**: `PARTIAL` is terminal and never retried
-  automatically. Inspect it and resume explicitly:
+  automatically. Units are one resource regardless of kind, so inspect and
+  retry them through `/publish/units` (port-forward; the public route only
+  exposes the legacy TiUP surface):
 
   ```bash
-  curl -s https://do2.pingcap.net/tiup/units/<unit-id> | jq
-  curl -s -X POST https://do2.pingcap.net/tiup/units/<unit-id>/resume | jq
+  kubectl -n tibuild port-forward svc/v2-tibuild-v2 8080:80 &
+  curl -s localhost:8080/api/v2/publish/units/<unit-id> | jq
+  curl -s -X POST localhost:8080/api/v2/publish/units/<unit-id>/retry | jq
   ```
 
-  Resume re-queues only the failed and skipped steps; succeeded steps are left
-  alone.
+  Retry re-queues only the failed and skipped steps and re-promotes the ones
+  whose dependency is satisfied; succeeded steps are left alone.
 
 ## Idempotency
 
@@ -112,5 +115,7 @@ base path, `/api/v2/publish`:
 | `POST /tiup/publish-request-single` | one package from a tarball URL or an OCI layer |
 | `GET /tiup/publish-request/{id}` | unit or step id → `queued/processing/success/failed/canceled` |
 | `POST /tiup/reset-rate-limit` | no-op |
-| `GET /tiup/units/{id}` | unit with all steps |
-| `POST /tiup/units/{id}/resume` | re-queue the failed steps |
+
+Unit inspection and retry are **kind-agnostic** and live on the shared
+resource: `GET /publish/units`, `GET /publish/units/{id}` and
+`POST /publish/units/{id}/retry`.

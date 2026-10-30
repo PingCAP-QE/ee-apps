@@ -152,28 +152,3 @@ func TestQueryPublishingStatusAcceptsUnitAndStepIDs(t *testing.T) {
 	require.True(t, fault.Fault)
 	require.Contains(t, fault.Message, "request ID not found")
 }
-
-func TestGetPublishUnitReturnsNotFound(t *testing.T) {
-	svc := newTiUPServiceForTest(t, config.Publish{})
-
-	_, err := svc.GetPublishUnit(context.Background(), &publish.GetPublishUnitPayload{ID: "missing"})
-	var notFound *publish.PublishNotFoundError
-	require.ErrorAs(t, err, &notFound)
-	require.Equal(t, 404, notFound.Code)
-}
-
-func TestResumePublishUnitRejectsNothingToResume(t *testing.T) {
-	svc := newTiUPServiceForTest(t, config.Publish{})
-	svc.planner = &publishPlanner{rules: goldenRulesLoader(t)}
-
-	ids, err := svc.DeliveryByRules(context.Background(), &publish.DeliveryByRulesPayload{ArtifactURL: nightlyArtifact})
-	require.NoError(t, err)
-
-	first, err := svc.db.PublishStep.Get(context.Background(), ids[0])
-	require.NoError(t, err)
-
-	_, err = svc.ResumePublishUnit(context.Background(), &publish.ResumePublishUnitPayload{ID: first.UnitID})
-	var badRequest *publish.PublishBadRequestError
-	require.ErrorAs(t, err, &badRequest)
-	require.Equal(t, 400, badRequest.Code)
-}

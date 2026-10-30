@@ -851,37 +851,6 @@ var _ = Service("publish", func() {
 		})
 	})
 
-	Method("getPublishUnit", func() {
-		Description("Get a publication unit and its steps.")
-		Payload(func() {
-			Attribute("id", String)
-			Required("id")
-		})
-		Result(PublishUnit)
-		HTTP(func() {
-			GET("/tiup/units/{id}")
-			Response(StatusOK)
-			Response("NotFound", StatusNotFound)
-			Response("BadRequest", StatusBadRequest)
-			Response("fault", StatusInternalServerError)
-		})
-	})
-
-	Method("resumePublishUnit", func() {
-		Description("Resume the failed steps of a partial publication unit.")
-		Payload(func() {
-			Attribute("id", String)
-			Required("id")
-		})
-		Result(PublishUnit)
-		HTTP(func() {
-			POST("/tiup/units/{id}/resume")
-			Response(StatusOK)
-			Response("NotFound", StatusNotFound)
-			Response("BadRequest", StatusBadRequest)
-			Response("fault", StatusInternalServerError)
-		})
-	})
 })
 
 var PublishUnit = Type("PublishUnit", func() {

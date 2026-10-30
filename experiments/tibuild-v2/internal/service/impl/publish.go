@@ -323,7 +323,10 @@ func (s *publishsrvc) RetryUnit(ctx context.Context, p *publish.RetryUnitPayload
 			entpublishstep.UnitID(unit.ID),
 			entpublishstep.StateIn(PublishStepStateFailed, PublishStepStateSkipped),
 		).
-		SetState(PublishStepStatePending).
+		// Blocked first: an ordered unit must not let a later step overtake the
+		// predecessor it depends on. The promotion below releases the runnable
+		// ones.
+		SetState(PublishStepStateBlocked).
 		SetAttempts(0).
 		ClearClaimedBy().
 		ClearLeaseUntil().
@@ -333,6 +336,11 @@ func (s *publishsrvc) RetryUnit(ctx context.Context, p *publish.RetryUnitPayload
 		ClearFinishedAt().
 		Save(ctx); err != nil {
 		s.logger.Err(err).Str("unit_id", unit.ID).Msg("failed to re-queue the failed steps")
+		return nil, internalError(err)
+	}
+
+	if err := s.promoteRunnableSteps(ctx, unit.ID); err != nil {
+		s.logger.Err(err).Str("unit_id", unit.ID).Msg("failed to promote the runnable steps")
 		return nil, internalError(err)
 	}
 

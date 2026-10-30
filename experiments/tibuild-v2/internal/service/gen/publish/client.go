@@ -25,12 +25,10 @@ type Client struct {
 	RequestToPublishSingleEndpoint goa.Endpoint
 	QueryPublishingStatusEndpoint  goa.Endpoint
 	ResetRateLimitEndpoint         goa.Endpoint
-	GetPublishUnitEndpoint         goa.Endpoint
-	ResumePublishUnitEndpoint      goa.Endpoint
 }
 
 // NewClient initializes a "publish" service client given the endpoints.
-func NewClient(publishImages, getUnit, listUnits, retryUnit, deliveryByRules, requestToPublish, requestToPublishSingle, queryPublishingStatus, resetRateLimit, getPublishUnit, resumePublishUnit goa.Endpoint) *Client {
+func NewClient(publishImages, getUnit, listUnits, retryUnit, deliveryByRules, requestToPublish, requestToPublishSingle, queryPublishingStatus, resetRateLimit goa.Endpoint) *Client {
 	return &Client{
 		PublishImagesEndpoint:          publishImages,
 		GetUnitEndpoint:                getUnit,
@@ -41,8 +39,6 @@ func NewClient(publishImages, getUnit, listUnits, retryUnit, deliveryByRules, re
 		RequestToPublishSingleEndpoint: requestToPublishSingle,
 		QueryPublishingStatusEndpoint:  queryPublishingStatus,
 		ResetRateLimitEndpoint:         resetRateLimit,
-		GetPublishUnitEndpoint:         getPublishUnit,
-		ResumePublishUnitEndpoint:      resumePublishUnit,
 	}
 }
 
@@ -197,39 +193,4 @@ func (c *Client) QueryPublishingStatus(ctx context.Context, p *QueryPublishingSt
 func (c *Client) ResetRateLimit(ctx context.Context) (err error) {
 	_, err = c.ResetRateLimitEndpoint(ctx, nil)
 	return
-}
-
-// GetPublishUnit calls the "getPublishUnit" endpoint of the "publish" service.
-// GetPublishUnit may return the following errors:
-//   - "BadRequest" (type *PublishBadRequestError): Bad Request
-//   - "NotFound" (type *PublishNotFoundError): Not Found
-//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
-//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
-//   - "fault" (type *TiUPFaultError): Internal fault
-//   - error: internal error
-func (c *Client) GetPublishUnit(ctx context.Context, p *GetPublishUnitPayload) (res *PublishUnit, err error) {
-	var ires any
-	ires, err = c.GetPublishUnitEndpoint(ctx, p)
-	if err != nil {
-		return
-	}
-	return ires.(*PublishUnit), nil
-}
-
-// ResumePublishUnit calls the "resumePublishUnit" endpoint of the "publish"
-// service.
-// ResumePublishUnit may return the following errors:
-//   - "BadRequest" (type *PublishBadRequestError): Bad Request
-//   - "NotFound" (type *PublishNotFoundError): Not Found
-//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
-//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
-//   - "fault" (type *TiUPFaultError): Internal fault
-//   - error: internal error
-func (c *Client) ResumePublishUnit(ctx context.Context, p *ResumePublishUnitPayload) (res *PublishUnit, err error) {
-	var ires any
-	ires, err = c.ResumePublishUnitEndpoint(ctx, p)
-	if err != nil {
-		return
-	}
-	return ires.(*PublishUnit), nil
 }

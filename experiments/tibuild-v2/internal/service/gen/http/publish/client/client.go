@@ -54,14 +54,6 @@ type Client struct {
 	// resetRateLimit endpoint.
 	ResetRateLimitDoer goahttp.Doer
 
-	// GetPublishUnit Doer is the HTTP client used to make requests to the
-	// getPublishUnit endpoint.
-	GetPublishUnitDoer goahttp.Doer
-
-	// ResumePublishUnit Doer is the HTTP client used to make requests to the
-	// resumePublishUnit endpoint.
-	ResumePublishUnitDoer goahttp.Doer
-
 	// RestoreResponseBody controls whether the response bodies are reset after
 	// decoding so they can be read again.
 	RestoreResponseBody bool
@@ -91,8 +83,6 @@ func NewClient(
 		RequestToPublishSingleDoer: doer,
 		QueryPublishingStatusDoer:  doer,
 		ResetRateLimitDoer:         doer,
-		GetPublishUnitDoer:         doer,
-		ResumePublishUnitDoer:      doer,
 		RestoreResponseBody:        restoreBody,
 		scheme:                     scheme,
 		host:                       host,
@@ -292,44 +282,6 @@ func (c *Client) ResetRateLimit() goa.Endpoint {
 		resp, err := c.ResetRateLimitDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("publish", "resetRateLimit", err)
-		}
-		return decodeResponse(resp)
-	}
-}
-
-// GetPublishUnit returns an endpoint that makes HTTP requests to the publish
-// service getPublishUnit server.
-func (c *Client) GetPublishUnit() goa.Endpoint {
-	var (
-		decodeResponse = DecodeGetPublishUnitResponse(c.decoder, c.RestoreResponseBody)
-	)
-	return func(ctx context.Context, v any) (any, error) {
-		req, err := c.BuildGetPublishUnitRequest(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := c.GetPublishUnitDoer.Do(req)
-		if err != nil {
-			return nil, goahttp.ErrRequestError("publish", "getPublishUnit", err)
-		}
-		return decodeResponse(resp)
-	}
-}
-
-// ResumePublishUnit returns an endpoint that makes HTTP requests to the
-// publish service resumePublishUnit server.
-func (c *Client) ResumePublishUnit() goa.Endpoint {
-	var (
-		decodeResponse = DecodeResumePublishUnitResponse(c.decoder, c.RestoreResponseBody)
-	)
-	return func(ctx context.Context, v any) (any, error) {
-		req, err := c.BuildResumePublishUnitRequest(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := c.ResumePublishUnitDoer.Do(req)
-		if err != nil {
-			return nil, goahttp.ErrRequestError("publish", "resumePublishUnit", err)
 		}
 		return decodeResponse(resp)
 	}

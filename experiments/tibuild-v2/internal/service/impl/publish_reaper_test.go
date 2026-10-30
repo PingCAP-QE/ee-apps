@@ -10,6 +10,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entpublishstep "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/publish"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/delivery"
 )
 
@@ -181,9 +182,9 @@ func TestPartialThenResume(t *testing.T) {
 
 	require.Equal(t, PublishStatePartial, unitByID(t, svc, unit.ID).State)
 
-	resumed, err := svc.resumeUnit(ctx, unit.ID)
+	resumed, err := svc.RetryUnit(ctx, &publish.RetryUnitPayload{ID: unit.ID})
 	require.NoError(t, err)
-	require.Equal(t, PublishStateQueued, resumed.State)
+	require.Equal(t, publish.PublishState("queued"), resumed.State)
 	require.Equal(t, PublishStepStateSucceeded, stepByID(t, svc, prod.ID).State)
 	require.Equal(t, PublishStepStatePending, stepByID(t, svc, staging.ID).State)
 }

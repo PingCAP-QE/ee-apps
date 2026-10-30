@@ -29,8 +29,6 @@ type Server struct {
 	RequestToPublishSingle http.Handler
 	QueryPublishingStatus  http.Handler
 	ResetRateLimit         http.Handler
-	GetPublishUnit         http.Handler
-	ResumePublishUnit      http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -69,8 +67,6 @@ func New(
 			{"RequestToPublishSingle", "POST", "/api/v2/publish/tiup/publish-request-single"},
 			{"QueryPublishingStatus", "GET", "/api/v2/publish/tiup/publish-request/{request_id}"},
 			{"ResetRateLimit", "POST", "/api/v2/publish/tiup/reset-rate-limit"},
-			{"GetPublishUnit", "GET", "/api/v2/publish/tiup/units/{id}"},
-			{"ResumePublishUnit", "POST", "/api/v2/publish/tiup/units/{id}/resume"},
 		},
 		PublishImages:          NewPublishImagesHandler(e.PublishImages, mux, decoder, encoder, errhandler, formatter),
 		GetUnit:                NewGetUnitHandler(e.GetUnit, mux, decoder, encoder, errhandler, formatter),
@@ -81,8 +77,6 @@ func New(
 		RequestToPublishSingle: NewRequestToPublishSingleHandler(e.RequestToPublishSingle, mux, decoder, encoder, errhandler, formatter),
 		QueryPublishingStatus:  NewQueryPublishingStatusHandler(e.QueryPublishingStatus, mux, decoder, encoder, errhandler, formatter),
 		ResetRateLimit:         NewResetRateLimitHandler(e.ResetRateLimit, mux, decoder, encoder, errhandler, formatter),
-		GetPublishUnit:         NewGetPublishUnitHandler(e.GetPublishUnit, mux, decoder, encoder, errhandler, formatter),
-		ResumePublishUnit:      NewResumePublishUnitHandler(e.ResumePublishUnit, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -100,8 +94,6 @@ func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.RequestToPublishSingle = m(s.RequestToPublishSingle)
 	s.QueryPublishingStatus = m(s.QueryPublishingStatus)
 	s.ResetRateLimit = m(s.ResetRateLimit)
-	s.GetPublishUnit = m(s.GetPublishUnit)
-	s.ResumePublishUnit = m(s.ResumePublishUnit)
 }
 
 // MethodNames returns the methods served.
@@ -118,8 +110,6 @@ func Mount(mux goahttp.Muxer, h *Server) {
 	MountRequestToPublishSingleHandler(mux, h.RequestToPublishSingle)
 	MountQueryPublishingStatusHandler(mux, h.QueryPublishingStatus)
 	MountResetRateLimitHandler(mux, h.ResetRateLimit)
-	MountGetPublishUnitHandler(mux, h.GetPublishUnit)
-	MountResumePublishUnitHandler(mux, h.ResumePublishUnit)
 }
 
 // Mount configures the mux to serve the publish endpoints.
@@ -583,112 +573,6 @@ func NewResetRateLimitHandler(
 		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
 		var err error
 		res, err := endpoint(ctx, nil)
-		if err != nil {
-			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-			return
-		}
-		if err := encodeResponse(ctx, w, res); err != nil {
-			if errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-		}
-	})
-}
-
-// MountGetPublishUnitHandler configures the mux to serve the "publish" service
-// "getPublishUnit" endpoint.
-func MountGetPublishUnitHandler(mux goahttp.Muxer, h http.Handler) {
-	f, ok := h.(http.HandlerFunc)
-	if !ok {
-		f = func(w http.ResponseWriter, r *http.Request) {
-			h.ServeHTTP(w, r)
-		}
-	}
-	mux.Handle("GET", "/api/v2/publish/tiup/units/{id}", f)
-}
-
-// NewGetPublishUnitHandler creates a HTTP handler which loads the HTTP request
-// and calls the "publish" service "getPublishUnit" endpoint.
-func NewGetPublishUnitHandler(
-	endpoint goa.Endpoint,
-	mux goahttp.Muxer,
-	decoder func(*http.Request) goahttp.Decoder,
-	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
-	errhandler func(context.Context, http.ResponseWriter, error),
-	formatter func(ctx context.Context, err error) goahttp.Statuser,
-) http.Handler {
-	var (
-		decodeRequest  = DecodeGetPublishUnitRequest(mux, decoder)
-		encodeResponse = EncodeGetPublishUnitResponse(encoder)
-		encodeError    = EncodeGetPublishUnitError(encoder, formatter)
-	)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
-		ctx = context.WithValue(ctx, goa.MethodKey, "getPublishUnit")
-		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
-		payload, err := decodeRequest(r)
-		if err != nil {
-			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-			return
-		}
-		res, err := endpoint(ctx, payload)
-		if err != nil {
-			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-			return
-		}
-		if err := encodeResponse(ctx, w, res); err != nil {
-			if errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-		}
-	})
-}
-
-// MountResumePublishUnitHandler configures the mux to serve the "publish"
-// service "resumePublishUnit" endpoint.
-func MountResumePublishUnitHandler(mux goahttp.Muxer, h http.Handler) {
-	f, ok := h.(http.HandlerFunc)
-	if !ok {
-		f = func(w http.ResponseWriter, r *http.Request) {
-			h.ServeHTTP(w, r)
-		}
-	}
-	mux.Handle("POST", "/api/v2/publish/tiup/units/{id}/resume", f)
-}
-
-// NewResumePublishUnitHandler creates a HTTP handler which loads the HTTP
-// request and calls the "publish" service "resumePublishUnit" endpoint.
-func NewResumePublishUnitHandler(
-	endpoint goa.Endpoint,
-	mux goahttp.Muxer,
-	decoder func(*http.Request) goahttp.Decoder,
-	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
-	errhandler func(context.Context, http.ResponseWriter, error),
-	formatter func(ctx context.Context, err error) goahttp.Statuser,
-) http.Handler {
-	var (
-		decodeRequest  = DecodeResumePublishUnitRequest(mux, decoder)
-		encodeResponse = EncodeResumePublishUnitResponse(encoder)
-		encodeError    = EncodeResumePublishUnitError(encoder, formatter)
-	)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
-		ctx = context.WithValue(ctx, goa.MethodKey, "resumePublishUnit")
-		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
-		payload, err := decodeRequest(r)
-		if err != nil {
-			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-			return
-		}
-		res, err := endpoint(ctx, payload)
 		if err != nil {
 			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
 				errhandler(ctx, w, err)
