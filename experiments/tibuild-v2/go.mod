@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	entgo.io/ent v0.14.6
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261030102029-bd61fde1c9bb
+	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-00010101000000-000000000000
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/dlclark/regexp2 v1.12.0
@@ -180,3 +180,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/PingCAP-QE/ee-apps/github-token-broker/client => ../../github-token-broker/client

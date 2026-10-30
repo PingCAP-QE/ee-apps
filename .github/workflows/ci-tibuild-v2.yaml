@@ -10,6 +10,7 @@ on:
       - "experiments/tibuild-v2/**/*.go"
       - "experiments/tibuild-v2/**/go.mod"
       - "experiments/tibuild-v2/**/go.sum"
+      - "github-token-broker/client/**"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
