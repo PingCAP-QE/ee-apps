@@ -41,17 +41,64 @@ func DefaultWorkerTargets() []string {
 	return []string{"*"}
 }
 
-// NewWorker builds the standalone artifact worker.
+// NewWorker builds the standalone background executor. The image sync queue and
+// the publish step executor share one process and one set of per-target
+// registry credentials.
 func NewWorker(logger *zerolog.Logger, cfg *config.Service) (Worker, error) {
-	svc := NewArtifact(logger, cfg)
-	if svc == nil {
+	artifactSvc := NewArtifact(logger, cfg)
+	if artifactSvc == nil {
 		return nil, errors.New("failed to initialize artifact service")
 	}
-	worker, ok := svc.(Worker)
+	artifactWorker, ok := artifactSvc.(Worker)
 	if !ok {
 		return nil, errors.New("artifact service does not implement Worker")
 	}
-	return worker, nil
+
+	publishSvc := NewPublish(logger, cfg)
+	if publishSvc == nil {
+		return nil, errors.New("failed to initialize publish service")
+	}
+	publishWorker, ok := publishSvc.(Worker)
+	if !ok {
+		return nil, errors.New("publish service does not implement Worker")
+	}
+
+	return &compositeWorker{workers: []Worker{artifactWorker, publishWorker}}, nil
+}
+
+// compositeWorker runs several workers in one process and stops them together.
+type compositeWorker struct {
+	workers []Worker
+}
+
+// Start runs every worker until ctx is cancelled.
+func (w *compositeWorker) Start(ctx context.Context) {
+	var wg sync.WaitGroup
+	for _, worker := range w.workers {
+		wg.Add(1)
+		go func(worker Worker) {
+			defer wg.Done()
+			worker.Start(ctx)
+		}(worker)
+	}
+	wg.Wait()
+}
+
+// Stop waits for every worker to drain its in-flight work.
+func (w *compositeWorker) Stop() {
+	for _, worker := range w.workers {
+		worker.Stop()
+	}
+}
+
+// MetricsHandler returns the first handler a worker exposes.
+func (w *compositeWorker) MetricsHandler() http.Handler {
+	for _, worker := range w.workers {
+		if handler := worker.MetricsHandler(); handler != nil {
+			return handler
+		}
+	}
+	return nil
 }
 
 // artifactsrvc is the artifact service implementation.
