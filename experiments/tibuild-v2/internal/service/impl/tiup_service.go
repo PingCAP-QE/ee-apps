@@ -227,8 +227,19 @@ func (s *publishsrvc) QueryPublishingStatus(ctx context.Context, p *publish.Quer
 	return "", publishFault(errors.New("request ID not found"))
 }
 
-// ResetRateLimit is a no-op kept for compatibility.
-func (s *publishsrvc) ResetRateLimit(context.Context) error { return nil }
+// ResetRateLimit is a no-op kept for caller compatibility.
+//
+// The legacy publisher kept a Redis counter per (mirror, package, os, arch) and
+// skipped a nightly publish for `nightly_interval` after the previous one; this
+// endpoint cleared those counters. The publish domain has no Redis and no such
+// throttle: nightly convergence (accumulate, publish only the newest) is owned
+// by the nightly desired-state track, which deletes this route when it lands.
+// Until then a nightly build publishes on every request, serialized by the
+// lane, so callers that probe this endpoint keep working.
+func (s *publishsrvc) ResetRateLimit(context.Context) error {
+	s.logger.Info().Msg("tiup.reset-rate-limit is a compatibility no-op; nightly convergence is owned by the nightly track")
+	return nil
+}
 
 // GetPublishUnit returns a unit with its steps.
 

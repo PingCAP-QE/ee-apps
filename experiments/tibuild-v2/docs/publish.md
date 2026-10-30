@@ -89,6 +89,15 @@ Before publishing, the executor checks the remote tarball:
 The `standalone` flag of the artifact config is deliberately not forwarded: the
 pre-migration publisher dropped it and this port preserves that behaviour.
 
+## Known gaps
+
+- The legacy nightly throttle is gone: the old publisher kept a 12h Redis
+  counter per (mirror, package, os, arch) and skipped later nightly requests.
+  Here every nightly request publishes, serialized by the lane. Converging
+  nightly builds ("accumulate, publish only the newest") is owned by the
+  nightly desired-state track; `POST /tiup/reset-rate-limit` stays as a
+  compatibility no-op until that track deletes it.
+
 ## Configuration
 
 ```yaml
