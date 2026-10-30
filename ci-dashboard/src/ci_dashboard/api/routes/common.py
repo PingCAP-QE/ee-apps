@@ -5,7 +5,17 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException, Query
 
-from ci_dashboard.api.queries.base import CommonFilters, SUPPORTED_GRANULARITIES, split_filter_values
+from ci_dashboard.api.queries.base import (
+    CommonFilters, SUPPORTED_GRANULARITIES, split_filter_values, utcnow,
+)
+
+
+DEFAULT_CI_WINDOW_DAYS = 30
+MAX_CI_WINDOW_MONTHS = 12
+MIN_CI_DATE = date(1970, 1, 1)
+MAX_CI_DATE = date.max - timedelta(days=7)
+MAX_FILTER_ITEMS = 100
+MAX_FILTER_BYTES = 8192
 
 
 def get_common_filters(
@@ -26,7 +36,7 @@ def get_common_filters(
     project_exclude: str | None = None,
 ) -> CommonFilters:
     validate_granularity(granularity)
-    validate_date_range(start_date, end_date)
+    start_date, end_date = normalize_ci_date_range(start_date, end_date)
     validate_issue_status(issue_status)
     return _common_filters(
         repo=repo,
@@ -108,6 +118,16 @@ def _common_filters(
     project_include: str | None,
     project_exclude: str | None,
 ) -> CommonFilters:
+    validate_filter_limits(
+        job_name=job_name,
+        cost_source=cost_source,
+        owner_include=owner_include,
+        owner_exclude=owner_exclude,
+        team_include=team_include,
+        team_exclude=team_exclude,
+        project_include=project_include,
+        project_exclude=project_exclude,
+    )
     cost_sources = parse_cost_sources(cost_source)
     cost_vendor, cost_account_id = cost_sources[0] if len(cost_sources) == 1 else (None, None)
     return CommonFilters(
@@ -129,6 +149,52 @@ def _common_filters(
         project_include=split_filter_values(project_include),
         project_exclude=split_filter_values(project_exclude),
     )
+
+
+def normalize_ci_date_range(
+    start_date: date | None,
+    end_date: date | None,
+) -> tuple[date, date]:
+    if start_date is None and end_date is None:
+        end_date = utcnow().date()
+        start_date = end_date - timedelta(days=DEFAULT_CI_WINDOW_DAYS - 1)
+    if start_date is None or end_date is None:
+        raise HTTPException(status_code=422, detail="start_date and end_date are required together")
+    validate_date_range(start_date, end_date)
+    # Leave room for previous-period windows, two-day lookahead and weekly iteration.
+    if start_date < MIN_CI_DATE or end_date > MAX_CI_DATE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"CI dates must be between {MIN_CI_DATE} and {MAX_CI_DATE}",
+        )
+    month_span = (end_date.year - start_date.year) * 12 + end_date.month - start_date.month
+    # Only shift when the target month is representable, including near date.max.
+    if month_span >= MAX_CI_WINDOW_MONTHS and end_date >= _add_months_clamped(
+        start_date, MAX_CI_WINDOW_MONTHS,
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "CI queries require end_date before start_date "
+                f"plus {MAX_CI_WINDOW_MONTHS} calendar months"
+            ),
+        )
+    return start_date, end_date
+
+
+def validate_filter_limits(**values: str | None) -> None:
+    for name, value in values.items():
+        if value is None:
+            continue
+        if len(value) > MAX_FILTER_BYTES or len(value.encode("utf-8")) > MAX_FILTER_BYTES:
+            raise HTTPException(
+                status_code=422, detail=f"{name} supports at most {MAX_FILTER_BYTES} UTF-8 bytes",
+            )
+        # Count raw entries before splitting/deduplication, including empty/duplicate entries.
+        if value.count(",") + 1 > MAX_FILTER_ITEMS:
+            raise HTTPException(
+                status_code=422, detail=f"{name} supports at most {MAX_FILTER_ITEMS} entries",
+            )
 
 
 def validate_granularity(granularity: str) -> None:

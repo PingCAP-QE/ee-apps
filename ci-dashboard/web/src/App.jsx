@@ -104,6 +104,8 @@ export default function App() {
     "/api/v1/filters/branches",
     {
       repo: filters.repo,
+      start_date: filters.start_date,
+      end_date: filters.end_date,
     },
     !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage,
   );
@@ -138,6 +140,9 @@ export default function App() {
   ) || costSourceOptions[0];
 
   function handleFilterChange(key, value) {
+    if (!isCostPage && (key === "start_date" || key === "end_date") && !value) {
+      return;
+    }
     const nextFilters = {
       ...filters,
       ...(typeof key === "object" ? key : { [key]: value }),

@@ -136,6 +136,21 @@ test("defaults the cost tab to T+3 data availability", () => {
   assert.equal(costParams.get("end_date"), "2026-05-29");
 });
 
+test("Cost to CI navigation preserves a full calendar year without a 90-day clamp", () => {
+  const range = { start_date: "2024-02-01", end_date: "2025-01-31" };
+  const cost = { ...buildDefaultFilters(defaultRange, "/cost"), ...range, granularity: "month" };
+  const links = buildNavSearchByPath({ "/cost": cost }, defaultRange, cost);
+  for (const pathname of ["/ci-status", "/flaky", MIGRATE_STATUS_PATH, "/runtime-insights", "/cost"]) {
+    const params = new URLSearchParams(links[pathname]);
+    assert.equal(params.get("start_date"), range.start_date);
+    assert.equal(params.get("end_date"), range.end_date);
+  }
+  assert.equal(new URLSearchParams(links["/cost"]).get("granularity"), "month");
+  assert.equal(new URLSearchParams(links["/ci-status"]).get("granularity"), "day");
+  // Cost retains its existing bucket rules: a multi-month range is coarsened to Month.
+  assert.equal(normalizeFiltersForPath("/cost", { ...cost, granularity: "week" }).granularity, "month");
+});
+
 test("latest Cost date uses three UTC calendar days across month and year boundaries", () => {
   for (const [reference, expected] of [
     ["2026-10-14T07:00:00Z", "2026-10-11"],
