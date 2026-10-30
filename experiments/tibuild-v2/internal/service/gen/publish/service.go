@@ -47,11 +47,6 @@ type GetUnitPayload struct {
 	ID string
 }
 
-type HTTPError struct {
-	Code    int
-	Message string
-}
-
 // ListUnitsPayload is the payload type of the publish service listUnits method.
 type ListUnitsPayload struct {
 	// Filter by unit state
@@ -62,6 +57,16 @@ type ListUnitsPayload struct {
 	Limit int
 }
 
+type PublishBadGatewayError struct {
+	Code    int
+	Message string
+}
+
+type PublishBadRequestError struct {
+	Code    int
+	Message string
+}
+
 // PublishImagesPayload is the payload type of the publish service
 // publishImages method.
 type PublishImagesPayload struct {
@@ -69,6 +74,16 @@ type PublishImagesPayload struct {
 	ArtifactURL *string
 	// Alias of artifactUrl; keeps the Tekton task parameter name working
 	Image *string
+}
+
+type PublishInternalServerError struct {
+	Code    int
+	Message string
+}
+
+type PublishNotFoundError struct {
+	Code    int
+	Message string
 }
 
 type PublishState string
@@ -128,18 +143,69 @@ type RetryUnitPayload struct {
 }
 
 // Error returns an error description.
-func (e *HTTPError) Error() string {
+func (e *PublishBadGatewayError) Error() string {
 	return ""
 }
 
 // ErrorName returns the error name.
 //
 // Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
-func (e *HTTPError) ErrorName() string {
+func (e *PublishBadGatewayError) ErrorName() string {
 	return e.GoaErrorName()
 }
 
 // GoaErrorName returns the error name.
-func (e *HTTPError) GoaErrorName() string {
+func (e *PublishBadGatewayError) GoaErrorName() string {
+	return "BadGateway"
+}
+
+// Error returns an error description.
+func (e *PublishBadRequestError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *PublishBadRequestError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *PublishBadRequestError) GoaErrorName() string {
 	return "BadRequest"
+}
+
+// Error returns an error description.
+func (e *PublishInternalServerError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *PublishInternalServerError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *PublishInternalServerError) GoaErrorName() string {
+	return "InternalServerError"
+}
+
+// Error returns an error description.
+func (e *PublishNotFoundError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *PublishNotFoundError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *PublishNotFoundError) GoaErrorName() string {
+	return "NotFound"
 }

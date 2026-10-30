@@ -619,10 +619,13 @@ var TiDBxBumpTagMeta = Type("TiDBxBumpTagMeta", func() {
 
 var _ = Service("publish", func() {
 	Description("The publish service plans artifact publications and tracks their per-target steps.")
-	Error("BadRequest", HTTPError, "Bad Request")
-	Error("NotFound", HTTPError, "Not Found")
-	Error("BadGateway", HTTPError, "The artifact registry could not be queried")
-	Error("InternalServerError", HTTPError, "Internal Server Error")
+	// One type per status: the HTTP encoder picks the status from the error
+	// name, and Goa derives the name from the type, so sharing a type would
+	// collapse every failure into one status.
+	Error("BadRequest", PublishBadRequestError, "Bad Request")
+	Error("NotFound", PublishNotFoundError, "Not Found")
+	Error("BadGateway", PublishBadGatewayError, "The artifact registry could not be queried")
+	Error("InternalServerError", PublishInternalServerError, "Internal Server Error")
 	HTTP(func() {
 		Path("/publish")
 	})
@@ -736,4 +739,28 @@ var PublishState = Type("PublishState", String, func() {
 
 var PublishStepState = Type("PublishStepState", String, func() {
 	Enum("blocked", "pending", "claimed", "succeeded", "failed", "skipped")
+})
+
+var PublishBadRequestError = Type("PublishBadRequestError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var PublishNotFoundError = Type("PublishNotFoundError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var PublishBadGatewayError = Type("PublishBadGatewayError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+var PublishInternalServerError = Type("PublishInternalServerError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
 })

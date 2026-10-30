@@ -56,9 +56,9 @@ func EncodePublishImagesRequest(encoder func(*http.Request) goahttp.Encoder) fun
 // publish publishImages endpoint. restoreBody controls whether the response
 // body should be restored after having been read.
 // DecodePublishImagesResponse may return the following errors:
-//   - "BadRequest" (type *publish.HTTPError): http.StatusBadRequest
-//   - "BadGateway" (type *publish.HTTPError): http.StatusBadGateway
-//   - "InternalServerError" (type *publish.HTTPError): http.StatusInternalServerError
+//   - "BadGateway" (type *publish.PublishBadGatewayError): http.StatusBadGateway
+//   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "InternalServerError" (type *publish.PublishInternalServerError): http.StatusInternalServerError
 //   - error: internal error
 func DecodePublishImagesResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -90,20 +90,6 @@ func DecodePublishImagesResponse(decoder func(*http.Response) goahttp.Decoder, r
 			}
 			res := NewPublishImagesPublishUnitAccepted(&body)
 			return res, nil
-		case http.StatusBadRequest:
-			var (
-				body PublishImagesBadRequestResponseBody
-				err  error
-			)
-			err = decoder(resp).Decode(&body)
-			if err != nil {
-				return nil, goahttp.ErrDecodingError("publish", "publishImages", err)
-			}
-			err = ValidatePublishImagesBadRequestResponseBody(&body)
-			if err != nil {
-				return nil, goahttp.ErrValidationError("publish", "publishImages", err)
-			}
-			return nil, NewPublishImagesBadRequest(&body)
 		case http.StatusBadGateway:
 			var (
 				body PublishImagesBadGatewayResponseBody
@@ -118,6 +104,20 @@ func DecodePublishImagesResponse(decoder func(*http.Response) goahttp.Decoder, r
 				return nil, goahttp.ErrValidationError("publish", "publishImages", err)
 			}
 			return nil, NewPublishImagesBadGateway(&body)
+		case http.StatusBadRequest:
+			var (
+				body PublishImagesBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "publishImages", err)
+			}
+			err = ValidatePublishImagesBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "publishImages", err)
+			}
+			return nil, NewPublishImagesBadRequest(&body)
 		case http.StatusInternalServerError:
 			var (
 				body PublishImagesInternalServerErrorResponseBody
@@ -168,8 +168,8 @@ func (c *Client) BuildGetUnitRequest(ctx context.Context, v any) (*http.Request,
 // publish getUnit endpoint. restoreBody controls whether the response body
 // should be restored after having been read.
 // DecodeGetUnitResponse may return the following errors:
-//   - "NotFound" (type *publish.HTTPError): http.StatusNotFound
-//   - "InternalServerError" (type *publish.HTTPError): http.StatusInternalServerError
+//   - "InternalServerError" (type *publish.PublishInternalServerError): http.StatusInternalServerError
+//   - "NotFound" (type *publish.PublishNotFoundError): http.StatusNotFound
 //   - error: internal error
 func DecodeGetUnitResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -201,20 +201,6 @@ func DecodeGetUnitResponse(decoder func(*http.Response) goahttp.Decoder, restore
 			}
 			res := NewGetUnitPublishUnitOK(&body)
 			return res, nil
-		case http.StatusNotFound:
-			var (
-				body GetUnitNotFoundResponseBody
-				err  error
-			)
-			err = decoder(resp).Decode(&body)
-			if err != nil {
-				return nil, goahttp.ErrDecodingError("publish", "getUnit", err)
-			}
-			err = ValidateGetUnitNotFoundResponseBody(&body)
-			if err != nil {
-				return nil, goahttp.ErrValidationError("publish", "getUnit", err)
-			}
-			return nil, NewGetUnitNotFound(&body)
 		case http.StatusInternalServerError:
 			var (
 				body GetUnitInternalServerErrorResponseBody
@@ -229,6 +215,20 @@ func DecodeGetUnitResponse(decoder func(*http.Response) goahttp.Decoder, restore
 				return nil, goahttp.ErrValidationError("publish", "getUnit", err)
 			}
 			return nil, NewGetUnitInternalServerError(&body)
+		case http.StatusNotFound:
+			var (
+				body GetUnitNotFoundResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "getUnit", err)
+			}
+			err = ValidateGetUnitNotFoundResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "getUnit", err)
+			}
+			return nil, NewGetUnitNotFound(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("publish", "getUnit", resp.StatusCode, string(body))
@@ -276,8 +276,8 @@ func EncodeListUnitsRequest(encoder func(*http.Request) goahttp.Encoder) func(*h
 // publish listUnits endpoint. restoreBody controls whether the response body
 // should be restored after having been read.
 // DecodeListUnitsResponse may return the following errors:
-//   - "BadRequest" (type *publish.HTTPError): http.StatusBadRequest
-//   - "InternalServerError" (type *publish.HTTPError): http.StatusInternalServerError
+//   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "InternalServerError" (type *publish.PublishInternalServerError): http.StatusInternalServerError
 //   - error: internal error
 func DecodeListUnitsResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -379,9 +379,9 @@ func (c *Client) BuildRetryUnitRequest(ctx context.Context, v any) (*http.Reques
 // publish retryUnit endpoint. restoreBody controls whether the response body
 // should be restored after having been read.
 // DecodeRetryUnitResponse may return the following errors:
-//   - "BadRequest" (type *publish.HTTPError): http.StatusBadRequest
-//   - "NotFound" (type *publish.HTTPError): http.StatusNotFound
-//   - "InternalServerError" (type *publish.HTTPError): http.StatusInternalServerError
+//   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "InternalServerError" (type *publish.PublishInternalServerError): http.StatusInternalServerError
+//   - "NotFound" (type *publish.PublishNotFoundError): http.StatusNotFound
 //   - error: internal error
 func DecodeRetryUnitResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -427,20 +427,6 @@ func DecodeRetryUnitResponse(decoder func(*http.Response) goahttp.Decoder, resto
 				return nil, goahttp.ErrValidationError("publish", "retryUnit", err)
 			}
 			return nil, NewRetryUnitBadRequest(&body)
-		case http.StatusNotFound:
-			var (
-				body RetryUnitNotFoundResponseBody
-				err  error
-			)
-			err = decoder(resp).Decode(&body)
-			if err != nil {
-				return nil, goahttp.ErrDecodingError("publish", "retryUnit", err)
-			}
-			err = ValidateRetryUnitNotFoundResponseBody(&body)
-			if err != nil {
-				return nil, goahttp.ErrValidationError("publish", "retryUnit", err)
-			}
-			return nil, NewRetryUnitNotFound(&body)
 		case http.StatusInternalServerError:
 			var (
 				body RetryUnitInternalServerErrorResponseBody
@@ -455,6 +441,20 @@ func DecodeRetryUnitResponse(decoder func(*http.Response) goahttp.Decoder, resto
 				return nil, goahttp.ErrValidationError("publish", "retryUnit", err)
 			}
 			return nil, NewRetryUnitInternalServerError(&body)
+		case http.StatusNotFound:
+			var (
+				body RetryUnitNotFoundResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "retryUnit", err)
+			}
+			err = ValidateRetryUnitNotFoundResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "retryUnit", err)
+			}
+			return nil, NewRetryUnitNotFound(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("publish", "retryUnit", resp.StatusCode, string(body))

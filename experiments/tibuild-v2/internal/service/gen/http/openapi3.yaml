@@ -27,9 +27,9 @@ paths:
                     type: integer
                     description: The page number of items
                     default: 1
-                    example: 748734727528482128
+                    example: 5589734694886404465
                     format: int64
-                  example: 5763653474226022961
+                  example: 2719408172762347401
                 - name: pageSize
                   in: query
                   description: Page size
@@ -38,9 +38,9 @@ paths:
                     type: integer
                     description: Page size
                     default: 30
-                    example: 8969549111799334785
+                    example: 1922231008307680542
                     format: int64
-                  example: 3034024988171342521
+                  example: 310247495286785875
                 - name: status
                   in: query
                   description: Filter by task status (PENDING, PROCESSING, SUCCEEDED, FAILED)
@@ -48,13 +48,13 @@ paths:
                   schema:
                     type: string
                     description: Filter by task status (PENDING, PROCESSING, SUCCEEDED, FAILED)
-                    example: PROCESSING
+                    example: SUCCEEDED
                     enum:
                         - PENDING
                         - PROCESSING
                         - SUCCEEDED
                         - FAILED
-                  example: FAILED
+                  example: PROCESSING
                 - name: sort
                   in: query
                   description: What to sort results by
@@ -76,11 +76,11 @@ paths:
                     type: string
                     description: The direction of the sort
                     default: desc
-                    example: asc
+                    example: desc
                     enum:
                         - asc
                         - desc
-                  example: asc
+                  example: desc
             responses:
                 "200":
                     description: OK response.
@@ -113,7 +113,21 @@ paths:
                                       status: Non quia quia beatae totam.
                                       target: Omnis quo provident a sed est.
                                       updatedAt: "2001-11-18T18:29:44Z"
+                                    - createdAt: "1982-11-27T14:13:07Z"
+                                      errorMessage: Accusantium neque odio ratione nam.
+                                      id: 201419321051178237
+                                      source: Temporibus fugiat esse.
+                                      status: Non quia quia beatae totam.
+                                      target: Omnis quo provident a sed est.
+                                      updatedAt: "2001-11-18T18:29:44Z"
                             example:
+                                - createdAt: "1982-11-27T14:13:07Z"
+                                  errorMessage: Accusantium neque odio ratione nam.
+                                  id: 201419321051178237
+                                  source: Temporibus fugiat esse.
+                                  status: Non quia quia beatae totam.
+                                  target: Omnis quo provident a sed est.
+                                  updatedAt: "2001-11-18T18:29:44Z"
                                 - createdAt: "1982-11-27T14:13:07Z"
                                   errorMessage: Accusantium neque odio ratione nam.
                                   id: 201419321051178237
@@ -268,9 +282,9 @@ paths:
                     type: integer
                     description: The page number of items
                     default: 1
-                    example: 2929906542279942137
+                    example: 861789888108100331
                     format: int64
-                  example: 7569314733996206511
+                  example: 4399759546281667459
                 - name: pageSize
                   in: query
                   description: Page size
@@ -279,9 +293,9 @@ paths:
                     type: integer
                     description: Page size
                     default: 30
-                    example: 7946269052182591584
+                    example: 6111771581529265448
                     format: int64
-                  example: 6664170446551118663
+                  example: 7996895437680057286
                 - name: hotfix
                   in: query
                   description: Filter hotfix
@@ -290,7 +304,7 @@ paths:
                     type: boolean
                     description: Filter hotfix
                     default: false
-                    example: false
+                    example: true
                   example: true
                 - name: sort
                   in: query
@@ -300,11 +314,11 @@ paths:
                     type: string
                     description: What to sort results by
                     default: createdAt
-                    example: createdAt
+                    example: updatedAt
                     enum:
                         - createdAt
                         - updatedAt
-                  example: createdAt
+                  example: updatedAt
                 - name: direction
                   in: query
                   description: The direction of the sort
@@ -325,8 +339,8 @@ paths:
                   schema:
                     type: string
                     description: Filter created by
-                    example: Rerum culpa.
-                  example: Ut velit exercitationem a.
+                    example: Et debitis pariatur.
+                  example: Reprehenderit in ea sint.
                 - name: scope
                   in: query
                   description: Filter builds by the authenticated owner
@@ -346,7 +360,7 @@ paths:
                   allowEmptyValue: true
                   schema:
                     type: string
-                    example: PROCESSING
+                    example: SUCCESS
                     enum:
                         - PENDING
                         - PROCESSING
@@ -362,8 +376,8 @@ paths:
                   schema:
                     type: string
                     description: Filter by product
-                    example: Iste quam ipsa sit aliquid placeat beatae.
-                  example: Voluptas qui ut odio.
+                    example: Quis maiores fugit et.
+                  example: Occaecati et sunt.
                 - name: q
                   in: query
                   description: Search by build ID, Git ref, or creator
@@ -371,8 +385,8 @@ paths:
                   schema:
                     type: string
                     description: Search by build ID, Git ref, or creator
-                    example: Commodi voluptas eum labore rerum eos accusantium.
-                  example: Iste assumenda blanditiis cupiditate quis sunt saepe.
+                    example: Impedit non eaque dolores.
+                  example: Quas delectus.
             responses:
                 "200":
                     description: OK response.
@@ -384,6 +398,252 @@ paths:
                                     $ref: '#/components/schemas/DevBuild'
                                 description: List of dev builds
                                 example:
+                                    - id: 612669760707787953
+                                      meta:
+                                        createdAt: "1981-11-22T19:48:31Z"
+                                        createdBy: lisandro@grady.net
+                                        updatedAt: "1995-06-06T18:33:40Z"
+                                      permissions:
+                                        canRerun: false
+                                      spec:
+                                        buildEnv: Inventore sed cupiditate possimus qui recusandae.
+                                        builderImg: Alias sapiente ratione.
+                                        edition: next-gen
+                                        features: Rem enim.
+                                        gitHash: Rem beatae recusandae in et.
+                                        gitRef: Cum rerum aut aut blanditiis.
+                                        githubRepo: Iusto laudantium similique occaecati dignissimos accusantium.
+                                        isHotfix: false
+                                        isPushGCR: false
+                                        pipelineEngine: tekton
+                                        platform: darwin/amd64
+                                        pluginGitRef: Dolores dolores animi nobis voluptas esse consequatur.
+                                        product: tidb-tools
+                                        productBaseImg: Qui consequatur quos.
+                                        productDockerfile: Aliquid non earum.
+                                        targetImg: Molestiae dolorum aut magnam ipsam maiores et.
+                                        version: Adipisci ducimus aut harum quia ipsa perferendis.
+                                      status:
+                                        buildReport:
+                                            binaries:
+                                                - component: Enim voluptate autem.
+                                                  ociFile:
+                                                    file: Magnam non voluptas ut fugiat.
+                                                    repo: Voluptas reiciendis est.
+                                                    tag: Quis itaque in dignissimos et omnis.
+                                                  platform: Id magni esse.
+                                                  sha256OCIFile:
+                                                    file: Magnam non voluptas ut fugiat.
+                                                    repo: Voluptas reiciendis est.
+                                                    tag: Quis itaque in dignissimos et omnis.
+                                                  sha256URL: http://gleason.name/madge_turner
+                                                  url: http://hodkiewicz.net/keegan
+                                                - component: Enim voluptate autem.
+                                                  ociFile:
+                                                    file: Magnam non voluptas ut fugiat.
+                                                    repo: Voluptas reiciendis est.
+                                                    tag: Quis itaque in dignissimos et omnis.
+                                                  platform: Id magni esse.
+                                                  sha256OCIFile:
+                                                    file: Magnam non voluptas ut fugiat.
+                                                    repo: Voluptas reiciendis est.
+                                                    tag: Quis itaque in dignissimos et omnis.
+                                                  sha256URL: http://gleason.name/madge_turner
+                                                  url: http://hodkiewicz.net/keegan
+                                                - component: Enim voluptate autem.
+                                                  ociFile:
+                                                    file: Magnam non voluptas ut fugiat.
+                                                    repo: Voluptas reiciendis est.
+                                                    tag: Quis itaque in dignissimos et omnis.
+                                                  platform: Id magni esse.
+                                                  sha256OCIFile:
+                                                    file: Magnam non voluptas ut fugiat.
+                                                    repo: Voluptas reiciendis est.
+                                                    tag: Quis itaque in dignissimos et omnis.
+                                                  sha256URL: http://gleason.name/madge_turner
+                                                  url: http://hodkiewicz.net/keegan
+                                                - component: Enim voluptate autem.
+                                                  ociFile:
+                                                    file: Magnam non voluptas ut fugiat.
+                                                    repo: Voluptas reiciendis est.
+                                                    tag: Quis itaque in dignissimos et omnis.
+                                                  platform: Id magni esse.
+                                                  sha256OCIFile:
+                                                    file: Magnam non voluptas ut fugiat.
+                                                    repo: Voluptas reiciendis est.
+                                                    tag: Quis itaque in dignissimos et omnis.
+                                                  sha256URL: http://gleason.name/madge_turner
+                                                  url: http://hodkiewicz.net/keegan
+                                            gitHash: 3l6
+                                            images:
+                                                - internalURL: Vel quas non omnis aut.
+                                                  platform: Eos et ab et sed pariatur.
+                                                  url: Quo nulla.
+                                                - internalURL: Vel quas non omnis aut.
+                                                  platform: Eos et ab et sed pariatur.
+                                                  url: Quo nulla.
+                                                - internalURL: Vel quas non omnis aut.
+                                                  platform: Eos et ab et sed pariatur.
+                                                  url: Quo nulla.
+                                                - internalURL: Vel quas non omnis aut.
+                                                  platform: Eos et ab et sed pariatur.
+                                                  url: Quo nulla.
+                                            pluginGitHash: tow
+                                            printedVersion: Qui voluptas.
+                                        errMsg: Et officiis.
+                                        pipelineBuildID: 4298836528168637705
+                                        pipelineEndAt: "1992-06-12T02:34:05Z"
+                                        pipelineStartAt: "1970-04-11T19:22:21Z"
+                                        pipelineViewURL: http://marvin.com/brianne_shields
+                                        pipelineViewURLs:
+                                            - http://bednar.com/arthur
+                                            - http://oconnerrath.org/mona
+                                        status: ERROR
+                                        tektonStatus:
+                                            pipelines:
+                                                - endAt: "2014-09-12T09:57:52Z"
+                                                  images:
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                  name: Esse accusantium molestiae nihil id vitae.
+                                                  namespace: Ut nihil numquam dolorum quasi eaque.
+                                                  ociArtifacts:
+                                                    - files:
+                                                        - Quas et blanditiis et sit.
+                                                        - Qui voluptates doloremque.
+                                                        - Saepe quae quia dolorem.
+                                                        - Aut repellendus.
+                                                      repo: Blanditiis dignissimos eius.
+                                                      tag: Reiciendis omnis modi.
+                                                    - files:
+                                                        - Quas et blanditiis et sit.
+                                                        - Qui voluptates doloremque.
+                                                        - Saepe quae quia dolorem.
+                                                        - Aut repellendus.
+                                                      repo: Blanditiis dignissimos eius.
+                                                      tag: Reiciendis omnis modi.
+                                                  platform: Voluptates magnam porro.
+                                                  startAt: "2001-05-31T13:28:34Z"
+                                                  status: Skipped
+                                                  url: http://hauck.net/queen
+                                                - endAt: "2014-09-12T09:57:52Z"
+                                                  images:
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                  name: Esse accusantium molestiae nihil id vitae.
+                                                  namespace: Ut nihil numquam dolorum quasi eaque.
+                                                  ociArtifacts:
+                                                    - files:
+                                                        - Quas et blanditiis et sit.
+                                                        - Qui voluptates doloremque.
+                                                        - Saepe quae quia dolorem.
+                                                        - Aut repellendus.
+                                                      repo: Blanditiis dignissimos eius.
+                                                      tag: Reiciendis omnis modi.
+                                                    - files:
+                                                        - Quas et blanditiis et sit.
+                                                        - Qui voluptates doloremque.
+                                                        - Saepe quae quia dolorem.
+                                                        - Aut repellendus.
+                                                      repo: Blanditiis dignissimos eius.
+                                                      tag: Reiciendis omnis modi.
+                                                  platform: Voluptates magnam porro.
+                                                  startAt: "2001-05-31T13:28:34Z"
+                                                  status: Skipped
+                                                  url: http://hauck.net/queen
+                                                - endAt: "2014-09-12T09:57:52Z"
+                                                  images:
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                  name: Esse accusantium molestiae nihil id vitae.
+                                                  namespace: Ut nihil numquam dolorum quasi eaque.
+                                                  ociArtifacts:
+                                                    - files:
+                                                        - Quas et blanditiis et sit.
+                                                        - Qui voluptates doloremque.
+                                                        - Saepe quae quia dolorem.
+                                                        - Aut repellendus.
+                                                      repo: Blanditiis dignissimos eius.
+                                                      tag: Reiciendis omnis modi.
+                                                    - files:
+                                                        - Quas et blanditiis et sit.
+                                                        - Qui voluptates doloremque.
+                                                        - Saepe quae quia dolorem.
+                                                        - Aut repellendus.
+                                                      repo: Blanditiis dignissimos eius.
+                                                      tag: Reiciendis omnis modi.
+                                                  platform: Voluptates magnam porro.
+                                                  startAt: "2001-05-31T13:28:34Z"
+                                                  status: Skipped
+                                                  url: http://hauck.net/queen
+                                                - endAt: "2014-09-12T09:57:52Z"
+                                                  images:
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                    - internalURL: Vel quas non omnis aut.
+                                                      platform: Eos et ab et sed pariatur.
+                                                      url: Quo nulla.
+                                                  name: Esse accusantium molestiae nihil id vitae.
+                                                  namespace: Ut nihil numquam dolorum quasi eaque.
+                                                  ociArtifacts:
+                                                    - files:
+                                                        - Quas et blanditiis et sit.
+                                                        - Qui voluptates doloremque.
+                                                        - Saepe quae quia dolorem.
+                                                        - Aut repellendus.
+                                                      repo: Blanditiis dignissimos eius.
+                                                      tag: Reiciendis omnis modi.
+                                                    - files:
+                                                        - Quas et blanditiis et sit.
+                                                        - Qui voluptates doloremque.
+                                                        - Saepe quae quia dolorem.
+                                                        - Aut repellendus.
+                                                      repo: Blanditiis dignissimos eius.
+                                                      tag: Reiciendis omnis modi.
+                                                  platform: Voluptates magnam porro.
+                                                  startAt: "2001-05-31T13:28:34Z"
+                                                  status: Skipped
+                                                  url: http://hauck.net/queen
+                                            triggersEventIDs:
+                                                - 04c501e2-13fc-4ff9-9188-b9dafcc333e9
+                                                - 4ff40d0f-c023-4ff5-8bbc-2818cbe585c7
                                     - id: 612669760707787953
                                       meta:
                                         createdAt: "1981-11-22T19:48:31Z"
@@ -1658,7 +1918,7 @@ paths:
                     description: Dry run
                     default: false
                     example: false
-                  example: false
+                  example: true
             requestBody:
                 required: true
                 content:
@@ -2117,7 +2377,7 @@ paths:
                     type: boolean
                     description: Dry run
                     default: false
-                    example: true
+                    example: false
                   example: false
                 - name: id
                   in: path
@@ -2597,7 +2857,7 @@ paths:
                     type: boolean
                     description: Dry run
                     default: false
-                    example: true
+                    example: false
                   example: false
                 - name: id
                   in: path
@@ -3139,28 +3399,28 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishBadRequestError'
                             example:
-                                code: 6596147538999934035
-                                message: Quas iste qui et.
+                                code: 1867812613466119779
+                                message: Est incidunt natus reprehenderit quaerat fuga.
                 "500":
                     description: 'InternalServerError: Internal Server Error'
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishInternalServerError'
                             example:
-                                code: 4122733287900988098
-                                message: Aspernatur qui.
+                                code: 912570262155411533
+                                message: Eos ut molestias tempora quia repellat.
                 "502":
                     description: 'BadGateway: The artifact registry could not be queried'
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishBadGatewayError'
                             example:
-                                code: 1867812613466119779
-                                message: Est incidunt natus reprehenderit quaerat fuga.
+                                code: 523412331340430694
+                                message: Vel quia et optio consequuntur.
     /api/v2/publish/units:
         get:
             tags:
@@ -3176,7 +3436,7 @@ paths:
                   schema:
                     type: string
                     description: Filter by unit state
-                    example: succeeded
+                    example: queued
                     enum:
                         - queued
                         - running
@@ -3184,7 +3444,7 @@ paths:
                         - partial
                         - failed
                         - canceled
-                  example: running
+                  example: partial
                 - name: kind
                   in: query
                   description: Filter by publication kind
@@ -3192,8 +3452,8 @@ paths:
                   schema:
                     type: string
                     description: Filter by publication kind
-                    example: Quos unde consequatur.
-                  example: Debitis pariatur illum.
+                    example: Recusandae quibusdam aliquid.
+                  example: Voluptas dignissimos iste fugiat eveniet non.
                 - name: limit
                   in: query
                   description: Maximum number of units
@@ -3202,9 +3462,9 @@ paths:
                     type: integer
                     description: Maximum number of units
                     default: 20
-                    example: 8828417901805883302
+                    example: 3711271592874919336
                     format: int64
-                  example: 5690867423311021534
+                  example: 5454818998023135669
             responses:
                 "200":
                     description: OK response.
@@ -3216,265 +3476,391 @@ paths:
                                     $ref: '#/components/schemas/PublishUnit'
                                 description: Matching units, newest first
                                 example:
-                                    - artifactUrl: Voluptatem delectus suscipit eum est rerum ducimus.
-                                      createdAt: "2002-04-26T22:15:11Z"
-                                      digest: Possimus ex.
-                                      finishedAt: "1983-12-08T20:00:00Z"
-                                      id: Eveniet adipisci autem eligendi.
-                                      kind: Repellat consectetur aut rerum molestiae velit quidem.
-                                      requestedBy: Vero quas voluptatem quia.
-                                      state: queued
+                                    - artifactUrl: Et vero quas voluptatem.
+                                      createdAt: "1988-11-27T09:26:20Z"
+                                      digest: Voluptatem non nisi velit quod.
+                                      finishedAt: "1976-01-16T13:10:45Z"
+                                      id: Rerum ducimus.
+                                      kind: Possimus ex.
+                                      requestedBy: Animi tenetur excepturi amet vero.
+                                      state: running
                                       steps:
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
-                                    - artifactUrl: Voluptatem delectus suscipit eum est rerum ducimus.
-                                      createdAt: "2002-04-26T22:15:11Z"
-                                      digest: Possimus ex.
-                                      finishedAt: "1983-12-08T20:00:00Z"
-                                      id: Eveniet adipisci autem eligendi.
-                                      kind: Repellat consectetur aut rerum molestiae velit quidem.
-                                      requestedBy: Vero quas voluptatem quia.
-                                      state: queued
+                                        - attempts: 8840902490063515292
+                                          createdAt: "1997-02-15T06:57:58Z"
+                                          dependsOn: Maiores et.
+                                          dest: Illum molestias quam voluptas qui nostrum.
+                                          finishedAt: "2006-03-02T16:50:39Z"
+                                          id: Quasi consequatur.
+                                          lastError: Voluptates veniam occaecati ratione.
+                                          payload: Labore non rerum omnis earum fuga quasi.
+                                          result: Libero natus dolores beatae.
+                                          startedAt: "1977-04-09T20:53:06Z"
+                                          state: blocked
+                                          target: Soluta tempore aspernatur modi.
+                                          unitId: Et eaque error.
+                                        - attempts: 8840902490063515292
+                                          createdAt: "1997-02-15T06:57:58Z"
+                                          dependsOn: Maiores et.
+                                          dest: Illum molestias quam voluptas qui nostrum.
+                                          finishedAt: "2006-03-02T16:50:39Z"
+                                          id: Quasi consequatur.
+                                          lastError: Voluptates veniam occaecati ratione.
+                                          payload: Labore non rerum omnis earum fuga quasi.
+                                          result: Libero natus dolores beatae.
+                                          startedAt: "1977-04-09T20:53:06Z"
+                                          state: blocked
+                                          target: Soluta tempore aspernatur modi.
+                                          unitId: Et eaque error.
+                                        - attempts: 8840902490063515292
+                                          createdAt: "1997-02-15T06:57:58Z"
+                                          dependsOn: Maiores et.
+                                          dest: Illum molestias quam voluptas qui nostrum.
+                                          finishedAt: "2006-03-02T16:50:39Z"
+                                          id: Quasi consequatur.
+                                          lastError: Voluptates veniam occaecati ratione.
+                                          payload: Labore non rerum omnis earum fuga quasi.
+                                          result: Libero natus dolores beatae.
+                                          startedAt: "1977-04-09T20:53:06Z"
+                                          state: blocked
+                                          target: Soluta tempore aspernatur modi.
+                                          unitId: Et eaque error.
+                                        - attempts: 8840902490063515292
+                                          createdAt: "1997-02-15T06:57:58Z"
+                                          dependsOn: Maiores et.
+                                          dest: Illum molestias quam voluptas qui nostrum.
+                                          finishedAt: "2006-03-02T16:50:39Z"
+                                          id: Quasi consequatur.
+                                          lastError: Voluptates veniam occaecati ratione.
+                                          payload: Labore non rerum omnis earum fuga quasi.
+                                          result: Libero natus dolores beatae.
+                                          startedAt: "1977-04-09T20:53:06Z"
+                                          state: blocked
+                                          target: Soluta tempore aspernatur modi.
+                                          unitId: Et eaque error.
+                                    - artifactUrl: Et vero quas voluptatem.
+                                      createdAt: "1988-11-27T09:26:20Z"
+                                      digest: Voluptatem non nisi velit quod.
+                                      finishedAt: "1976-01-16T13:10:45Z"
+                                      id: Rerum ducimus.
+                                      kind: Possimus ex.
+                                      requestedBy: Animi tenetur excepturi amet vero.
+                                      state: running
                                       steps:
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
-                                    - artifactUrl: Voluptatem delectus suscipit eum est rerum ducimus.
-                                      createdAt: "2002-04-26T22:15:11Z"
-                                      digest: Possimus ex.
-                                      finishedAt: "1983-12-08T20:00:00Z"
-                                      id: Eveniet adipisci autem eligendi.
-                                      kind: Repellat consectetur aut rerum molestiae velit quidem.
-                                      requestedBy: Vero quas voluptatem quia.
-                                      state: queued
-                                      steps:
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
-                                        - attempts: 7205148999241335651
-                                          createdAt: "2013-07-30T19:14:37Z"
-                                          dependsOn: Illum molestias quam voluptas qui nostrum.
-                                          dest: Eaque error itaque soluta tempore aspernatur modi.
-                                          finishedAt: "1997-11-02T11:42:11Z"
-                                          id: Error earum excepturi quo perspiciatis.
-                                          lastError: Quibusdam ut dignissimos voluptates veniam.
-                                          payload: Ratione sapiente.
-                                          result: Non rerum omnis earum fuga quasi sed.
-                                          startedAt: "2005-04-20T03:25:39Z"
-                                          state: pending
-                                          target: Reiciendis quasi consequatur expedita.
-                                          unitId: Id dolores rerum id natus ducimus et.
+                                        - attempts: 8840902490063515292
+                                          createdAt: "1997-02-15T06:57:58Z"
+                                          dependsOn: Maiores et.
+                                          dest: Illum molestias quam voluptas qui nostrum.
+                                          finishedAt: "2006-03-02T16:50:39Z"
+                                          id: Quasi consequatur.
+                                          lastError: Voluptates veniam occaecati ratione.
+                                          payload: Labore non rerum omnis earum fuga quasi.
+                                          result: Libero natus dolores beatae.
+                                          startedAt: "1977-04-09T20:53:06Z"
+                                          state: blocked
+                                          target: Soluta tempore aspernatur modi.
+                                          unitId: Et eaque error.
+                                        - attempts: 8840902490063515292
+                                          createdAt: "1997-02-15T06:57:58Z"
+                                          dependsOn: Maiores et.
+                                          dest: Illum molestias quam voluptas qui nostrum.
+                                          finishedAt: "2006-03-02T16:50:39Z"
+                                          id: Quasi consequatur.
+                                          lastError: Voluptates veniam occaecati ratione.
+                                          payload: Labore non rerum omnis earum fuga quasi.
+                                          result: Libero natus dolores beatae.
+                                          startedAt: "1977-04-09T20:53:06Z"
+                                          state: blocked
+                                          target: Soluta tempore aspernatur modi.
+                                          unitId: Et eaque error.
+                                        - attempts: 8840902490063515292
+                                          createdAt: "1997-02-15T06:57:58Z"
+                                          dependsOn: Maiores et.
+                                          dest: Illum molestias quam voluptas qui nostrum.
+                                          finishedAt: "2006-03-02T16:50:39Z"
+                                          id: Quasi consequatur.
+                                          lastError: Voluptates veniam occaecati ratione.
+                                          payload: Labore non rerum omnis earum fuga quasi.
+                                          result: Libero natus dolores beatae.
+                                          startedAt: "1977-04-09T20:53:06Z"
+                                          state: blocked
+                                          target: Soluta tempore aspernatur modi.
+                                          unitId: Et eaque error.
+                                        - attempts: 8840902490063515292
+                                          createdAt: "1997-02-15T06:57:58Z"
+                                          dependsOn: Maiores et.
+                                          dest: Illum molestias quam voluptas qui nostrum.
+                                          finishedAt: "2006-03-02T16:50:39Z"
+                                          id: Quasi consequatur.
+                                          lastError: Voluptates veniam occaecati ratione.
+                                          payload: Labore non rerum omnis earum fuga quasi.
+                                          result: Libero natus dolores beatae.
+                                          startedAt: "1977-04-09T20:53:06Z"
+                                          state: blocked
+                                          target: Soluta tempore aspernatur modi.
+                                          unitId: Et eaque error.
                             example:
-                                - artifactUrl: Voluptatem delectus suscipit eum est rerum ducimus.
-                                  createdAt: "2002-04-26T22:15:11Z"
-                                  digest: Possimus ex.
-                                  finishedAt: "1983-12-08T20:00:00Z"
-                                  id: Eveniet adipisci autem eligendi.
-                                  kind: Repellat consectetur aut rerum molestiae velit quidem.
-                                  requestedBy: Vero quas voluptatem quia.
-                                  state: queued
+                                - artifactUrl: Et vero quas voluptatem.
+                                  createdAt: "1988-11-27T09:26:20Z"
+                                  digest: Voluptatem non nisi velit quod.
+                                  finishedAt: "1976-01-16T13:10:45Z"
+                                  id: Rerum ducimus.
+                                  kind: Possimus ex.
+                                  requestedBy: Animi tenetur excepturi amet vero.
+                                  state: running
                                   steps:
-                                    - attempts: 7205148999241335651
-                                      createdAt: "2013-07-30T19:14:37Z"
-                                      dependsOn: Illum molestias quam voluptas qui nostrum.
-                                      dest: Eaque error itaque soluta tempore aspernatur modi.
-                                      finishedAt: "1997-11-02T11:42:11Z"
-                                      id: Error earum excepturi quo perspiciatis.
-                                      lastError: Quibusdam ut dignissimos voluptates veniam.
-                                      payload: Ratione sapiente.
-                                      result: Non rerum omnis earum fuga quasi sed.
-                                      startedAt: "2005-04-20T03:25:39Z"
-                                      state: pending
-                                      target: Reiciendis quasi consequatur expedita.
-                                      unitId: Id dolores rerum id natus ducimus et.
-                                    - attempts: 7205148999241335651
-                                      createdAt: "2013-07-30T19:14:37Z"
-                                      dependsOn: Illum molestias quam voluptas qui nostrum.
-                                      dest: Eaque error itaque soluta tempore aspernatur modi.
-                                      finishedAt: "1997-11-02T11:42:11Z"
-                                      id: Error earum excepturi quo perspiciatis.
-                                      lastError: Quibusdam ut dignissimos voluptates veniam.
-                                      payload: Ratione sapiente.
-                                      result: Non rerum omnis earum fuga quasi sed.
-                                      startedAt: "2005-04-20T03:25:39Z"
-                                      state: pending
-                                      target: Reiciendis quasi consequatur expedita.
-                                      unitId: Id dolores rerum id natus ducimus et.
-                                    - attempts: 7205148999241335651
-                                      createdAt: "2013-07-30T19:14:37Z"
-                                      dependsOn: Illum molestias quam voluptas qui nostrum.
-                                      dest: Eaque error itaque soluta tempore aspernatur modi.
-                                      finishedAt: "1997-11-02T11:42:11Z"
-                                      id: Error earum excepturi quo perspiciatis.
-                                      lastError: Quibusdam ut dignissimos voluptates veniam.
-                                      payload: Ratione sapiente.
-                                      result: Non rerum omnis earum fuga quasi sed.
-                                      startedAt: "2005-04-20T03:25:39Z"
-                                      state: pending
-                                      target: Reiciendis quasi consequatur expedita.
-                                      unitId: Id dolores rerum id natus ducimus et.
-                                - artifactUrl: Voluptatem delectus suscipit eum est rerum ducimus.
-                                  createdAt: "2002-04-26T22:15:11Z"
-                                  digest: Possimus ex.
-                                  finishedAt: "1983-12-08T20:00:00Z"
-                                  id: Eveniet adipisci autem eligendi.
-                                  kind: Repellat consectetur aut rerum molestiae velit quidem.
-                                  requestedBy: Vero quas voluptatem quia.
-                                  state: queued
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                - artifactUrl: Et vero quas voluptatem.
+                                  createdAt: "1988-11-27T09:26:20Z"
+                                  digest: Voluptatem non nisi velit quod.
+                                  finishedAt: "1976-01-16T13:10:45Z"
+                                  id: Rerum ducimus.
+                                  kind: Possimus ex.
+                                  requestedBy: Animi tenetur excepturi amet vero.
+                                  state: running
                                   steps:
-                                    - attempts: 7205148999241335651
-                                      createdAt: "2013-07-30T19:14:37Z"
-                                      dependsOn: Illum molestias quam voluptas qui nostrum.
-                                      dest: Eaque error itaque soluta tempore aspernatur modi.
-                                      finishedAt: "1997-11-02T11:42:11Z"
-                                      id: Error earum excepturi quo perspiciatis.
-                                      lastError: Quibusdam ut dignissimos voluptates veniam.
-                                      payload: Ratione sapiente.
-                                      result: Non rerum omnis earum fuga quasi sed.
-                                      startedAt: "2005-04-20T03:25:39Z"
-                                      state: pending
-                                      target: Reiciendis quasi consequatur expedita.
-                                      unitId: Id dolores rerum id natus ducimus et.
-                                    - attempts: 7205148999241335651
-                                      createdAt: "2013-07-30T19:14:37Z"
-                                      dependsOn: Illum molestias quam voluptas qui nostrum.
-                                      dest: Eaque error itaque soluta tempore aspernatur modi.
-                                      finishedAt: "1997-11-02T11:42:11Z"
-                                      id: Error earum excepturi quo perspiciatis.
-                                      lastError: Quibusdam ut dignissimos voluptates veniam.
-                                      payload: Ratione sapiente.
-                                      result: Non rerum omnis earum fuga quasi sed.
-                                      startedAt: "2005-04-20T03:25:39Z"
-                                      state: pending
-                                      target: Reiciendis quasi consequatur expedita.
-                                      unitId: Id dolores rerum id natus ducimus et.
-                                    - attempts: 7205148999241335651
-                                      createdAt: "2013-07-30T19:14:37Z"
-                                      dependsOn: Illum molestias quam voluptas qui nostrum.
-                                      dest: Eaque error itaque soluta tempore aspernatur modi.
-                                      finishedAt: "1997-11-02T11:42:11Z"
-                                      id: Error earum excepturi quo perspiciatis.
-                                      lastError: Quibusdam ut dignissimos voluptates veniam.
-                                      payload: Ratione sapiente.
-                                      result: Non rerum omnis earum fuga quasi sed.
-                                      startedAt: "2005-04-20T03:25:39Z"
-                                      state: pending
-                                      target: Reiciendis quasi consequatur expedita.
-                                      unitId: Id dolores rerum id natus ducimus et.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                - artifactUrl: Et vero quas voluptatem.
+                                  createdAt: "1988-11-27T09:26:20Z"
+                                  digest: Voluptatem non nisi velit quod.
+                                  finishedAt: "1976-01-16T13:10:45Z"
+                                  id: Rerum ducimus.
+                                  kind: Possimus ex.
+                                  requestedBy: Animi tenetur excepturi amet vero.
+                                  state: running
+                                  steps:
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                - artifactUrl: Et vero quas voluptatem.
+                                  createdAt: "1988-11-27T09:26:20Z"
+                                  digest: Voluptatem non nisi velit quod.
+                                  finishedAt: "1976-01-16T13:10:45Z"
+                                  id: Rerum ducimus.
+                                  kind: Possimus ex.
+                                  requestedBy: Animi tenetur excepturi amet vero.
+                                  state: running
+                                  steps:
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
+                                    - attempts: 8840902490063515292
+                                      createdAt: "1997-02-15T06:57:58Z"
+                                      dependsOn: Maiores et.
+                                      dest: Illum molestias quam voluptas qui nostrum.
+                                      finishedAt: "2006-03-02T16:50:39Z"
+                                      id: Quasi consequatur.
+                                      lastError: Voluptates veniam occaecati ratione.
+                                      payload: Labore non rerum omnis earum fuga quasi.
+                                      result: Libero natus dolores beatae.
+                                      startedAt: "1977-04-09T20:53:06Z"
+                                      state: blocked
+                                      target: Soluta tempore aspernatur modi.
+                                      unitId: Et eaque error.
                 "400":
                     description: 'BadRequest: Bad Request'
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishBadRequestError'
                             example:
-                                code: 9035600151830320342
-                                message: Aliquid ipsum.
+                                code: 7546973239185334842
+                                message: Ut at laudantium aspernatur voluptatibus nam voluptatem.
                 "500":
                     description: 'InternalServerError: Internal Server Error'
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishInternalServerError'
                             example:
-                                code: 6534381319470210454
-                                message: Quia voluptas ut.
+                                code: 4221274840848827701
+                                message: Officia sed aliquam molestiae ipsum.
     /api/v2/publish/units/{id}:
         get:
             tags:
@@ -3490,8 +3876,8 @@ paths:
                   schema:
                     type: string
                     description: Unit id
-                    example: Aut nam iste doloribus est.
-                  example: Voluptate facilis enim.
+                    example: Error neque voluptatem ullam voluptatem adipisci.
+                  example: Earum illum hic.
             responses:
                 "200":
                     description: OK response.
@@ -3500,41 +3886,15 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/PublishUnit'
                             example:
-                                artifactUrl: Cumque dolorum perferendis ut consequatur.
-                                createdAt: "1997-02-05T11:47:19Z"
-                                digest: Deleniti soluta qui ratione molestias molestiae quia.
-                                finishedAt: "1976-02-04T00:58:42Z"
-                                id: Ut molestias tempora quia repellat voluptate.
-                                kind: Corrupti totam et vel.
-                                requestedBy: Molestiae aliquid inventore sequi.
-                                state: queued
+                                artifactUrl: Consequatur totam recusandae.
+                                createdAt: "2000-08-19T16:29:42Z"
+                                digest: Dolorum eos.
+                                finishedAt: "2004-04-14T15:44:46Z"
+                                id: Deleniti soluta qui ratione molestias molestiae quia.
+                                kind: Quis molestiae aliquid inventore sequi omnis quia.
+                                requestedBy: Quod dicta.
+                                state: succeeded
                                 steps:
-                                    - attempts: 5512985561402947536
-                                      createdAt: "2006-05-14T00:36:44Z"
-                                      dependsOn: Quia dolorem.
-                                      dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
-                                      finishedAt: "2010-07-17T07:51:21Z"
-                                      id: Ducimus ut fugiat maiores sunt fugiat ut.
-                                      lastError: Necessitatibus et.
-                                      payload: Similique sed ducimus eum id voluptatem harum.
-                                      result: Asperiores ut quibusdam.
-                                      startedAt: "1981-05-08T17:14:22Z"
-                                      state: succeeded
-                                      target: Voluptatum quis ea totam quisquam.
-                                      unitId: Eaque in.
-                                    - attempts: 5512985561402947536
-                                      createdAt: "2006-05-14T00:36:44Z"
-                                      dependsOn: Quia dolorem.
-                                      dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
-                                      finishedAt: "2010-07-17T07:51:21Z"
-                                      id: Ducimus ut fugiat maiores sunt fugiat ut.
-                                      lastError: Necessitatibus et.
-                                      payload: Similique sed ducimus eum id voluptatem harum.
-                                      result: Asperiores ut quibusdam.
-                                      startedAt: "1981-05-08T17:14:22Z"
-                                      state: succeeded
-                                      target: Voluptatum quis ea totam quisquam.
-                                      unitId: Eaque in.
                                     - attempts: 5512985561402947536
                                       createdAt: "2006-05-14T00:36:44Z"
                                       dependsOn: Quia dolorem.
@@ -3566,19 +3926,19 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishNotFoundError'
                             example:
-                                code: 2586151703060365910
-                                message: Aperiam dolores minima et non quia.
+                                code: 8686850679939069003
+                                message: Accusamus aperiam eveniet adipisci autem eligendi.
                 "500":
                     description: 'InternalServerError: Internal Server Error'
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishInternalServerError'
                             example:
-                                code: 1364236614429634765
-                                message: Perspiciatis veritatis quae ducimus pariatur quo.
+                                code: 8268567786156004520
+                                message: Consectetur aut rerum molestiae.
     /api/v2/publish/units/{id}/retry:
         post:
             tags:
@@ -3594,8 +3954,8 @@ paths:
                   schema:
                     type: string
                     description: Unit id
-                    example: Repudiandae provident voluptas dignissimos quis maiores fugit.
-                  example: Qui occaecati et.
+                    example: Consequatur id officiis sed.
+                  example: Quas omnis odit.
             responses:
                 "202":
                     description: Accepted response.
@@ -3604,15 +3964,41 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/PublishUnit'
                             example:
-                                artifactUrl: Debitis est enim.
-                                createdAt: "1995-03-10T09:05:09Z"
-                                digest: Asperiores consequatur a.
-                                finishedAt: "1990-01-23T11:30:17Z"
-                                id: Temporibus inventore.
-                                kind: Eius reiciendis nihil itaque.
-                                requestedBy: Autem sunt aliquid sit perferendis.
-                                state: queued
+                                artifactUrl: Ratione autem sunt aliquid sit.
+                                createdAt: "1986-03-01T17:18:18Z"
+                                digest: In facilis occaecati odit reiciendis.
+                                finishedAt: "2006-03-19T12:22:39Z"
+                                id: Debitis est enim.
+                                kind: Asperiores consequatur a.
+                                requestedBy: Non aliquam quo fugiat ut quia.
+                                state: running
                                 steps:
+                                    - attempts: 5512985561402947536
+                                      createdAt: "2006-05-14T00:36:44Z"
+                                      dependsOn: Quia dolorem.
+                                      dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
+                                      finishedAt: "2010-07-17T07:51:21Z"
+                                      id: Ducimus ut fugiat maiores sunt fugiat ut.
+                                      lastError: Necessitatibus et.
+                                      payload: Similique sed ducimus eum id voluptatem harum.
+                                      result: Asperiores ut quibusdam.
+                                      startedAt: "1981-05-08T17:14:22Z"
+                                      state: succeeded
+                                      target: Voluptatum quis ea totam quisquam.
+                                      unitId: Eaque in.
+                                    - attempts: 5512985561402947536
+                                      createdAt: "2006-05-14T00:36:44Z"
+                                      dependsOn: Quia dolorem.
+                                      dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
+                                      finishedAt: "2010-07-17T07:51:21Z"
+                                      id: Ducimus ut fugiat maiores sunt fugiat ut.
+                                      lastError: Necessitatibus et.
+                                      payload: Similique sed ducimus eum id voluptatem harum.
+                                      result: Asperiores ut quibusdam.
+                                      startedAt: "1981-05-08T17:14:22Z"
+                                      state: succeeded
+                                      target: Voluptatum quis ea totam quisquam.
+                                      unitId: Eaque in.
                                     - attempts: 5512985561402947536
                                       createdAt: "2006-05-14T00:36:44Z"
                                       dependsOn: Quia dolorem.
@@ -3644,28 +4030,28 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishBadRequestError'
                             example:
-                                code: 2753088208980355177
-                                message: Consectetur facilis.
+                                code: 5713644672030830621
+                                message: Exercitationem quas aspernatur ipsum.
                 "404":
                     description: 'NotFound: Not Found'
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishNotFoundError'
                             example:
-                                code: 3197486759358650526
-                                message: Et cupiditate eum et magnam.
+                                code: 8924238733168035947
+                                message: Voluptatum omnis veniam voluptatem est sit.
                 "500":
                     description: 'InternalServerError: Internal Server Error'
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/HTTPError'
+                                $ref: '#/components/schemas/PublishInternalServerError'
                             example:
-                                code: 3929185861539955222
-                                message: Laboriosam minus quidem exercitationem quas aspernatur.
+                                code: 702184664342203021
+                                message: At est consectetur.
 components:
     schemas:
         BinArtifact:
@@ -3673,35 +4059,35 @@ components:
             properties:
                 component:
                     type: string
-                    example: Impedit at voluptatem quo veritatis illum eum.
+                    example: Hic ea esse itaque.
                 ociFile:
                     $ref: '#/components/schemas/OciFile'
                 platform:
                     type: string
-                    example: Porro fuga ipsam deleniti qui fugiat vero.
+                    example: Nemo maxime iusto provident modi.
                 sha256OCIFile:
                     $ref: '#/components/schemas/OciFile'
                 sha256URL:
                     type: string
-                    example: http://kirlin.info/rusty
+                    example: http://cole.org/nelson
                     format: uri
                 url:
                     type: string
-                    example: http://schumm.com/zoe
+                    example: http://hudson.biz/adaline_will
                     format: uri
             example:
-                component: Non corporis aut blanditiis explicabo asperiores.
+                component: Sed nulla quo accusantium quo dolorem.
                 ociFile:
                     file: Quibusdam aperiam quia id.
                     repo: Id asperiores nostrum.
                     tag: Quo quaerat sit mollitia molestiae nihil odio.
-                platform: Adipisci est fugiat rerum.
+                platform: Molestias minus odio rerum et.
                 sha256OCIFile:
                     file: Quibusdam aperiam quia id.
                     repo: Id asperiores nostrum.
                     tag: Quo quaerat sit mollitia molestiae nihil odio.
-                sha256URL: http://zulaufmueller.org/jammie.reichert
-                url: http://hintzkilback.biz/eldora_hane
+                sha256URL: http://labadie.net/vinnie.o'keefe
+                url: http://schummohara.net/silas
         BuildReport:
             type: object
             properties:
@@ -3746,9 +4132,21 @@ components:
                             tag: Quo quaerat sit mollitia molestiae nihil odio.
                           sha256URL: http://ziemann.net/alford.jerde
                           url: http://auer.biz/sharon
+                        - component: Aliquam deleniti reiciendis dolore.
+                          ociFile:
+                            file: Quibusdam aperiam quia id.
+                            repo: Id asperiores nostrum.
+                            tag: Quo quaerat sit mollitia molestiae nihil odio.
+                          platform: Beatae ipsa omnis adipisci culpa possimus.
+                          sha256OCIFile:
+                            file: Quibusdam aperiam quia id.
+                            repo: Id asperiores nostrum.
+                            tag: Quo quaerat sit mollitia molestiae nihil odio.
+                          sha256URL: http://ziemann.net/alford.jerde
+                          url: http://auer.biz/sharon
                 gitHash:
                     type: string
-                    example: s56
+                    example: 1qx
                     maxLength: 40
                 images:
                     type: array
@@ -3766,11 +4164,11 @@ components:
                           url: Alias adipisci est consequatur quo voluptatem dolore.
                 pluginGitHash:
                     type: string
-                    example: g1q
+                    example: o8b
                     maxLength: 40
                 printedVersion:
                     type: string
-                    example: Esse similique et dolores qui a.
+                    example: Est ut et.
             example:
                 binaries:
                     - component: Aliquam deleniti reiciendis dolore.
@@ -3797,19 +4195,7 @@ components:
                         tag: Quo quaerat sit mollitia molestiae nihil odio.
                       sha256URL: http://ziemann.net/alford.jerde
                       url: http://auer.biz/sharon
-                    - component: Aliquam deleniti reiciendis dolore.
-                      ociFile:
-                        file: Quibusdam aperiam quia id.
-                        repo: Id asperiores nostrum.
-                        tag: Quo quaerat sit mollitia molestiae nihil odio.
-                      platform: Beatae ipsa omnis adipisci culpa possimus.
-                      sha256OCIFile:
-                        file: Quibusdam aperiam quia id.
-                        repo: Id asperiores nostrum.
-                        tag: Quo quaerat sit mollitia molestiae nihil odio.
-                      sha256URL: http://ziemann.net/alford.jerde
-                      url: http://auer.biz/sharon
-                gitHash: gll
+                gitHash: 03l
                 images:
                     - internalURL: Et quis doloribus.
                       platform: Necessitatibus asperiores id sunt deserunt ut quod.
@@ -3817,8 +4203,14 @@ components:
                     - internalURL: Et quis doloribus.
                       platform: Necessitatibus asperiores id sunt deserunt ut quod.
                       url: Alias adipisci est consequatur quo voluptatem dolore.
-                pluginGitHash: lh5
-                printedVersion: Consequuntur inventore sed quis qui sapiente.
+                    - internalURL: Et quis doloribus.
+                      platform: Necessitatibus asperiores id sunt deserunt ut quod.
+                      url: Alias adipisci est consequatur quo voluptatem dolore.
+                    - internalURL: Et quis doloribus.
+                      platform: Necessitatibus asperiores id sunt deserunt ut quod.
+                      url: Alias adipisci est consequatur quo voluptatem dolore.
+                pluginGitHash: ejs
+                printedVersion: Quis qui sapiente.
         BumpTagForTidbxRequestBody:
             type: object
             properties:
@@ -3916,12 +4308,12 @@ components:
                 createdBy:
                     type: string
                     description: Creator of build for legacy machine clients
-                    example: rylee@jones.com
+                    example: katelyn_medhurst@daugherty.net
                     format: email
                 request:
                     $ref: '#/components/schemas/DevBuildSpec'
             example:
-                createdBy: katelyn_medhurst@daugherty.net
+                createdBy: theo.dach@hodkiewiczjones.biz
                 request:
                     buildEnv: Odio qui repellendus.
                     builderImg: Amet ipsum nemo qui ea molestiae.
@@ -4135,15 +4527,16 @@ components:
             properties:
                 defaultPipelineEngine:
                     type: string
-                    example: Inventore ut sapiente expedita sunt neque cumque.
+                    example: Rerum omnis.
                 pipelineEngines:
                     type: array
                     items:
                         type: string
-                        example: Rerum nam molestiae et molestiae blanditiis.
+                        example: Ut sapiente expedita sunt.
                     example:
-                        - Rerum animi eos nulla ut deleniti.
-                        - Veniam sit dolores laboriosam accusantium itaque.
+                        - Enim consectetur.
+                        - Est sed placeat blanditiis neque recusandae.
+                        - Omnis et eaque nam.
                 products:
                     type: array
                     items:
@@ -4173,12 +4566,36 @@ components:
                             - Cumque laudantium molestiae.
                             - Odio impedit dicta.
                             - Esse et maxime vero nesciunt in et.
+                        - defaultEdition: Quod omnis ut sit reiciendis esse architecto.
+                          defaultPlatform: Sit beatae saepe soluta.
+                          editions:
+                            - Et saepe.
+                            - Est ut exercitationem consectetur vitae.
+                          id: Non ratione reiciendis minus sapiente doloremque rerum.
+                          label: Consequatur repellendus saepe rerum tenetur vero eveniet.
+                          platforms:
+                            - Earum sint ad incidunt id.
+                            - Cumque laudantium molestiae.
+                            - Odio impedit dicta.
+                            - Esse et maxime vero nesciunt in et.
+                        - defaultEdition: Quod omnis ut sit reiciendis esse architecto.
+                          defaultPlatform: Sit beatae saepe soluta.
+                          editions:
+                            - Et saepe.
+                            - Est ut exercitationem consectetur vitae.
+                          id: Non ratione reiciendis minus sapiente doloremque rerum.
+                          label: Consequatur repellendus saepe rerum tenetur vero eveniet.
+                          platforms:
+                            - Earum sint ad incidunt id.
+                            - Cumque laudantium molestiae.
+                            - Odio impedit dicta.
+                            - Esse et maxime vero nesciunt in et.
             example:
-                defaultPipelineEngine: Omnis omnis ut molestias.
+                defaultPipelineEngine: Neque est.
                 pipelineEngines:
-                    - Est sed placeat blanditiis neque recusandae.
-                    - Omnis et eaque nam.
-                    - Rerum omnis.
+                    - Ut molestias voluptas quo ullam maiores.
+                    - Reiciendis quia magni rem natus quia perferendis.
+                    - Fugit sit ex placeat occaecati qui voluptatum.
                 products:
                     - defaultEdition: Quod omnis ut sit reiciendis esse architecto.
                       defaultPlatform: Sit beatae saepe soluta.
@@ -4269,20 +4686,20 @@ components:
             properties:
                 createdAt:
                     type: string
-                    example: "1974-12-22T11:36:51Z"
+                    example: "1978-03-28T07:04:48Z"
                     format: date-time
                 createdBy:
                     type: string
-                    example: jacey.wuckert@balistreri.com
+                    example: zion@stehr.com
                     format: email
                 updatedAt:
                     type: string
-                    example: "2005-08-26T03:54:55Z"
+                    example: "2010-12-13T07:09:35Z"
                     format: date-time
             example:
-                createdAt: "2014-12-23T07:23:37Z"
-                createdBy: granville_watsica@buckridge.com
-                updatedAt: "1982-05-27T03:33:14Z"
+                createdAt: "2009-09-07T07:33:22Z"
+                createdBy: porter.lowe@nolanwunsch.info
+                updatedAt: "1983-06-23T21:35:19Z"
             required:
                 - createdAt
                 - createdBy
@@ -4310,7 +4727,7 @@ components:
                     type: boolean
                     example: true
             example:
-                canRerun: true
+                canRerun: false
             required:
                 - canRerun
         DevBuildProductCapability:
@@ -4318,47 +4735,45 @@ components:
             properties:
                 defaultEdition:
                     type: string
-                    example: Perspiciatis qui.
+                    example: Id maxime.
                 defaultPlatform:
                     type: string
-                    example: Voluptatibus porro pariatur illo autem atque.
+                    example: Pariatur molestiae eius eum.
                 editions:
                     type: array
                     items:
                         type: string
-                        example: Incidunt saepe.
+                        example: Et perspiciatis qui libero.
                     example:
-                        - Explicabo aspernatur nam qui.
-                        - Vel et consequatur.
-                        - Qui iusto veritatis qui enim architecto voluptatem.
+                        - Pariatur illo autem atque quia eaque.
+                        - Consequatur voluptas illum fugiat et molestias delectus.
+                        - Non in non unde facilis.
+                        - Quas quaerat.
                 id:
                     type: string
-                    example: Non qui et aut eius qui.
+                    example: Aut et a dicta pariatur et natus.
                 label:
                     type: string
-                    example: Consectetur consequatur eum qui recusandae sed dolorem.
+                    example: Veritatis soluta.
                 platforms:
                     type: array
                     items:
                         type: string
-                        example: Consequuntur sed et voluptate perspiciatis dolorem.
+                        example: Illo ut.
                     example:
-                        - Earum dolorem in temporibus.
-                        - Maxime aut et a dicta pariatur.
-                        - Natus commodi veritatis soluta ullam.
+                        - A consectetur numquam et recusandae.
+                        - Earum dolor architecto aspernatur maxime.
             example:
-                defaultEdition: Id inventore animi ipsam quis.
-                defaultPlatform: Saepe quo dolores nesciunt unde quas.
+                defaultEdition: Ut deleniti.
+                defaultPlatform: Veniam sit dolores laboriosam accusantium itaque.
                 editions:
-                    - Dicta quas quaerat delectus illo ut.
-                    - Rerum a consectetur numquam.
-                    - Recusandae iste.
-                id: Eaque sapiente consequatur voluptas illum fugiat et.
-                label: Delectus et non in non.
+                    - Inventore animi ipsam quis voluptatem.
+                    - Quo dolores nesciunt unde quas.
+                id: Occaecati quis.
+                label: Reprehenderit ea facilis.
                 platforms:
-                    - Architecto aspernatur maxime eaque id maxime magni.
-                    - Molestiae eius eum quia occaecati quis.
-                    - Reprehenderit ea facilis.
+                    - Rerum nam molestiae et molestiae blanditiis.
+                    - Velit rerum animi eos.
             required:
                 - id
                 - label
@@ -4371,13 +4786,13 @@ components:
             properties:
                 buildEnv:
                     type: string
-                    example: Molestiae harum.
+                    example: Inventore sunt.
                 builderImg:
                     type: string
-                    example: Temporibus recusandae distinctio voluptatem nihil rem sed.
+                    example: Minus ea aliquid aspernatur ad aliquam quam.
                 edition:
                     type: string
-                    example: fips
+                    example: community
                     enum:
                         - enterprise
                         - community
@@ -4389,32 +4804,32 @@ components:
                 features:
                     type: string
                     description: '[Deprecated] use buildEnv for custom features'
-                    example: Est ipsam beatae ratione culpa.
+                    example: Voluptatem non est impedit nisi quos.
                 gitHash:
                     type: string
-                    example: Minus ea aliquid aspernatur ad aliquam quam.
+                    example: Dolor placeat sunt esse libero quo nulla.
                 gitRef:
                     type: string
-                    example: Nulla tempora sint inventore sunt.
+                    example: Ea culpa.
                 githubRepo:
                     type: string
-                    example: Ducimus sunt voluptatem non est impedit.
+                    example: Aut eveniet nesciunt.
                 isHotfix:
                     type: boolean
                     example: true
                 isPushGCR:
                     type: boolean
-                    example: false
+                    example: true
                 pipelineEngine:
                     type: string
-                    example: tekton
+                    example: jenkins
                     enum:
                         - jenkins
                         - tekton
                 platform:
                     type: string
                     default: linux
-                    example: linux/arm64
+                    example: linux/amd64
                     enum:
                         - all
                         - linux
@@ -4425,10 +4840,10 @@ components:
                         - darwin/arm64
                 pluginGitRef:
                     type: string
-                    example: Culpa aut dolor placeat sunt esse.
+                    example: Consequuntur amet iste aut.
                 product:
                     type: string
-                    example: br
+                    example: tidb-operator-cse
                     enum:
                         - dm
                         - enterprise-plugin
@@ -4457,34 +4872,34 @@ components:
                         - qdrant-on-tidb
                 productBaseImg:
                     type: string
-                    example: Nulla sunt aut.
+                    example: Ea deleniti.
                 productDockerfile:
                     type: string
-                    example: Nesciunt est quam.
+                    example: Rerum labore consequatur id.
                 targetImg:
                     type: string
-                    example: Ullam consequuntur amet.
+                    example: Id doloribus.
                 version:
                     type: string
-                    example: Aut sit.
+                    example: Sunt ut reiciendis assumenda dolor nesciunt.
             example:
-                buildEnv: Ea deleniti.
-                builderImg: Rerum labore consequatur id.
-                edition: next-gen
-                features: Molestiae sunt ut reiciendis assumenda.
-                gitHash: Inventore laborum dolor quia molestias distinctio iste.
-                gitRef: Nesciunt ut eum explicabo earum sapiente neque.
-                githubRepo: Ut quia.
-                isHotfix: true
-                isPushGCR: true
+                buildEnv: Eum explicabo earum sapiente.
+                builderImg: Dolorem inventore laborum.
+                edition: fips
+                features: Distinctio iste.
+                gitHash: A necessitatibus fuga.
+                gitRef: Ut quia.
+                githubRepo: Praesentium quidem iusto numquam corrupti ut.
+                isHotfix: false
+                isPushGCR: false
                 pipelineEngine: jenkins
-                platform: darwin/arm64
-                pluginGitRef: Natus praesentium quidem iusto.
-                product: ticdc
-                productBaseImg: Ut facere soluta.
-                productDockerfile: Error vel ipsa.
-                targetImg: Ex quod qui perferendis dignissimos exercitationem vero.
-                version: Error delectus excepturi harum.
+                platform: linux
+                pluginGitRef: Vel ipsa et ex.
+                product: pd-cse
+                productBaseImg: Perferendis dignissimos exercitationem vero consectetur error.
+                productDockerfile: Excepturi harum.
+                targetImg: Quasi nisi non eos.
+                version: Nulla ipsa temporibus voluptas alias.
             required:
                 - product
                 - edition
@@ -4732,17 +5147,17 @@ components:
             properties:
                 internalURL:
                     type: string
-                    example: Sed numquam eos.
+                    example: Voluptatum nesciunt eum qui nobis.
                 platform:
                     type: string
-                    example: Quis ex beatae fugiat ut accusamus.
+                    example: Numquam eos officiis inventore tempore tempora voluptas.
                 url:
                     type: string
-                    example: Consectetur ratione.
+                    example: Aut aut reiciendis earum voluptate.
             example:
-                internalURL: Nobis enim libero sequi maiores quam.
-                platform: Inventore tempore tempora voluptas architecto aut.
-                url: Reiciendis earum voluptate est voluptatum nesciunt eum.
+                internalURL: Eum atque.
+                platform: Libero sequi maiores quam.
+                url: Tempore blanditiis.
             required:
                 - platform
                 - url
@@ -4751,13 +5166,13 @@ components:
             properties:
                 source:
                     type: string
-                    example: Eum dolor at blanditiis aut eaque nostrum.
+                    example: Hic culpa cupiditate quia officia et.
                 target:
                     type: string
-                    example: Ex qui ut ex sed qui.
+                    example: Vel voluptatibus et nam ut.
             example:
-                source: Consequatur magnam aspernatur vel voluptatibus sint voluptatibus.
-                target: Earum labore sed sapiente.
+                source: Exercitationem qui eos et quae.
+                target: Eveniet rerum in possimus.
             required:
                 - source
                 - target
@@ -4766,36 +5181,36 @@ components:
             properties:
                 createdAt:
                     type: string
-                    example: "1971-10-10T17:35:28Z"
+                    example: "1984-07-01T06:18:54Z"
                     format: date-time
                 errorMessage:
                     type: string
-                    example: Hic culpa cupiditate quia officia et.
+                    example: Vitae possimus aspernatur a non.
                 id:
                     type: integer
-                    example: 6932791042474140808
+                    example: 3401432546819298935
                     format: int64
                 source:
                     type: string
-                    example: Dolorem nesciunt ut praesentium dicta.
+                    example: Rerum incidunt nobis ut vitae qui rem.
                 status:
                     type: string
-                    example: Molestiae corrupti eos molestiae aut.
+                    example: Debitis nesciunt totam blanditiis sed quia qui.
                 target:
                     type: string
-                    example: Fugiat ab et repellendus aut veniam earum.
+                    example: Atque in et ipsam quia natus.
                 updatedAt:
                     type: string
-                    example: "2001-04-10T12:04:52Z"
+                    example: "1972-06-01T09:30:05Z"
                     format: date-time
             example:
-                createdAt: "1997-12-21T12:57:21Z"
-                errorMessage: Mollitia in debitis vel ut.
-                id: 5940668665228253469
-                source: Iste totam vel.
-                status: Incidunt ex nihil quia esse consectetur aut.
-                target: Ab fugiat qui et.
-                updatedAt: "1986-05-14T01:20:34Z"
+                createdAt: "2003-04-02T20:29:33Z"
+                errorMessage: Dolorem inventore sed ut voluptatem.
+                id: 924901189427744884
+                source: Nemo voluptate voluptatem suscipit.
+                status: Rerum mollitia accusamus odio.
+                target: Est nulla quisquam quisquam praesentium impedit unde.
+                updatedAt: "1987-03-25T23:05:53Z"
             required:
                 - id
                 - source
@@ -4837,35 +5252,99 @@ components:
             properties:
                 file:
                     type: string
-                    example: Quasi nisi non eos.
+                    example: Earum delectus quae ea ducimus.
                 repo:
                     type: string
-                    example: Nulla ipsa temporibus voluptas alias.
+                    example: Aut aut deleniti sint et placeat quis.
                 tag:
                     type: string
-                    example: Earum delectus quae ea ducimus.
+                    example: Et praesentium hic debitis velit consequuntur.
             example:
-                file: Aut aut deleniti sint et placeat quis.
-                repo: Et praesentium hic debitis velit consequuntur.
-                tag: Asperiores quidem ab nulla aut ipsam pariatur.
+                file: Asperiores quidem ab nulla aut ipsam pariatur.
+                repo: Impedit at voluptatem quo veritatis illum eum.
+                tag: Porro fuga ipsam deleniti qui fugiat vero.
             required:
                 - file
                 - repo
                 - tag
+        PublishBadGatewayError:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    example: 4490801321387412964
+                    format: int64
+                message:
+                    type: string
+                    example: Assumenda et minima omnis quidem.
+            example:
+                code: 5288087682343263417
+                message: Dolorem tempore quam sit facilis aut ut.
+            required:
+                - code
+                - message
+        PublishBadRequestError:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    example: 7055629706173817428
+                    format: int64
+                message:
+                    type: string
+                    example: Minus hic molestias necessitatibus hic cumque.
+            example:
+                code: 964484272635373680
+                message: Non et aut itaque atque aut ut.
+            required:
+                - code
+                - message
         PublishImagesRequestBody:
             type: object
             properties:
                 artifactUrl:
                     type: string
                     description: Image reference, for example us-docker.pkg.dev/hub/pingcap/ticdc/image:v8.5.0
-                    example: Ipsum fuga animi quo mollitia illum.
+                    example: Iste quam ipsa sit aliquid placeat beatae.
                 image:
                     type: string
                     description: Alias of artifactUrl; keeps the Tekton task parameter name working
-                    example: Voluptatibus aperiam possimus non corrupti.
+                    example: Voluptas qui ut odio.
             example:
-                artifactUrl: Enim veniam neque at dolorum.
-                image: Asperiores et dignissimos iusto omnis.
+                artifactUrl: Commodi voluptas eum labore rerum eos accusantium.
+                image: Iste assumenda blanditiis cupiditate quis sunt saepe.
+        PublishInternalServerError:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    example: 278409402149347691
+                    format: int64
+                message:
+                    type: string
+                    example: Distinctio iusto corporis maxime.
+            example:
+                code: 5129032171173086854
+                message: Cupiditate necessitatibus.
+            required:
+                - code
+                - message
+        PublishNotFoundError:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    example: 1573232936940705907
+                    format: int64
+                message:
+                    type: string
+                    example: Consequatur eius consectetur officiis aut.
+            example:
+                code: 6797695578878174338
+                message: Vitae deserunt doloribus iste sed.
+            required:
+                - code
+                - message
         PublishStep:
             type: object
             properties:

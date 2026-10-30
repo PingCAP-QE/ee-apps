@@ -661,21 +661,21 @@ paths:
                 "400":
                     description: Bad Request response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishBadRequestError'
                         required:
                             - code
                             - message
                 "500":
                     description: Internal Server Error response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishInternalServerError'
                         required:
                             - code
                             - message
                 "502":
                     description: Bad Gateway response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishBadGatewayError'
                         required:
                             - code
                             - message
@@ -723,14 +723,14 @@ paths:
                 "400":
                     description: Bad Request response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishBadRequestError'
                         required:
                             - code
                             - message
                 "500":
                     description: Internal Server Error response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishInternalServerError'
                         required:
                             - code
                             - message
@@ -762,14 +762,14 @@ paths:
                 "404":
                     description: Not Found response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishNotFoundError'
                         required:
                             - code
                             - message
                 "500":
                     description: Internal Server Error response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishInternalServerError'
                         required:
                             - code
                             - message
@@ -801,21 +801,21 @@ paths:
                 "400":
                     description: Bad Request response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishBadRequestError'
                         required:
                             - code
                             - message
                 "404":
                     description: Not Found response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishNotFoundError'
                         required:
                             - code
                             - message
                 "500":
                     description: Internal Server Error response.
                     schema:
-                        $ref: '#/definitions/HTTPError'
+                        $ref: '#/definitions/PublishInternalServerError'
                         required:
                             - code
                             - message
@@ -975,7 +975,7 @@ definitions:
         properties:
             id:
                 type: integer
-                example: 4925610908767280033
+                example: 2718320876236256796
                 format: int64
             meta:
                 $ref: '#/definitions/DevBuildMeta'
@@ -1406,19 +1406,19 @@ definitions:
         properties:
             createdAt:
                 type: string
-                example: "1978-09-04T13:30:31Z"
+                example: "2009-01-06T11:45:36Z"
                 format: date-time
             createdBy:
                 type: string
-                example: gayle@larsonfarrell.com
+                example: ike@dietrich.com
                 format: email
             updatedAt:
                 type: string
-                example: "1988-06-19T21:17:40Z"
+                example: "1984-09-10T03:16:51Z"
                 format: date-time
         example:
             createdAt: "1989-11-02T18:07:44Z"
-            createdBy: noemy.collier@reynoldstowne.net
+            createdBy: lizzie.frami@littlereynolds.biz
             updatedAt: "1998-01-02T20:02:20Z"
         required:
             - createdAt
@@ -2216,15 +2216,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 8453223845427544554
+                example: 1927345202134754622
                 format: int64
             message:
                 type: string
-                example: Aperiam pariatur sit quaerat maxime velit.
+                example: Quaerat maxime velit cupiditate itaque exercitationem.
         description: Bad Request
         example:
-            code: 2807772326123406661
-            message: Exercitationem ipsum officia est in maxime repellat.
+            code: 3392613932289972535
+            message: Est in maxime repellat non commodi hic.
         required:
             - code
             - message
@@ -2325,13 +2325,13 @@ definitions:
         properties:
             source:
                 type: string
-                example: Commodi hic fuga rerum distinctio nemo laudantium.
+                example: Rerum distinctio nemo laudantium et sunt consequuntur.
             target:
                 type: string
-                example: Sunt consequuntur sunt.
+                example: Maiores quia labore.
         example:
-            source: Quia labore dolores qui.
-            target: Voluptates cum est debitis et soluta.
+            source: Qui quaerat.
+            target: Cum est debitis.
         required:
             - source
             - target
@@ -2341,36 +2341,36 @@ definitions:
         properties:
             createdAt:
                 type: string
-                example: "2009-07-23T07:56:44Z"
+                example: "1990-03-10T19:25:24Z"
                 format: date-time
             errorMessage:
                 type: string
-                example: Temporibus ea est et.
+                example: Consequuntur inventore cum qui error sunt assumenda.
             id:
                 type: integer
-                example: 2930130571695237081
+                example: 6331984832915061701
                 format: int64
             source:
                 type: string
-                example: Et voluptatum omnis veniam.
+                example: Consequuntur enim.
             status:
                 type: string
-                example: Delectus consequuntur enim repellendus laborum accusamus.
+                example: Temporibus ea est et.
             target:
                 type: string
-                example: Est sit omnis voluptas at est consectetur.
+                example: Laborum accusamus.
             updatedAt:
                 type: string
-                example: "1997-03-03T04:51:56Z"
+                example: "2001-06-09T17:57:16Z"
                 format: date-time
         example:
-            createdAt: "1977-02-25T18:47:26Z"
-            errorMessage: Soluta corporis veniam libero soluta tenetur inventore.
-            id: 5961396219361342318
-            source: Reprehenderit voluptatem.
-            status: Asperiores quo modi eos rerum odit odit.
-            target: Incidunt quia omnis non necessitatibus expedita.
-            updatedAt: "1971-04-19T06:48:29Z"
+            createdAt: "2012-10-18T08:20:36Z"
+            errorMessage: Soluta tenetur inventore non quis beatae.
+            id: 124211857472787000
+            source: Quos asperiores quo.
+            status: Quas soluta corporis veniam.
+            target: Eos rerum odit.
+            updatedAt: "1997-08-17T05:45:59Z"
         required:
             - id
             - source
@@ -2427,6 +2427,78 @@ definitions:
             - file
             - repo
             - tag
+    PublishBadGatewayError:
+        title: PublishBadGatewayError
+        type: object
+        properties:
+            code:
+                type: integer
+                example: 2423063257831713522
+                format: int64
+            message:
+                type: string
+                example: Molestiae iusto est.
+        description: The artifact registry could not be queried
+        example:
+            code: 728320097478812336
+            message: Velit eveniet incidunt quasi.
+        required:
+            - code
+            - message
+    PublishBadRequestError:
+        title: PublishBadRequestError
+        type: object
+        properties:
+            code:
+                type: integer
+                example: 4715334771846736191
+                format: int64
+            message:
+                type: string
+                example: Laudantium exercitationem autem rerum tempora vel earum.
+        description: Bad Request
+        example:
+            code: 6777796859704302592
+            message: Iste voluptatibus.
+        required:
+            - code
+            - message
+    PublishInternalServerError:
+        title: PublishInternalServerError
+        type: object
+        properties:
+            code:
+                type: integer
+                example: 864205920208805025
+                format: int64
+            message:
+                type: string
+                example: At blanditiis aut eaque nostrum asperiores ex.
+        description: Internal Server Error
+        example:
+            code: 1537215576247179706
+            message: Ex sed.
+        required:
+            - code
+            - message
+    PublishNotFoundError:
+        title: PublishNotFoundError
+        type: object
+        properties:
+            code:
+                type: integer
+                example: 7649312805829922643
+                format: int64
+            message:
+                type: string
+                example: Repellendus aut veniam.
+        description: Not Found
+        example:
+            code: 6321237224713154457
+            message: Molestiae corrupti eos molestiae aut.
+        required:
+            - code
+            - message
     PublishPublishImagesRequestBody:
         title: PublishPublishImagesRequestBody
         type: object
@@ -2434,14 +2506,14 @@ definitions:
             artifactUrl:
                 type: string
                 description: Image reference, for example us-docker.pkg.dev/hub/pingcap/ticdc/image:v8.5.0
-                example: Ea laudantium exercitationem autem rerum.
+                example: Maiores consequatur magnam aspernatur vel voluptatibus.
             image:
                 type: string
                 description: Alias of artifactUrl; keeps the Tekton task parameter name working
-                example: Vel earum rerum dolores.
+                example: Voluptatibus blanditiis.
         example:
-            artifactUrl: Voluptatibus autem voluptatem molestiae iusto.
-            image: Ab minus velit eveniet incidunt.
+            artifactUrl: Labore sed sapiente sit aliquam.
+            image: Nesciunt ut praesentium dicta voluptas fugiat.
     PublishStep:
         title: PublishStep
         type: object

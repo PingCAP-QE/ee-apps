@@ -245,9 +245,7 @@ func TestPublishImagesRejectsUnusableReferences(t *testing.T) {
 	}
 	for name, payload := range tests {
 		_, err := svc.PublishImages(context.Background(), payload)
-		var httpErr *publish.HTTPError
-		require.ErrorAs(t, err, &httpErr, name)
-		require.Equal(t, http.StatusBadRequest, httpErr.Code, name)
+		require.Equal(t, http.StatusBadRequest, httpStatus(t, err), name)
 	}
 }
 
@@ -258,9 +256,7 @@ func TestPublishImagesReportsRegistryFailuresAsBadGateway(t *testing.T) {
 	_, err := svc.PublishImages(context.Background(), &publish.PublishImagesPayload{
 		ArtifactURL: stringPtr("example.com/hub/pingcap/widget/image:v8.5.0"),
 	})
-	var httpErr *publish.HTTPError
-	require.ErrorAs(t, err, &httpErr)
-	require.Equal(t, http.StatusBadGateway, httpErr.Code)
+	require.Equal(t, http.StatusBadGateway, httpStatus(t, err))
 }
 
 func TestPublishImagesUsesThePinnedDigestFromTheReference(t *testing.T) {
@@ -365,17 +361,13 @@ func TestRetryUnitOnlyRequeuesFailedSteps(t *testing.T) {
 	// Nothing is left to retry once every step succeeded.
 	require.NoError(t, svc.db.PublishStep.Update().SetState(PublishStepStateSucceeded).Exec(ctx))
 	_, err = svc.RetryUnit(ctx, &publish.RetryUnitPayload{ID: unit.ID})
-	var httpErr *publish.HTTPError
-	require.ErrorAs(t, err, &httpErr)
-	require.Equal(t, http.StatusBadRequest, httpErr.Code)
+	require.Equal(t, http.StatusBadRequest, httpStatus(t, err))
 }
 
 func TestGetUnitNotFound(t *testing.T) {
 	svc := newPublishTestService(t, publishTestRules, &fakeImageOps{})
 	_, err := svc.GetUnit(context.Background(), &publish.GetUnitPayload{ID: "missing"})
-	var httpErr *publish.HTTPError
-	require.ErrorAs(t, err, &httpErr)
-	require.Equal(t, http.StatusNotFound, httpErr.Code)
+	require.Equal(t, http.StatusNotFound, httpStatus(t, err))
 }
 
 // destOf returns the destination repository of an API step.
@@ -384,6 +376,31 @@ func destOf(step *publish.PublishStep) string {
 		return ""
 	}
 	return *step.Dest
+}
+
+// httpStatus is the status the generated HTTP encoder will use, which it
+// derives from the error type.
+func httpStatus(t *testing.T, err error) int {
+	t.Helper()
+	var (
+		badRequest *publish.PublishBadRequestError
+		notFound   *publish.PublishNotFoundError
+		badGateway *publish.PublishBadGatewayError
+		internal   *publish.PublishInternalServerError
+	)
+	switch {
+	case errors.As(err, &badRequest):
+		return http.StatusBadRequest
+	case errors.As(err, &notFound):
+		return http.StatusNotFound
+	case errors.As(err, &badGateway):
+		return http.StatusBadGateway
+	case errors.As(err, &internal):
+		return http.StatusInternalServerError
+	default:
+		require.Failf(t, "not an HTTP error", "%v", err)
+		return 0
+	}
 }
 
 func toStringSlice(value any) []string {

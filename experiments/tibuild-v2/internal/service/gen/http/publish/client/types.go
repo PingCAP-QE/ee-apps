@@ -82,16 +82,16 @@ type RetryUnitResponseBody struct {
 	Steps       []*PublishStepResponseBody `form:"steps,omitempty" json:"steps,omitempty" xml:"steps,omitempty"`
 }
 
-// PublishImagesBadRequestResponseBody is the type of the "publish" service
-// "publishImages" endpoint HTTP response body for the "BadRequest" error.
-type PublishImagesBadRequestResponseBody struct {
+// PublishImagesBadGatewayResponseBody is the type of the "publish" service
+// "publishImages" endpoint HTTP response body for the "BadGateway" error.
+type PublishImagesBadGatewayResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
-// PublishImagesBadGatewayResponseBody is the type of the "publish" service
-// "publishImages" endpoint HTTP response body for the "BadGateway" error.
-type PublishImagesBadGatewayResponseBody struct {
+// PublishImagesBadRequestResponseBody is the type of the "publish" service
+// "publishImages" endpoint HTTP response body for the "BadRequest" error.
+type PublishImagesBadRequestResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
@@ -104,16 +104,16 @@ type PublishImagesInternalServerErrorResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
-// GetUnitNotFoundResponseBody is the type of the "publish" service "getUnit"
-// endpoint HTTP response body for the "NotFound" error.
-type GetUnitNotFoundResponseBody struct {
+// GetUnitInternalServerErrorResponseBody is the type of the "publish" service
+// "getUnit" endpoint HTTP response body for the "InternalServerError" error.
+type GetUnitInternalServerErrorResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
-// GetUnitInternalServerErrorResponseBody is the type of the "publish" service
-// "getUnit" endpoint HTTP response body for the "InternalServerError" error.
-type GetUnitInternalServerErrorResponseBody struct {
+// GetUnitNotFoundResponseBody is the type of the "publish" service "getUnit"
+// endpoint HTTP response body for the "NotFound" error.
+type GetUnitNotFoundResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
@@ -140,17 +140,17 @@ type RetryUnitBadRequestResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
-// RetryUnitNotFoundResponseBody is the type of the "publish" service
-// "retryUnit" endpoint HTTP response body for the "NotFound" error.
-type RetryUnitNotFoundResponseBody struct {
-	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
-	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
-}
-
 // RetryUnitInternalServerErrorResponseBody is the type of the "publish"
 // service "retryUnit" endpoint HTTP response body for the
 // "InternalServerError" error.
 type RetryUnitInternalServerErrorResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// RetryUnitNotFoundResponseBody is the type of the "publish" service
+// "retryUnit" endpoint HTTP response body for the "NotFound" error.
+type RetryUnitNotFoundResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
@@ -265,10 +265,10 @@ func NewPublishImagesPublishUnitAccepted(body *PublishImagesResponseBody) *publi
 	return v
 }
 
-// NewPublishImagesBadRequest builds a publish service publishImages endpoint
-// BadRequest error.
-func NewPublishImagesBadRequest(body *PublishImagesBadRequestResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+// NewPublishImagesBadGateway builds a publish service publishImages endpoint
+// BadGateway error.
+func NewPublishImagesBadGateway(body *PublishImagesBadGatewayResponseBody) *publish.PublishBadGatewayError {
+	v := &publish.PublishBadGatewayError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -276,10 +276,10 @@ func NewPublishImagesBadRequest(body *PublishImagesBadRequestResponseBody) *publ
 	return v
 }
 
-// NewPublishImagesBadGateway builds a publish service publishImages endpoint
-// BadGateway error.
-func NewPublishImagesBadGateway(body *PublishImagesBadGatewayResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+// NewPublishImagesBadRequest builds a publish service publishImages endpoint
+// BadRequest error.
+func NewPublishImagesBadRequest(body *PublishImagesBadRequestResponseBody) *publish.PublishBadRequestError {
+	v := &publish.PublishBadRequestError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -289,8 +289,8 @@ func NewPublishImagesBadGateway(body *PublishImagesBadGatewayResponseBody) *publ
 
 // NewPublishImagesInternalServerError builds a publish service publishImages
 // endpoint InternalServerError error.
-func NewPublishImagesInternalServerError(body *PublishImagesInternalServerErrorResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+func NewPublishImagesInternalServerError(body *PublishImagesInternalServerErrorResponseBody) *publish.PublishInternalServerError {
+	v := &publish.PublishInternalServerError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -325,9 +325,10 @@ func NewGetUnitPublishUnitOK(body *GetUnitResponseBody) *publish.PublishUnit {
 	return v
 }
 
-// NewGetUnitNotFound builds a publish service getUnit endpoint NotFound error.
-func NewGetUnitNotFound(body *GetUnitNotFoundResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+// NewGetUnitInternalServerError builds a publish service getUnit endpoint
+// InternalServerError error.
+func NewGetUnitInternalServerError(body *GetUnitInternalServerErrorResponseBody) *publish.PublishInternalServerError {
+	v := &publish.PublishInternalServerError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -335,10 +336,9 @@ func NewGetUnitNotFound(body *GetUnitNotFoundResponseBody) *publish.HTTPError {
 	return v
 }
 
-// NewGetUnitInternalServerError builds a publish service getUnit endpoint
-// InternalServerError error.
-func NewGetUnitInternalServerError(body *GetUnitInternalServerErrorResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+// NewGetUnitNotFound builds a publish service getUnit endpoint NotFound error.
+func NewGetUnitNotFound(body *GetUnitNotFoundResponseBody) *publish.PublishNotFoundError {
+	v := &publish.PublishNotFoundError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -363,8 +363,8 @@ func NewListUnitsPublishUnitOK(body []*PublishUnitResponse) []*publish.PublishUn
 
 // NewListUnitsBadRequest builds a publish service listUnits endpoint
 // BadRequest error.
-func NewListUnitsBadRequest(body *ListUnitsBadRequestResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+func NewListUnitsBadRequest(body *ListUnitsBadRequestResponseBody) *publish.PublishBadRequestError {
+	v := &publish.PublishBadRequestError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -374,8 +374,8 @@ func NewListUnitsBadRequest(body *ListUnitsBadRequestResponseBody) *publish.HTTP
 
 // NewListUnitsInternalServerError builds a publish service listUnits endpoint
 // InternalServerError error.
-func NewListUnitsInternalServerError(body *ListUnitsInternalServerErrorResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+func NewListUnitsInternalServerError(body *ListUnitsInternalServerErrorResponseBody) *publish.PublishInternalServerError {
+	v := &publish.PublishInternalServerError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -412,19 +412,8 @@ func NewRetryUnitPublishUnitAccepted(body *RetryUnitResponseBody) *publish.Publi
 
 // NewRetryUnitBadRequest builds a publish service retryUnit endpoint
 // BadRequest error.
-func NewRetryUnitBadRequest(body *RetryUnitBadRequestResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
-		Code:    *body.Code,
-		Message: *body.Message,
-	}
-
-	return v
-}
-
-// NewRetryUnitNotFound builds a publish service retryUnit endpoint NotFound
-// error.
-func NewRetryUnitNotFound(body *RetryUnitNotFoundResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+func NewRetryUnitBadRequest(body *RetryUnitBadRequestResponseBody) *publish.PublishBadRequestError {
+	v := &publish.PublishBadRequestError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -434,8 +423,19 @@ func NewRetryUnitNotFound(body *RetryUnitNotFoundResponseBody) *publish.HTTPErro
 
 // NewRetryUnitInternalServerError builds a publish service retryUnit endpoint
 // InternalServerError error.
-func NewRetryUnitInternalServerError(body *RetryUnitInternalServerErrorResponseBody) *publish.HTTPError {
-	v := &publish.HTTPError{
+func NewRetryUnitInternalServerError(body *RetryUnitInternalServerErrorResponseBody) *publish.PublishInternalServerError {
+	v := &publish.PublishInternalServerError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewRetryUnitNotFound builds a publish service retryUnit endpoint NotFound
+// error.
+func NewRetryUnitNotFound(body *RetryUnitNotFoundResponseBody) *publish.PublishNotFoundError {
+	v := &publish.PublishNotFoundError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -551,9 +551,9 @@ func ValidateRetryUnitResponseBody(body *RetryUnitResponseBody) (err error) {
 	return
 }
 
-// ValidatePublishImagesBadRequestResponseBody runs the validations defined on
-// publishImages_BadRequest_response_body
-func ValidatePublishImagesBadRequestResponseBody(body *PublishImagesBadRequestResponseBody) (err error) {
+// ValidatePublishImagesBadGatewayResponseBody runs the validations defined on
+// publishImages_BadGateway_response_body
+func ValidatePublishImagesBadGatewayResponseBody(body *PublishImagesBadGatewayResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}
@@ -563,9 +563,9 @@ func ValidatePublishImagesBadRequestResponseBody(body *PublishImagesBadRequestRe
 	return
 }
 
-// ValidatePublishImagesBadGatewayResponseBody runs the validations defined on
-// publishImages_BadGateway_response_body
-func ValidatePublishImagesBadGatewayResponseBody(body *PublishImagesBadGatewayResponseBody) (err error) {
+// ValidatePublishImagesBadRequestResponseBody runs the validations defined on
+// publishImages_BadRequest_response_body
+func ValidatePublishImagesBadRequestResponseBody(body *PublishImagesBadRequestResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}
@@ -587,9 +587,9 @@ func ValidatePublishImagesInternalServerErrorResponseBody(body *PublishImagesInt
 	return
 }
 
-// ValidateGetUnitNotFoundResponseBody runs the validations defined on
-// getUnit_NotFound_response_body
-func ValidateGetUnitNotFoundResponseBody(body *GetUnitNotFoundResponseBody) (err error) {
+// ValidateGetUnitInternalServerErrorResponseBody runs the validations defined
+// on getUnit_InternalServerError_response_body
+func ValidateGetUnitInternalServerErrorResponseBody(body *GetUnitInternalServerErrorResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}
@@ -599,9 +599,9 @@ func ValidateGetUnitNotFoundResponseBody(body *GetUnitNotFoundResponseBody) (err
 	return
 }
 
-// ValidateGetUnitInternalServerErrorResponseBody runs the validations defined
-// on getUnit_InternalServerError_response_body
-func ValidateGetUnitInternalServerErrorResponseBody(body *GetUnitInternalServerErrorResponseBody) (err error) {
+// ValidateGetUnitNotFoundResponseBody runs the validations defined on
+// getUnit_NotFound_response_body
+func ValidateGetUnitNotFoundResponseBody(body *GetUnitNotFoundResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}
@@ -647,9 +647,9 @@ func ValidateRetryUnitBadRequestResponseBody(body *RetryUnitBadRequestResponseBo
 	return
 }
 
-// ValidateRetryUnitNotFoundResponseBody runs the validations defined on
-// retryUnit_NotFound_response_body
-func ValidateRetryUnitNotFoundResponseBody(body *RetryUnitNotFoundResponseBody) (err error) {
+// ValidateRetryUnitInternalServerErrorResponseBody runs the validations
+// defined on retryUnit_InternalServerError_response_body
+func ValidateRetryUnitInternalServerErrorResponseBody(body *RetryUnitInternalServerErrorResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}
@@ -659,9 +659,9 @@ func ValidateRetryUnitNotFoundResponseBody(body *RetryUnitNotFoundResponseBody) 
 	return
 }
 
-// ValidateRetryUnitInternalServerErrorResponseBody runs the validations
-// defined on retryUnit_InternalServerError_response_body
-func ValidateRetryUnitInternalServerErrorResponseBody(body *RetryUnitInternalServerErrorResponseBody) (err error) {
+// ValidateRetryUnitNotFoundResponseBody runs the validations defined on
+// retryUnit_NotFound_response_body
+func ValidateRetryUnitNotFoundResponseBody(body *RetryUnitNotFoundResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}

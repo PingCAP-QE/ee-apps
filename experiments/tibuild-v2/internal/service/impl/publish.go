@@ -134,7 +134,7 @@ func (s *publishsrvc) PublishImages(ctx context.Context, p *publish.PublishImage
 		var re resolveError
 		if errors.As(err, &re) {
 			s.logger.Err(err).Str("image", src).Msg("failed to resolve the source digest")
-			return nil, &publish.HTTPError{Code: http.StatusBadGateway, Message: err.Error()}
+			return nil, badGateway(err.Error())
 		}
 		s.logger.Err(err).Str("image", src).Msg("failed to plan the image delivery")
 		return nil, internalError(err)
@@ -214,7 +214,7 @@ func (s *publishsrvc) GetUnit(ctx context.Context, p *publish.GetUnitPayload) (*
 	unit, steps, err := s.loadUnit(ctx, p.ID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, &publish.HTTPError{Code: http.StatusNotFound, Message: fmt.Sprintf("publish unit %s not found", p.ID)}
+			return nil, notFound(fmt.Sprintf("publish unit %s not found", p.ID))
 		}
 		s.logger.Err(err).Str("unit_id", p.ID).Msg("failed to read the publish unit")
 		return nil, internalError(err)
@@ -280,7 +280,7 @@ func (s *publishsrvc) RetryUnit(ctx context.Context, p *publish.RetryUnitPayload
 	unit, steps, err := s.loadUnit(ctx, p.ID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return nil, &publish.HTTPError{Code: http.StatusNotFound, Message: fmt.Sprintf("publish unit %s not found", p.ID)}
+			return nil, notFound(fmt.Sprintf("publish unit %s not found", p.ID))
 		}
 		return nil, internalError(err)
 	}
@@ -416,10 +416,18 @@ func toPublishStep(step *ent.PublishStep) *publish.PublishStep {
 func stringPtr(v string) *string { return &v }
 func intPtr(v int) *int          { return &v }
 
-func badRequest(message string) *publish.HTTPError {
-	return &publish.HTTPError{Code: http.StatusBadRequest, Message: message}
+func badRequest(message string) error {
+	return &publish.PublishBadRequestError{Code: http.StatusBadRequest, Message: message}
 }
 
-func internalError(err error) *publish.HTTPError {
-	return &publish.HTTPError{Code: http.StatusInternalServerError, Message: err.Error()}
+func notFound(message string) error {
+	return &publish.PublishNotFoundError{Code: http.StatusNotFound, Message: message}
+}
+
+func badGateway(message string) error {
+	return &publish.PublishBadGatewayError{Code: http.StatusBadGateway, Message: message}
+}
+
+func internalError(err error) error {
+	return &publish.PublishInternalServerError{Code: http.StatusInternalServerError, Message: err.Error()}
 }

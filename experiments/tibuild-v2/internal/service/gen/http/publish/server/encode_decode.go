@@ -68,21 +68,8 @@ func EncodePublishImagesError(encoder func(context.Context, http.ResponseWriter)
 			return encodeError(ctx, w, v)
 		}
 		switch en.GoaErrorName() {
-		case "BadRequest":
-			var res *publish.HTTPError
-			errors.As(v, &res)
-			enc := encoder(ctx, w)
-			var body any
-			if formatter != nil {
-				body = formatter(ctx, res)
-			} else {
-				body = NewPublishImagesBadRequestResponseBody(res)
-			}
-			w.Header().Set("goa-error", res.GoaErrorName())
-			w.WriteHeader(http.StatusBadRequest)
-			return enc.Encode(body)
 		case "BadGateway":
-			var res *publish.HTTPError
+			var res *publish.PublishBadGatewayError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -94,8 +81,21 @@ func EncodePublishImagesError(encoder func(context.Context, http.ResponseWriter)
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusBadGateway)
 			return enc.Encode(body)
+		case "BadRequest":
+			var res *publish.PublishBadRequestError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewPublishImagesBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
 		case "InternalServerError":
-			var res *publish.HTTPError
+			var res *publish.PublishInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -152,21 +152,8 @@ func EncodeGetUnitError(encoder func(context.Context, http.ResponseWriter) goaht
 			return encodeError(ctx, w, v)
 		}
 		switch en.GoaErrorName() {
-		case "NotFound":
-			var res *publish.HTTPError
-			errors.As(v, &res)
-			enc := encoder(ctx, w)
-			var body any
-			if formatter != nil {
-				body = formatter(ctx, res)
-			} else {
-				body = NewGetUnitNotFoundResponseBody(res)
-			}
-			w.Header().Set("goa-error", res.GoaErrorName())
-			w.WriteHeader(http.StatusNotFound)
-			return enc.Encode(body)
 		case "InternalServerError":
-			var res *publish.HTTPError
+			var res *publish.PublishInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -177,6 +164,19 @@ func EncodeGetUnitError(encoder func(context.Context, http.ResponseWriter) goaht
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "NotFound":
+			var res *publish.PublishNotFoundError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewGetUnitNotFoundResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusNotFound)
 			return enc.Encode(body)
 		default:
 			return encodeError(ctx, w, v)
@@ -253,7 +253,7 @@ func EncodeListUnitsError(encoder func(context.Context, http.ResponseWriter) goa
 		}
 		switch en.GoaErrorName() {
 		case "BadRequest":
-			var res *publish.HTTPError
+			var res *publish.PublishBadRequestError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -266,7 +266,7 @@ func EncodeListUnitsError(encoder func(context.Context, http.ResponseWriter) goa
 			w.WriteHeader(http.StatusBadRequest)
 			return enc.Encode(body)
 		case "InternalServerError":
-			var res *publish.HTTPError
+			var res *publish.PublishInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -324,7 +324,7 @@ func EncodeRetryUnitError(encoder func(context.Context, http.ResponseWriter) goa
 		}
 		switch en.GoaErrorName() {
 		case "BadRequest":
-			var res *publish.HTTPError
+			var res *publish.PublishBadRequestError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -336,21 +336,8 @@ func EncodeRetryUnitError(encoder func(context.Context, http.ResponseWriter) goa
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusBadRequest)
 			return enc.Encode(body)
-		case "NotFound":
-			var res *publish.HTTPError
-			errors.As(v, &res)
-			enc := encoder(ctx, w)
-			var body any
-			if formatter != nil {
-				body = formatter(ctx, res)
-			} else {
-				body = NewRetryUnitNotFoundResponseBody(res)
-			}
-			w.Header().Set("goa-error", res.GoaErrorName())
-			w.WriteHeader(http.StatusNotFound)
-			return enc.Encode(body)
 		case "InternalServerError":
-			var res *publish.HTTPError
+			var res *publish.PublishInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -361,6 +348,19 @@ func EncodeRetryUnitError(encoder func(context.Context, http.ResponseWriter) goa
 			}
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		case "NotFound":
+			var res *publish.PublishNotFoundError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewRetryUnitNotFoundResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusNotFound)
 			return enc.Encode(body)
 		default:
 			return encodeError(ctx, w, v)

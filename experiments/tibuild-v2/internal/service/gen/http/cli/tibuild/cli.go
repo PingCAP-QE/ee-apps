@@ -652,7 +652,7 @@ func publishGetUnitUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish get-unit --id \"Minus voluptas consequatur labore et non eos.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish get-unit --id \"Et cumque dolorum perferendis ut consequatur.\"")
 }
 
 func publishListUnitsUsage() {
@@ -674,7 +674,7 @@ func publishListUnitsUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish list-units --status \"queued\" --kind \"Molestias odio sit ratione recusandae.\" --limit 1445505941523389235")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish list-units --status \"succeeded\" --kind \"Sapiente voluptatem delectus suscipit.\" --limit 497670713060130694")
 }
 
 func publishRetryUnitUsage() {
@@ -692,5 +692,5 @@ func publishRetryUnitUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish retry-unit --id \"Sed aliquam molestiae ipsum saepe aperiam fuga.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish retry-unit --id \"Eius reiciendis nihil itaque.\"")
 }

@@ -34,10 +34,10 @@ func NewClient(publishImages, getUnit, listUnits, retryUnit goa.Endpoint) *Clien
 
 // PublishImages calls the "publishImages" endpoint of the "publish" service.
 // PublishImages may return the following errors:
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "NotFound" (type *HTTPError): Not Found
-//   - "BadGateway" (type *HTTPError): The artifact registry could not be queried
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) PublishImages(ctx context.Context, p *PublishImagesPayload) (res *PublishUnit, err error) {
 	var ires any
@@ -50,10 +50,10 @@ func (c *Client) PublishImages(ctx context.Context, p *PublishImagesPayload) (re
 
 // GetUnit calls the "getUnit" endpoint of the "publish" service.
 // GetUnit may return the following errors:
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "NotFound" (type *HTTPError): Not Found
-//   - "BadGateway" (type *HTTPError): The artifact registry could not be queried
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) GetUnit(ctx context.Context, p *GetUnitPayload) (res *PublishUnit, err error) {
 	var ires any
@@ -66,10 +66,10 @@ func (c *Client) GetUnit(ctx context.Context, p *GetUnitPayload) (res *PublishUn
 
 // ListUnits calls the "listUnits" endpoint of the "publish" service.
 // ListUnits may return the following errors:
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "NotFound" (type *HTTPError): Not Found
-//   - "BadGateway" (type *HTTPError): The artifact registry could not be queried
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) ListUnits(ctx context.Context, p *ListUnitsPayload) (res []*PublishUnit, err error) {
 	var ires any
@@ -82,10 +82,10 @@ func (c *Client) ListUnits(ctx context.Context, p *ListUnitsPayload) (res []*Pub
 
 // RetryUnit calls the "retryUnit" endpoint of the "publish" service.
 // RetryUnit may return the following errors:
-//   - "BadRequest" (type *HTTPError): Bad Request
-//   - "NotFound" (type *HTTPError): Not Found
-//   - "BadGateway" (type *HTTPError): The artifact registry could not be queried
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) RetryUnit(ctx context.Context, p *RetryUnitPayload) (res *PublishUnit, err error) {
 	var ires any
