@@ -196,5 +196,13 @@ func (s *artifactsrvc) refreshMetricsAndAlerts(ctx context.Context) {
 	if !leader {
 		return
 	}
+	// The reaper runs on every worker, so read the shared reclaim timestamp
+	// instead of relying on this process having done the reclaim itself.
+	lastReclaim, err := s.lastLeaseReclaim(ctx)
+	if err != nil {
+		s.logger.Err(err).Msg("failed to read the lease reclaim alert event")
+		return
+	}
+	s.alerts.setLastLeaseReclaim(lastReclaim)
 	s.alerts.evaluate(ctx, s.alerter, stats, now, s.logger)
 }

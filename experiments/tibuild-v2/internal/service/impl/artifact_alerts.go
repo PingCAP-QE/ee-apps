@@ -77,13 +77,11 @@ func (a *alertTracker) isEnabled() bool {
 	return a.settings.enabled
 }
 
-// noteLeaseReclaim records a reaper event for the lease alert.
-func (a *alertTracker) noteLeaseReclaim(n int, now time.Time) {
-	if n <= 0 {
-		return
-	}
+// setLastLeaseReclaim records the shared reaper timestamp read from the
+// alert_events table. The zero time means "no reclaim recorded".
+func (a *alertTracker) setLastLeaseReclaim(at time.Time) {
 	a.mu.Lock()
-	a.lastLeaseReclaim = now
+	a.lastLeaseReclaim = at
 	a.mu.Unlock()
 }
 

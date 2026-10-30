@@ -176,8 +176,41 @@ type fakeRecipientNotifier struct {
 
 func (f *fakeRecipientNotifier) HasRecipients() bool { return f.recipients }
 
-// Only prod2 injects lark.channels today. A cluster without channels must not
-// take the lease, otherwise the whole fleet would go silent while it holds it.
+// The reaper runs on every worker, but only the elected leader sends alerts.
+// A reclaim performed by a follower must therefore still reach the leader,
+// otherwise the lease alert is lost whenever the follower wins the reaper race.
+func TestLeaseReclaimSeenByLeaderWhenAnotherWorkerReaps(t *testing.T) {
+	ctx := context.Background()
+	db := serverlessTestDB(t)
+	now := time.Now()
+
+	leader := newAlertLeaseTestService(t, db, "worker-leader", now)
+	notifier := &fakeRecipientNotifier{recipients: true}
+	leader.alerter = notifier
+	isLeader, err := leader.acquireAlertLease(ctx, now)
+	require.NoError(t, err)
+	require.True(t, isLeader)
+
+	// A different worker reclaims an expired lease. It does not hold the alert
+	// lease, so it must not notify anyone itself.
+	follower := newAlertLeaseTestService(t, db, "worker-follower", now)
+	follower.alerter = &fakeRecipientNotifier{recipients: true}
+	task := createLeaseTestTask(t, db, "docker.io", TaskStatusProcessing)
+	_, err = task.Update().
+		SetClaimedBy("gone").
+		SetLeaseUntil(now.Add(-time.Minute)).
+		SetAvailableAt(now.Add(time.Hour)).
+		Save(ctx)
+	require.NoError(t, err)
+	n, err := follower.reapAndRecord(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+
+	leader.refreshMetricsAndAlerts(ctx)
+	require.Equal(t, 1, notifier.count(),
+		"the leader must report a lease reclaim performed by another worker")
+}
+
 func TestWorkerWithoutRecipientsSkipsTheElection(t *testing.T) {
 	ctx := context.Background()
 	db := serverlessTestDB(t)

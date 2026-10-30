@@ -5,6 +5,7 @@ package ent
 import (
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertevent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
@@ -17,6 +18,22 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	alerteventFields := schema.AlertEvent{}.Fields()
+	_ = alerteventFields
+	// alerteventDescName is the schema descriptor for name field.
+	alerteventDescName := alerteventFields[0].Descriptor()
+	// alertevent.NameValidator is a validator for the "name" field. It is called by the builders before save.
+	alertevent.NameValidator = alerteventDescName.Validators[0].(func(string) error)
+	// alerteventDescCount is the schema descriptor for count field.
+	alerteventDescCount := alerteventFields[2].Descriptor()
+	// alertevent.DefaultCount holds the default value on creation for the count field.
+	alertevent.DefaultCount = alerteventDescCount.Default.(int)
+	// alerteventDescUpdatedAt is the schema descriptor for updatedAt field.
+	alerteventDescUpdatedAt := alerteventFields[3].Descriptor()
+	// alertevent.DefaultUpdatedAt holds the default value on creation for the updatedAt field.
+	alertevent.DefaultUpdatedAt = alerteventDescUpdatedAt.Default.(func() time.Time)
+	// alertevent.UpdateDefaultUpdatedAt holds the default value on update for the updatedAt field.
+	alertevent.UpdateDefaultUpdatedAt = alerteventDescUpdatedAt.UpdateDefault.(func() time.Time)
 	alertleaseFields := schema.AlertLease{}.Fields()
 	_ = alertleaseFields
 	// alertleaseDescName is the schema descriptor for name field.

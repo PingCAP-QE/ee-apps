@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertevent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
@@ -26,6 +27,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// AlertEvent is the client for interacting with the AlertEvent builders.
+	AlertEvent *AlertEventClient
 	// AlertLease is the client for interacting with the AlertLease builders.
 	AlertLease *AlertLeaseClient
 	// DevBuild is the client for interacting with the DevBuild builders.
@@ -47,6 +50,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.AlertEvent = NewAlertEventClient(c.config)
 	c.AlertLease = NewAlertLeaseClient(c.config)
 	c.DevBuild = NewDevBuildClient(c.config)
 	c.ImageSyncTask = NewImageSyncTaskClient(c.config)
@@ -144,6 +148,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:           ctx,
 		config:        cfg,
+		AlertEvent:    NewAlertEventClient(cfg),
 		AlertLease:    NewAlertLeaseClient(cfg),
 		DevBuild:      NewDevBuildClient(cfg),
 		ImageSyncTask: NewImageSyncTaskClient(cfg),
@@ -168,6 +173,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:           ctx,
 		config:        cfg,
+		AlertEvent:    NewAlertEventClient(cfg),
 		AlertLease:    NewAlertLeaseClient(cfg),
 		DevBuild:      NewDevBuildClient(cfg),
 		ImageSyncTask: NewImageSyncTaskClient(cfg),
@@ -179,7 +185,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		AlertLease.
+//		AlertEvent.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -201,26 +207,30 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
-	c.AlertLease.Use(hooks...)
-	c.DevBuild.Use(hooks...)
-	c.ImageSyncTask.Use(hooks...)
-	c.PublishStep.Use(hooks...)
-	c.PublishUnit.Use(hooks...)
+	for _, n := range []interface{ Use(...Hook) }{
+		c.AlertEvent, c.AlertLease, c.DevBuild, c.ImageSyncTask, c.PublishStep,
+		c.PublishUnit,
+	} {
+		n.Use(hooks...)
+	}
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
-	c.AlertLease.Intercept(interceptors...)
-	c.DevBuild.Intercept(interceptors...)
-	c.ImageSyncTask.Intercept(interceptors...)
-	c.PublishStep.Intercept(interceptors...)
-	c.PublishUnit.Intercept(interceptors...)
+	for _, n := range []interface{ Intercept(...Interceptor) }{
+		c.AlertEvent, c.AlertLease, c.DevBuild, c.ImageSyncTask, c.PublishStep,
+		c.PublishUnit,
+	} {
+		n.Intercept(interceptors...)
+	}
 }
 
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *AlertEventMutation:
+		return c.AlertEvent.mutate(ctx, m)
 	case *AlertLeaseMutation:
 		return c.AlertLease.mutate(ctx, m)
 	case *DevBuildMutation:
@@ -233,6 +243,139 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.PublishUnit.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// AlertEventClient is a client for the AlertEvent schema.
+type AlertEventClient struct {
+	config
+}
+
+// NewAlertEventClient returns a client for the AlertEvent from the given config.
+func NewAlertEventClient(c config) *AlertEventClient {
+	return &AlertEventClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `alertevent.Hooks(f(g(h())))`.
+func (c *AlertEventClient) Use(hooks ...Hook) {
+	c.hooks.AlertEvent = append(c.hooks.AlertEvent, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `alertevent.Intercept(f(g(h())))`.
+func (c *AlertEventClient) Intercept(interceptors ...Interceptor) {
+	c.inters.AlertEvent = append(c.inters.AlertEvent, interceptors...)
+}
+
+// Create returns a builder for creating a AlertEvent entity.
+func (c *AlertEventClient) Create() *AlertEventCreate {
+	mutation := newAlertEventMutation(c.config, OpCreate)
+	return &AlertEventCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of AlertEvent entities.
+func (c *AlertEventClient) CreateBulk(builders ...*AlertEventCreate) *AlertEventCreateBulk {
+	return &AlertEventCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *AlertEventClient) MapCreateBulk(slice any, setFunc func(*AlertEventCreate, int)) *AlertEventCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &AlertEventCreateBulk{err: fmt.Errorf("calling to AlertEventClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*AlertEventCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &AlertEventCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for AlertEvent.
+func (c *AlertEventClient) Update() *AlertEventUpdate {
+	mutation := newAlertEventMutation(c.config, OpUpdate)
+	return &AlertEventUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *AlertEventClient) UpdateOne(_m *AlertEvent) *AlertEventUpdateOne {
+	mutation := newAlertEventMutation(c.config, OpUpdateOne, withAlertEvent(_m))
+	return &AlertEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *AlertEventClient) UpdateOneID(id int) *AlertEventUpdateOne {
+	mutation := newAlertEventMutation(c.config, OpUpdateOne, withAlertEventID(id))
+	return &AlertEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for AlertEvent.
+func (c *AlertEventClient) Delete() *AlertEventDelete {
+	mutation := newAlertEventMutation(c.config, OpDelete)
+	return &AlertEventDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *AlertEventClient) DeleteOne(_m *AlertEvent) *AlertEventDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *AlertEventClient) DeleteOneID(id int) *AlertEventDeleteOne {
+	builder := c.Delete().Where(alertevent.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &AlertEventDeleteOne{builder}
+}
+
+// Query returns a query builder for AlertEvent.
+func (c *AlertEventClient) Query() *AlertEventQuery {
+	return &AlertEventQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAlertEvent},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a AlertEvent entity by its id.
+func (c *AlertEventClient) Get(ctx context.Context, id int) (*AlertEvent, error) {
+	return c.Query().Where(alertevent.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *AlertEventClient) GetX(ctx context.Context, id int) *AlertEvent {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *AlertEventClient) Hooks() []Hook {
+	return c.hooks.AlertEvent
+}
+
+// Interceptors returns the client interceptors.
+func (c *AlertEventClient) Interceptors() []Interceptor {
+	return c.inters.AlertEvent
+}
+
+func (c *AlertEventClient) mutate(ctx context.Context, m *AlertEventMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&AlertEventCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&AlertEventUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&AlertEventUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&AlertEventDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown AlertEvent mutation op: %q", m.Op())
 	}
 }
 
@@ -904,9 +1047,11 @@ func (c *PublishUnitClient) mutate(ctx context.Context, m *PublishUnitMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		AlertLease, DevBuild, ImageSyncTask, PublishStep, PublishUnit []ent.Hook
+		AlertEvent, AlertLease, DevBuild, ImageSyncTask, PublishStep,
+		PublishUnit []ent.Hook
 	}
 	inters struct {
-		AlertLease, DevBuild, ImageSyncTask, PublishStep, PublishUnit []ent.Interceptor
+		AlertEvent, AlertLease, DevBuild, ImageSyncTask, PublishStep,
+		PublishUnit []ent.Interceptor
 	}
 )
