@@ -75,13 +75,13 @@ func doJSON(t *testing.T, method, url string, body any) (int, map[string]any) {
 func TestTiUPHTTPValidationEnvelope(t *testing.T) {
 	server, _ := newTiUPHTTPTestServer(t)
 
-	status, body := doJSON(t, http.MethodPost, server.URL+"/api/v2/tiup/delivery-by-rules", map[string]any{})
+	status, body := doJSON(t, http.MethodPost, server.URL+"/api/v2/publish/tiup/delivery-by-rules", map[string]any{})
 	require.Equal(t, http.StatusBadRequest, status)
 	require.Equal(t, "missing_field", body["name"])
 	require.Equal(t, false, body["fault"])
 	require.Contains(t, body["message"], "artifact_url")
 
-	status, body = doJSON(t, http.MethodPost, server.URL+"/api/v2/tiup/publish-request", map[string]any{
+	status, body = doJSON(t, http.MethodPost, server.URL+"/api/v2/publish/tiup/publish-request", map[string]any{
 		"artifact_url": "oci.com/repo:tag",
 		"tiup_mirror":  "bad",
 	})
@@ -95,7 +95,7 @@ func TestTiUPHTTPUnknownRequestIDIsFault(t *testing.T) {
 	server, _ := newTiUPHTTPTestServer(t)
 
 	status, body := doJSON(t, http.MethodGet,
-		server.URL+"/api/v2/tiup/publish-request/00000000-0000-4000-8000-000000000000", nil)
+		server.URL+"/api/v2/publish/tiup/publish-request/00000000-0000-4000-8000-000000000000", nil)
 	require.Equal(t, http.StatusInternalServerError, status)
 	require.Equal(t, "fault", body["name"])
 	require.Equal(t, true, body["fault"])
@@ -106,7 +106,7 @@ func TestTiUPHTTPUnknownRequestIDIsFault(t *testing.T) {
 func TestTiUPHTTPDeliveryByRules(t *testing.T) {
 	server, _ := newTiUPHTTPTestServer(t)
 
-	status, _ := doJSON(t, http.MethodPost, server.URL+"/api/v2/tiup/delivery-by-rules", map[string]any{
+	status, _ := doJSON(t, http.MethodPost, server.URL+"/api/v2/publish/tiup/delivery-by-rules", map[string]any{
 		"artifact_url": nightlyArtifact,
 	})
 	require.Equal(t, http.StatusOK, status)
@@ -116,7 +116,7 @@ func TestTiUPHTTPDeliveryByRules(t *testing.T) {
 	require.NoError(t, err)
 	_ = raw
 
-	resp, err := http.Post(server.URL+"/api/v2/tiup/delivery-by-rules", "application/json",
+	resp, err := http.Post(server.URL+"/api/v2/publish/tiup/delivery-by-rules", "application/json",
 		bytes.NewReader([]byte(`{"artifact_url":"`+nightlyArtifact+`"}`)))
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -131,7 +131,7 @@ func TestTiUPHTTPDeliveryByRules(t *testing.T) {
 func TestTiUPHTTPGetUnitNotFound(t *testing.T) {
 	server, _ := newTiUPHTTPTestServer(t)
 
-	status, body := doJSON(t, http.MethodGet, server.URL+"/api/v2/tiup/publish-units/missing", nil)
+	status, body := doJSON(t, http.MethodGet, server.URL+"/api/v2/publish/tiup/units/missing", nil)
 	require.Equal(t, http.StatusNotFound, status)
 	require.Contains(t, body, "message")
 }

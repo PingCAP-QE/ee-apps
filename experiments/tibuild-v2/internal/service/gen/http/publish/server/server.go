@@ -64,13 +64,13 @@ func New(
 			{"GetUnit", "GET", "/api/v2/publish/units/{id}"},
 			{"ListUnits", "GET", "/api/v2/publish/units"},
 			{"RetryUnit", "POST", "/api/v2/publish/units/{id}/retry"},
-			{"DeliveryByRules", "POST", "/api/v2/tiup/delivery-by-rules"},
-			{"RequestToPublish", "POST", "/api/v2/tiup/publish-request"},
-			{"RequestToPublishSingle", "POST", "/api/v2/tiup/publish-request-single"},
-			{"QueryPublishingStatus", "GET", "/api/v2/tiup/publish-request/{request_id}"},
-			{"ResetRateLimit", "POST", "/api/v2/tiup/reset-rate-limit"},
-			{"GetPublishUnit", "GET", "/api/v2/tiup/publish-units/{id}"},
-			{"ResumePublishUnit", "POST", "/api/v2/tiup/publish-units/{id}/resume"},
+			{"DeliveryByRules", "POST", "/api/v2/publish/tiup/delivery-by-rules"},
+			{"RequestToPublish", "POST", "/api/v2/publish/tiup/publish-request"},
+			{"RequestToPublishSingle", "POST", "/api/v2/publish/tiup/publish-request-single"},
+			{"QueryPublishingStatus", "GET", "/api/v2/publish/tiup/publish-request/{request_id}"},
+			{"ResetRateLimit", "POST", "/api/v2/publish/tiup/reset-rate-limit"},
+			{"GetPublishUnit", "GET", "/api/v2/publish/tiup/units/{id}"},
+			{"ResumePublishUnit", "POST", "/api/v2/publish/tiup/units/{id}/resume"},
 		},
 		PublishImages:          NewPublishImagesHandler(e.PublishImages, mux, decoder, encoder, errhandler, formatter),
 		GetUnit:                NewGetUnitHandler(e.GetUnit, mux, decoder, encoder, errhandler, formatter),
@@ -348,7 +348,7 @@ func MountDeliveryByRulesHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/api/v2/tiup/delivery-by-rules", f)
+	mux.Handle("POST", "/api/v2/publish/tiup/delivery-by-rules", f)
 }
 
 // NewDeliveryByRulesHandler creates a HTTP handler which loads the HTTP
@@ -401,7 +401,7 @@ func MountRequestToPublishHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/api/v2/tiup/publish-request", f)
+	mux.Handle("POST", "/api/v2/publish/tiup/publish-request", f)
 }
 
 // NewRequestToPublishHandler creates a HTTP handler which loads the HTTP
@@ -454,7 +454,7 @@ func MountRequestToPublishSingleHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/api/v2/tiup/publish-request-single", f)
+	mux.Handle("POST", "/api/v2/publish/tiup/publish-request-single", f)
 }
 
 // NewRequestToPublishSingleHandler creates a HTTP handler which loads the HTTP
@@ -507,7 +507,7 @@ func MountQueryPublishingStatusHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("GET", "/api/v2/tiup/publish-request/{request_id}", f)
+	mux.Handle("GET", "/api/v2/publish/tiup/publish-request/{request_id}", f)
 }
 
 // NewQueryPublishingStatusHandler creates a HTTP handler which loads the HTTP
@@ -560,7 +560,7 @@ func MountResetRateLimitHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/api/v2/tiup/reset-rate-limit", f)
+	mux.Handle("POST", "/api/v2/publish/tiup/reset-rate-limit", f)
 }
 
 // NewResetRateLimitHandler creates a HTTP handler which loads the HTTP request
@@ -606,7 +606,7 @@ func MountGetPublishUnitHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("GET", "/api/v2/tiup/publish-units/{id}", f)
+	mux.Handle("GET", "/api/v2/publish/tiup/units/{id}", f)
 }
 
 // NewGetPublishUnitHandler creates a HTTP handler which loads the HTTP request
@@ -659,7 +659,7 @@ func MountResumePublishUnitHandler(mux goahttp.Muxer, h http.Handler) {
 			h.ServeHTTP(w, r)
 		}
 	}
-	mux.Handle("POST", "/api/v2/tiup/publish-units/{id}/resume", f)
+	mux.Handle("POST", "/api/v2/publish/tiup/units/{id}/resume", f)
 }
 
 // NewResumePublishUnitHandler creates a HTTP handler which loads the HTTP

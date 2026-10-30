@@ -239,10 +239,15 @@ func TestExecuteTiUPOnceRequeuesWhenLaneIsBusy(t *testing.T) {
 	svc := newTiUPTestService(t, server.URL)
 	svc.tiup.bin = writeFakeTiup(t, "#!/bin/sh\nexit 0\n")
 
-	holderUnit, _ := createTiUPStep(t, svc, delivery.TiUPTargetProd, TiUPStepPayload{
+	holderUnit, holderStep := createTiUPStep(t, svc, delivery.TiUPTargetProd, TiUPStepPayload{
 		Mirror:    delivery.TiUPMirrorProd,
 		MirrorURL: server.URL,
 	})
+	// Park the holder's own step so the claim loop only sees the staging step.
+	require.NoError(t, svc.db.PublishStep.UpdateOneID(holderStep.ID).
+		SetState(PublishStepStateSucceeded).
+		Exec(context.Background()))
+
 	ok, err := svc.acquireLane(context.Background(), holderUnit.ID, "worker-other")
 	require.NoError(t, err)
 	require.True(t, ok)

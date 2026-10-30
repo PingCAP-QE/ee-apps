@@ -700,6 +700,9 @@ var _ = Service("publish", func() {
 	Error("BadGateway", PublishBadGatewayError, "The artifact registry could not be queried")
 	Error("InternalServerError", PublishInternalServerError, "Internal Server Error")
 	Error("fault", TiUPFaultError, "Internal fault")
+	HTTP(func() {
+		Path("/publish")
+	})
 
 	Method("publishImages", func() {
 		Description("Plan the delivery of an image and enqueue one step per destination registry.")
@@ -709,7 +712,7 @@ var _ = Service("publish", func() {
 		})
 		Result(PublishUnit)
 		HTTP(func() {
-			POST("/publish/images")
+			POST("/images")
 			Response(StatusAccepted)
 			Response("BadRequest", StatusBadRequest)
 			Response("BadGateway", StatusBadGateway)
@@ -725,7 +728,7 @@ var _ = Service("publish", func() {
 		})
 		Result(PublishUnit)
 		HTTP(func() {
-			GET("/publish/units/{id}")
+			GET("/units/{id}")
 			Response(StatusOK)
 			Response("NotFound", StatusNotFound)
 			Response("InternalServerError", StatusInternalServerError)
@@ -745,7 +748,7 @@ var _ = Service("publish", func() {
 		})
 		Result(ArrayOf(PublishUnit), "Matching units, newest first")
 		HTTP(func() {
-			GET("/publish/units")
+			GET("/units")
 			Param("status")
 			Param("kind")
 			Param("limit")
@@ -763,7 +766,7 @@ var _ = Service("publish", func() {
 		})
 		Result(PublishUnit)
 		HTTP(func() {
-			POST("/publish/units/{id}/retry")
+			POST("/units/{id}/retry")
 			Response(StatusAccepted)
 			Response("BadRequest", StatusBadRequest)
 			Response("NotFound", StatusNotFound)
@@ -856,7 +859,7 @@ var _ = Service("publish", func() {
 		})
 		Result(PublishUnit)
 		HTTP(func() {
-			GET("/tiup/publish-units/{id}")
+			GET("/tiup/units/{id}")
 			Response(StatusOK)
 			Response("NotFound", StatusNotFound)
 			Response("BadRequest", StatusBadRequest)
@@ -872,7 +875,7 @@ var _ = Service("publish", func() {
 		})
 		Result(PublishUnit)
 		HTTP(func() {
-			POST("/tiup/publish-units/{id}/resume")
+			POST("/tiup/units/{id}/resume")
 			Response(StatusOK)
 			Response("NotFound", StatusNotFound)
 			Response("BadRequest", StatusBadRequest)

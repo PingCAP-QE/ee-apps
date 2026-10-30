@@ -3200,6 +3200,448 @@ paths:
                             example:
                                 code: 3413043865541545781
                                 message: Veniam occaecati ratione.
+    /api/v2/publish/tiup/delivery-by-rules:
+        post:
+            tags:
+                - publish
+            summary: deliveryByRules publish
+            description: Publish an artifact to every mirror the delivery rules select.
+            operationId: publish#deliveryByRules
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DeliveryByRulesRequestBody'
+                        example:
+                            artifact_url: Doloremque qui.
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    type: string
+                                    example: Debitis vel quam architecto quo fugit quia.
+                                example:
+                                    - Provident ex iure rem.
+                                    - Dolor molestiae vero non.
+                                    - Et nulla quia quam deserunt et ut.
+                                    - Non quo et ut eveniet.
+                            example:
+                                - Eum et nisi.
+                                - Vel ut quia aut et.
+                "400":
+                    description: 'BadRequest: Bad Request'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishBadRequestError'
+                            example:
+                                code: 6863263598977029418
+                                message: A sunt animi laboriosam.
+                "500":
+                    description: 'fault: Internal fault'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TiUPFaultError'
+                            example:
+                                fault: false
+                                id: Similique a odio est voluptate assumenda.
+                                message: Cum praesentium.
+                                name: Corrupti sunt aut blanditiis.
+                                temporary: false
+                                timeout: false
+    /api/v2/publish/tiup/publish-request:
+        post:
+            tags:
+                - publish
+            summary: requestToPublish publish
+            description: Publish an artifact to one explicit mirror.
+            operationId: publish#requestToPublish
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RequestToPublishRequestBody'
+                        example:
+                            artifact_url: Modi et reiciendis porro voluptatibus qui.
+                            tiup_mirror: prod
+                            version: Maiores necessitatibus est voluptatum.
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    type: string
+                                    example: Aperiam ipsam tenetur culpa consectetur eos.
+                                example:
+                                    - Quis velit.
+                                    - Molestias dolore molestiae magni autem dolores.
+                            example:
+                                - Non debitis quis ea.
+                                - Ullam recusandae est.
+                "400":
+                    description: 'BadRequest: Bad Request'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishBadRequestError'
+                            example:
+                                code: 8989089727675625007
+                                message: Qui illum in quia minus blanditiis saepe.
+                "500":
+                    description: 'fault: Internal fault'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TiUPFaultError'
+                            example:
+                                fault: true
+                                id: Asperiores non qui laboriosam adipisci.
+                                message: Rerum amet dicta.
+                                name: Impedit sint perferendis saepe.
+                                temporary: false
+                                timeout: false
+    /api/v2/publish/tiup/publish-request-single:
+        post:
+            tags:
+                - publish
+            summary: requestToPublishSingle publish
+            description: Publish one package from a tarball URL.
+            operationId: publish#requestToPublishSingle
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/TiUPPublishRequest'
+                        example:
+                            from:
+                                http:
+                                    url: Qui assumenda autem illum quaerat unde.
+                                oci:
+                                    file: Laboriosam ipsa et deserunt.
+                                    repo: Explicabo natus sed.
+                                    tag: Exercitationem eos voluptatem totam neque possimus odit.
+                                type: oci
+                            publish:
+                                arch: Culpa officia dolor illum quia.
+                                description: Repudiandae tempore necessitatibus beatae sit nesciunt.
+                                entry_point: Aut nihil ut aliquam possimus est.
+                                name: In maiores praesentium eius ut aperiam.
+                                os: Est saepe molestiae.
+                                standalone: false
+                                version: Rem rerum.
+                            tiup_mirror: prod
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: string
+                                example: Dignissimos impedit aut eaque et et.
+                            example: Veniam eum hic animi quia dolor.
+                "400":
+                    description: 'BadRequest: Bad Request'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishBadRequestError'
+                            example:
+                                code: 2279201836999288820
+                                message: Et ut.
+                "500":
+                    description: 'fault: Internal fault'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TiUPFaultError'
+                            example:
+                                fault: true
+                                id: Reprehenderit aut odio.
+                                message: Officia ut non sint officia repellendus.
+                                name: Ut dolore voluptatum.
+                                temporary: true
+                                timeout: false
+    /api/v2/publish/tiup/publish-request/{request_id}:
+        get:
+            tags:
+                - publish
+            summary: queryPublishingStatus publish
+            description: Legacy status lookup; accepts a unit id or a step id.
+            operationId: publish#queryPublishingStatus
+            parameters:
+                - name: request_id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                    example: Ut hic in sint labore vel.
+                  example: Illo dolorum odit sint totam magni ad.
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                type: string
+                                example: processing
+                                enum:
+                                    - queued
+                                    - processing
+                                    - success
+                                    - failed
+                                    - canceled
+                            example: processing
+                "500":
+                    description: 'fault: Internal fault'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TiUPFaultError'
+                            example:
+                                fault: false
+                                id: Sit explicabo velit odio repudiandae eveniet asperiores.
+                                message: Impedit dicta labore.
+                                name: Et minima et inventore eaque.
+                                temporary: false
+                                timeout: true
+    /api/v2/publish/tiup/reset-rate-limit:
+        post:
+            tags:
+                - publish
+            summary: resetRateLimit publish
+            description: Kept for compatibility; the publish domain has no rate limiting.
+            operationId: publish#resetRateLimit
+            responses:
+                "200":
+                    description: OK response.
+    /api/v2/publish/tiup/units/{id}:
+        get:
+            tags:
+                - publish
+            summary: getPublishUnit publish
+            description: Get a publication unit and its steps.
+            operationId: publish#getPublishUnit
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                    example: Sunt sit perferendis quae.
+                  example: Voluptatem ut.
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishUnit'
+                            example:
+                                artifactUrl: Et cumque molestias provident accusantium.
+                                createdAt: "1972-10-15T00:34:39Z"
+                                digest: Odit officiis ut veritatis.
+                                finishedAt: "1998-04-10T18:07:06Z"
+                                id: Quos tempora rem ea soluta esse dolorem.
+                                kind: Qui porro iusto animi.
+                                requestedBy: Voluptatem doloribus sit quos consectetur quibusdam.
+                                state: succeeded
+                                steps:
+                                    - attempts: 8508580156205440668
+                                      createdAt: "2002-01-30T10:17:13Z"
+                                      dependsOn: Quia et optio consequuntur dolorem minus.
+                                      dest: Aspernatur aspernatur qui esse praesentium.
+                                      finishedAt: "1971-07-21T17:47:56Z"
+                                      id: Explicabo officia necessitatibus ea ut.
+                                      lastError: Et non eos eos ut molestias tempora.
+                                      payload: Repellat voluptate debitis.
+                                      result: Totam et vel.
+                                      startedAt: "1990-08-14T15:21:50Z"
+                                      state: claimed
+                                      target: Est incidunt natus reprehenderit quaerat fuga.
+                                      unitId: Iste qui et qui.
+                                    - attempts: 8508580156205440668
+                                      createdAt: "2002-01-30T10:17:13Z"
+                                      dependsOn: Quia et optio consequuntur dolorem minus.
+                                      dest: Aspernatur aspernatur qui esse praesentium.
+                                      finishedAt: "1971-07-21T17:47:56Z"
+                                      id: Explicabo officia necessitatibus ea ut.
+                                      lastError: Et non eos eos ut molestias tempora.
+                                      payload: Repellat voluptate debitis.
+                                      result: Totam et vel.
+                                      startedAt: "1990-08-14T15:21:50Z"
+                                      state: claimed
+                                      target: Est incidunt natus reprehenderit quaerat fuga.
+                                      unitId: Iste qui et qui.
+                                    - attempts: 8508580156205440668
+                                      createdAt: "2002-01-30T10:17:13Z"
+                                      dependsOn: Quia et optio consequuntur dolorem minus.
+                                      dest: Aspernatur aspernatur qui esse praesentium.
+                                      finishedAt: "1971-07-21T17:47:56Z"
+                                      id: Explicabo officia necessitatibus ea ut.
+                                      lastError: Et non eos eos ut molestias tempora.
+                                      payload: Repellat voluptate debitis.
+                                      result: Totam et vel.
+                                      startedAt: "1990-08-14T15:21:50Z"
+                                      state: claimed
+                                      target: Est incidunt natus reprehenderit quaerat fuga.
+                                      unitId: Iste qui et qui.
+                                    - attempts: 8508580156205440668
+                                      createdAt: "2002-01-30T10:17:13Z"
+                                      dependsOn: Quia et optio consequuntur dolorem minus.
+                                      dest: Aspernatur aspernatur qui esse praesentium.
+                                      finishedAt: "1971-07-21T17:47:56Z"
+                                      id: Explicabo officia necessitatibus ea ut.
+                                      lastError: Et non eos eos ut molestias tempora.
+                                      payload: Repellat voluptate debitis.
+                                      result: Totam et vel.
+                                      startedAt: "1990-08-14T15:21:50Z"
+                                      state: claimed
+                                      target: Est incidunt natus reprehenderit quaerat fuga.
+                                      unitId: Iste qui et qui.
+                "400":
+                    description: 'BadRequest: Bad Request'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishBadRequestError'
+                            example:
+                                code: 2651607401032077379
+                                message: Et a sint eligendi dolorem in.
+                "404":
+                    description: 'NotFound: Not Found'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishNotFoundError'
+                            example:
+                                code: 7608787850989551177
+                                message: Ullam voluptatem qui ut animi non omnis.
+                "500":
+                    description: 'fault: Internal fault'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TiUPFaultError'
+                            example:
+                                fault: true
+                                id: Vel molestiae numquam sit corrupti aut.
+                                message: Autem et.
+                                name: In assumenda natus.
+                                temporary: true
+                                timeout: false
+    /api/v2/publish/tiup/units/{id}/resume:
+        post:
+            tags:
+                - publish
+            summary: resumePublishUnit publish
+            description: Resume the failed steps of a partial publication unit.
+            operationId: publish#resumePublishUnit
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+                    example: Enim sit in.
+                  example: Animi corrupti dicta dolor accusamus commodi tempora.
+            responses:
+                "200":
+                    description: OK response.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishUnit'
+                            example:
+                                artifactUrl: Delectus voluptatem ad.
+                                createdAt: "1986-03-10T08:59:13Z"
+                                digest: Quae neque doloribus aliquid exercitationem aut.
+                                finishedAt: "1984-02-14T14:36:52Z"
+                                id: Sint qui non non sint.
+                                kind: Magnam repudiandae totam inventore repellendus.
+                                requestedBy: Voluptatem a dolorum quidem deserunt autem dolorem.
+                                state: canceled
+                                steps:
+                                    - attempts: 8508580156205440668
+                                      createdAt: "2002-01-30T10:17:13Z"
+                                      dependsOn: Quia et optio consequuntur dolorem minus.
+                                      dest: Aspernatur aspernatur qui esse praesentium.
+                                      finishedAt: "1971-07-21T17:47:56Z"
+                                      id: Explicabo officia necessitatibus ea ut.
+                                      lastError: Et non eos eos ut molestias tempora.
+                                      payload: Repellat voluptate debitis.
+                                      result: Totam et vel.
+                                      startedAt: "1990-08-14T15:21:50Z"
+                                      state: claimed
+                                      target: Est incidunt natus reprehenderit quaerat fuga.
+                                      unitId: Iste qui et qui.
+                                    - attempts: 8508580156205440668
+                                      createdAt: "2002-01-30T10:17:13Z"
+                                      dependsOn: Quia et optio consequuntur dolorem minus.
+                                      dest: Aspernatur aspernatur qui esse praesentium.
+                                      finishedAt: "1971-07-21T17:47:56Z"
+                                      id: Explicabo officia necessitatibus ea ut.
+                                      lastError: Et non eos eos ut molestias tempora.
+                                      payload: Repellat voluptate debitis.
+                                      result: Totam et vel.
+                                      startedAt: "1990-08-14T15:21:50Z"
+                                      state: claimed
+                                      target: Est incidunt natus reprehenderit quaerat fuga.
+                                      unitId: Iste qui et qui.
+                                    - attempts: 8508580156205440668
+                                      createdAt: "2002-01-30T10:17:13Z"
+                                      dependsOn: Quia et optio consequuntur dolorem minus.
+                                      dest: Aspernatur aspernatur qui esse praesentium.
+                                      finishedAt: "1971-07-21T17:47:56Z"
+                                      id: Explicabo officia necessitatibus ea ut.
+                                      lastError: Et non eos eos ut molestias tempora.
+                                      payload: Repellat voluptate debitis.
+                                      result: Totam et vel.
+                                      startedAt: "1990-08-14T15:21:50Z"
+                                      state: claimed
+                                      target: Est incidunt natus reprehenderit quaerat fuga.
+                                      unitId: Iste qui et qui.
+                "400":
+                    description: 'BadRequest: Bad Request'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishBadRequestError'
+                            example:
+                                code: 3062057655684294759
+                                message: Quisquam quibusdam.
+                "404":
+                    description: 'NotFound: Not Found'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/PublishNotFoundError'
+                            example:
+                                code: 1223440988572322202
+                                message: Dolore ratione enim rerum iste quia et.
+                "500":
+                    description: 'fault: Internal fault'
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/TiUPFaultError'
+                            example:
+                                fault: false
+                                id: Doloribus debitis ipsum.
+                                message: Quis modi consequatur iure iure.
+                                name: Commodi dolor quia sapiente non.
+                                temporary: false
+                                timeout: false
     /api/v2/publish/units:
         get:
             tags:
@@ -3644,448 +4086,6 @@ paths:
                             example:
                                 code: 313414874106891517
                                 message: Aut fugit ut nihil.
-    /api/v2/tiup/delivery-by-rules:
-        post:
-            tags:
-                - publish
-            summary: deliveryByRules publish
-            description: Publish an artifact to every mirror the delivery rules select.
-            operationId: publish#deliveryByRules
-            requestBody:
-                required: true
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/DeliveryByRulesRequestBody'
-                        example:
-                            artifact_url: Doloremque qui.
-            responses:
-                "200":
-                    description: OK response.
-                    content:
-                        application/json:
-                            schema:
-                                type: array
-                                items:
-                                    type: string
-                                    example: Debitis vel quam architecto quo fugit quia.
-                                example:
-                                    - Provident ex iure rem.
-                                    - Dolor molestiae vero non.
-                                    - Et nulla quia quam deserunt et ut.
-                                    - Non quo et ut eveniet.
-                            example:
-                                - Eum et nisi.
-                                - Vel ut quia aut et.
-                "400":
-                    description: 'BadRequest: Bad Request'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishBadRequestError'
-                            example:
-                                code: 6863263598977029418
-                                message: A sunt animi laboriosam.
-                "500":
-                    description: 'fault: Internal fault'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/TiUPFaultError'
-                            example:
-                                fault: false
-                                id: Similique a odio est voluptate assumenda.
-                                message: Cum praesentium.
-                                name: Corrupti sunt aut blanditiis.
-                                temporary: false
-                                timeout: false
-    /api/v2/tiup/publish-request:
-        post:
-            tags:
-                - publish
-            summary: requestToPublish publish
-            description: Publish an artifact to one explicit mirror.
-            operationId: publish#requestToPublish
-            requestBody:
-                required: true
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/RequestToPublishRequestBody'
-                        example:
-                            artifact_url: Modi et reiciendis porro voluptatibus qui.
-                            tiup_mirror: prod
-                            version: Maiores necessitatibus est voluptatum.
-            responses:
-                "200":
-                    description: OK response.
-                    content:
-                        application/json:
-                            schema:
-                                type: array
-                                items:
-                                    type: string
-                                    example: Aperiam ipsam tenetur culpa consectetur eos.
-                                example:
-                                    - Quis velit.
-                                    - Molestias dolore molestiae magni autem dolores.
-                            example:
-                                - Non debitis quis ea.
-                                - Ullam recusandae est.
-                "400":
-                    description: 'BadRequest: Bad Request'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishBadRequestError'
-                            example:
-                                code: 8989089727675625007
-                                message: Qui illum in quia minus blanditiis saepe.
-                "500":
-                    description: 'fault: Internal fault'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/TiUPFaultError'
-                            example:
-                                fault: true
-                                id: Asperiores non qui laboriosam adipisci.
-                                message: Rerum amet dicta.
-                                name: Impedit sint perferendis saepe.
-                                temporary: false
-                                timeout: false
-    /api/v2/tiup/publish-request-single:
-        post:
-            tags:
-                - publish
-            summary: requestToPublishSingle publish
-            description: Publish one package from a tarball URL.
-            operationId: publish#requestToPublishSingle
-            requestBody:
-                required: true
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/TiUPPublishRequest'
-                        example:
-                            from:
-                                http:
-                                    url: Qui assumenda autem illum quaerat unde.
-                                oci:
-                                    file: Laboriosam ipsa et deserunt.
-                                    repo: Explicabo natus sed.
-                                    tag: Exercitationem eos voluptatem totam neque possimus odit.
-                                type: oci
-                            publish:
-                                arch: Culpa officia dolor illum quia.
-                                description: Repudiandae tempore necessitatibus beatae sit nesciunt.
-                                entry_point: Aut nihil ut aliquam possimus est.
-                                name: In maiores praesentium eius ut aperiam.
-                                os: Est saepe molestiae.
-                                standalone: false
-                                version: Rem rerum.
-                            tiup_mirror: prod
-            responses:
-                "200":
-                    description: OK response.
-                    content:
-                        application/json:
-                            schema:
-                                type: string
-                                example: Dignissimos impedit aut eaque et et.
-                            example: Veniam eum hic animi quia dolor.
-                "400":
-                    description: 'BadRequest: Bad Request'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishBadRequestError'
-                            example:
-                                code: 2279201836999288820
-                                message: Et ut.
-                "500":
-                    description: 'fault: Internal fault'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/TiUPFaultError'
-                            example:
-                                fault: true
-                                id: Reprehenderit aut odio.
-                                message: Officia ut non sint officia repellendus.
-                                name: Ut dolore voluptatum.
-                                temporary: true
-                                timeout: false
-    /api/v2/tiup/publish-request/{request_id}:
-        get:
-            tags:
-                - publish
-            summary: queryPublishingStatus publish
-            description: Legacy status lookup; accepts a unit id or a step id.
-            operationId: publish#queryPublishingStatus
-            parameters:
-                - name: request_id
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-                    example: Ut hic in sint labore vel.
-                  example: Illo dolorum odit sint totam magni ad.
-            responses:
-                "200":
-                    description: OK response.
-                    content:
-                        application/json:
-                            schema:
-                                type: string
-                                example: processing
-                                enum:
-                                    - queued
-                                    - processing
-                                    - success
-                                    - failed
-                                    - canceled
-                            example: processing
-                "500":
-                    description: 'fault: Internal fault'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/TiUPFaultError'
-                            example:
-                                fault: false
-                                id: Sit explicabo velit odio repudiandae eveniet asperiores.
-                                message: Impedit dicta labore.
-                                name: Et minima et inventore eaque.
-                                temporary: false
-                                timeout: true
-    /api/v2/tiup/publish-units/{id}:
-        get:
-            tags:
-                - publish
-            summary: getPublishUnit publish
-            description: Get a publication unit and its steps.
-            operationId: publish#getPublishUnit
-            parameters:
-                - name: id
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-                    example: Sunt sit perferendis quae.
-                  example: Voluptatem ut.
-            responses:
-                "200":
-                    description: OK response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishUnit'
-                            example:
-                                artifactUrl: Et cumque molestias provident accusantium.
-                                createdAt: "1972-10-15T00:34:39Z"
-                                digest: Odit officiis ut veritatis.
-                                finishedAt: "1998-04-10T18:07:06Z"
-                                id: Quos tempora rem ea soluta esse dolorem.
-                                kind: Qui porro iusto animi.
-                                requestedBy: Voluptatem doloribus sit quos consectetur quibusdam.
-                                state: succeeded
-                                steps:
-                                    - attempts: 8508580156205440668
-                                      createdAt: "2002-01-30T10:17:13Z"
-                                      dependsOn: Quia et optio consequuntur dolorem minus.
-                                      dest: Aspernatur aspernatur qui esse praesentium.
-                                      finishedAt: "1971-07-21T17:47:56Z"
-                                      id: Explicabo officia necessitatibus ea ut.
-                                      lastError: Et non eos eos ut molestias tempora.
-                                      payload: Repellat voluptate debitis.
-                                      result: Totam et vel.
-                                      startedAt: "1990-08-14T15:21:50Z"
-                                      state: claimed
-                                      target: Est incidunt natus reprehenderit quaerat fuga.
-                                      unitId: Iste qui et qui.
-                                    - attempts: 8508580156205440668
-                                      createdAt: "2002-01-30T10:17:13Z"
-                                      dependsOn: Quia et optio consequuntur dolorem minus.
-                                      dest: Aspernatur aspernatur qui esse praesentium.
-                                      finishedAt: "1971-07-21T17:47:56Z"
-                                      id: Explicabo officia necessitatibus ea ut.
-                                      lastError: Et non eos eos ut molestias tempora.
-                                      payload: Repellat voluptate debitis.
-                                      result: Totam et vel.
-                                      startedAt: "1990-08-14T15:21:50Z"
-                                      state: claimed
-                                      target: Est incidunt natus reprehenderit quaerat fuga.
-                                      unitId: Iste qui et qui.
-                                    - attempts: 8508580156205440668
-                                      createdAt: "2002-01-30T10:17:13Z"
-                                      dependsOn: Quia et optio consequuntur dolorem minus.
-                                      dest: Aspernatur aspernatur qui esse praesentium.
-                                      finishedAt: "1971-07-21T17:47:56Z"
-                                      id: Explicabo officia necessitatibus ea ut.
-                                      lastError: Et non eos eos ut molestias tempora.
-                                      payload: Repellat voluptate debitis.
-                                      result: Totam et vel.
-                                      startedAt: "1990-08-14T15:21:50Z"
-                                      state: claimed
-                                      target: Est incidunt natus reprehenderit quaerat fuga.
-                                      unitId: Iste qui et qui.
-                                    - attempts: 8508580156205440668
-                                      createdAt: "2002-01-30T10:17:13Z"
-                                      dependsOn: Quia et optio consequuntur dolorem minus.
-                                      dest: Aspernatur aspernatur qui esse praesentium.
-                                      finishedAt: "1971-07-21T17:47:56Z"
-                                      id: Explicabo officia necessitatibus ea ut.
-                                      lastError: Et non eos eos ut molestias tempora.
-                                      payload: Repellat voluptate debitis.
-                                      result: Totam et vel.
-                                      startedAt: "1990-08-14T15:21:50Z"
-                                      state: claimed
-                                      target: Est incidunt natus reprehenderit quaerat fuga.
-                                      unitId: Iste qui et qui.
-                "400":
-                    description: 'BadRequest: Bad Request'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishBadRequestError'
-                            example:
-                                code: 2651607401032077379
-                                message: Et a sint eligendi dolorem in.
-                "404":
-                    description: 'NotFound: Not Found'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishNotFoundError'
-                            example:
-                                code: 7608787850989551177
-                                message: Ullam voluptatem qui ut animi non omnis.
-                "500":
-                    description: 'fault: Internal fault'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/TiUPFaultError'
-                            example:
-                                fault: true
-                                id: Vel molestiae numquam sit corrupti aut.
-                                message: Autem et.
-                                name: In assumenda natus.
-                                temporary: true
-                                timeout: false
-    /api/v2/tiup/publish-units/{id}/resume:
-        post:
-            tags:
-                - publish
-            summary: resumePublishUnit publish
-            description: Resume the failed steps of a partial publication unit.
-            operationId: publish#resumePublishUnit
-            parameters:
-                - name: id
-                  in: path
-                  required: true
-                  schema:
-                    type: string
-                    example: Enim sit in.
-                  example: Animi corrupti dicta dolor accusamus commodi tempora.
-            responses:
-                "200":
-                    description: OK response.
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishUnit'
-                            example:
-                                artifactUrl: Delectus voluptatem ad.
-                                createdAt: "1986-03-10T08:59:13Z"
-                                digest: Quae neque doloribus aliquid exercitationem aut.
-                                finishedAt: "1984-02-14T14:36:52Z"
-                                id: Sint qui non non sint.
-                                kind: Magnam repudiandae totam inventore repellendus.
-                                requestedBy: Voluptatem a dolorum quidem deserunt autem dolorem.
-                                state: canceled
-                                steps:
-                                    - attempts: 8508580156205440668
-                                      createdAt: "2002-01-30T10:17:13Z"
-                                      dependsOn: Quia et optio consequuntur dolorem minus.
-                                      dest: Aspernatur aspernatur qui esse praesentium.
-                                      finishedAt: "1971-07-21T17:47:56Z"
-                                      id: Explicabo officia necessitatibus ea ut.
-                                      lastError: Et non eos eos ut molestias tempora.
-                                      payload: Repellat voluptate debitis.
-                                      result: Totam et vel.
-                                      startedAt: "1990-08-14T15:21:50Z"
-                                      state: claimed
-                                      target: Est incidunt natus reprehenderit quaerat fuga.
-                                      unitId: Iste qui et qui.
-                                    - attempts: 8508580156205440668
-                                      createdAt: "2002-01-30T10:17:13Z"
-                                      dependsOn: Quia et optio consequuntur dolorem minus.
-                                      dest: Aspernatur aspernatur qui esse praesentium.
-                                      finishedAt: "1971-07-21T17:47:56Z"
-                                      id: Explicabo officia necessitatibus ea ut.
-                                      lastError: Et non eos eos ut molestias tempora.
-                                      payload: Repellat voluptate debitis.
-                                      result: Totam et vel.
-                                      startedAt: "1990-08-14T15:21:50Z"
-                                      state: claimed
-                                      target: Est incidunt natus reprehenderit quaerat fuga.
-                                      unitId: Iste qui et qui.
-                                    - attempts: 8508580156205440668
-                                      createdAt: "2002-01-30T10:17:13Z"
-                                      dependsOn: Quia et optio consequuntur dolorem minus.
-                                      dest: Aspernatur aspernatur qui esse praesentium.
-                                      finishedAt: "1971-07-21T17:47:56Z"
-                                      id: Explicabo officia necessitatibus ea ut.
-                                      lastError: Et non eos eos ut molestias tempora.
-                                      payload: Repellat voluptate debitis.
-                                      result: Totam et vel.
-                                      startedAt: "1990-08-14T15:21:50Z"
-                                      state: claimed
-                                      target: Est incidunt natus reprehenderit quaerat fuga.
-                                      unitId: Iste qui et qui.
-                "400":
-                    description: 'BadRequest: Bad Request'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishBadRequestError'
-                            example:
-                                code: 3062057655684294759
-                                message: Quisquam quibusdam.
-                "404":
-                    description: 'NotFound: Not Found'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/PublishNotFoundError'
-                            example:
-                                code: 1223440988572322202
-                                message: Dolore ratione enim rerum iste quia et.
-                "500":
-                    description: 'fault: Internal fault'
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/TiUPFaultError'
-                            example:
-                                fault: false
-                                id: Doloribus debitis ipsum.
-                                message: Quis modi consequatur iure iure.
-                                name: Commodi dolor quia sapiente non.
-                                temporary: false
-                                timeout: false
-    /api/v2/tiup/reset-rate-limit:
-        post:
-            tags:
-                - publish
-            summary: resetRateLimit publish
-            description: Kept for compatibility; the publish domain has no rate limiting.
-            operationId: publish#resetRateLimit
-            responses:
-                "200":
-                    description: OK response.
 components:
     schemas:
         BinArtifact:

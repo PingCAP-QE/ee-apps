@@ -64,8 +64,8 @@ the step lease, and at least `hard_timeout + 2×heartbeat`).
   automatically. Inspect it and resume explicitly:
 
   ```bash
-  curl -s https://do2.pingcap.net/tiup/publish-units/<unit-id> | jq
-  curl -s -X POST https://do2.pingcap.net/tiup/publish-units/<unit-id>/resume | jq
+  curl -s https://do2.pingcap.net/tiup/units/<unit-id> | jq
+  curl -s -X POST https://do2.pingcap.net/tiup/units/<unit-id>/resume | jq
   ```
 
   Resume re-queues only the failed and skipped steps; succeeded steps are left
@@ -98,8 +98,12 @@ publish:
 
 ## Legacy API
 
-The pre-migration routes are preserved (mounted under `/api/v2`, rewritten by
-the gateway):
+The pre-migration routes are preserved externally: the gateway rewrites
+`/tiup/*` to `/api/v2/publish/tiup/*`. Inside tibuild-v2 the service owns one
+base path, `/api/v2/publish`:
+
+- image planning and unit inspection: `/publish/images`, `/publish/units…`
+- TiUP: `/publish/tiup/…`
 
 | Route | Behaviour |
 | --- | --- |
@@ -108,5 +112,5 @@ the gateway):
 | `POST /tiup/publish-request-single` | one package from a tarball URL or an OCI layer |
 | `GET /tiup/publish-request/{id}` | unit or step id → `queued/processing/success/failed/canceled` |
 | `POST /tiup/reset-rate-limit` | no-op |
-| `GET /tiup/publish-units/{id}` | unit with all steps |
-| `POST /tiup/publish-units/{id}/resume` | re-queue the failed steps |
+| `GET /tiup/units/{id}` | unit with all steps |
+| `POST /tiup/units/{id}/resume` | re-queue the failed steps |

@@ -681,6 +681,256 @@ paths:
                             - message
             schemes:
                 - http
+    /publish/tiup/delivery-by-rules:
+        post:
+            tags:
+                - publish
+            summary: deliveryByRules publish
+            description: Publish an artifact to every mirror the delivery rules select.
+            operationId: publish#deliveryByRules
+            parameters:
+                - name: DeliveryByRulesRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/PublishDeliveryByRulesRequestBody'
+                    required:
+                        - artifact_url
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: array
+                        items:
+                            type: string
+                            example: Fuga ea.
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/PublishBadRequestError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/publish-request:
+        post:
+            tags:
+                - publish
+            summary: requestToPublish publish
+            description: Publish an artifact to one explicit mirror.
+            operationId: publish#requestToPublish
+            parameters:
+                - name: RequestToPublishRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/PublishRequestToPublishRequestBody'
+                    required:
+                        - artifact_url
+                        - tiup_mirror
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: array
+                        items:
+                            type: string
+                            example: Nulla quo accusantium quo dolorem culpa molestias.
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/PublishBadRequestError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/publish-request-single:
+        post:
+            tags:
+                - publish
+            summary: requestToPublishSingle publish
+            description: Publish one package from a tarball URL.
+            operationId: publish#requestToPublishSingle
+            parameters:
+                - name: RequestToPublishSingleRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TiUPPublishRequest'
+                    required:
+                        - from
+                        - publish
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: string
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/PublishBadRequestError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/publish-request/{request_id}:
+        get:
+            tags:
+                - publish
+            summary: queryPublishingStatus publish
+            description: Legacy status lookup; accepts a unit id or a step id.
+            operationId: publish#queryPublishingStatus
+            parameters:
+                - name: request_id
+                  in: path
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: string
+                        enum:
+                            - queued
+                            - processing
+                            - success
+                            - failed
+                            - canceled
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/reset-rate-limit:
+        post:
+            tags:
+                - publish
+            summary: resetRateLimit publish
+            description: Kept for compatibility; the publish domain has no rate limiting.
+            operationId: publish#resetRateLimit
+            responses:
+                "200":
+                    description: OK response.
+            schemes:
+                - http
+    /publish/tiup/units/{id}:
+        get:
+            tags:
+                - publish
+            summary: getPublishUnit publish
+            description: Get a publication unit and its steps.
+            operationId: publish#getPublishUnit
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/PublishUnit'
+                        required:
+                            - id
+                            - kind
+                            - artifactUrl
+                            - state
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/PublishBadRequestError'
+                        required:
+                            - code
+                            - message
+                "404":
+                    description: Not Found response.
+                    schema:
+                        $ref: '#/definitions/PublishNotFoundError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/units/{id}/resume:
+        post:
+            tags:
+                - publish
+            summary: resumePublishUnit publish
+            description: Resume the failed steps of a partial publication unit.
+            operationId: publish#resumePublishUnit
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        $ref: '#/definitions/PublishUnit'
+                        required:
+                            - id
+                            - kind
+                            - artifactUrl
+                            - state
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/PublishBadRequestError'
+                        required:
+                            - code
+                            - message
+                "404":
+                    description: Not Found response.
+                    schema:
+                        $ref: '#/definitions/PublishNotFoundError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
     /publish/units:
         get:
             tags:
@@ -819,256 +1069,6 @@ paths:
                         required:
                             - code
                             - message
-            schemes:
-                - http
-    /tiup/delivery-by-rules:
-        post:
-            tags:
-                - publish
-            summary: deliveryByRules publish
-            description: Publish an artifact to every mirror the delivery rules select.
-            operationId: publish#deliveryByRules
-            parameters:
-                - name: DeliveryByRulesRequestBody
-                  in: body
-                  required: true
-                  schema:
-                    $ref: '#/definitions/PublishDeliveryByRulesRequestBody'
-                    required:
-                        - artifact_url
-            responses:
-                "200":
-                    description: OK response.
-                    schema:
-                        type: array
-                        items:
-                            type: string
-                            example: Fuga ea.
-                "400":
-                    description: Bad Request response.
-                    schema:
-                        $ref: '#/definitions/PublishBadRequestError'
-                        required:
-                            - code
-                            - message
-                "500":
-                    description: Internal Server Error response.
-                    schema:
-                        $ref: '#/definitions/TiUPFaultError'
-                        required:
-                            - name
-                            - message
-            schemes:
-                - http
-    /tiup/publish-request:
-        post:
-            tags:
-                - publish
-            summary: requestToPublish publish
-            description: Publish an artifact to one explicit mirror.
-            operationId: publish#requestToPublish
-            parameters:
-                - name: RequestToPublishRequestBody
-                  in: body
-                  required: true
-                  schema:
-                    $ref: '#/definitions/PublishRequestToPublishRequestBody'
-                    required:
-                        - artifact_url
-                        - tiup_mirror
-            responses:
-                "200":
-                    description: OK response.
-                    schema:
-                        type: array
-                        items:
-                            type: string
-                            example: Nulla quo accusantium quo dolorem culpa molestias.
-                "400":
-                    description: Bad Request response.
-                    schema:
-                        $ref: '#/definitions/PublishBadRequestError'
-                        required:
-                            - code
-                            - message
-                "500":
-                    description: Internal Server Error response.
-                    schema:
-                        $ref: '#/definitions/TiUPFaultError'
-                        required:
-                            - name
-                            - message
-            schemes:
-                - http
-    /tiup/publish-request-single:
-        post:
-            tags:
-                - publish
-            summary: requestToPublishSingle publish
-            description: Publish one package from a tarball URL.
-            operationId: publish#requestToPublishSingle
-            parameters:
-                - name: RequestToPublishSingleRequestBody
-                  in: body
-                  required: true
-                  schema:
-                    $ref: '#/definitions/TiUPPublishRequest'
-                    required:
-                        - from
-                        - publish
-            responses:
-                "200":
-                    description: OK response.
-                    schema:
-                        type: string
-                "400":
-                    description: Bad Request response.
-                    schema:
-                        $ref: '#/definitions/PublishBadRequestError'
-                        required:
-                            - code
-                            - message
-                "500":
-                    description: Internal Server Error response.
-                    schema:
-                        $ref: '#/definitions/TiUPFaultError'
-                        required:
-                            - name
-                            - message
-            schemes:
-                - http
-    /tiup/publish-request/{request_id}:
-        get:
-            tags:
-                - publish
-            summary: queryPublishingStatus publish
-            description: Legacy status lookup; accepts a unit id or a step id.
-            operationId: publish#queryPublishingStatus
-            parameters:
-                - name: request_id
-                  in: path
-                  required: true
-                  type: string
-            responses:
-                "200":
-                    description: OK response.
-                    schema:
-                        type: string
-                        enum:
-                            - queued
-                            - processing
-                            - success
-                            - failed
-                            - canceled
-                "500":
-                    description: Internal Server Error response.
-                    schema:
-                        $ref: '#/definitions/TiUPFaultError'
-                        required:
-                            - name
-                            - message
-            schemes:
-                - http
-    /tiup/publish-units/{id}:
-        get:
-            tags:
-                - publish
-            summary: getPublishUnit publish
-            description: Get a publication unit and its steps.
-            operationId: publish#getPublishUnit
-            parameters:
-                - name: id
-                  in: path
-                  required: true
-                  type: string
-            responses:
-                "200":
-                    description: OK response.
-                    schema:
-                        $ref: '#/definitions/PublishUnit'
-                        required:
-                            - id
-                            - kind
-                            - artifactUrl
-                            - state
-                "400":
-                    description: Bad Request response.
-                    schema:
-                        $ref: '#/definitions/PublishBadRequestError'
-                        required:
-                            - code
-                            - message
-                "404":
-                    description: Not Found response.
-                    schema:
-                        $ref: '#/definitions/PublishNotFoundError'
-                        required:
-                            - code
-                            - message
-                "500":
-                    description: Internal Server Error response.
-                    schema:
-                        $ref: '#/definitions/TiUPFaultError'
-                        required:
-                            - name
-                            - message
-            schemes:
-                - http
-    /tiup/publish-units/{id}/resume:
-        post:
-            tags:
-                - publish
-            summary: resumePublishUnit publish
-            description: Resume the failed steps of a partial publication unit.
-            operationId: publish#resumePublishUnit
-            parameters:
-                - name: id
-                  in: path
-                  required: true
-                  type: string
-            responses:
-                "200":
-                    description: OK response.
-                    schema:
-                        $ref: '#/definitions/PublishUnit'
-                        required:
-                            - id
-                            - kind
-                            - artifactUrl
-                            - state
-                "400":
-                    description: Bad Request response.
-                    schema:
-                        $ref: '#/definitions/PublishBadRequestError'
-                        required:
-                            - code
-                            - message
-                "404":
-                    description: Not Found response.
-                    schema:
-                        $ref: '#/definitions/PublishNotFoundError'
-                        required:
-                            - code
-                            - message
-                "500":
-                    description: Internal Server Error response.
-                    schema:
-                        $ref: '#/definitions/TiUPFaultError'
-                        required:
-                            - name
-                            - message
-            schemes:
-                - http
-    /tiup/reset-rate-limit:
-        post:
-            tags:
-                - publish
-            summary: resetRateLimit publish
-            description: Kept for compatibility; the publish domain has no rate limiting.
-            operationId: publish#resetRateLimit
-            responses:
-                "200":
-                    description: OK response.
             schemes:
                 - http
 definitions:
