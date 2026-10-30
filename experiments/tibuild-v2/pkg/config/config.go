@@ -55,6 +55,27 @@ type Publish struct {
 	// the image sync queue, and narrowing it to concentrate publication in a
 	// region would silently re-shard image sync at the same time.
 	Targets []string `yaml:"targets,omitempty" json:"targets,omitempty"`
+
+	// TiUPMirrors maps a mirror name (staging, prod) to its base URL. A
+	// publish worker only executes the steps whose target it is configured
+	// for, so the URL is resolved at planning time and stored in the payload.
+	TiUPMirrors map[string]string `yaml:"tiup_mirrors,omitempty" json:"tiup_mirrors,omitempty"`
+	// TiUPBinary is the tiup executable used to publish (default "tiup").
+	TiUPBinary string `yaml:"tiup_binary,omitempty" json:"tiup_binary,omitempty"`
+	// TiUPDependencies seeds `publish_step.depends_on`: the key is the target
+	// that must finish first, the value is the target that waits. The default
+	// keeps the documented policy (staging waits for prod).
+	TiUPDependencies map[string]string `yaml:"tiup_dependencies,omitempty" json:"tiup_dependencies,omitempty"`
+}
+
+// TiUPStageDependencies returns the `depends_on` seeding for TiUP plans: a nil
+// map keeps the documented policy (staging waits for prod), while an explicit
+// empty map runs the mirrors in parallel.
+func (p Publish) TiUPStageDependencies() map[string]string {
+	if p.TiUPDependencies == nil {
+		return map[string]string{"tiup-prod": "tiup-staging"}
+	}
+	return p.TiUPDependencies
 }
 
 // PublicationTargets returns the targets the publish worker claims: the

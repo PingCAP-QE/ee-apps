@@ -681,6 +681,166 @@ paths:
                             - message
             schemes:
                 - http
+    /publish/tiup/delivery-by-rules:
+        post:
+            tags:
+                - publish
+            summary: deliveryByRules publish
+            description: Publish an artifact to every mirror the delivery rules select.
+            operationId: publish#deliveryByRules
+            parameters:
+                - name: DeliveryByRulesRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/PublishDeliveryByRulesRequestBody'
+                    required:
+                        - artifact_url
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: array
+                        items:
+                            type: string
+                            example: Neque molestiae voluptas non voluptatem.
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/PublishBadRequestError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/publish-request:
+        post:
+            tags:
+                - publish
+            summary: requestToPublish publish
+            description: Publish an artifact to one explicit mirror.
+            operationId: publish#requestToPublish
+            parameters:
+                - name: RequestToPublishRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/PublishRequestToPublishRequestBody'
+                    required:
+                        - artifact_url
+                        - tiup_mirror
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: array
+                        items:
+                            type: string
+                            example: Cupiditate ipsa.
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/PublishBadRequestError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/publish-request-single:
+        post:
+            tags:
+                - publish
+            summary: requestToPublishSingle publish
+            description: Publish one package from a tarball URL.
+            operationId: publish#requestToPublishSingle
+            parameters:
+                - name: RequestToPublishSingleRequestBody
+                  in: body
+                  required: true
+                  schema:
+                    $ref: '#/definitions/TiUPPublishRequest'
+                    required:
+                        - from
+                        - publish
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: string
+                "400":
+                    description: Bad Request response.
+                    schema:
+                        $ref: '#/definitions/PublishBadRequestError'
+                        required:
+                            - code
+                            - message
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/publish-request/{request_id}:
+        get:
+            tags:
+                - publish
+            summary: queryPublishingStatus publish
+            description: Legacy status lookup; accepts a unit id or a step id.
+            operationId: publish#queryPublishingStatus
+            parameters:
+                - name: request_id
+                  in: path
+                  required: true
+                  type: string
+            responses:
+                "200":
+                    description: OK response.
+                    schema:
+                        type: string
+                        enum:
+                            - queued
+                            - processing
+                            - success
+                            - failed
+                            - canceled
+                "500":
+                    description: Internal Server Error response.
+                    schema:
+                        $ref: '#/definitions/TiUPFaultError'
+                        required:
+                            - name
+                            - message
+            schemes:
+                - http
+    /publish/tiup/reset-rate-limit:
+        post:
+            tags:
+                - publish
+            summary: resetRateLimit publish
+            description: Kept for compatibility; the publish domain has no rate limiting.
+            operationId: publish#resetRateLimit
+            responses:
+                "200":
+                    description: OK response.
+            schemes:
+                - http
     /publish/units:
         get:
             tags:
@@ -828,35 +988,35 @@ definitions:
         properties:
             component:
                 type: string
-                example: Modi enim mollitia.
+                example: Quasi pariatur.
             ociFile:
                 $ref: '#/definitions/OciFile'
             platform:
                 type: string
-                example: Eligendi dolorem.
+                example: Fuga minima sint sed.
             sha256OCIFile:
                 $ref: '#/definitions/OciFile'
             sha256URL:
                 type: string
-                example: http://zemlak.name/frankie.toy
+                example: http://jacobi.net/brent
                 format: uri
             url:
                 type: string
-                example: http://terry.biz/adan
+                example: http://simonis.org/harvey.crist
                 format: uri
         example:
-            component: Quas occaecati reprehenderit ipsum eligendi quae officiis.
+            component: Aut et atque nesciunt.
             ociFile:
-                file: Magnam non voluptas ut fugiat.
-                repo: Voluptas reiciendis est.
-                tag: Quis itaque in dignissimos et omnis.
-            platform: Animi unde.
+                file: Voluptates sed minima maiores rem aliquid aut.
+                repo: Debitis quisquam.
+                tag: Doloribus necessitatibus rerum quo.
+            platform: Delectus sequi facilis molestiae.
             sha256OCIFile:
-                file: Magnam non voluptas ut fugiat.
-                repo: Voluptas reiciendis est.
-                tag: Quis itaque in dignissimos et omnis.
-            sha256URL: http://watsica.info/angel
-            url: http://barton.biz/william_jacobs
+                file: Voluptates sed minima maiores rem aliquid aut.
+                repo: Debitis quisquam.
+                tag: Doloribus necessitatibus rerum quo.
+            sha256URL: http://kunde.name/evangeline_raynor
+            url: http://hoppe.name/rasheed_rohan
     BuildReport:
         title: BuildReport
         type: object
@@ -866,116 +1026,125 @@ definitions:
                 items:
                     $ref: '#/definitions/BinArtifact'
                 example:
-                    - component: Enim voluptate autem.
+                    - component: Autem omnis qui autem aliquid voluptas magni.
                       ociFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      platform: Id magni esse.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      platform: Sint itaque et sint minima quas earum.
                       sha256OCIFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      sha256URL: http://gleason.name/madge_turner
-                      url: http://hodkiewicz.net/keegan
-                    - component: Enim voluptate autem.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      sha256URL: http://pollich.org/wilson
+                      url: http://naderjakubowski.org/philip.jenkins
+                    - component: Autem omnis qui autem aliquid voluptas magni.
                       ociFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      platform: Id magni esse.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      platform: Sint itaque et sint minima quas earum.
                       sha256OCIFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      sha256URL: http://gleason.name/madge_turner
-                      url: http://hodkiewicz.net/keegan
-                    - component: Enim voluptate autem.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      sha256URL: http://pollich.org/wilson
+                      url: http://naderjakubowski.org/philip.jenkins
+                    - component: Autem omnis qui autem aliquid voluptas magni.
                       ociFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      platform: Id magni esse.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      platform: Sint itaque et sint minima quas earum.
                       sha256OCIFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      sha256URL: http://gleason.name/madge_turner
-                      url: http://hodkiewicz.net/keegan
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      sha256URL: http://pollich.org/wilson
+                      url: http://naderjakubowski.org/philip.jenkins
             gitHash:
                 type: string
-                example: uc0
+                example: 4gs
                 maxLength: 40
             images:
                 type: array
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
             pluginGitHash:
                 type: string
-                example: ge4
+                example: oh6
                 maxLength: 40
             printedVersion:
                 type: string
-                example: Eius nihil et molestias modi perferendis.
+                example: Ea quia enim debitis.
         example:
             binaries:
-                - component: Enim voluptate autem.
+                - component: Autem omnis qui autem aliquid voluptas magni.
                   ociFile:
-                    file: Magnam non voluptas ut fugiat.
-                    repo: Voluptas reiciendis est.
-                    tag: Quis itaque in dignissimos et omnis.
-                  platform: Id magni esse.
+                    file: Voluptates sed minima maiores rem aliquid aut.
+                    repo: Debitis quisquam.
+                    tag: Doloribus necessitatibus rerum quo.
+                  platform: Sint itaque et sint minima quas earum.
                   sha256OCIFile:
-                    file: Magnam non voluptas ut fugiat.
-                    repo: Voluptas reiciendis est.
-                    tag: Quis itaque in dignissimos et omnis.
-                  sha256URL: http://gleason.name/madge_turner
-                  url: http://hodkiewicz.net/keegan
-                - component: Enim voluptate autem.
+                    file: Voluptates sed minima maiores rem aliquid aut.
+                    repo: Debitis quisquam.
+                    tag: Doloribus necessitatibus rerum quo.
+                  sha256URL: http://pollich.org/wilson
+                  url: http://naderjakubowski.org/philip.jenkins
+                - component: Autem omnis qui autem aliquid voluptas magni.
                   ociFile:
-                    file: Magnam non voluptas ut fugiat.
-                    repo: Voluptas reiciendis est.
-                    tag: Quis itaque in dignissimos et omnis.
-                  platform: Id magni esse.
+                    file: Voluptates sed minima maiores rem aliquid aut.
+                    repo: Debitis quisquam.
+                    tag: Doloribus necessitatibus rerum quo.
+                  platform: Sint itaque et sint minima quas earum.
                   sha256OCIFile:
-                    file: Magnam non voluptas ut fugiat.
-                    repo: Voluptas reiciendis est.
-                    tag: Quis itaque in dignissimos et omnis.
-                  sha256URL: http://gleason.name/madge_turner
-                  url: http://hodkiewicz.net/keegan
-            gitHash: 59e
+                    file: Voluptates sed minima maiores rem aliquid aut.
+                    repo: Debitis quisquam.
+                    tag: Doloribus necessitatibus rerum quo.
+                  sha256URL: http://pollich.org/wilson
+                  url: http://naderjakubowski.org/philip.jenkins
+                - component: Autem omnis qui autem aliquid voluptas magni.
+                  ociFile:
+                    file: Voluptates sed minima maiores rem aliquid aut.
+                    repo: Debitis quisquam.
+                    tag: Doloribus necessitatibus rerum quo.
+                  platform: Sint itaque et sint minima quas earum.
+                  sha256OCIFile:
+                    file: Voluptates sed minima maiores rem aliquid aut.
+                    repo: Debitis quisquam.
+                    tag: Doloribus necessitatibus rerum quo.
+                  sha256URL: http://pollich.org/wilson
+                  url: http://naderjakubowski.org/philip.jenkins
+            gitHash: 4n8
             images:
-                - internalURL: Vel quas non omnis aut.
-                  platform: Eos et ab et sed pariatur.
-                  url: Quo nulla.
-                - internalURL: Vel quas non omnis aut.
-                  platform: Eos et ab et sed pariatur.
-                  url: Quo nulla.
-                - internalURL: Vel quas non omnis aut.
-                  platform: Eos et ab et sed pariatur.
-                  url: Quo nulla.
-                - internalURL: Vel quas non omnis aut.
-                  platform: Eos et ab et sed pariatur.
-                  url: Quo nulla.
-            pluginGitHash: nz1
-            printedVersion: Ratione deserunt fuga.
+                - internalURL: Dolores sequi minima eos sed.
+                  platform: Exercitationem dolorem autem minus iusto et.
+                  url: Quis ipsa vel suscipit aut aut aut.
+                - internalURL: Dolores sequi minima eos sed.
+                  platform: Exercitationem dolorem autem minus iusto et.
+                  url: Quis ipsa vel suscipit aut aut aut.
+            pluginGitHash: 8c5
+            printedVersion: Odio tempore qui sapiente fuga officiis sequi.
     DevBuild:
         title: DevBuild
         type: object
         properties:
             id:
                 type: integer
-                example: 2718320876236256796
+                example: 5685925303426105830
                 format: int64
             meta:
                 $ref: '#/definitions/DevBuildMeta'
@@ -986,252 +1155,197 @@ definitions:
             status:
                 $ref: '#/definitions/DevBuildStatus'
         example:
-            id: 5064494736903588899
+            id: 3172780258726498609
             meta:
-                createdAt: "1981-11-22T19:48:31Z"
-                createdBy: lisandro@grady.net
-                updatedAt: "1995-06-06T18:33:40Z"
+                createdAt: "1978-12-01T03:40:11Z"
+                createdBy: emmanuelle_swaniawski@luettgen.name
+                updatedAt: "1983-11-17T17:32:49Z"
             permissions:
-                canRerun: false
+                canRerun: true
             spec:
-                buildEnv: Inventore sed cupiditate possimus qui recusandae.
-                builderImg: Alias sapiente ratione.
-                edition: next-gen
-                features: Rem enim.
-                gitHash: Rem beatae recusandae in et.
-                gitRef: Cum rerum aut aut blanditiis.
-                githubRepo: Iusto laudantium similique occaecati dignissimos accusantium.
+                buildEnv: Maxime aperiam explicabo nemo consequatur.
+                builderImg: Inventore rerum veniam alias est quod quo.
+                edition: community
+                features: Magni enim qui accusamus doloribus dolor.
+                gitHash: Veniam voluptates nisi ex repellat.
+                gitRef: Nihil rerum explicabo.
+                githubRepo: Nihil eos et ab.
                 isHotfix: false
-                isPushGCR: false
-                pipelineEngine: tekton
-                platform: darwin/amd64
-                pluginGitRef: Dolores dolores animi nobis voluptas esse consequatur.
-                product: tidb-tools
-                productBaseImg: Qui consequatur quos.
-                productDockerfile: Aliquid non earum.
-                targetImg: Molestiae dolorum aut magnam ipsam maiores et.
-                version: Adipisci ducimus aut harum quia ipsa perferendis.
+                isPushGCR: true
+                pipelineEngine: jenkins
+                platform: all
+                pluginGitRef: Quo nulla.
+                product: dumpling
+                productBaseImg: Quas non omnis.
+                productDockerfile: Quo laboriosam reprehenderit et repellendus qui.
+                targetImg: Nostrum et officiis incidunt et.
+                version: Consequatur recusandae voluptatibus qui.
             status:
                 buildReport:
                     binaries:
-                        - component: Enim voluptate autem.
+                        - component: Autem omnis qui autem aliquid voluptas magni.
                           ociFile:
-                            file: Magnam non voluptas ut fugiat.
-                            repo: Voluptas reiciendis est.
-                            tag: Quis itaque in dignissimos et omnis.
-                          platform: Id magni esse.
+                            file: Voluptates sed minima maiores rem aliquid aut.
+                            repo: Debitis quisquam.
+                            tag: Doloribus necessitatibus rerum quo.
+                          platform: Sint itaque et sint minima quas earum.
                           sha256OCIFile:
-                            file: Magnam non voluptas ut fugiat.
-                            repo: Voluptas reiciendis est.
-                            tag: Quis itaque in dignissimos et omnis.
-                          sha256URL: http://gleason.name/madge_turner
-                          url: http://hodkiewicz.net/keegan
-                        - component: Enim voluptate autem.
+                            file: Voluptates sed minima maiores rem aliquid aut.
+                            repo: Debitis quisquam.
+                            tag: Doloribus necessitatibus rerum quo.
+                          sha256URL: http://pollich.org/wilson
+                          url: http://naderjakubowski.org/philip.jenkins
+                        - component: Autem omnis qui autem aliquid voluptas magni.
                           ociFile:
-                            file: Magnam non voluptas ut fugiat.
-                            repo: Voluptas reiciendis est.
-                            tag: Quis itaque in dignissimos et omnis.
-                          platform: Id magni esse.
+                            file: Voluptates sed minima maiores rem aliquid aut.
+                            repo: Debitis quisquam.
+                            tag: Doloribus necessitatibus rerum quo.
+                          platform: Sint itaque et sint minima quas earum.
                           sha256OCIFile:
-                            file: Magnam non voluptas ut fugiat.
-                            repo: Voluptas reiciendis est.
-                            tag: Quis itaque in dignissimos et omnis.
-                          sha256URL: http://gleason.name/madge_turner
-                          url: http://hodkiewicz.net/keegan
-                        - component: Enim voluptate autem.
+                            file: Voluptates sed minima maiores rem aliquid aut.
+                            repo: Debitis quisquam.
+                            tag: Doloribus necessitatibus rerum quo.
+                          sha256URL: http://pollich.org/wilson
+                          url: http://naderjakubowski.org/philip.jenkins
+                        - component: Autem omnis qui autem aliquid voluptas magni.
                           ociFile:
-                            file: Magnam non voluptas ut fugiat.
-                            repo: Voluptas reiciendis est.
-                            tag: Quis itaque in dignissimos et omnis.
-                          platform: Id magni esse.
+                            file: Voluptates sed minima maiores rem aliquid aut.
+                            repo: Debitis quisquam.
+                            tag: Doloribus necessitatibus rerum quo.
+                          platform: Sint itaque et sint minima quas earum.
                           sha256OCIFile:
-                            file: Magnam non voluptas ut fugiat.
-                            repo: Voluptas reiciendis est.
-                            tag: Quis itaque in dignissimos et omnis.
-                          sha256URL: http://gleason.name/madge_turner
-                          url: http://hodkiewicz.net/keegan
-                        - component: Enim voluptate autem.
+                            file: Voluptates sed minima maiores rem aliquid aut.
+                            repo: Debitis quisquam.
+                            tag: Doloribus necessitatibus rerum quo.
+                          sha256URL: http://pollich.org/wilson
+                          url: http://naderjakubowski.org/philip.jenkins
+                        - component: Autem omnis qui autem aliquid voluptas magni.
                           ociFile:
-                            file: Magnam non voluptas ut fugiat.
-                            repo: Voluptas reiciendis est.
-                            tag: Quis itaque in dignissimos et omnis.
-                          platform: Id magni esse.
+                            file: Voluptates sed minima maiores rem aliquid aut.
+                            repo: Debitis quisquam.
+                            tag: Doloribus necessitatibus rerum quo.
+                          platform: Sint itaque et sint minima quas earum.
                           sha256OCIFile:
-                            file: Magnam non voluptas ut fugiat.
-                            repo: Voluptas reiciendis est.
-                            tag: Quis itaque in dignissimos et omnis.
-                          sha256URL: http://gleason.name/madge_turner
-                          url: http://hodkiewicz.net/keegan
-                    gitHash: 3l6
+                            file: Voluptates sed minima maiores rem aliquid aut.
+                            repo: Debitis quisquam.
+                            tag: Doloribus necessitatibus rerum quo.
+                          sha256URL: http://pollich.org/wilson
+                          url: http://naderjakubowski.org/philip.jenkins
+                    gitHash: d21
                     images:
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                    pluginGitHash: tow
-                    printedVersion: Qui voluptas.
-                errMsg: Et officiis.
-                pipelineBuildID: 4298836528168637705
-                pipelineEndAt: "1992-06-12T02:34:05Z"
-                pipelineStartAt: "1970-04-11T19:22:21Z"
-                pipelineViewURL: http://marvin.com/brianne_shields
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                    pluginGitHash: 8ef
+                    printedVersion: Fuga culpa voluptatem tempora explicabo vel.
+                errMsg: Quis autem fuga.
+                pipelineBuildID: 4012469336792237624
+                pipelineEndAt: "2012-02-15T21:37:38Z"
+                pipelineStartAt: "2014-11-17T02:21:23Z"
+                pipelineViewURL: http://rippin.net/sabina
                 pipelineViewURLs:
-                    - http://bednar.com/arthur
-                    - http://oconnerrath.org/mona
-                status: ERROR
+                    - http://stamm.org/cleveland_bogan
+                    - http://grimesadams.biz/rylan_frami
+                status: ABORTED
                 tektonStatus:
                     pipelines:
-                        - endAt: "2014-09-12T09:57:52Z"
+                        - endAt: "2000-10-17T16:47:45Z"
                           images:
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                          name: Esse accusantium molestiae nihil id vitae.
-                          namespace: Ut nihil numquam dolorum quasi eaque.
+                            - internalURL: Dolores sequi minima eos sed.
+                              platform: Exercitationem dolorem autem minus iusto et.
+                              url: Quis ipsa vel suscipit aut aut aut.
+                            - internalURL: Dolores sequi minima eos sed.
+                              platform: Exercitationem dolorem autem minus iusto et.
+                              url: Quis ipsa vel suscipit aut aut aut.
+                            - internalURL: Dolores sequi minima eos sed.
+                              platform: Exercitationem dolorem autem minus iusto et.
+                              url: Quis ipsa vel suscipit aut aut aut.
+                          name: Veniam nihil.
+                          namespace: Laborum libero a voluptatum.
                           ociArtifacts:
                             - files:
-                                - Quas et blanditiis et sit.
-                                - Qui voluptates doloremque.
-                                - Saepe quae quia dolorem.
-                                - Aut repellendus.
-                              repo: Blanditiis dignissimos eius.
-                              tag: Reiciendis omnis modi.
+                                - Fuga aliquid ab.
+                                - Dolorum dolores.
+                                - Pariatur ea.
+                              repo: Quas impedit cumque unde quam.
+                              tag: Rerum porro beatae sapiente quo qui.
                             - files:
-                                - Quas et blanditiis et sit.
-                                - Qui voluptates doloremque.
-                                - Saepe quae quia dolorem.
-                                - Aut repellendus.
-                              repo: Blanditiis dignissimos eius.
-                              tag: Reiciendis omnis modi.
-                          platform: Voluptates magnam porro.
-                          startAt: "2001-05-31T13:28:34Z"
-                          status: Skipped
-                          url: http://hauck.net/queen
-                        - endAt: "2014-09-12T09:57:52Z"
+                                - Fuga aliquid ab.
+                                - Dolorum dolores.
+                                - Pariatur ea.
+                              repo: Quas impedit cumque unde quam.
+                              tag: Rerum porro beatae sapiente quo qui.
+                            - files:
+                                - Fuga aliquid ab.
+                                - Dolorum dolores.
+                                - Pariatur ea.
+                              repo: Quas impedit cumque unde quam.
+                              tag: Rerum porro beatae sapiente quo qui.
+                            - files:
+                                - Fuga aliquid ab.
+                                - Dolorum dolores.
+                                - Pariatur ea.
+                              repo: Quas impedit cumque unde quam.
+                              tag: Rerum porro beatae sapiente quo qui.
+                          platform: A quia cupiditate praesentium nostrum aut magni.
+                          startAt: "2008-01-03T07:53:23Z"
+                          status: Succeeded
+                          url: http://ullrich.com/malcolm_langosh
+                        - endAt: "2000-10-17T16:47:45Z"
                           images:
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                          name: Esse accusantium molestiae nihil id vitae.
-                          namespace: Ut nihil numquam dolorum quasi eaque.
+                            - internalURL: Dolores sequi minima eos sed.
+                              platform: Exercitationem dolorem autem minus iusto et.
+                              url: Quis ipsa vel suscipit aut aut aut.
+                            - internalURL: Dolores sequi minima eos sed.
+                              platform: Exercitationem dolorem autem minus iusto et.
+                              url: Quis ipsa vel suscipit aut aut aut.
+                            - internalURL: Dolores sequi minima eos sed.
+                              platform: Exercitationem dolorem autem minus iusto et.
+                              url: Quis ipsa vel suscipit aut aut aut.
+                          name: Veniam nihil.
+                          namespace: Laborum libero a voluptatum.
                           ociArtifacts:
                             - files:
-                                - Quas et blanditiis et sit.
-                                - Qui voluptates doloremque.
-                                - Saepe quae quia dolorem.
-                                - Aut repellendus.
-                              repo: Blanditiis dignissimos eius.
-                              tag: Reiciendis omnis modi.
+                                - Fuga aliquid ab.
+                                - Dolorum dolores.
+                                - Pariatur ea.
+                              repo: Quas impedit cumque unde quam.
+                              tag: Rerum porro beatae sapiente quo qui.
                             - files:
-                                - Quas et blanditiis et sit.
-                                - Qui voluptates doloremque.
-                                - Saepe quae quia dolorem.
-                                - Aut repellendus.
-                              repo: Blanditiis dignissimos eius.
-                              tag: Reiciendis omnis modi.
-                          platform: Voluptates magnam porro.
-                          startAt: "2001-05-31T13:28:34Z"
-                          status: Skipped
-                          url: http://hauck.net/queen
-                        - endAt: "2014-09-12T09:57:52Z"
-                          images:
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                          name: Esse accusantium molestiae nihil id vitae.
-                          namespace: Ut nihil numquam dolorum quasi eaque.
-                          ociArtifacts:
+                                - Fuga aliquid ab.
+                                - Dolorum dolores.
+                                - Pariatur ea.
+                              repo: Quas impedit cumque unde quam.
+                              tag: Rerum porro beatae sapiente quo qui.
                             - files:
-                                - Quas et blanditiis et sit.
-                                - Qui voluptates doloremque.
-                                - Saepe quae quia dolorem.
-                                - Aut repellendus.
-                              repo: Blanditiis dignissimos eius.
-                              tag: Reiciendis omnis modi.
+                                - Fuga aliquid ab.
+                                - Dolorum dolores.
+                                - Pariatur ea.
+                              repo: Quas impedit cumque unde quam.
+                              tag: Rerum porro beatae sapiente quo qui.
                             - files:
-                                - Quas et blanditiis et sit.
-                                - Qui voluptates doloremque.
-                                - Saepe quae quia dolorem.
-                                - Aut repellendus.
-                              repo: Blanditiis dignissimos eius.
-                              tag: Reiciendis omnis modi.
-                          platform: Voluptates magnam porro.
-                          startAt: "2001-05-31T13:28:34Z"
-                          status: Skipped
-                          url: http://hauck.net/queen
-                        - endAt: "2014-09-12T09:57:52Z"
-                          images:
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                            - internalURL: Vel quas non omnis aut.
-                              platform: Eos et ab et sed pariatur.
-                              url: Quo nulla.
-                          name: Esse accusantium molestiae nihil id vitae.
-                          namespace: Ut nihil numquam dolorum quasi eaque.
-                          ociArtifacts:
-                            - files:
-                                - Quas et blanditiis et sit.
-                                - Qui voluptates doloremque.
-                                - Saepe quae quia dolorem.
-                                - Aut repellendus.
-                              repo: Blanditiis dignissimos eius.
-                              tag: Reiciendis omnis modi.
-                            - files:
-                                - Quas et blanditiis et sit.
-                                - Qui voluptates doloremque.
-                                - Saepe quae quia dolorem.
-                                - Aut repellendus.
-                              repo: Blanditiis dignissimos eius.
-                              tag: Reiciendis omnis modi.
-                          platform: Voluptates magnam porro.
-                          startAt: "2001-05-31T13:28:34Z"
-                          status: Skipped
-                          url: http://hauck.net/queen
+                                - Fuga aliquid ab.
+                                - Dolorum dolores.
+                                - Pariatur ea.
+                              repo: Quas impedit cumque unde quam.
+                              tag: Rerum porro beatae sapiente quo qui.
+                          platform: A quia cupiditate praesentium nostrum aut magni.
+                          startAt: "2008-01-03T07:53:23Z"
+                          status: Succeeded
+                          url: http://ullrich.com/malcolm_langosh
                     triggersEventIDs:
-                        - 04c501e2-13fc-4ff9-9188-b9dafcc333e9
-                        - 4ff40d0f-c023-4ff5-8bbc-2818cbe585c7
+                        - 85dce01f-4f12-417f-bfc3-734bee84094b
+                        - 49700a68-e8d0-4d4c-b775-8cbbcd24b821
+                        - f0469996-d9ce-4338-83f0-8e2b7361a9db
         required:
             - id
             - meta
@@ -1243,15 +1357,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 7093172661235002960
+                example: 2250421094270444831
                 format: int64
             message:
                 type: string
-                example: Voluptatum libero ut esse.
+                example: Iure vel quae aut.
         description: Bad Request
         example:
-            code: 2527372807573154026
-            message: Perspiciatis possimus dicta quibusdam alias earum.
+            code: 1115290450949384740
+            message: Magni laborum quasi quia asperiores omnis sint.
         required:
             - code
             - message
@@ -1261,105 +1375,76 @@ definitions:
         properties:
             defaultPipelineEngine:
                 type: string
-                example: Sed dicta quasi tempora optio.
+                example: Quibusdam vel quibusdam ratione accusamus est.
             pipelineEngines:
                 type: array
                 items:
                     type: string
-                    example: Est saepe soluta dolore laborum maxime.
+                    example: Quo voluptatibus voluptatibus aut voluptatem iste.
                 example:
-                    - Molestiae enim modi minus.
-                    - Quod ullam.
-                    - Nesciunt inventore.
+                    - Repellat occaecati et eum sint.
+                    - Tempore recusandae vel.
+                    - Distinctio illum corrupti voluptatem aut consequatur.
+                    - Minima et accusantium.
             products:
                 type: array
                 items:
                     $ref: '#/definitions/DevBuildProductCapability'
                 example:
-                    - defaultEdition: Voluptatum est neque ut dolores necessitatibus.
-                      defaultPlatform: Impedit eos.
+                    - defaultEdition: Consequuntur sit suscipit ipsum.
+                      defaultPlatform: Et cupiditate.
                       editions:
-                        - Quia qui ducimus.
-                        - Delectus sed laboriosam.
-                        - Veniam exercitationem ut vitae autem.
-                        - Nihil reiciendis nulla perferendis laborum ullam.
-                      id: Commodi dicta qui explicabo occaecati.
-                      label: Iure voluptatibus et qui dignissimos.
+                        - Eligendi nisi dolor aliquid perspiciatis et.
+                        - Facere nesciunt sapiente.
+                      id: Dolorem incidunt.
+                      label: Unde natus atque nesciunt fugit qui eos.
                       platforms:
-                        - Quidem ut delectus et quia dolor perspiciatis.
-                        - Minus culpa nisi ad.
-                        - Rerum nulla consequatur labore adipisci aut dolorum.
-                    - defaultEdition: Voluptatum est neque ut dolores necessitatibus.
-                      defaultPlatform: Impedit eos.
+                        - Quia itaque nisi.
+                        - Rerum aut dolorem est non.
+                        - Suscipit cum et et qui in.
+                        - Et illo consectetur.
+                    - defaultEdition: Consequuntur sit suscipit ipsum.
+                      defaultPlatform: Et cupiditate.
                       editions:
-                        - Quia qui ducimus.
-                        - Delectus sed laboriosam.
-                        - Veniam exercitationem ut vitae autem.
-                        - Nihil reiciendis nulla perferendis laborum ullam.
-                      id: Commodi dicta qui explicabo occaecati.
-                      label: Iure voluptatibus et qui dignissimos.
+                        - Eligendi nisi dolor aliquid perspiciatis et.
+                        - Facere nesciunt sapiente.
+                      id: Dolorem incidunt.
+                      label: Unde natus atque nesciunt fugit qui eos.
                       platforms:
-                        - Quidem ut delectus et quia dolor perspiciatis.
-                        - Minus culpa nisi ad.
-                        - Rerum nulla consequatur labore adipisci aut dolorum.
-                    - defaultEdition: Voluptatum est neque ut dolores necessitatibus.
-                      defaultPlatform: Impedit eos.
-                      editions:
-                        - Quia qui ducimus.
-                        - Delectus sed laboriosam.
-                        - Veniam exercitationem ut vitae autem.
-                        - Nihil reiciendis nulla perferendis laborum ullam.
-                      id: Commodi dicta qui explicabo occaecati.
-                      label: Iure voluptatibus et qui dignissimos.
-                      platforms:
-                        - Quidem ut delectus et quia dolor perspiciatis.
-                        - Minus culpa nisi ad.
-                        - Rerum nulla consequatur labore adipisci aut dolorum.
-                    - defaultEdition: Voluptatum est neque ut dolores necessitatibus.
-                      defaultPlatform: Impedit eos.
-                      editions:
-                        - Quia qui ducimus.
-                        - Delectus sed laboriosam.
-                        - Veniam exercitationem ut vitae autem.
-                        - Nihil reiciendis nulla perferendis laborum ullam.
-                      id: Commodi dicta qui explicabo occaecati.
-                      label: Iure voluptatibus et qui dignissimos.
-                      platforms:
-                        - Quidem ut delectus et quia dolor perspiciatis.
-                        - Minus culpa nisi ad.
-                        - Rerum nulla consequatur labore adipisci aut dolorum.
+                        - Quia itaque nisi.
+                        - Rerum aut dolorem est non.
+                        - Suscipit cum et et qui in.
+                        - Et illo consectetur.
         example:
-            defaultPipelineEngine: Et eos.
+            defaultPipelineEngine: Iure non eos molestias sunt voluptas et.
             pipelineEngines:
-                - Perferendis quam nihil mollitia.
-                - Quidem quaerat blanditiis.
+                - Saepe deserunt autem aut a omnis.
+                - Expedita laboriosam magnam vel.
             products:
-                - defaultEdition: Voluptatum est neque ut dolores necessitatibus.
-                  defaultPlatform: Impedit eos.
+                - defaultEdition: Consequuntur sit suscipit ipsum.
+                  defaultPlatform: Et cupiditate.
                   editions:
-                    - Quia qui ducimus.
-                    - Delectus sed laboriosam.
-                    - Veniam exercitationem ut vitae autem.
-                    - Nihil reiciendis nulla perferendis laborum ullam.
-                  id: Commodi dicta qui explicabo occaecati.
-                  label: Iure voluptatibus et qui dignissimos.
+                    - Eligendi nisi dolor aliquid perspiciatis et.
+                    - Facere nesciunt sapiente.
+                  id: Dolorem incidunt.
+                  label: Unde natus atque nesciunt fugit qui eos.
                   platforms:
-                    - Quidem ut delectus et quia dolor perspiciatis.
-                    - Minus culpa nisi ad.
-                    - Rerum nulla consequatur labore adipisci aut dolorum.
-                - defaultEdition: Voluptatum est neque ut dolores necessitatibus.
-                  defaultPlatform: Impedit eos.
+                    - Quia itaque nisi.
+                    - Rerum aut dolorem est non.
+                    - Suscipit cum et et qui in.
+                    - Et illo consectetur.
+                - defaultEdition: Consequuntur sit suscipit ipsum.
+                  defaultPlatform: Et cupiditate.
                   editions:
-                    - Quia qui ducimus.
-                    - Delectus sed laboriosam.
-                    - Veniam exercitationem ut vitae autem.
-                    - Nihil reiciendis nulla perferendis laborum ullam.
-                  id: Commodi dicta qui explicabo occaecati.
-                  label: Iure voluptatibus et qui dignissimos.
+                    - Eligendi nisi dolor aliquid perspiciatis et.
+                    - Facere nesciunt sapiente.
+                  id: Dolorem incidunt.
+                  label: Unde natus atque nesciunt fugit qui eos.
                   platforms:
-                    - Quidem ut delectus et quia dolor perspiciatis.
-                    - Minus culpa nisi ad.
-                    - Rerum nulla consequatur labore adipisci aut dolorum.
+                    - Quia itaque nisi.
+                    - Rerum aut dolorem est non.
+                    - Suscipit cum et et qui in.
+                    - Et illo consectetur.
         required:
             - products
             - pipelineEngines
@@ -1370,15 +1455,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 3377024793643171076
+                example: 2024041857950781459
                 format: int64
             message:
                 type: string
-                example: Odio neque sed nobis voluptate.
+                example: Non sapiente est velit praesentium sed.
         description: Forbidden
         example:
-            code: 2908408016657092490
-            message: Nostrum cupiditate aliquam sint.
+            code: 7690871453783071536
+            message: Vitae qui molestias et eaque laboriosam temporibus.
         required:
             - code
             - message
@@ -1388,15 +1473,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 3560606050980264453
+                example: 4564147311934092189
                 format: int64
             message:
                 type: string
-                example: Ea inventore laudantium quis autem ex qui.
+                example: Non dolores aspernatur velit autem inventore ut.
         description: Internal Server Error
         example:
-            code: 6862411100478133195
-            message: Consequatur molestiae tempora deleniti voluptas porro omnis.
+            code: 4757788587527551130
+            message: Quasi aut itaque non quia dolore voluptatem.
         required:
             - code
             - message
@@ -1406,20 +1491,20 @@ definitions:
         properties:
             createdAt:
                 type: string
-                example: "2009-01-06T11:45:36Z"
+                example: "2014-10-07T14:48:43Z"
                 format: date-time
             createdBy:
                 type: string
-                example: ike@dietrich.com
+                example: anabel_douglas@lehner.name
                 format: email
             updatedAt:
                 type: string
-                example: "1984-09-10T03:16:51Z"
+                example: "1994-04-29T11:05:29Z"
                 format: date-time
         example:
-            createdAt: "1989-11-02T18:07:44Z"
-            createdBy: lizzie.frami@littlereynolds.biz
-            updatedAt: "1998-01-02T20:02:20Z"
+            createdAt: "1999-08-27T02:35:50Z"
+            createdBy: caitlyn_kunze@fadel.name
+            updatedAt: "2015-07-16T11:54:13Z"
         required:
             - createdAt
             - createdBy
@@ -1430,15 +1515,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 6972579423906535307
+                example: 5153362482571501331
                 format: int64
             message:
                 type: string
-                example: Esse non quod et minima.
+                example: Et quae neque.
         description: Not Found
         example:
-            code: 2809255592067172646
-            message: Et officia ut est et est.
+            code: 8986150747189704727
+            message: Et harum est voluptas quis est.
         required:
             - code
             - message
@@ -1448,7 +1533,7 @@ definitions:
         properties:
             canRerun:
                 type: boolean
-                example: true
+                example: false
         example:
             canRerun: true
         required:
@@ -1459,46 +1544,44 @@ definitions:
         properties:
             defaultEdition:
                 type: string
-                example: Quo deleniti.
+                example: Illo libero quia nulla ullam corrupti.
             defaultPlatform:
                 type: string
-                example: Incidunt est amet impedit sint dolor eum.
+                example: Possimus iste optio ea molestias earum.
             editions:
                 type: array
                 items:
                     type: string
-                    example: Expedita ipsa.
+                    example: Quidem aut dolor occaecati et deleniti ipsum.
                 example:
-                    - Ipsam vero qui in molestias sit.
-                    - Voluptatem atque hic.
-                    - Non dolor et dolorem.
+                    - Quod explicabo aliquid laboriosam veniam sint.
+                    - Officia deserunt sapiente sit.
+                    - Sunt et corrupti quo autem mollitia aliquam.
             id:
                 type: string
-                example: Esse vero temporibus quam.
+                example: Deleniti quam neque qui.
             label:
                 type: string
-                example: Quo aut libero.
+                example: Distinctio molestiae.
             platforms:
                 type: array
                 items:
                     type: string
-                    example: Accusantium et sint qui.
+                    example: Pariatur quod itaque harum tempora qui.
                 example:
-                    - Dolores dolor voluptas.
-                    - In quo et dolor repellendus aut consectetur.
+                    - Id rem eum deleniti reiciendis aut voluptatem.
+                    - Maxime architecto dolor ut vel.
         example:
-            defaultEdition: Tempore rerum.
-            defaultPlatform: Sint suscipit reprehenderit accusantium.
+            defaultEdition: At est aut doloremque quia nisi.
+            defaultPlatform: Sunt natus debitis et.
             editions:
-                - Non vitae vero qui et hic.
-                - Tenetur saepe.
-            id: Eos fuga quia quis repellendus consequatur.
-            label: Reprehenderit vitae numquam voluptatum.
+                - Provident ad maiores praesentium autem vel ut.
+                - Qui qui voluptatem.
+            id: Eos beatae id.
+            label: Dolorem voluptatem sunt.
             platforms:
-                - Non cupiditate.
-                - Qui possimus quod vel repudiandae maiores.
-                - Soluta consectetur maxime eligendi.
-                - Velit qui.
+                - Fugiat velit excepturi unde et nihil aliquam.
+                - Sapiente consequatur ea omnis magnam dolorem.
         required:
             - id
             - label
@@ -1512,13 +1595,13 @@ definitions:
         properties:
             buildEnv:
                 type: string
-                example: Debitis dolorem omnis dolores culpa.
+                example: Dolor quia sapiente non voluptatem.
             builderImg:
                 type: string
-                example: Exercitationem blanditiis ut sunt.
+                example: Debitis ipsum.
             edition:
                 type: string
-                example: fips
+                example: experiment
                 enum:
                     - enterprise
                     - community
@@ -1530,25 +1613,25 @@ definitions:
             features:
                 type: string
                 description: '[Deprecated] use buildEnv for custom features'
-                example: Rem ea soluta esse dolorem eum qui.
+                example: Consequatur iure iure.
             gitHash:
                 type: string
-                example: Accusantium totam odit officiis ut.
+                example: Dolores ut a enim.
             gitRef:
                 type: string
-                example: Iusto animi rerum et cumque molestias.
+                example: Tempore repellendus velit possimus atque illo optio.
             githubRepo:
                 type: string
-                example: Voluptas ea.
+                example: Magnam enim impedit.
             isHotfix:
                 type: boolean
-                example: true
+                example: false
             isPushGCR:
                 type: boolean
                 example: false
             pipelineEngine:
                 type: string
-                example: jenkins
+                example: tekton
                 enum:
                     - jenkins
                     - tekton
@@ -1566,10 +1649,10 @@ definitions:
                     - darwin/arm64
             pluginGitRef:
                 type: string
-                example: Consectetur quibusdam et soluta.
+                example: Alias dignissimos.
             product:
                 type: string
-                example: tidb
+                example: tidb-binlog
                 enum:
                     - dm
                     - enterprise-plugin
@@ -1598,34 +1681,34 @@ definitions:
                     - qdrant-on-tidb
             productBaseImg:
                 type: string
-                example: Recusandae dolores vel iste sit omnis.
+                example: Deserunt placeat neque repellendus quo.
             productDockerfile:
                 type: string
-                example: Et et commodi eos debitis incidunt aut.
+                example: Neque at.
             targetImg:
                 type: string
-                example: Doloribus quia nihil.
+                example: Deleniti voluptatem reiciendis reiciendis omnis non.
             version:
                 type: string
-                example: Porro qui et dolor autem.
+                example: Unde et.
         example:
-            buildEnv: Tempora aperiam qui consequuntur est corporis dolorum.
-            builderImg: Voluptates est eum non voluptatum dolorem.
+            buildEnv: Dignissimos ratione et.
+            builderImg: Hic laboriosam quia et dolorem consequatur.
             edition: fips
-            features: Numquam repudiandae maxime eum provident.
-            gitHash: Ut fuga sunt.
-            gitRef: Fugit et nesciunt.
-            githubRepo: Saepe saepe in.
-            isHotfix: false
-            isPushGCR: false
+            features: Dolores non voluptas nam aspernatur dicta.
+            gitHash: Sint repellat sit aut nemo.
+            gitRef: Eum eligendi aut.
+            githubRepo: Nihil et.
+            isHotfix: true
+            isPushGCR: true
             pipelineEngine: jenkins
-            platform: all
-            pluginGitRef: Quidem voluptatem rerum molestiae deserunt.
-            product: dumpling
-            productBaseImg: Error praesentium magnam.
-            productDockerfile: Quo qui ut et illum aperiam.
-            targetImg: Sed tempora.
-            version: Est modi ut consequatur officiis voluptas nam.
+            platform: linux/arm64
+            pluginGitRef: Consequatur omnis in eligendi velit.
+            product: ng-monitoring
+            productBaseImg: Facilis dicta facere ratione.
+            productDockerfile: Fuga illum.
+            targetImg: Omnis sapiente.
+            version: Ullam debitis consectetur sapiente.
         required:
             - product
             - edition
@@ -1638,36 +1721,37 @@ definitions:
                 $ref: '#/definitions/BuildReport'
             errMsg:
                 type: string
-                example: Corporis omnis sapiente ut.
+                example: Nisi quae quaerat incidunt voluptatibus nesciunt.
             pipelineBuildID:
                 type: integer
-                example: 101809523603566416
+                example: 6849935488066956492
                 format: int64
             pipelineEndAt:
                 type: string
-                example: "1993-07-18T10:55:19Z"
+                example: "2015-10-09T06:18:10Z"
                 format: date-time
             pipelineStartAt:
                 type: string
-                example: "1998-02-01T02:32:03Z"
+                example: "1971-05-09T09:59:57Z"
                 format: date-time
             pipelineViewURL:
                 type: string
-                example: http://labadie.name/emmie
+                example: http://damore.info/natalie.williamson
                 format: uri
             pipelineViewURLs:
                 type: array
                 items:
                     type: string
-                    example: http://ernser.biz/sylvester_bernhard
+                    example: http://bauchyundt.info/stephanie
                     format: uri
                 example:
-                    - http://powlowski.biz/katelynn
-                    - http://bauch.biz/columbus
-                    - http://kiehnbins.com/burnice.hand
+                    - http://tremblaymurazik.net/rylan
+                    - http://heaney.name/zella
+                    - http://muller.com/arlo_hahn
+                    - http://wolffstroman.org/jovanny.gutmann
             status:
                 type: string
-                example: FAILURE
+                example: ABORTED
                 enum:
                     - PENDING
                     - PROCESSING
@@ -1680,224 +1764,170 @@ definitions:
         example:
             buildReport:
                 binaries:
-                    - component: Enim voluptate autem.
+                    - component: Autem omnis qui autem aliquid voluptas magni.
                       ociFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      platform: Id magni esse.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      platform: Sint itaque et sint minima quas earum.
                       sha256OCIFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      sha256URL: http://gleason.name/madge_turner
-                      url: http://hodkiewicz.net/keegan
-                    - component: Enim voluptate autem.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      sha256URL: http://pollich.org/wilson
+                      url: http://naderjakubowski.org/philip.jenkins
+                    - component: Autem omnis qui autem aliquid voluptas magni.
                       ociFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      platform: Id magni esse.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      platform: Sint itaque et sint minima quas earum.
                       sha256OCIFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      sha256URL: http://gleason.name/madge_turner
-                      url: http://hodkiewicz.net/keegan
-                    - component: Enim voluptate autem.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      sha256URL: http://pollich.org/wilson
+                      url: http://naderjakubowski.org/philip.jenkins
+                    - component: Autem omnis qui autem aliquid voluptas magni.
                       ociFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      platform: Id magni esse.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      platform: Sint itaque et sint minima quas earum.
                       sha256OCIFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      sha256URL: http://gleason.name/madge_turner
-                      url: http://hodkiewicz.net/keegan
-                    - component: Enim voluptate autem.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      sha256URL: http://pollich.org/wilson
+                      url: http://naderjakubowski.org/philip.jenkins
+                    - component: Autem omnis qui autem aliquid voluptas magni.
                       ociFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      platform: Id magni esse.
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      platform: Sint itaque et sint minima quas earum.
                       sha256OCIFile:
-                        file: Magnam non voluptas ut fugiat.
-                        repo: Voluptas reiciendis est.
-                        tag: Quis itaque in dignissimos et omnis.
-                      sha256URL: http://gleason.name/madge_turner
-                      url: http://hodkiewicz.net/keegan
-                gitHash: 3l6
+                        file: Voluptates sed minima maiores rem aliquid aut.
+                        repo: Debitis quisquam.
+                        tag: Doloribus necessitatibus rerum quo.
+                      sha256URL: http://pollich.org/wilson
+                      url: http://naderjakubowski.org/philip.jenkins
+                gitHash: d21
                 images:
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                pluginGitHash: tow
-                printedVersion: Qui voluptas.
-            errMsg: Non exercitationem doloremque.
-            pipelineBuildID: 7898287422892492750
-            pipelineEndAt: "2009-03-04T16:10:16Z"
-            pipelineStartAt: "1979-04-24T09:52:46Z"
-            pipelineViewURL: http://wittinghayes.net/shannon.johnston
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                pluginGitHash: 8ef
+                printedVersion: Fuga culpa voluptatem tempora explicabo vel.
+            errMsg: Maiores hic soluta consectetur.
+            pipelineBuildID: 2406210236411123087
+            pipelineEndAt: "1990-12-11T02:30:47Z"
+            pipelineStartAt: "2000-03-09T20:49:45Z"
+            pipelineViewURL: http://towne.org/julius.bartell
             pipelineViewURLs:
-                - http://watsica.net/lincoln_blick
-                - http://stokeswehner.biz/jewel_braun
-            status: SUCCESS
+                - http://lehner.com/arvilla_greenfelder
+                - http://turcottezieme.biz/tressie.welch
+                - http://hyatt.net/ariane_sanford
+            status: PENDING
             tektonStatus:
                 pipelines:
-                    - endAt: "2014-09-12T09:57:52Z"
+                    - endAt: "2000-10-17T16:47:45Z"
                       images:
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                      name: Esse accusantium molestiae nihil id vitae.
-                      namespace: Ut nihil numquam dolorum quasi eaque.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                      name: Veniam nihil.
+                      namespace: Laborum libero a voluptatum.
                       ociArtifacts:
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
-                      platform: Voluptates magnam porro.
-                      startAt: "2001-05-31T13:28:34Z"
-                      status: Skipped
-                      url: http://hauck.net/queen
-                    - endAt: "2014-09-12T09:57:52Z"
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
+                        - files:
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
+                        - files:
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
+                      platform: A quia cupiditate praesentium nostrum aut magni.
+                      startAt: "2008-01-03T07:53:23Z"
+                      status: Succeeded
+                      url: http://ullrich.com/malcolm_langosh
+                    - endAt: "2000-10-17T16:47:45Z"
                       images:
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                      name: Esse accusantium molestiae nihil id vitae.
-                      namespace: Ut nihil numquam dolorum quasi eaque.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                      name: Veniam nihil.
+                      namespace: Laborum libero a voluptatum.
                       ociArtifacts:
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
-                      platform: Voluptates magnam porro.
-                      startAt: "2001-05-31T13:28:34Z"
-                      status: Skipped
-                      url: http://hauck.net/queen
-                    - endAt: "2014-09-12T09:57:52Z"
-                      images:
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                      name: Esse accusantium molestiae nihil id vitae.
-                      namespace: Ut nihil numquam dolorum quasi eaque.
-                      ociArtifacts:
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
-                      platform: Voluptates magnam porro.
-                      startAt: "2001-05-31T13:28:34Z"
-                      status: Skipped
-                      url: http://hauck.net/queen
-                    - endAt: "2014-09-12T09:57:52Z"
-                      images:
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                      name: Esse accusantium molestiae nihil id vitae.
-                      namespace: Ut nihil numquam dolorum quasi eaque.
-                      ociArtifacts:
-                        - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
-                        - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
-                      platform: Voluptates magnam porro.
-                      startAt: "2001-05-31T13:28:34Z"
-                      status: Skipped
-                      url: http://hauck.net/queen
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
+                      platform: A quia cupiditate praesentium nostrum aut magni.
+                      startAt: "2008-01-03T07:53:23Z"
+                      status: Succeeded
+                      url: http://ullrich.com/malcolm_langosh
                 triggersEventIDs:
-                    - 04c501e2-13fc-4ff9-9188-b9dafcc333e9
-                    - 4ff40d0f-c023-4ff5-8bbc-2818cbe585c7
+                    - 85dce01f-4f12-417f-bfc3-734bee84094b
+                    - 49700a68-e8d0-4d4c-b775-8cbbcd24b821
+                    - f0469996-d9ce-4338-83f0-8e2b7361a9db
         required:
             - status
     DevBuildUnauthorizedError:
@@ -1906,15 +1936,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 8485458156581508827
+                example: 5070786041714434815
                 format: int64
             message:
                 type: string
-                example: Minus sapiente quis sapiente quas iure.
+                example: Dolorum sed.
         description: Unauthorized
         example:
-            code: 6458520717687800166
-            message: Harum eum libero magnam praesentium earum temporibus.
+            code: 82531425329556919
+            message: Sunt consectetur qui quis adipisci.
         required:
             - code
             - message
@@ -1925,30 +1955,30 @@ definitions:
             createdBy:
                 type: string
                 description: Creator of build for legacy machine clients
-                example: halie.swaniawski@hagenes.net
+                example: shayna@bernier.info
                 format: email
             request:
                 $ref: '#/definitions/DevBuildSpec'
         example:
-            createdBy: vicky_spencer@howe.net
+            createdBy: terrell.macejkovic@batz.net
             request:
-                buildEnv: Odio qui repellendus.
-                builderImg: Amet ipsum nemo qui ea molestiae.
-                edition: enterprise
-                features: Reiciendis cumque sapiente.
-                gitHash: Molestiae quia.
-                gitRef: Facere quo.
-                githubRepo: Dolor eaque harum minima.
+                buildEnv: Tenetur aut aspernatur et quo aut.
+                builderImg: Quisquam reiciendis at et fuga.
+                edition: failpoint
+                features: Quam laudantium vitae omnis est ipsa.
+                gitHash: Id ut.
+                gitRef: Quidem libero nihil.
+                githubRepo: Dolorem delectus.
                 isHotfix: false
                 isPushGCR: true
-                pipelineEngine: tekton
-                platform: darwin
-                pluginGitRef: Voluptatem quam ea voluptatem aliquam amet quam.
-                product: qdrant-on-tidb
-                productBaseImg: Iure veniam et perspiciatis sunt iste.
-                productDockerfile: Numquam inventore aliquid ea qui natus in.
-                targetImg: Expedita sunt at.
-                version: Rerum rerum.
+                pipelineEngine: jenkins
+                platform: linux/amd64
+                pluginGitRef: Magni non neque qui autem qui.
+                product: tiproxy
+                productBaseImg: Commodi sint inventore sed.
+                productDockerfile: Quis fugiat eius maxime eum ipsa.
+                targetImg: Aut ratione eveniet distinctio.
+                version: Sit tempore blanditiis porro ut fuga.
         required:
             - request
     DevbuildUpdateRequestBody:
@@ -1961,253 +1991,208 @@ definitions:
             status:
                 buildReport:
                     binaries:
-                        - component: Aut qui libero ad nihil non.
+                        - component: Mollitia rem qui tempore nihil.
                           ociFile:
-                            file: Nihil quia.
-                            repo: Asperiores commodi accusantium recusandae.
-                            tag: Ipsa ut cupiditate repellat quisquam.
-                          platform: Tempore voluptatem at harum magnam temporibus.
+                            file: Itaque qui animi fugit vel maxime.
+                            repo: Distinctio voluptatem.
+                            tag: Exercitationem adipisci.
+                          platform: Perferendis et exercitationem.
                           sha256OCIFile:
-                            file: Nihil quia.
-                            repo: Asperiores commodi accusantium recusandae.
-                            tag: Ipsa ut cupiditate repellat quisquam.
-                          sha256URL: http://reichert.name/reid.turcotte
-                          url: http://wunsch.net/yessenia_huel
-                        - component: Aut qui libero ad nihil non.
+                            file: Itaque qui animi fugit vel maxime.
+                            repo: Distinctio voluptatem.
+                            tag: Exercitationem adipisci.
+                          sha256URL: http://larkinortiz.biz/myra
+                          url: http://gottlieb.net/garrick.jakubowski
+                        - component: Mollitia rem qui tempore nihil.
                           ociFile:
-                            file: Nihil quia.
-                            repo: Asperiores commodi accusantium recusandae.
-                            tag: Ipsa ut cupiditate repellat quisquam.
-                          platform: Tempore voluptatem at harum magnam temporibus.
+                            file: Itaque qui animi fugit vel maxime.
+                            repo: Distinctio voluptatem.
+                            tag: Exercitationem adipisci.
+                          platform: Perferendis et exercitationem.
                           sha256OCIFile:
-                            file: Nihil quia.
-                            repo: Asperiores commodi accusantium recusandae.
-                            tag: Ipsa ut cupiditate repellat quisquam.
-                          sha256URL: http://reichert.name/reid.turcotte
-                          url: http://wunsch.net/yessenia_huel
-                        - component: Aut qui libero ad nihil non.
+                            file: Itaque qui animi fugit vel maxime.
+                            repo: Distinctio voluptatem.
+                            tag: Exercitationem adipisci.
+                          sha256URL: http://larkinortiz.biz/myra
+                          url: http://gottlieb.net/garrick.jakubowski
+                        - component: Mollitia rem qui tempore nihil.
                           ociFile:
-                            file: Nihil quia.
-                            repo: Asperiores commodi accusantium recusandae.
-                            tag: Ipsa ut cupiditate repellat quisquam.
-                          platform: Tempore voluptatem at harum magnam temporibus.
+                            file: Itaque qui animi fugit vel maxime.
+                            repo: Distinctio voluptatem.
+                            tag: Exercitationem adipisci.
+                          platform: Perferendis et exercitationem.
                           sha256OCIFile:
-                            file: Nihil quia.
-                            repo: Asperiores commodi accusantium recusandae.
-                            tag: Ipsa ut cupiditate repellat quisquam.
-                          sha256URL: http://reichert.name/reid.turcotte
-                          url: http://wunsch.net/yessenia_huel
-                        - component: Aut qui libero ad nihil non.
-                          ociFile:
-                            file: Nihil quia.
-                            repo: Asperiores commodi accusantium recusandae.
-                            tag: Ipsa ut cupiditate repellat quisquam.
-                          platform: Tempore voluptatem at harum magnam temporibus.
-                          sha256OCIFile:
-                            file: Nihil quia.
-                            repo: Asperiores commodi accusantium recusandae.
-                            tag: Ipsa ut cupiditate repellat quisquam.
-                          sha256URL: http://reichert.name/reid.turcotte
-                          url: http://wunsch.net/yessenia_huel
-                    gitHash: 2cz
+                            file: Itaque qui animi fugit vel maxime.
+                            repo: Distinctio voluptatem.
+                            tag: Exercitationem adipisci.
+                          sha256URL: http://larkinortiz.biz/myra
+                          url: http://gottlieb.net/garrick.jakubowski
+                    gitHash: mkp
                     images:
-                        - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                          platform: Qui veniam nostrum error id sed.
-                          url: Eius velit dignissimos et voluptatem culpa architecto.
-                        - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                          platform: Qui veniam nostrum error id sed.
-                          url: Eius velit dignissimos et voluptatem culpa architecto.
-                    pluginGitHash: nri
-                    printedVersion: Excepturi ut sequi voluptatem commodi ea ratione.
-                errMsg: Et earum id magnam ab.
-                pipelineBuildID: 8873515128698637437
-                pipelineEndAt: "2013-09-12T14:14:24Z"
-                pipelineStartAt: "1999-05-13T09:20:29Z"
-                pipelineViewURL: http://hamill.com/ewell.huels
+                        - internalURL: Non tenetur blanditiis.
+                          platform: Suscipit pariatur suscipit consequatur.
+                          url: Quis eum.
+                        - internalURL: Non tenetur blanditiis.
+                          platform: Suscipit pariatur suscipit consequatur.
+                          url: Quis eum.
+                        - internalURL: Non tenetur blanditiis.
+                          platform: Suscipit pariatur suscipit consequatur.
+                          url: Quis eum.
+                    pluginGitHash: byu
+                    printedVersion: Commodi earum delectus deleniti vel reprehenderit.
+                errMsg: Sunt necessitatibus est.
+                pipelineBuildID: 5767616498965648705
+                pipelineEndAt: "2003-10-26T12:50:17Z"
+                pipelineStartAt: "1995-05-12T12:11:14Z"
+                pipelineViewURL: http://rauboyle.net/sally_labadie
                 pipelineViewURLs:
-                    - http://dubuqueleuschke.biz/marietta
-                    - http://dare.info/jo_deckow
-                    - http://white.info/branson
-                status: PENDING
+                    - http://parker.name/zella_predovic
+                    - http://dooleyluettgen.org/mellie_williamson
+                    - http://schmidtyost.name/enos
+                status: FAILURE
                 tektonStatus:
                     pipelines:
-                        - endAt: "1973-12-01T05:29:51Z"
+                        - endAt: "2003-02-13T21:39:39Z"
                           images:
-                            - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                              platform: Qui veniam nostrum error id sed.
-                              url: Eius velit dignissimos et voluptatem culpa architecto.
-                            - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                              platform: Qui veniam nostrum error id sed.
-                              url: Eius velit dignissimos et voluptatem culpa architecto.
-                          name: Velit animi est id distinctio consequatur eaque.
-                          namespace: Voluptatibus rerum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                          name: Temporibus dolor non et doloribus occaecati.
+                          namespace: Magnam rem laudantium possimus.
                           ociArtifacts:
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
-                          platform: Quam blanditiis.
-                          startAt: "2010-03-27T15:49:25Z"
-                          status: Cancelled
-                          url: http://hilpertlittle.info/betsy
-                        - endAt: "1973-12-01T05:29:51Z"
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
+                          platform: Qui quia molestiae.
+                          startAt: "1970-11-02T08:41:34Z"
+                          status: Failed
+                          url: http://hoppe.org/clara.ziemann
+                        - endAt: "2003-02-13T21:39:39Z"
                           images:
-                            - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                              platform: Qui veniam nostrum error id sed.
-                              url: Eius velit dignissimos et voluptatem culpa architecto.
-                            - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                              platform: Qui veniam nostrum error id sed.
-                              url: Eius velit dignissimos et voluptatem culpa architecto.
-                          name: Velit animi est id distinctio consequatur eaque.
-                          namespace: Voluptatibus rerum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                          name: Temporibus dolor non et doloribus occaecati.
+                          namespace: Magnam rem laudantium possimus.
                           ociArtifacts:
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
-                          platform: Quam blanditiis.
-                          startAt: "2010-03-27T15:49:25Z"
-                          status: Cancelled
-                          url: http://hilpertlittle.info/betsy
-                        - endAt: "1973-12-01T05:29:51Z"
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
+                          platform: Qui quia molestiae.
+                          startAt: "1970-11-02T08:41:34Z"
+                          status: Failed
+                          url: http://hoppe.org/clara.ziemann
+                        - endAt: "2003-02-13T21:39:39Z"
                           images:
-                            - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                              platform: Qui veniam nostrum error id sed.
-                              url: Eius velit dignissimos et voluptatem culpa architecto.
-                            - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                              platform: Qui veniam nostrum error id sed.
-                              url: Eius velit dignissimos et voluptatem culpa architecto.
-                          name: Velit animi est id distinctio consequatur eaque.
-                          namespace: Voluptatibus rerum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                            - internalURL: Non tenetur blanditiis.
+                              platform: Suscipit pariatur suscipit consequatur.
+                              url: Quis eum.
+                          name: Temporibus dolor non et doloribus occaecati.
+                          namespace: Magnam rem laudantium possimus.
                           ociArtifacts:
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
                             - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
-                          platform: Quam blanditiis.
-                          startAt: "2010-03-27T15:49:25Z"
-                          status: Cancelled
-                          url: http://hilpertlittle.info/betsy
-                        - endAt: "1973-12-01T05:29:51Z"
-                          images:
-                            - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                              platform: Qui veniam nostrum error id sed.
-                              url: Eius velit dignissimos et voluptatem culpa architecto.
-                            - internalURL: Nam dolorem et dolores voluptatem ut officiis.
-                              platform: Qui veniam nostrum error id sed.
-                              url: Eius velit dignissimos et voluptatem culpa architecto.
-                          name: Velit animi est id distinctio consequatur eaque.
-                          namespace: Voluptatibus rerum.
-                          ociArtifacts:
-                            - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
-                            - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
-                            - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
-                            - files:
-                                - Aspernatur ut autem.
-                                - Optio vel.
-                                - Perferendis atque tenetur nisi aut.
-                                - Distinctio natus tempore quis blanditiis autem.
-                              repo: Laborum voluptatem voluptas modi.
-                              tag: Quisquam quos saepe ducimus ut.
-                          platform: Quam blanditiis.
-                          startAt: "2010-03-27T15:49:25Z"
-                          status: Cancelled
-                          url: http://hilpertlittle.info/betsy
+                                - Voluptatem ipsam repellat beatae consequatur.
+                                - Doloribus non saepe nemo ea et.
+                                - Numquam quis dolorem at et fuga est.
+                                - Magnam dolorem.
+                              repo: At qui culpa.
+                              tag: Aut veniam velit ea sit cum et.
+                          platform: Qui quia molestiae.
+                          startAt: "1970-11-02T08:41:34Z"
+                          status: Failed
+                          url: http://hoppe.org/clara.ziemann
                     triggersEventIDs:
-                        - 44229cb2-e5c8-4a31-ba5c-06a8932e865a
-                        - 7230d0db-66b2-4b98-a208-dc03ad83de90
-                        - 8b2f73e5-9471-48b7-b2ed-17fc26bd28ae
-                        - 23fcfec4-a00b-4d38-a7dd-716feee71f79
+                        - cdff114a-fd02-4baa-a27c-43d542e72e59
+                        - 11c48afc-98f0-4650-a362-8cb29a8fb580
         required:
             - status
     HTTPError:
@@ -2216,15 +2201,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 1927345202134754622
+                example: 5038878219273358428
                 format: int64
             message:
                 type: string
-                example: Quaerat maxime velit cupiditate itaque exercitationem.
+                example: Totam soluta ducimus et minima et.
         description: Bad Request
         example:
-            code: 3392613932289972535
-            message: Est in maxime repellat non commodi hic.
+            code: 7932059592288479466
+            message: Tempore sit explicabo velit odio.
         required:
             - code
             - message
@@ -2305,17 +2290,17 @@ definitions:
         properties:
             internalURL:
                 type: string
-                example: Vero hic voluptas.
+                example: Accusamus consequatur illo doloremque dolor ipsam autem.
             platform:
                 type: string
-                example: A dignissimos ratione et consequatur hic laboriosam.
+                example: Vel quia.
             url:
                 type: string
-                example: Et dolorem.
+                example: Expedita sed pariatur quia.
         example:
-            internalURL: Eum eligendi aut.
-            platform: Non voluptas.
-            url: Aspernatur dicta.
+            internalURL: Sequi et consequatur occaecati ut vel pariatur.
+            platform: Nobis qui rerum eligendi iste.
+            url: Architecto nam et rerum sed est.
         required:
             - platform
             - url
@@ -2325,13 +2310,13 @@ definitions:
         properties:
             source:
                 type: string
-                example: Rerum distinctio nemo laudantium et sunt consequuntur.
+                example: Eveniet asperiores vel impedit dicta labore recusandae.
             target:
                 type: string
-                example: Maiores quia labore.
+                example: Debitis dolorem omnis dolores culpa.
         example:
-            source: Qui quaerat.
-            target: Cum est debitis.
+            source: Exercitationem blanditiis ut sunt.
+            target: Quos tempora rem ea soluta esse dolorem.
         required:
             - source
             - target
@@ -2341,36 +2326,36 @@ definitions:
         properties:
             createdAt:
                 type: string
-                example: "1990-03-10T19:25:24Z"
+                example: "1978-12-19T16:01:36Z"
                 format: date-time
             errorMessage:
                 type: string
-                example: Consequuntur inventore cum qui error sunt assumenda.
+                example: Qui est rerum.
             id:
                 type: integer
-                example: 6331984832915061701
+                example: 75026658706019142
                 format: int64
             source:
                 type: string
-                example: Consequuntur enim.
+                example: Nesciunt beatae delectus qui quia.
             status:
                 type: string
-                example: Temporibus ea est et.
+                example: Sint aut fugit ut nihil nostrum.
             target:
                 type: string
-                example: Laborum accusamus.
+                example: Cupiditate nihil rerum blanditiis.
             updatedAt:
                 type: string
-                example: "2001-06-09T17:57:16Z"
+                example: "2007-02-23T04:52:03Z"
                 format: date-time
         example:
-            createdAt: "2012-10-18T08:20:36Z"
-            errorMessage: Soluta tenetur inventore non quis beatae.
-            id: 124211857472787000
-            source: Quos asperiores quo.
-            status: Quas soluta corporis veniam.
-            target: Eos rerum odit.
-            updatedAt: "1997-08-17T05:45:59Z"
+            createdAt: "2015-11-19T03:37:07Z"
+            errorMessage: Impedit sint perferendis saepe.
+            id: 9141818152347296314
+            source: Omnis repudiandae quia quis at quae.
+            status: Qui illum in quia minus blanditiis saepe.
+            target: Natus facilis.
+            updatedAt: "2014-02-18T20:53:41Z"
         required:
             - id
             - source
@@ -2386,22 +2371,23 @@ definitions:
                 type: array
                 items:
                     type: string
-                    example: Veritatis sint et quidem totam itaque.
+                    example: Distinctio eos laboriosam.
                 example:
-                    - Beatae et impedit dignissimos officiis.
-                    - Enim consequatur vel.
+                    - Soluta non autem provident officiis et quia.
+                    - Neque soluta assumenda.
+                    - Repudiandae labore dolorem sint ea porro.
             repo:
                 type: string
-                example: In ex accusamus nostrum exercitationem.
+                example: Nihil vel aspernatur sit dolorem autem.
             tag:
                 type: string
-                example: Repellat illum.
+                example: Voluptas cupiditate.
         example:
             files:
-                - Et animi et fuga eaque consequatur voluptatem.
-                - Itaque sunt.
-            repo: Aut debitis.
-            tag: Omnis odit.
+                - Enim maxime.
+                - Ut ducimus aliquid modi.
+            repo: Et temporibus voluptatem nostrum.
+            tag: Sequi laboriosam odio est similique aliquid aut.
         required:
             - files
             - repo
@@ -2412,17 +2398,17 @@ definitions:
         properties:
             file:
                 type: string
-                example: Minus reprehenderit error quod dolor suscipit a.
+                example: Illo aut delectus dicta.
             repo:
                 type: string
-                example: Ut officia iure ut.
+                example: Magnam saepe consequatur enim.
             tag:
                 type: string
-                example: Eveniet consequatur rem.
+                example: Temporibus ea sit est et molestiae omnis.
         example:
-            file: Modi libero quam ullam.
-            repo: Qui ut animi non.
-            tag: Molestias aut et a.
+            file: Non culpa.
+            repo: Quae est voluptatem hic sit beatae.
+            tag: Et beatae dolor blanditiis cupiditate.
         required:
             - file
             - repo
@@ -2433,15 +2419,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 2423063257831713522
+                example: 6074190956243911957
                 format: int64
             message:
                 type: string
-                example: Molestiae iusto est.
+                example: Quam iusto ea dolore.
         description: The artifact registry could not be queried
         example:
-            code: 728320097478812336
-            message: Velit eveniet incidunt quasi.
+            code: 4975937153098378289
+            message: Soluta nemo autem enim excepturi deserunt maiores.
         required:
             - code
             - message
@@ -2451,33 +2437,45 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 4715334771846736191
+                example: 2857777368388549147
                 format: int64
             message:
                 type: string
-                example: Laudantium exercitationem autem rerum tempora vel earum.
+                example: Sint tempore necessitatibus.
         description: Bad Request
         example:
-            code: 6777796859704302592
-            message: Iste voluptatibus.
+            code: 4355992082816842919
+            message: Dolores ut voluptatem placeat illo.
         required:
             - code
             - message
+    PublishDeliveryByRulesRequestBody:
+        title: PublishDeliveryByRulesRequestBody
+        type: object
+        properties:
+            artifact_url:
+                type: string
+                description: Full OCI reference of the pushed artifact, including the tag.
+                example: Quis qui cupiditate omnis repellat.
+        example:
+            artifact_url: Voluptas facilis velit quia maxime.
+        required:
+            - artifact_url
     PublishInternalServerError:
         title: PublishInternalServerError
         type: object
         properties:
             code:
                 type: integer
-                example: 864205920208805025
+                example: 4786625838160190207
                 format: int64
             message:
                 type: string
-                example: At blanditiis aut eaque nostrum asperiores ex.
+                example: Repellendus doloremque corrupti nihil laboriosam voluptatibus eaque.
         description: Internal Server Error
         example:
-            code: 1537215576247179706
-            message: Ex sed.
+            code: 2270241322647010486
+            message: Similique sunt beatae dolorem.
         required:
             - code
             - message
@@ -2487,15 +2485,15 @@ definitions:
         properties:
             code:
                 type: integer
-                example: 7649312805829922643
+                example: 5609910420667647892
                 format: int64
             message:
                 type: string
-                example: Repellendus aut veniam.
+                example: Nam quia eos commodi et itaque.
         description: Not Found
         example:
-            code: 6321237224713154457
-            message: Molestiae corrupti eos molestiae aut.
+            code: 5325462885628769910
+            message: Maiores aspernatur.
         required:
             - code
             - message
@@ -2506,14 +2504,40 @@ definitions:
             artifactUrl:
                 type: string
                 description: Image reference, for example us-docker.pkg.dev/hub/pingcap/ticdc/image:v8.5.0
-                example: Maiores consequatur magnam aspernatur vel voluptatibus.
+                example: Numquam deserunt et.
             image:
                 type: string
                 description: Alias of artifactUrl; keeps the Tekton task parameter name working
-                example: Voluptatibus blanditiis.
+                example: Aut voluptatem tempora quod velit ex placeat.
         example:
-            artifactUrl: Labore sed sapiente sit aliquam.
-            image: Nesciunt ut praesentium dicta voluptas fugiat.
+            artifactUrl: Mollitia aut enim et qui accusamus.
+            image: Sit totam repellendus quo ratione.
+    PublishRequestToPublishRequestBody:
+        title: PublishRequestToPublishRequestBody
+        type: object
+        properties:
+            artifact_url:
+                type: string
+                example: Laborum sequi.
+            tiup_mirror:
+                type: string
+                description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
+                default: staging
+                example: prod
+                enum:
+                    - staging
+                    - prod
+            version:
+                type: string
+                description: Force the published version instead of the artifact's own.
+                example: Saepe at et iure quas voluptatibus placeat.
+        example:
+            artifact_url: Eligendi praesentium vitae dolorem ipsa.
+            tiup_mirror: staging
+            version: Hic sed accusamus iste possimus nam.
+        required:
+            - artifact_url
+            - tiup_mirror
     PublishStep:
         title: PublishStep
         type: object
@@ -2521,46 +2545,46 @@ definitions:
             attempts:
                 type: integer
                 description: Claim attempts
-                example: 4179932801376860701
+                example: 2297445550790648609
                 format: int64
             createdAt:
                 type: string
-                example: "1993-02-16T14:14:34Z"
+                example: "2007-08-22T23:36:36Z"
                 format: date-time
             dependsOn:
                 type: string
                 description: Previous step of the same unit, when ordered
-                example: Explicabo magni laborum quasi quia.
+                example: Dignissimos praesentium minus dolores debitis iure.
             dest:
                 type: string
                 description: Destination repository inside the target
-                example: Iure vel quae aut.
+                example: Ipsum ab vitae adipisci.
             finishedAt:
                 type: string
-                example: "1972-06-30T18:32:22Z"
+                example: "1990-09-11T15:32:32Z"
                 format: date-time
             id:
                 type: string
                 description: Step id
-                example: Amet magni explicabo.
+                example: Ut praesentium adipisci voluptatem.
             lastError:
                 type: string
                 description: Last failure message
-                example: Cupiditate nostrum.
+                example: In natus quo placeat quaerat quia.
             payload:
                 description: Full execution parameters
-                example: Sed et vero.
+                example: Voluptatum nemo pariatur quod.
             result:
                 description: Execution outcome, when the step finished
-                example: Consectetur qui quis.
+                example: Ea laudantium exercitationem autem rerum.
             startedAt:
                 type: string
-                example: "2014-09-17T10:57:01Z"
+                example: "2001-05-15T22:14:40Z"
                 format: date-time
             state:
                 type: string
                 description: Step state
-                example: skipped
+                example: blocked
                 enum:
                     - blocked
                     - pending
@@ -2571,26 +2595,26 @@ definitions:
             target:
                 type: string
                 description: 'Claim shard: registry host, or mirror name for TiUP'
-                example: Sint voluptatem officiis odit.
+                example: Ut velit rerum praesentium fugiat et.
             unitId:
                 type: string
                 description: Owning unit id
-                example: Dolorum doloribus excepturi aut sapiente.
+                example: Sunt voluptas ullam recusandae quis dignissimos autem.
         description: One destination of a publication unit.
         example:
-            attempts: 2586658918800274115
-            createdAt: "1982-07-31T05:16:09Z"
-            dependsOn: Atque vel.
-            dest: Iure non eos molestias sunt voluptas et.
-            finishedAt: "1996-01-02T19:32:04Z"
-            id: Accusamus est voluptas nam pariatur.
-            lastError: Dolores molestias et ut doloremque.
-            payload: Nemo iste.
-            result: Atque dicta quia possimus et expedita quasi.
-            startedAt: "2007-05-12T00:29:32Z"
+            attempts: 6518836914900595746
+            createdAt: "1985-03-23T05:14:05Z"
+            dependsOn: Totam vel omnis ab fugiat.
+            dest: Et consequatur.
+            finishedAt: "1984-02-01T09:11:36Z"
+            id: Molestias sint eum eum voluptatibus.
+            lastError: Incidunt ex nihil quia esse consectetur aut.
+            payload: Mollitia in debitis vel ut.
+            result: Nesciunt et distinctio distinctio voluptas.
+            startedAt: "1983-09-16T11:23:33Z"
             state: claimed
-            target: Expedita laboriosam magnam vel.
-            unitId: Deserunt autem aut a omnis.
+            target: Et dolorum perspiciatis aliquid.
+            unitId: Et ipsam sit debitis eveniet.
         required:
             - id
             - unitId
@@ -2603,31 +2627,31 @@ definitions:
             artifactUrl:
                 type: string
                 description: Source artifact reference
-                example: Molestiae expedita.
+                example: Dignissimos quas quaerat odit et labore et.
             createdAt:
                 type: string
-                example: "1977-07-20T04:04:18Z"
+                example: "1986-01-27T10:38:56Z"
                 format: date-time
             digest:
                 type: string
                 description: Source digest pinned at planning time
-                example: Dicta necessitatibus atque provident hic.
+                example: Quo sed quae sed enim cumque blanditiis.
             finishedAt:
                 type: string
-                example: "1982-12-25T20:04:39Z"
+                example: "2010-03-09T12:43:09Z"
                 format: date-time
             id:
                 type: string
                 description: Unit id; this is the request id returned to callers
-                example: Ullam et accusantium laboriosam hic.
+                example: Accusantium et quaerat non minus.
             kind:
                 type: string
                 description: Publication kind, for example image_copy
-                example: Eaque sed ipsam et illum.
+                example: Ea quod aliquid qui qui ab.
             requestedBy:
                 type: string
                 description: Caller identity, when known
-                example: Voluptatum voluptas.
+                example: Qui et ipsa nesciunt omnis.
             state:
                 type: string
                 description: Aggregated state of the steps
@@ -2644,94 +2668,94 @@ definitions:
                 items:
                     $ref: '#/definitions/PublishStep'
                 example:
-                    - attempts: 5512985561402947536
-                      createdAt: "2006-05-14T00:36:44Z"
-                      dependsOn: Quia dolorem.
-                      dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
-                      finishedAt: "2010-07-17T07:51:21Z"
-                      id: Ducimus ut fugiat maiores sunt fugiat ut.
-                      lastError: Necessitatibus et.
-                      payload: Similique sed ducimus eum id voluptatem harum.
-                      result: Asperiores ut quibusdam.
-                      startedAt: "1981-05-08T17:14:22Z"
-                      state: succeeded
-                      target: Voluptatum quis ea totam quisquam.
-                      unitId: Eaque in.
-                    - attempts: 5512985561402947536
-                      createdAt: "2006-05-14T00:36:44Z"
-                      dependsOn: Quia dolorem.
-                      dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
-                      finishedAt: "2010-07-17T07:51:21Z"
-                      id: Ducimus ut fugiat maiores sunt fugiat ut.
-                      lastError: Necessitatibus et.
-                      payload: Similique sed ducimus eum id voluptatem harum.
-                      result: Asperiores ut quibusdam.
-                      startedAt: "1981-05-08T17:14:22Z"
-                      state: succeeded
-                      target: Voluptatum quis ea totam quisquam.
-                      unitId: Eaque in.
-                    - attempts: 5512985561402947536
-                      createdAt: "2006-05-14T00:36:44Z"
-                      dependsOn: Quia dolorem.
-                      dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
-                      finishedAt: "2010-07-17T07:51:21Z"
-                      id: Ducimus ut fugiat maiores sunt fugiat ut.
-                      lastError: Necessitatibus et.
-                      payload: Similique sed ducimus eum id voluptatem harum.
-                      result: Asperiores ut quibusdam.
-                      startedAt: "1981-05-08T17:14:22Z"
-                      state: succeeded
-                      target: Voluptatum quis ea totam quisquam.
-                      unitId: Eaque in.
+                    - attempts: 5473652195000407754
+                      createdAt: "1988-09-15T03:14:34Z"
+                      dependsOn: Assumenda possimus.
+                      dest: Optio et.
+                      finishedAt: "1975-08-22T09:36:28Z"
+                      id: Adipisci fugit ut non omnis reiciendis distinctio.
+                      lastError: Aut ipsa ut.
+                      payload: Et laborum.
+                      result: Vel beatae deleniti nam fugit sapiente.
+                      startedAt: "1986-06-07T19:23:58Z"
+                      state: blocked
+                      target: Est enim modi doloribus.
+                      unitId: Dolores autem dolore accusantium et iusto facere.
+                    - attempts: 5473652195000407754
+                      createdAt: "1988-09-15T03:14:34Z"
+                      dependsOn: Assumenda possimus.
+                      dest: Optio et.
+                      finishedAt: "1975-08-22T09:36:28Z"
+                      id: Adipisci fugit ut non omnis reiciendis distinctio.
+                      lastError: Aut ipsa ut.
+                      payload: Et laborum.
+                      result: Vel beatae deleniti nam fugit sapiente.
+                      startedAt: "1986-06-07T19:23:58Z"
+                      state: blocked
+                      target: Est enim modi doloribus.
+                      unitId: Dolores autem dolore accusantium et iusto facere.
+                    - attempts: 5473652195000407754
+                      createdAt: "1988-09-15T03:14:34Z"
+                      dependsOn: Assumenda possimus.
+                      dest: Optio et.
+                      finishedAt: "1975-08-22T09:36:28Z"
+                      id: Adipisci fugit ut non omnis reiciendis distinctio.
+                      lastError: Aut ipsa ut.
+                      payload: Et laborum.
+                      result: Vel beatae deleniti nam fugit sapiente.
+                      startedAt: "1986-06-07T19:23:58Z"
+                      state: blocked
+                      target: Est enim modi doloribus.
+                      unitId: Dolores autem dolore accusantium et iusto facere.
+                    - attempts: 5473652195000407754
+                      createdAt: "1988-09-15T03:14:34Z"
+                      dependsOn: Assumenda possimus.
+                      dest: Optio et.
+                      finishedAt: "1975-08-22T09:36:28Z"
+                      id: Adipisci fugit ut non omnis reiciendis distinctio.
+                      lastError: Aut ipsa ut.
+                      payload: Et laborum.
+                      result: Vel beatae deleniti nam fugit sapiente.
+                      startedAt: "1986-06-07T19:23:58Z"
+                      state: blocked
+                      target: Est enim modi doloribus.
+                      unitId: Dolores autem dolore accusantium et iusto facere.
         example:
-            artifactUrl: Minima nesciunt eum veniam commodi.
-            createdAt: "2001-03-22T05:51:15Z"
-            digest: Unde quam.
-            finishedAt: "1982-01-27T12:09:13Z"
-            id: Aut architecto facere non eos quod et.
-            kind: Enim ea.
-            requestedBy: Molestias hic delectus non quia delectus.
-            state: running
+            artifactUrl: Delectus et non in non.
+            createdAt: "1981-06-19T14:03:18Z"
+            digest: Facilis dicta quas.
+            finishedAt: "1990-01-22T07:30:39Z"
+            id: Voluptatibus porro pariatur illo autem atque.
+            kind: Eaque sapiente consequatur voluptas illum fugiat et.
+            requestedBy: Illo ut.
+            state: canceled
             steps:
-                - attempts: 5512985561402947536
-                  createdAt: "2006-05-14T00:36:44Z"
-                  dependsOn: Quia dolorem.
-                  dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
-                  finishedAt: "2010-07-17T07:51:21Z"
-                  id: Ducimus ut fugiat maiores sunt fugiat ut.
-                  lastError: Necessitatibus et.
-                  payload: Similique sed ducimus eum id voluptatem harum.
-                  result: Asperiores ut quibusdam.
-                  startedAt: "1981-05-08T17:14:22Z"
-                  state: succeeded
-                  target: Voluptatum quis ea totam quisquam.
-                  unitId: Eaque in.
-                - attempts: 5512985561402947536
-                  createdAt: "2006-05-14T00:36:44Z"
-                  dependsOn: Quia dolorem.
-                  dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
-                  finishedAt: "2010-07-17T07:51:21Z"
-                  id: Ducimus ut fugiat maiores sunt fugiat ut.
-                  lastError: Necessitatibus et.
-                  payload: Similique sed ducimus eum id voluptatem harum.
-                  result: Asperiores ut quibusdam.
-                  startedAt: "1981-05-08T17:14:22Z"
-                  state: succeeded
-                  target: Voluptatum quis ea totam quisquam.
-                  unitId: Eaque in.
-                - attempts: 5512985561402947536
-                  createdAt: "2006-05-14T00:36:44Z"
-                  dependsOn: Quia dolorem.
-                  dest: Pariatur distinctio molestiae fugiat nostrum laudantium ea.
-                  finishedAt: "2010-07-17T07:51:21Z"
-                  id: Ducimus ut fugiat maiores sunt fugiat ut.
-                  lastError: Necessitatibus et.
-                  payload: Similique sed ducimus eum id voluptatem harum.
-                  result: Asperiores ut quibusdam.
-                  startedAt: "1981-05-08T17:14:22Z"
-                  state: succeeded
-                  target: Voluptatum quis ea totam quisquam.
-                  unitId: Eaque in.
+                - attempts: 5473652195000407754
+                  createdAt: "1988-09-15T03:14:34Z"
+                  dependsOn: Assumenda possimus.
+                  dest: Optio et.
+                  finishedAt: "1975-08-22T09:36:28Z"
+                  id: Adipisci fugit ut non omnis reiciendis distinctio.
+                  lastError: Aut ipsa ut.
+                  payload: Et laborum.
+                  result: Vel beatae deleniti nam fugit sapiente.
+                  startedAt: "1986-06-07T19:23:58Z"
+                  state: blocked
+                  target: Est enim modi doloribus.
+                  unitId: Dolores autem dolore accusantium et iusto facere.
+                - attempts: 5473652195000407754
+                  createdAt: "1988-09-15T03:14:34Z"
+                  dependsOn: Assumenda possimus.
+                  dest: Optio et.
+                  finishedAt: "1975-08-22T09:36:28Z"
+                  id: Adipisci fugit ut non omnis reiciendis distinctio.
+                  lastError: Aut ipsa ut.
+                  payload: Et laborum.
+                  result: Vel beatae deleniti nam fugit sapiente.
+                  startedAt: "1986-06-07T19:23:58Z"
+                  state: blocked
+                  target: Est enim modi doloribus.
+                  unitId: Dolores autem dolore accusantium et iusto facere.
         required:
             - id
             - kind
@@ -2743,60 +2767,58 @@ definitions:
         properties:
             endAt:
                 type: string
-                example: "2003-09-02T08:22:58Z"
+                example: "1999-07-12T13:47:49Z"
                 format: date-time
             images:
                 type: array
                 items:
                     $ref: '#/definitions/ImageArtifact'
                 example:
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
             name:
                 type: string
-                example: Natus expedita perspiciatis quas.
+                example: Enim illum.
             namespace:
                 type: string
-                example: Amet sunt quia officia.
+                example: Distinctio et doloribus eius aut dolorem.
             ociArtifacts:
                 type: array
                 items:
                     $ref: '#/definitions/OciArtifact'
                 example:
                     - files:
-                        - Quas et blanditiis et sit.
-                        - Qui voluptates doloremque.
-                        - Saepe quae quia dolorem.
-                        - Aut repellendus.
-                      repo: Blanditiis dignissimos eius.
-                      tag: Reiciendis omnis modi.
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
                     - files:
-                        - Quas et blanditiis et sit.
-                        - Qui voluptates doloremque.
-                        - Saepe quae quia dolorem.
-                        - Aut repellendus.
-                      repo: Blanditiis dignissimos eius.
-                      tag: Reiciendis omnis modi.
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
             platform:
                 type: string
-                example: Deserunt sunt placeat quia.
+                example: Possimus labore numquam aperiam a.
             startAt:
                 type: string
-                example: "1981-10-07T02:59:49Z"
+                example: "1981-06-15T23:49:30Z"
                 format: date-time
             status:
                 type: string
-                example: TimedOut
+                example: ExceededNodeResources
                 enum:
                     - Started
                     - Running
@@ -2808,48 +2830,42 @@ definitions:
                     - ExceededNodeResources
             url:
                 type: string
-                example: http://swift.com/arely.emard
+                example: http://reilly.biz/gaetano.hagenes
                 format: uri
         example:
-            endAt: "1987-04-02T17:27:28Z"
+            endAt: "1990-05-09T14:16:25Z"
             images:
-                - internalURL: Vel quas non omnis aut.
-                  platform: Eos et ab et sed pariatur.
-                  url: Quo nulla.
-                - internalURL: Vel quas non omnis aut.
-                  platform: Eos et ab et sed pariatur.
-                  url: Quo nulla.
-                - internalURL: Vel quas non omnis aut.
-                  platform: Eos et ab et sed pariatur.
-                  url: Quo nulla.
-            name: Ut itaque earum ex quasi molestiae nam.
-            namespace: Sint voluptatem voluptas sunt.
+                - internalURL: Dolores sequi minima eos sed.
+                  platform: Exercitationem dolorem autem minus iusto et.
+                  url: Quis ipsa vel suscipit aut aut aut.
+                - internalURL: Dolores sequi minima eos sed.
+                  platform: Exercitationem dolorem autem minus iusto et.
+                  url: Quis ipsa vel suscipit aut aut aut.
+                - internalURL: Dolores sequi minima eos sed.
+                  platform: Exercitationem dolorem autem minus iusto et.
+                  url: Quis ipsa vel suscipit aut aut aut.
+                - internalURL: Dolores sequi minima eos sed.
+                  platform: Exercitationem dolorem autem minus iusto et.
+                  url: Quis ipsa vel suscipit aut aut aut.
+            name: Molestiae eaque ullam dolor.
+            namespace: Molestiae officiis expedita.
             ociArtifacts:
                 - files:
-                    - Quas et blanditiis et sit.
-                    - Qui voluptates doloremque.
-                    - Saepe quae quia dolorem.
-                    - Aut repellendus.
-                  repo: Blanditiis dignissimos eius.
-                  tag: Reiciendis omnis modi.
+                    - Fuga aliquid ab.
+                    - Dolorum dolores.
+                    - Pariatur ea.
+                  repo: Quas impedit cumque unde quam.
+                  tag: Rerum porro beatae sapiente quo qui.
                 - files:
-                    - Quas et blanditiis et sit.
-                    - Qui voluptates doloremque.
-                    - Saepe quae quia dolorem.
-                    - Aut repellendus.
-                  repo: Blanditiis dignissimos eius.
-                  tag: Reiciendis omnis modi.
-                - files:
-                    - Quas et blanditiis et sit.
-                    - Qui voluptates doloremque.
-                    - Saepe quae quia dolorem.
-                    - Aut repellendus.
-                  repo: Blanditiis dignissimos eius.
-                  tag: Reiciendis omnis modi.
-            platform: Nam voluptate.
-            startAt: "1982-07-05T18:24:07Z"
-            status: TimedOut
-            url: http://koepp.org/valentin.bosco
+                    - Fuga aliquid ab.
+                    - Dolorum dolores.
+                    - Pariatur ea.
+                  repo: Quas impedit cumque unde quam.
+                  tag: Rerum porro beatae sapiente quo qui.
+            platform: Ab et nemo libero sunt suscipit.
+            startAt: "1971-01-25T15:11:22Z"
+            status: Started
+            url: http://effertz.org/claud
         required:
             - name
             - namespace
@@ -2863,196 +2879,231 @@ definitions:
                 items:
                     $ref: '#/definitions/TektonPipeline'
                 example:
-                    - endAt: "2014-09-12T09:57:52Z"
+                    - endAt: "2000-10-17T16:47:45Z"
                       images:
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                      name: Esse accusantium molestiae nihil id vitae.
-                      namespace: Ut nihil numquam dolorum quasi eaque.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                      name: Veniam nihil.
+                      namespace: Laborum libero a voluptatum.
                       ociArtifacts:
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
-                      platform: Voluptates magnam porro.
-                      startAt: "2001-05-31T13:28:34Z"
-                      status: Skipped
-                      url: http://hauck.net/queen
-                    - endAt: "2014-09-12T09:57:52Z"
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
+                        - files:
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
+                        - files:
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
+                      platform: A quia cupiditate praesentium nostrum aut magni.
+                      startAt: "2008-01-03T07:53:23Z"
+                      status: Succeeded
+                      url: http://ullrich.com/malcolm_langosh
+                    - endAt: "2000-10-17T16:47:45Z"
                       images:
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                      name: Esse accusantium molestiae nihil id vitae.
-                      namespace: Ut nihil numquam dolorum quasi eaque.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                        - internalURL: Dolores sequi minima eos sed.
+                          platform: Exercitationem dolorem autem minus iusto et.
+                          url: Quis ipsa vel suscipit aut aut aut.
+                      name: Veniam nihil.
+                      namespace: Laborum libero a voluptatum.
                       ociArtifacts:
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
-                      platform: Voluptates magnam porro.
-                      startAt: "2001-05-31T13:28:34Z"
-                      status: Skipped
-                      url: http://hauck.net/queen
-                    - endAt: "2014-09-12T09:57:52Z"
-                      images:
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                        - internalURL: Vel quas non omnis aut.
-                          platform: Eos et ab et sed pariatur.
-                          url: Quo nulla.
-                      name: Esse accusantium molestiae nihil id vitae.
-                      namespace: Ut nihil numquam dolorum quasi eaque.
-                      ociArtifacts:
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
                         - files:
-                            - Quas et blanditiis et sit.
-                            - Qui voluptates doloremque.
-                            - Saepe quae quia dolorem.
-                            - Aut repellendus.
-                          repo: Blanditiis dignissimos eius.
-                          tag: Reiciendis omnis modi.
-                      platform: Voluptates magnam porro.
-                      startAt: "2001-05-31T13:28:34Z"
-                      status: Skipped
-                      url: http://hauck.net/queen
+                            - Fuga aliquid ab.
+                            - Dolorum dolores.
+                            - Pariatur ea.
+                          repo: Quas impedit cumque unde quam.
+                          tag: Rerum porro beatae sapiente quo qui.
+                      platform: A quia cupiditate praesentium nostrum aut magni.
+                      startAt: "2008-01-03T07:53:23Z"
+                      status: Succeeded
+                      url: http://ullrich.com/malcolm_langosh
             triggersEventIDs:
                 type: array
                 items:
                     type: string
-                    example: aae9342b-971a-44b5-967d-3de9c07f92fa
+                    example: 30ec6779-72e1-480d-8d8a-31f3e5519a88
                     format: uuid
                 example:
-                    - 4f58d90e-f5b4-485a-ad4a-cbc385e6a204
-                    - 116ea260-4ef0-4c82-9fd8-b4fb8ee1cdc8
+                    - ff8b3832-7856-49df-954c-b6632074f274
+                    - 4f3a1a99-d430-4911-a03c-04d55ae55d57
         example:
             pipelines:
-                - endAt: "2014-09-12T09:57:52Z"
+                - endAt: "2000-10-17T16:47:45Z"
                   images:
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                  name: Esse accusantium molestiae nihil id vitae.
-                  namespace: Ut nihil numquam dolorum quasi eaque.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                  name: Veniam nihil.
+                  namespace: Laborum libero a voluptatum.
                   ociArtifacts:
                     - files:
-                        - Quas et blanditiis et sit.
-                        - Qui voluptates doloremque.
-                        - Saepe quae quia dolorem.
-                        - Aut repellendus.
-                      repo: Blanditiis dignissimos eius.
-                      tag: Reiciendis omnis modi.
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
                     - files:
-                        - Quas et blanditiis et sit.
-                        - Qui voluptates doloremque.
-                        - Saepe quae quia dolorem.
-                        - Aut repellendus.
-                      repo: Blanditiis dignissimos eius.
-                      tag: Reiciendis omnis modi.
-                  platform: Voluptates magnam porro.
-                  startAt: "2001-05-31T13:28:34Z"
-                  status: Skipped
-                  url: http://hauck.net/queen
-                - endAt: "2014-09-12T09:57:52Z"
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                  platform: A quia cupiditate praesentium nostrum aut magni.
+                  startAt: "2008-01-03T07:53:23Z"
+                  status: Succeeded
+                  url: http://ullrich.com/malcolm_langosh
+                - endAt: "2000-10-17T16:47:45Z"
                   images:
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                    - internalURL: Vel quas non omnis aut.
-                      platform: Eos et ab et sed pariatur.
-                      url: Quo nulla.
-                  name: Esse accusantium molestiae nihil id vitae.
-                  namespace: Ut nihil numquam dolorum quasi eaque.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                  name: Veniam nihil.
+                  namespace: Laborum libero a voluptatum.
                   ociArtifacts:
                     - files:
-                        - Quas et blanditiis et sit.
-                        - Qui voluptates doloremque.
-                        - Saepe quae quia dolorem.
-                        - Aut repellendus.
-                      repo: Blanditiis dignissimos eius.
-                      tag: Reiciendis omnis modi.
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
                     - files:
-                        - Quas et blanditiis et sit.
-                        - Qui voluptates doloremque.
-                        - Saepe quae quia dolorem.
-                        - Aut repellendus.
-                      repo: Blanditiis dignissimos eius.
-                      tag: Reiciendis omnis modi.
-                  platform: Voluptates magnam porro.
-                  startAt: "2001-05-31T13:28:34Z"
-                  status: Skipped
-                  url: http://hauck.net/queen
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                  platform: A quia cupiditate praesentium nostrum aut magni.
+                  startAt: "2008-01-03T07:53:23Z"
+                  status: Succeeded
+                  url: http://ullrich.com/malcolm_langosh
+                - endAt: "2000-10-17T16:47:45Z"
+                  images:
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                    - internalURL: Dolores sequi minima eos sed.
+                      platform: Exercitationem dolorem autem minus iusto et.
+                      url: Quis ipsa vel suscipit aut aut aut.
+                  name: Veniam nihil.
+                  namespace: Laborum libero a voluptatum.
+                  ociArtifacts:
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                    - files:
+                        - Fuga aliquid ab.
+                        - Dolorum dolores.
+                        - Pariatur ea.
+                      repo: Quas impedit cumque unde quam.
+                      tag: Rerum porro beatae sapiente quo qui.
+                  platform: A quia cupiditate praesentium nostrum aut magni.
+                  startAt: "2008-01-03T07:53:23Z"
+                  status: Succeeded
+                  url: http://ullrich.com/malcolm_langosh
             triggersEventIDs:
-                - 9fb9d638-0559-41da-879a-715f8f9638ee
-                - 680b2523-ecef-4f89-b6eb-eee825227185
-                - fba6d608-9e7a-4d16-b23e-a0b98b975575
+                - 32dfb158-9f26-43d6-9734-a4d18c9b8f24
+                - 70d1d624-9d51-4310-8df5-c99590a68cf7
+                - 634d822b-911d-4e21-8495-f8354150648e
         required:
             - pipelines
     TiDBxBumpTagMeta:
@@ -3080,3 +3131,166 @@ definitions:
                 applicant: tidb
                 change_id: c1
                 release_id: r1
+    TiUPFaultError:
+        title: TiUPFaultError
+        type: object
+        properties:
+            fault:
+                type: boolean
+                default: true
+                example: false
+            id:
+                type: string
+                example: Dicta atque non consequatur.
+            message:
+                type: string
+                example: Vel saepe cum iure.
+            name:
+                type: string
+                example: Ut distinctio saepe dicta in.
+            temporary:
+                type: boolean
+                default: false
+                example: true
+            timeout:
+                type: boolean
+                default: false
+                example: true
+        description: Internal fault
+        example:
+            fault: false
+            id: Et quis.
+            message: Itaque ut explicabo quia est.
+            name: Sit veniam.
+            temporary: false
+            timeout: true
+        required:
+            - name
+            - message
+    TiUPFrom:
+        title: TiUPFrom
+        type: object
+        properties:
+            http:
+                $ref: '#/definitions/TiUPFromHTTP'
+            oci:
+                $ref: '#/definitions/TiUPFromOCI'
+            type:
+                type: string
+                example: oci
+                enum:
+                    - http
+                    - oci
+        description: 'Source of the package: a direct HTTP URL or an OCI layer.'
+        example:
+            http:
+                url: Molestiae atque beatae ut.
+            oci:
+                file: Rerum maxime beatae dicta et voluptatibus beatae.
+                repo: Nam ex.
+                tag: Nisi hic voluptas asperiores vitae.
+            type: http
+        required:
+            - type
+    TiUPFromHTTP:
+        title: TiUPFromHTTP
+        type: object
+        properties:
+            url:
+                type: string
+                example: Tempore nam rem.
+        example:
+            url: Inventore quo dolorem voluptatem aut nobis.
+    TiUPFromOCI:
+        title: TiUPFromOCI
+        type: object
+        properties:
+            file:
+                type: string
+                example: Ut aut magnam corporis.
+            repo:
+                type: string
+                example: Cum hic dolore mollitia rerum dolorum dolorem.
+            tag:
+                type: string
+                example: Id numquam ab veritatis repellat asperiores enim.
+        example:
+            file: Ad itaque voluptas cupiditate quae non.
+            repo: Quis et.
+            tag: A unde pariatur non doloremque consequatur.
+    TiUPPublishInfo:
+        title: TiUPPublishInfo
+        type: object
+        properties:
+            arch:
+                type: string
+                example: Possimus saepe quibusdam.
+            description:
+                type: string
+                example: Non unde quia recusandae.
+            entry_point:
+                type: string
+                example: Beatae esse suscipit ex impedit et iure.
+            name:
+                type: string
+                example: Nemo ratione at ratione harum.
+            os:
+                type: string
+                example: Dignissimos sequi earum adipisci omnis voluptates quis.
+            standalone:
+                type: boolean
+                example: false
+            version:
+                type: string
+                example: Qui aliquam eveniet est voluptate atque.
+        example:
+            arch: Temporibus quis nulla laborum eos et voluptatem.
+            description: Eum non vitae itaque.
+            entry_point: Sequi sapiente quae aut et.
+            name: Ad sapiente.
+            os: Ex minima.
+            standalone: false
+            version: Dolorum eum sunt qui.
+        required:
+            - name
+            - os
+            - arch
+            - version
+            - entry_point
+    TiUPPublishRequest:
+        title: TiUPPublishRequest
+        type: object
+        properties:
+            from:
+                $ref: '#/definitions/TiUPFrom'
+            publish:
+                $ref: '#/definitions/TiUPPublishInfo'
+            tiup_mirror:
+                type: string
+                description: '`staging` is http://tiup.pingcap.net:8988, `prod` is http://tiup.pingcap.net:8987.'
+                default: staging
+                example: prod
+                enum:
+                    - staging
+                    - prod
+        example:
+            from:
+                http:
+                    url: Molestiae atque beatae ut.
+                oci:
+                    file: Rerum maxime beatae dicta et voluptatibus beatae.
+                    repo: Nam ex.
+                    tag: Nisi hic voluptas asperiores vitae.
+                type: http
+            publish:
+                arch: Natus labore nemo.
+                description: Pariatur sit quaerat maxime.
+                entry_point: Cupiditate itaque exercitationem.
+                name: Odit sequi earum.
+                os: Omnis sit aut quo aut facere architecto.
+                standalone: false
+                version: Et quae ut dolores velit autem illo.
+            tiup_mirror: prod
+        required:
+            - from
+            - publish

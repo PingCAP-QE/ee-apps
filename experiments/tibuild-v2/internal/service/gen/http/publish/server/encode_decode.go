@@ -368,6 +368,325 @@ func EncodeRetryUnitError(encoder func(context.Context, http.ResponseWriter) goa
 	}
 }
 
+// EncodeDeliveryByRulesResponse returns an encoder for responses returned by
+// the publish deliveryByRules endpoint.
+func EncodeDeliveryByRulesResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.([]string)
+		enc := encoder(ctx, w)
+		body := res
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeDeliveryByRulesRequest returns a decoder for requests sent to the
+// publish deliveryByRules endpoint.
+func DecodeDeliveryByRulesRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*publish.DeliveryByRulesPayload, error) {
+	return func(r *http.Request) (*publish.DeliveryByRulesPayload, error) {
+		var payload *publish.DeliveryByRulesPayload
+		var (
+			body DeliveryByRulesRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return payload, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return payload, gerr
+			}
+			return payload, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateDeliveryByRulesRequestBody(&body)
+		if err != nil {
+			return payload, err
+		}
+		payload = NewDeliveryByRulesPayload(&body)
+
+		return payload, nil
+	}
+}
+
+// EncodeDeliveryByRulesError returns an encoder for errors returned by the
+// deliveryByRules publish endpoint.
+func EncodeDeliveryByRulesError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "BadRequest":
+			var res *publish.PublishBadRequestError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewDeliveryByRulesBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
+		case "fault":
+			var res *publish.TiUPFaultError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewDeliveryByRulesFaultResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
+// EncodeRequestToPublishResponse returns an encoder for responses returned by
+// the publish requestToPublish endpoint.
+func EncodeRequestToPublishResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.([]string)
+		enc := encoder(ctx, w)
+		body := res
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeRequestToPublishRequest returns a decoder for requests sent to the
+// publish requestToPublish endpoint.
+func DecodeRequestToPublishRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*publish.RequestToPublishPayload, error) {
+	return func(r *http.Request) (*publish.RequestToPublishPayload, error) {
+		var payload *publish.RequestToPublishPayload
+		var (
+			body RequestToPublishRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return payload, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return payload, gerr
+			}
+			return payload, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateRequestToPublishRequestBody(&body)
+		if err != nil {
+			return payload, err
+		}
+		payload = NewRequestToPublishPayload(&body)
+
+		return payload, nil
+	}
+}
+
+// EncodeRequestToPublishError returns an encoder for errors returned by the
+// requestToPublish publish endpoint.
+func EncodeRequestToPublishError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "BadRequest":
+			var res *publish.PublishBadRequestError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewRequestToPublishBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
+		case "fault":
+			var res *publish.TiUPFaultError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewRequestToPublishFaultResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
+// EncodeRequestToPublishSingleResponse returns an encoder for responses
+// returned by the publish requestToPublishSingle endpoint.
+func EncodeRequestToPublishSingleResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(string)
+		enc := encoder(ctx, w)
+		body := res
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeRequestToPublishSingleRequest returns a decoder for requests sent to
+// the publish requestToPublishSingle endpoint.
+func DecodeRequestToPublishSingleRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*publish.TiUPPublishRequest, error) {
+	return func(r *http.Request) (*publish.TiUPPublishRequest, error) {
+		var payload *publish.TiUPPublishRequest
+		var (
+			body RequestToPublishSingleRequestBody
+			err  error
+		)
+		err = decoder(r).Decode(&body)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return payload, goa.MissingPayloadError()
+			}
+			var gerr *goa.ServiceError
+			if errors.As(err, &gerr) {
+				return payload, gerr
+			}
+			return payload, goa.DecodePayloadError(err.Error())
+		}
+		err = ValidateRequestToPublishSingleRequestBody(&body)
+		if err != nil {
+			return payload, err
+		}
+		payload = NewRequestToPublishSingleTiUPPublishRequest(&body)
+
+		return payload, nil
+	}
+}
+
+// EncodeRequestToPublishSingleError returns an encoder for errors returned by
+// the requestToPublishSingle publish endpoint.
+func EncodeRequestToPublishSingleError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "BadRequest":
+			var res *publish.PublishBadRequestError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewRequestToPublishSingleBadRequestResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusBadRequest)
+			return enc.Encode(body)
+		case "fault":
+			var res *publish.TiUPFaultError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewRequestToPublishSingleFaultResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
+// EncodeQueryPublishingStatusResponse returns an encoder for responses
+// returned by the publish queryPublishingStatus endpoint.
+func EncodeQueryPublishingStatusResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		res, _ := v.(publish.TiUPRequestState)
+		enc := encoder(ctx, w)
+		body := res
+		w.WriteHeader(http.StatusOK)
+		return enc.Encode(body)
+	}
+}
+
+// DecodeQueryPublishingStatusRequest returns a decoder for requests sent to
+// the publish queryPublishingStatus endpoint.
+func DecodeQueryPublishingStatusRequest(mux goahttp.Muxer, decoder func(*http.Request) goahttp.Decoder) func(*http.Request) (*publish.QueryPublishingStatusPayload, error) {
+	return func(r *http.Request) (*publish.QueryPublishingStatusPayload, error) {
+		var payload *publish.QueryPublishingStatusPayload
+		var (
+			requestID string
+
+			params = mux.Vars(r)
+		)
+		requestID = params["request_id"]
+		payload = NewQueryPublishingStatusPayload(requestID)
+
+		return payload, nil
+	}
+}
+
+// EncodeQueryPublishingStatusError returns an encoder for errors returned by
+// the queryPublishingStatus publish endpoint.
+func EncodeQueryPublishingStatusError(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder, formatter func(ctx context.Context, err error) goahttp.Statuser) func(context.Context, http.ResponseWriter, error) error {
+	encodeError := goahttp.ErrorEncoder(encoder, formatter)
+	return func(ctx context.Context, w http.ResponseWriter, v error) error {
+		var en goa.GoaErrorNamer
+		if !errors.As(v, &en) {
+			return encodeError(ctx, w, v)
+		}
+		switch en.GoaErrorName() {
+		case "fault":
+			var res *publish.TiUPFaultError
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryPublishingStatusFaultResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusInternalServerError)
+			return enc.Encode(body)
+		default:
+			return encodeError(ctx, w, v)
+		}
+	}
+}
+
+// EncodeResetRateLimitResponse returns an encoder for responses returned by
+// the publish resetRateLimit endpoint.
+func EncodeResetRateLimitResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
+	return func(ctx context.Context, w http.ResponseWriter, v any) error {
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+}
+
 // marshalPublishPublishStepToPublishStepResponseBody builds a value of type
 // *PublishStepResponseBody from a value of type *publish.PublishStep.
 func marshalPublishPublishStepToPublishStepResponseBody(v *publish.PublishStep) *PublishStepResponseBody {
@@ -440,6 +759,67 @@ func marshalPublishPublishStepToPublishStepResponse(v *publish.PublishStep) *Pub
 		CreatedAt:  v.CreatedAt,
 		StartedAt:  v.StartedAt,
 		FinishedAt: v.FinishedAt,
+	}
+
+	return res
+}
+
+// unmarshalTiUPFromRequestBodyToPublishTiUPFrom builds a value of type
+// *publish.TiUPFrom from a value of type *TiUPFromRequestBody.
+func unmarshalTiUPFromRequestBodyToPublishTiUPFrom(v *TiUPFromRequestBody) *publish.TiUPFrom {
+	res := &publish.TiUPFrom{
+		Type: *v.Type,
+	}
+	if v.HTTP != nil {
+		res.HTTP = unmarshalTiUPFromHTTPRequestBodyToPublishTiUPFromHTTP(v.HTTP)
+	}
+	if v.Oci != nil {
+		res.Oci = unmarshalTiUPFromOCIRequestBodyToPublishTiUPFromOCI(v.Oci)
+	}
+
+	return res
+}
+
+// unmarshalTiUPFromHTTPRequestBodyToPublishTiUPFromHTTP builds a value of type
+// *publish.TiUPFromHTTP from a value of type *TiUPFromHTTPRequestBody.
+func unmarshalTiUPFromHTTPRequestBodyToPublishTiUPFromHTTP(v *TiUPFromHTTPRequestBody) *publish.TiUPFromHTTP {
+	if v == nil {
+		return nil
+	}
+	res := &publish.TiUPFromHTTP{
+		URL: v.URL,
+	}
+
+	return res
+}
+
+// unmarshalTiUPFromOCIRequestBodyToPublishTiUPFromOCI builds a value of type
+// *publish.TiUPFromOCI from a value of type *TiUPFromOCIRequestBody.
+func unmarshalTiUPFromOCIRequestBodyToPublishTiUPFromOCI(v *TiUPFromOCIRequestBody) *publish.TiUPFromOCI {
+	if v == nil {
+		return nil
+	}
+	res := &publish.TiUPFromOCI{
+		Repo: v.Repo,
+		Tag:  v.Tag,
+		File: v.File,
+	}
+
+	return res
+}
+
+// unmarshalTiUPPublishInfoRequestBodyToPublishTiUPPublishInfo builds a value
+// of type *publish.TiUPPublishInfo from a value of type
+// *TiUPPublishInfoRequestBody.
+func unmarshalTiUPPublishInfoRequestBodyToPublishTiUPPublishInfo(v *TiUPPublishInfoRequestBody) *publish.TiUPPublishInfo {
+	res := &publish.TiUPPublishInfo{
+		Name:        *v.Name,
+		Os:          *v.Os,
+		Arch:        *v.Arch,
+		Version:     *v.Version,
+		Description: v.Description,
+		EntryPoint:  *v.EntryPoint,
+		Standalone:  v.Standalone,
 	}
 
 	return res

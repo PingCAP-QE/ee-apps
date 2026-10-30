@@ -16,6 +16,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishlane"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
 )
@@ -82,6 +83,7 @@ func checkColumn(t, c string) error {
 			alertlease.Table:    alertlease.ValidColumn,
 			devbuild.Table:      devbuild.ValidColumn,
 			imagesynctask.Table: imagesynctask.ValidColumn,
+			publishlane.Table:   publishlane.ValidColumn,
 			publishstep.Table:   publishstep.ValidColumn,
 			publishunit.Table:   publishunit.ValidColumn,
 		})

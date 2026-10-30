@@ -462,6 +462,428 @@ func DecodeRetryUnitResponse(decoder func(*http.Response) goahttp.Decoder, resto
 	}
 }
 
+// BuildDeliveryByRulesRequest instantiates a HTTP request object with method
+// and path set to call the "publish" service "deliveryByRules" endpoint
+func (c *Client) BuildDeliveryByRulesRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: DeliveryByRulesPublishPath()}
+	req, err := http.NewRequest("POST", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("publish", "deliveryByRules", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeDeliveryByRulesRequest returns an encoder for requests sent to the
+// publish deliveryByRules server.
+func EncodeDeliveryByRulesRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*publish.DeliveryByRulesPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("publish", "deliveryByRules", "*publish.DeliveryByRulesPayload", v)
+		}
+		body := NewDeliveryByRulesRequestBody(p)
+		if err := encoder(req).Encode(&body); err != nil {
+			return goahttp.ErrEncodingError("publish", "deliveryByRules", err)
+		}
+		return nil
+	}
+}
+
+// DecodeDeliveryByRulesResponse returns a decoder for responses returned by
+// the publish deliveryByRules endpoint. restoreBody controls whether the
+// response body should be restored after having been read.
+// DecodeDeliveryByRulesResponse may return the following errors:
+//   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "fault" (type *publish.TiUPFaultError): http.StatusInternalServerError
+//   - error: internal error
+func DecodeDeliveryByRulesResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body []string
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "deliveryByRules", err)
+			}
+			return body, nil
+		case http.StatusBadRequest:
+			var (
+				body DeliveryByRulesBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "deliveryByRules", err)
+			}
+			err = ValidateDeliveryByRulesBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "deliveryByRules", err)
+			}
+			return nil, NewDeliveryByRulesBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body DeliveryByRulesFaultResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "deliveryByRules", err)
+			}
+			err = ValidateDeliveryByRulesFaultResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "deliveryByRules", err)
+			}
+			return nil, NewDeliveryByRulesFault(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("publish", "deliveryByRules", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// BuildRequestToPublishRequest instantiates a HTTP request object with method
+// and path set to call the "publish" service "requestToPublish" endpoint
+func (c *Client) BuildRequestToPublishRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: RequestToPublishPublishPath()}
+	req, err := http.NewRequest("POST", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("publish", "requestToPublish", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeRequestToPublishRequest returns an encoder for requests sent to the
+// publish requestToPublish server.
+func EncodeRequestToPublishRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*publish.RequestToPublishPayload)
+		if !ok {
+			return goahttp.ErrInvalidType("publish", "requestToPublish", "*publish.RequestToPublishPayload", v)
+		}
+		body := NewRequestToPublishRequestBody(p)
+		if err := encoder(req).Encode(&body); err != nil {
+			return goahttp.ErrEncodingError("publish", "requestToPublish", err)
+		}
+		return nil
+	}
+}
+
+// DecodeRequestToPublishResponse returns a decoder for responses returned by
+// the publish requestToPublish endpoint. restoreBody controls whether the
+// response body should be restored after having been read.
+// DecodeRequestToPublishResponse may return the following errors:
+//   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "fault" (type *publish.TiUPFaultError): http.StatusInternalServerError
+//   - error: internal error
+func DecodeRequestToPublishResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body []string
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "requestToPublish", err)
+			}
+			return body, nil
+		case http.StatusBadRequest:
+			var (
+				body RequestToPublishBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "requestToPublish", err)
+			}
+			err = ValidateRequestToPublishBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "requestToPublish", err)
+			}
+			return nil, NewRequestToPublishBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body RequestToPublishFaultResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "requestToPublish", err)
+			}
+			err = ValidateRequestToPublishFaultResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "requestToPublish", err)
+			}
+			return nil, NewRequestToPublishFault(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("publish", "requestToPublish", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// BuildRequestToPublishSingleRequest instantiates a HTTP request object with
+// method and path set to call the "publish" service "requestToPublishSingle"
+// endpoint
+func (c *Client) BuildRequestToPublishSingleRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: RequestToPublishSinglePublishPath()}
+	req, err := http.NewRequest("POST", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("publish", "requestToPublishSingle", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// EncodeRequestToPublishSingleRequest returns an encoder for requests sent to
+// the publish requestToPublishSingle server.
+func EncodeRequestToPublishSingleRequest(encoder func(*http.Request) goahttp.Encoder) func(*http.Request, any) error {
+	return func(req *http.Request, v any) error {
+		p, ok := v.(*publish.TiUPPublishRequest)
+		if !ok {
+			return goahttp.ErrInvalidType("publish", "requestToPublishSingle", "*publish.TiUPPublishRequest", v)
+		}
+		body := NewRequestToPublishSingleRequestBody(p)
+		if err := encoder(req).Encode(&body); err != nil {
+			return goahttp.ErrEncodingError("publish", "requestToPublishSingle", err)
+		}
+		return nil
+	}
+}
+
+// DecodeRequestToPublishSingleResponse returns a decoder for responses
+// returned by the publish requestToPublishSingle endpoint. restoreBody
+// controls whether the response body should be restored after having been read.
+// DecodeRequestToPublishSingleResponse may return the following errors:
+//   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "fault" (type *publish.TiUPFaultError): http.StatusInternalServerError
+//   - error: internal error
+func DecodeRequestToPublishSingleResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body string
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "requestToPublishSingle", err)
+			}
+			return body, nil
+		case http.StatusBadRequest:
+			var (
+				body RequestToPublishSingleBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "requestToPublishSingle", err)
+			}
+			err = ValidateRequestToPublishSingleBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "requestToPublishSingle", err)
+			}
+			return nil, NewRequestToPublishSingleBadRequest(&body)
+		case http.StatusInternalServerError:
+			var (
+				body RequestToPublishSingleFaultResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "requestToPublishSingle", err)
+			}
+			err = ValidateRequestToPublishSingleFaultResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "requestToPublishSingle", err)
+			}
+			return nil, NewRequestToPublishSingleFault(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("publish", "requestToPublishSingle", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// BuildQueryPublishingStatusRequest instantiates a HTTP request object with
+// method and path set to call the "publish" service "queryPublishingStatus"
+// endpoint
+func (c *Client) BuildQueryPublishingStatusRequest(ctx context.Context, v any) (*http.Request, error) {
+	var (
+		requestID string
+	)
+	{
+		p, ok := v.(*publish.QueryPublishingStatusPayload)
+		if !ok {
+			return nil, goahttp.ErrInvalidType("publish", "queryPublishingStatus", "*publish.QueryPublishingStatusPayload", v)
+		}
+		requestID = p.RequestID
+	}
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: QueryPublishingStatusPublishPath(requestID)}
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("publish", "queryPublishingStatus", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// DecodeQueryPublishingStatusResponse returns a decoder for responses returned
+// by the publish queryPublishingStatus endpoint. restoreBody controls whether
+// the response body should be restored after having been read.
+// DecodeQueryPublishingStatusResponse may return the following errors:
+//   - "fault" (type *publish.TiUPFaultError): http.StatusInternalServerError
+//   - error: internal error
+func DecodeQueryPublishingStatusResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			var (
+				body string
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "queryPublishingStatus", err)
+			}
+			if !(body == "queued" || body == "processing" || body == "success" || body == "failed" || body == "canceled") {
+				err = goa.MergeErrors(err, goa.InvalidEnumValueError("body", body, []any{"queued", "processing", "success", "failed", "canceled"}))
+			}
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "queryPublishingStatus", err)
+			}
+			res := NewQueryPublishingStatusTiUPRequestStateOK(body)
+			return res, nil
+		case http.StatusInternalServerError:
+			var (
+				body QueryPublishingStatusFaultResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "queryPublishingStatus", err)
+			}
+			err = ValidateQueryPublishingStatusFaultResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "queryPublishingStatus", err)
+			}
+			return nil, NewQueryPublishingStatusFault(&body)
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("publish", "queryPublishingStatus", resp.StatusCode, string(body))
+		}
+	}
+}
+
+// BuildResetRateLimitRequest instantiates a HTTP request object with method
+// and path set to call the "publish" service "resetRateLimit" endpoint
+func (c *Client) BuildResetRateLimitRequest(ctx context.Context, v any) (*http.Request, error) {
+	u := &url.URL{Scheme: c.scheme, Host: c.host, Path: ResetRateLimitPublishPath()}
+	req, err := http.NewRequest("POST", u.String(), nil)
+	if err != nil {
+		return nil, goahttp.ErrInvalidURL("publish", "resetRateLimit", u.String(), err)
+	}
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
+
+	return req, nil
+}
+
+// DecodeResetRateLimitResponse returns a decoder for responses returned by the
+// publish resetRateLimit endpoint. restoreBody controls whether the response
+// body should be restored after having been read.
+func DecodeResetRateLimitResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
+	return func(resp *http.Response) (any, error) {
+		if restoreBody {
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+			resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			defer func() {
+				resp.Body = io.NopCloser(bytes.NewBuffer(b))
+			}()
+		} else {
+			defer resp.Body.Close()
+		}
+		switch resp.StatusCode {
+		case http.StatusOK:
+			return nil, nil
+		default:
+			body, _ := io.ReadAll(resp.Body)
+			return nil, goahttp.ErrInvalidResponse("publish", "resetRateLimit", resp.StatusCode, string(body))
+		}
+	}
+}
+
 // unmarshalPublishStepResponseBodyToPublishPublishStep builds a value of type
 // *publish.PublishStep from a value of type *PublishStepResponseBody.
 func unmarshalPublishStepResponseBodyToPublishPublishStep(v *PublishStepResponseBody) *publish.PublishStep {
@@ -534,6 +956,128 @@ func unmarshalPublishStepResponseToPublishPublishStep(v *PublishStepResponse) *p
 		CreatedAt:  v.CreatedAt,
 		StartedAt:  v.StartedAt,
 		FinishedAt: v.FinishedAt,
+	}
+
+	return res
+}
+
+// marshalPublishTiUPFromToTiUPFromRequestBody builds a value of type
+// *TiUPFromRequestBody from a value of type *publish.TiUPFrom.
+func marshalPublishTiUPFromToTiUPFromRequestBody(v *publish.TiUPFrom) *TiUPFromRequestBody {
+	res := &TiUPFromRequestBody{
+		Type: v.Type,
+	}
+	if v.HTTP != nil {
+		res.HTTP = marshalPublishTiUPFromHTTPToTiUPFromHTTPRequestBody(v.HTTP)
+	}
+	if v.Oci != nil {
+		res.Oci = marshalPublishTiUPFromOCIToTiUPFromOCIRequestBody(v.Oci)
+	}
+
+	return res
+}
+
+// marshalPublishTiUPFromHTTPToTiUPFromHTTPRequestBody builds a value of type
+// *TiUPFromHTTPRequestBody from a value of type *publish.TiUPFromHTTP.
+func marshalPublishTiUPFromHTTPToTiUPFromHTTPRequestBody(v *publish.TiUPFromHTTP) *TiUPFromHTTPRequestBody {
+	if v == nil {
+		return nil
+	}
+	res := &TiUPFromHTTPRequestBody{
+		URL: v.URL,
+	}
+
+	return res
+}
+
+// marshalPublishTiUPFromOCIToTiUPFromOCIRequestBody builds a value of type
+// *TiUPFromOCIRequestBody from a value of type *publish.TiUPFromOCI.
+func marshalPublishTiUPFromOCIToTiUPFromOCIRequestBody(v *publish.TiUPFromOCI) *TiUPFromOCIRequestBody {
+	if v == nil {
+		return nil
+	}
+	res := &TiUPFromOCIRequestBody{
+		Repo: v.Repo,
+		Tag:  v.Tag,
+		File: v.File,
+	}
+
+	return res
+}
+
+// marshalPublishTiUPPublishInfoToTiUPPublishInfoRequestBody builds a value of
+// type *TiUPPublishInfoRequestBody from a value of type
+// *publish.TiUPPublishInfo.
+func marshalPublishTiUPPublishInfoToTiUPPublishInfoRequestBody(v *publish.TiUPPublishInfo) *TiUPPublishInfoRequestBody {
+	res := &TiUPPublishInfoRequestBody{
+		Name:        v.Name,
+		Os:          v.Os,
+		Arch:        v.Arch,
+		Version:     v.Version,
+		Description: v.Description,
+		EntryPoint:  v.EntryPoint,
+		Standalone:  v.Standalone,
+	}
+
+	return res
+}
+
+// marshalTiUPFromRequestBodyToPublishTiUPFrom builds a value of type
+// *publish.TiUPFrom from a value of type *TiUPFromRequestBody.
+func marshalTiUPFromRequestBodyToPublishTiUPFrom(v *TiUPFromRequestBody) *publish.TiUPFrom {
+	res := &publish.TiUPFrom{
+		Type: v.Type,
+	}
+	if v.HTTP != nil {
+		res.HTTP = marshalTiUPFromHTTPRequestBodyToPublishTiUPFromHTTP(v.HTTP)
+	}
+	if v.Oci != nil {
+		res.Oci = marshalTiUPFromOCIRequestBodyToPublishTiUPFromOCI(v.Oci)
+	}
+
+	return res
+}
+
+// marshalTiUPFromHTTPRequestBodyToPublishTiUPFromHTTP builds a value of type
+// *publish.TiUPFromHTTP from a value of type *TiUPFromHTTPRequestBody.
+func marshalTiUPFromHTTPRequestBodyToPublishTiUPFromHTTP(v *TiUPFromHTTPRequestBody) *publish.TiUPFromHTTP {
+	if v == nil {
+		return nil
+	}
+	res := &publish.TiUPFromHTTP{
+		URL: v.URL,
+	}
+
+	return res
+}
+
+// marshalTiUPFromOCIRequestBodyToPublishTiUPFromOCI builds a value of type
+// *publish.TiUPFromOCI from a value of type *TiUPFromOCIRequestBody.
+func marshalTiUPFromOCIRequestBodyToPublishTiUPFromOCI(v *TiUPFromOCIRequestBody) *publish.TiUPFromOCI {
+	if v == nil {
+		return nil
+	}
+	res := &publish.TiUPFromOCI{
+		Repo: v.Repo,
+		Tag:  v.Tag,
+		File: v.File,
+	}
+
+	return res
+}
+
+// marshalTiUPPublishInfoRequestBodyToPublishTiUPPublishInfo builds a value of
+// type *publish.TiUPPublishInfo from a value of type
+// *TiUPPublishInfoRequestBody.
+func marshalTiUPPublishInfoRequestBodyToPublishTiUPPublishInfo(v *TiUPPublishInfoRequestBody) *publish.TiUPPublishInfo {
+	res := &publish.TiUPPublishInfo{
+		Name:        v.Name,
+		Os:          v.Os,
+		Arch:        v.Arch,
+		Version:     v.Version,
+		Description: v.Description,
+		EntryPoint:  v.EntryPoint,
+		Standalone:  v.Standalone,
 	}
 
 	return res

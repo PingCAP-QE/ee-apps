@@ -25,7 +25,7 @@ func BuildPublishImagesPayload(publishPublishImagesBody string) (*publish.Publis
 	{
 		err = json.Unmarshal([]byte(publishPublishImagesBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifactUrl\": \"Sint harum consequatur necessitatibus quia est.\",\n      \"image\": \"Ut nisi sed nihil.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifactUrl\": \"Odit rem sunt aliquam facere temporibus rem.\",\n      \"image\": \"Consectetur voluptatum repudiandae ea quasi.\"\n   }'")
 		}
 	}
 	v := &publish.PublishImagesPayload{
@@ -99,6 +99,110 @@ func BuildRetryUnitPayload(publishRetryUnitID string) (*publish.RetryUnitPayload
 	}
 	v := &publish.RetryUnitPayload{}
 	v.ID = id
+
+	return v, nil
+}
+
+// BuildDeliveryByRulesPayload builds the payload for the publish
+// deliveryByRules endpoint from CLI flags.
+func BuildDeliveryByRulesPayload(publishDeliveryByRulesBody string) (*publish.DeliveryByRulesPayload, error) {
+	var err error
+	var body DeliveryByRulesRequestBody
+	{
+		err = json.Unmarshal([]byte(publishDeliveryByRulesBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Quisquam non ut.\"\n   }'")
+		}
+	}
+	v := &publish.DeliveryByRulesPayload{
+		ArtifactURL: body.ArtifactURL,
+	}
+
+	return v, nil
+}
+
+// BuildRequestToPublishPayload builds the payload for the publish
+// requestToPublish endpoint from CLI flags.
+func BuildRequestToPublishPayload(publishRequestToPublishBody string) (*publish.RequestToPublishPayload, error) {
+	var err error
+	var body RequestToPublishRequestBody
+	{
+		err = json.Unmarshal([]byte(publishRequestToPublishBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Odit quas soluta corporis.\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"Soluta tenetur inventore non quis beatae.\"\n   }'")
+		}
+		if !(body.TiupMirror == "staging" || body.TiupMirror == "prod") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", body.TiupMirror, []any{"staging", "prod"}))
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	v := &publish.RequestToPublishPayload{
+		ArtifactURL: body.ArtifactURL,
+		TiupMirror:  body.TiupMirror,
+		Version:     body.Version,
+	}
+
+	return v, nil
+}
+
+// BuildRequestToPublishSinglePayload builds the payload for the publish
+// requestToPublishSingle endpoint from CLI flags.
+func BuildRequestToPublishSinglePayload(publishRequestToPublishSingleBody string) (*publish.TiUPPublishRequest, error) {
+	var err error
+	var body RequestToPublishSingleRequestBody
+	{
+		err = json.Unmarshal([]byte(publishRequestToPublishSingleBody), &body)
+		if err != nil {
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Molestiae atque beatae ut.\"\n         },\n         \"oci\": {\n            \"file\": \"Rerum maxime beatae dicta et voluptatibus beatae.\",\n            \"repo\": \"Nam ex.\",\n            \"tag\": \"Nisi hic voluptas asperiores vitae.\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"Natus labore nemo.\",\n         \"description\": \"Pariatur sit quaerat maxime.\",\n         \"entry_point\": \"Cupiditate itaque exercitationem.\",\n         \"name\": \"Odit sequi earum.\",\n         \"os\": \"Omnis sit aut quo aut facere architecto.\",\n         \"standalone\": false,\n         \"version\": \"Et quae ut dolores velit autem illo.\"\n      },\n      \"tiup_mirror\": \"prod\"\n   }'")
+		}
+		if body.From == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("from", "body"))
+		}
+		if body.Publish == nil {
+			err = goa.MergeErrors(err, goa.MissingFieldError("publish", "body"))
+		}
+		if body.From != nil {
+			if err2 := ValidateTiUPFromRequestBody(body.From); err2 != nil {
+				err = goa.MergeErrors(err, err2)
+			}
+		}
+		if !(body.TiupMirror == "staging" || body.TiupMirror == "prod") {
+			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", body.TiupMirror, []any{"staging", "prod"}))
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	v := &publish.TiUPPublishRequest{
+		TiupMirror: body.TiupMirror,
+	}
+	if body.From != nil {
+		v.From = marshalTiUPFromRequestBodyToPublishTiUPFrom(body.From)
+	}
+	if body.Publish != nil {
+		v.Publish = marshalTiUPPublishInfoRequestBodyToPublishTiUPPublishInfo(body.Publish)
+	}
+	{
+		var zero string
+		if v.TiupMirror == zero {
+			v.TiupMirror = "staging"
+		}
+	}
+
+	return v, nil
+}
+
+// BuildQueryPublishingStatusPayload builds the payload for the publish
+// queryPublishingStatus endpoint from CLI flags.
+func BuildQueryPublishingStatusPayload(publishQueryPublishingStatusRequestID string) (*publish.QueryPublishingStatusPayload, error) {
+	var requestID string
+	{
+		requestID = publishQueryPublishingStatusRequestID
+	}
+	v := &publish.QueryPublishingStatusPayload{}
+	v.RequestID = requestID
 
 	return v, nil
 }

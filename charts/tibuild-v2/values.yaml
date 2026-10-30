@@ -203,3 +203,19 @@ worker:
     httpGet:
       path: /healthz
       port: health
+  # Additional worker Deployments for task kinds that need their own
+  # credentials or queue shard. Each entry renders
+  # <fullname>-worker-<name>; see templates/worker-extra-deployment.yaml.
+  # Example:
+  #   extraDeployments:
+  #     - name: tiup-staging
+  #       config: {secretName: v2-config, secretKey: config-tiup-staging.yaml}
+  #       volumes:
+  #         - name: tiup-credentials
+  #           secret: {secretName: tiup-credentials-staging}
+  #       volumeMounts:
+  #         - name: tiup-credentials
+  #           subPath: private.json
+  #           mountPath: /root/.tiup/keys/private.json
+  #           readOnly: true
+  extraDeployments: []

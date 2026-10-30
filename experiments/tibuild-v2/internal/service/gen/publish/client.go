@@ -16,19 +16,29 @@ import (
 
 // Client is the "publish" service client.
 type Client struct {
-	PublishImagesEndpoint goa.Endpoint
-	GetUnitEndpoint       goa.Endpoint
-	ListUnitsEndpoint     goa.Endpoint
-	RetryUnitEndpoint     goa.Endpoint
+	PublishImagesEndpoint          goa.Endpoint
+	GetUnitEndpoint                goa.Endpoint
+	ListUnitsEndpoint              goa.Endpoint
+	RetryUnitEndpoint              goa.Endpoint
+	DeliveryByRulesEndpoint        goa.Endpoint
+	RequestToPublishEndpoint       goa.Endpoint
+	RequestToPublishSingleEndpoint goa.Endpoint
+	QueryPublishingStatusEndpoint  goa.Endpoint
+	ResetRateLimitEndpoint         goa.Endpoint
 }
 
 // NewClient initializes a "publish" service client given the endpoints.
-func NewClient(publishImages, getUnit, listUnits, retryUnit goa.Endpoint) *Client {
+func NewClient(publishImages, getUnit, listUnits, retryUnit, deliveryByRules, requestToPublish, requestToPublishSingle, queryPublishingStatus, resetRateLimit goa.Endpoint) *Client {
 	return &Client{
-		PublishImagesEndpoint: publishImages,
-		GetUnitEndpoint:       getUnit,
-		ListUnitsEndpoint:     listUnits,
-		RetryUnitEndpoint:     retryUnit,
+		PublishImagesEndpoint:          publishImages,
+		GetUnitEndpoint:                getUnit,
+		ListUnitsEndpoint:              listUnits,
+		RetryUnitEndpoint:              retryUnit,
+		DeliveryByRulesEndpoint:        deliveryByRules,
+		RequestToPublishEndpoint:       requestToPublish,
+		RequestToPublishSingleEndpoint: requestToPublishSingle,
+		QueryPublishingStatusEndpoint:  queryPublishingStatus,
+		ResetRateLimitEndpoint:         resetRateLimit,
 	}
 }
 
@@ -38,6 +48,7 @@ func NewClient(publishImages, getUnit, listUnits, retryUnit goa.Endpoint) *Clien
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
 //   - error: internal error
 func (c *Client) PublishImages(ctx context.Context, p *PublishImagesPayload) (res *PublishUnit, err error) {
 	var ires any
@@ -54,6 +65,7 @@ func (c *Client) PublishImages(ctx context.Context, p *PublishImagesPayload) (re
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
 //   - error: internal error
 func (c *Client) GetUnit(ctx context.Context, p *GetUnitPayload) (res *PublishUnit, err error) {
 	var ires any
@@ -70,6 +82,7 @@ func (c *Client) GetUnit(ctx context.Context, p *GetUnitPayload) (res *PublishUn
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
 //   - error: internal error
 func (c *Client) ListUnits(ctx context.Context, p *ListUnitsPayload) (res []*PublishUnit, err error) {
 	var ires any
@@ -86,6 +99,7 @@ func (c *Client) ListUnits(ctx context.Context, p *ListUnitsPayload) (res []*Pub
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
 //   - error: internal error
 func (c *Client) RetryUnit(ctx context.Context, p *RetryUnitPayload) (res *PublishUnit, err error) {
 	var ires any
@@ -94,4 +108,89 @@ func (c *Client) RetryUnit(ctx context.Context, p *RetryUnitPayload) (res *Publi
 		return
 	}
 	return ires.(*PublishUnit), nil
+}
+
+// DeliveryByRules calls the "deliveryByRules" endpoint of the "publish"
+// service.
+// DeliveryByRules may return the following errors:
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
+//   - error: internal error
+func (c *Client) DeliveryByRules(ctx context.Context, p *DeliveryByRulesPayload) (res []string, err error) {
+	var ires any
+	ires, err = c.DeliveryByRulesEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.([]string), nil
+}
+
+// RequestToPublish calls the "requestToPublish" endpoint of the "publish"
+// service.
+// RequestToPublish may return the following errors:
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
+//   - error: internal error
+func (c *Client) RequestToPublish(ctx context.Context, p *RequestToPublishPayload) (res []string, err error) {
+	var ires any
+	ires, err = c.RequestToPublishEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.([]string), nil
+}
+
+// RequestToPublishSingle calls the "requestToPublishSingle" endpoint of the
+// "publish" service.
+// RequestToPublishSingle may return the following errors:
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
+//   - error: internal error
+func (c *Client) RequestToPublishSingle(ctx context.Context, p *TiUPPublishRequest) (res string, err error) {
+	var ires any
+	ires, err = c.RequestToPublishSingleEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(string), nil
+}
+
+// QueryPublishingStatus calls the "queryPublishingStatus" endpoint of the
+// "publish" service.
+// QueryPublishingStatus may return the following errors:
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
+//   - error: internal error
+func (c *Client) QueryPublishingStatus(ctx context.Context, p *QueryPublishingStatusPayload) (res TiUPRequestState, err error) {
+	var ires any
+	ires, err = c.QueryPublishingStatusEndpoint(ctx, p)
+	if err != nil {
+		return
+	}
+	return ires.(TiUPRequestState), nil
+}
+
+// ResetRateLimit calls the "resetRateLimit" endpoint of the "publish" service.
+// ResetRateLimit may return the following errors:
+//   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "NotFound" (type *PublishNotFoundError): Not Found
+//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
+//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
+//   - "fault" (type *TiUPFaultError): Internal fault
+//   - error: internal error
+func (c *Client) ResetRateLimit(ctx context.Context) (err error) {
+	_, err = c.ResetRateLimitEndpoint(ctx, nil)
+	return
 }

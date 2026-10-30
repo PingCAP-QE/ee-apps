@@ -27,6 +27,10 @@ type Config struct {
 	// ImageCopyRules maps a source repository (without tag) to the rules that
 	// decide where its tags are copied.
 	ImageCopyRules map[string][]ImageRule `yaml:"image_copy_rules"`
+
+	// TiUPPublishRules maps a source repository pattern (matched unanchored) to
+	// the rules that decide which mirrors receive the TiUP packages.
+	TiUPPublishRules map[string][]TiUPRule `yaml:"tiup_publish_rules"`
 }
 
 // ImageRule is one `image_copy_rules` entry. YAML anchors and merge keys are
@@ -65,7 +69,7 @@ func Parse(content []byte) (*Config, error) {
 	if err := yaml.Unmarshal(content, &cfg); err != nil {
 		return nil, err
 	}
-	if len(cfg.ImageCopyRules) == 0 && len(cfg.Deprecated) == 0 {
+	if len(cfg.ImageCopyRules) == 0 && len(cfg.TiUPPublishRules) == 0 && len(cfg.Deprecated) == 0 {
 		return nil, fmt.Errorf("no delivery rules found")
 	}
 	return &cfg, nil
