@@ -119,3 +119,17 @@ publish:
   # delivery.yaml from PingCAP-QE/artifacts, synced into the cluster by Flux.
   # The file is reloaded when it changes, so a rule update needs no restart.
   delivery_config_path: /etc/delivery/delivery.yaml
+  # Nightly convergence is off by default: every nightly push publishes
+  # immediately. Enable it per target (staging first) to accumulate pushes and
+  # publish only the newest artifact at each aligned window.
+  # nightly:
+  #   enabled: true
+  #   targets: ["tiup-staging"]
+  #   window: 12h
+  #   anchor: "02:00"
+  #   timezone: UTC
+  #   retry_after: 5m
+  #   jitter: 30m
+  #   tick_interval: 1m
+  #   batch: 10
+  #   on_failure: alert

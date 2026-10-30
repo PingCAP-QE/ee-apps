@@ -89,14 +89,33 @@ Before publishing, the executor checks the remote tarball:
 The `standalone` flag of the artifact config is deliberately not forwarded: the
 pre-migration publisher dropped it and this port preserves that behaviour.
 
-## Known gaps
+## Nightly convergence
 
-- The legacy nightly throttle is gone: the old publisher kept a 12h Redis
-  counter per (mirror, package, os, arch) and skipped later nightly requests.
-  Here every nightly request publishes, serialized by the lane. Converging
-  nightly builds ("accumulate, publish only the newest") is owned by the
-  nightly desired-state track; `POST /tiup/reset-rate-limit` stays as a
-  compatibility no-op until that track deletes it.
+Nightly is a **desired state**, not a queue. With `publish.nightly.enabled`
+set for a target, a nightly push only upserts `publish_desired` (one row per
+`target/pkg/os/arch`, newest wins) and a window-aligned tick publishes the
+newest artifact once. A push that arrives while a unit is running replaces the
+desired fields without touching the in-flight unit, so the next tick publishes
+it.
+
+The window is aligned to a fixed anchor (default `12h`, `02:00` UTC): the
+publish time no longer drifts with the first push. Each package gets a stable
+hash-based jitter inside the window, so a batch of nightly builds does not hit
+the serial TiUP lane at the same instant.
+
+A failure keeps `desired_version` unchanged and records `last_failed_version` /
+`last_error`: the first failure retries after `retry_after` (default 5m), later
+failures wait for the next window. On success `last_succeeded_version` records
+what was actually published, even if a newer push replaced the desired version
+while the unit was running.
+
+Nightly convergence is **off by default**; enabling it on staging first keeps
+prod on the legacy "publish every push" path until the rollout reaches it.
+Deferred pushes create no step, so `POST /tiup/delivery-by-rules` returns an
+empty list when every selected target converges.
+
+`POST /tiup/reset-rate-limit` stays as a compatibility no-op; there is no Redis
+counter to reset.
 
 ## Configuration
 
@@ -109,6 +128,17 @@ publish:
   tiup_dependencies:        # omit for the default; {} for parallel mirrors
     tiup-prod: tiup-staging
   tiup_binary: tiup         # optional override
+  nightly:                  # off unless enabled explicitly
+    enabled: false
+    targets: ["tiup-staging"]   # empty inherits publish.targets
+    window: 12h
+    anchor: "02:00"          # interpreted in timezone
+    timezone: UTC
+    retry_after: 5m
+    jitter: 30m
+    tick_interval: 1m
+    batch: 10
+    on_failure: alert        # rollback is not implemented
 ```
 
 ## Legacy API

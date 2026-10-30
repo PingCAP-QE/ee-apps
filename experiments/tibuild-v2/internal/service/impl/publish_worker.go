@@ -43,27 +43,48 @@ func (s *publishsrvc) Start(ctx context.Context) {
 	cfg := s.workerCfg
 	// One claim loop serves every kind: executeStep dispatches on the unit kind.
 	// The target shard keeps the kinds apart (image workers claim registry
-	// hosts, TiUP workers claim tiup-staging/tiup-prod).
-	if !containsString(cfg.Kinds, PublishKindImageCopy) && !containsString(cfg.Kinds, PublishKindTiUP) {
+	// hosts, TiUP workers claim tiup-staging/tiup-prod). A TiUP-only worker
+	// must also run the nightly reconciler, which shares the same lifecycle.
+	runSteps := containsString(cfg.Kinds, PublishKindImageCopy) ||
+		containsString(cfg.Kinds, PublishKindTiUP)
+	runNightly := s.nightlyEnabled()
+
+	if !runSteps && !runNightly {
 		s.logger.Info().Strs("kinds", cfg.Kinds).Msg("publish worker disabled for the configured kinds")
 		return
 	}
 
-	go s.runPublishReaper(ctx)
-
 	var wg sync.WaitGroup
-	for i := 0; i < cfg.Concurrency; i++ {
+
+	if runSteps {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			runner := &workerpkg.Runner{
-				Logger:       s.logger,
-				PollInterval: cfg.PollEvery(),
-				Consume:      s.consumePublishSteps,
-			}
-			runner.Run(ctx)
+			s.runPublishReaper(ctx)
+		}()
+
+		for i := 0; i < cfg.Concurrency; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				runner := &workerpkg.Runner{
+					Logger:       s.logger,
+					PollInterval: cfg.PollEvery(),
+					Consume:      s.consumePublishSteps,
+				}
+				runner.Run(ctx)
+			}()
+		}
+	}
+
+	if runNightly {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.runNightlyReconciler(ctx)
 		}()
 	}
+
 	wg.Wait()
 }
 
@@ -454,6 +475,9 @@ func (s *publishsrvc) refreshUnit(ctx context.Context, unitID string) {
 	}
 	if err := update.Exec(ctx); err != nil && !ent.IsNotFound(err) {
 		s.logger.Err(err).Str("unit_id", unitID).Str("state", state).Msg("failed to update the publish unit state")
+	}
+	if isTerminalUnitState(state) {
+		s.settleNightlyUnit(ctx, unitID)
 	}
 }
 

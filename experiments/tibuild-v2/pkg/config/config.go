@@ -66,6 +66,11 @@ type Publish struct {
 	// that must finish first, the value is the target that waits. The default
 	// keeps the documented policy (staging waits for prod).
 	TiUPDependencies map[string]string `yaml:"tiup_dependencies,omitempty" json:"tiup_dependencies,omitempty"`
+	// Nightly switches the listed targets from "publish every push" to
+	// desired-state convergence (accumulate, publish only the newest per
+	// window). It is off by default so a deployment cannot change nightly
+	// semantics implicitly.
+	Nightly NightlyPublish `yaml:"nightly,omitempty" json:"nightly,omitempty"`
 }
 
 // TiUPStageDependencies returns the `depends_on` seeding for TiUP plans: a nil
