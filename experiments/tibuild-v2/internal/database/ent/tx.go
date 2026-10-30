@@ -20,6 +20,8 @@ type Tx struct {
 	DevBuild *DevBuildClient
 	// ImageSyncTask is the client for interacting with the ImageSyncTask builders.
 	ImageSyncTask *ImageSyncTaskClient
+	// PublishDesired is the client for interacting with the PublishDesired builders.
+	PublishDesired *PublishDesiredClient
 	// PublishLane is the client for interacting with the PublishLane builders.
 	PublishLane *PublishLaneClient
 	// PublishStep is the client for interacting with the PublishStep builders.
@@ -161,6 +163,7 @@ func (tx *Tx) init() {
 	tx.AlertLease = NewAlertLeaseClient(tx.config)
 	tx.DevBuild = NewDevBuildClient(tx.config)
 	tx.ImageSyncTask = NewImageSyncTaskClient(tx.config)
+	tx.PublishDesired = NewPublishDesiredClient(tx.config)
 	tx.PublishLane = NewPublishLaneClient(tx.config)
 	tx.PublishStep = NewPublishStepClient(tx.config)
 	tx.PublishUnit = NewPublishUnitClient(tx.config)

@@ -9,6 +9,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishdesired"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishlane"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
@@ -196,6 +197,50 @@ func init() {
 	imagesynctask.DefaultUpdatedAt = imagesynctaskDescUpdatedAt.Default.(func() time.Time)
 	// imagesynctask.UpdateDefaultUpdatedAt holds the default value on update for the updatedAt field.
 	imagesynctask.UpdateDefaultUpdatedAt = imagesynctaskDescUpdatedAt.UpdateDefault.(func() time.Time)
+	publishdesiredFields := schema.PublishDesired{}.Fields()
+	_ = publishdesiredFields
+	// publishdesiredDescTarget is the schema descriptor for target field.
+	publishdesiredDescTarget := publishdesiredFields[0].Descriptor()
+	// publishdesired.TargetValidator is a validator for the "target" field. It is called by the builders before save.
+	publishdesired.TargetValidator = publishdesiredDescTarget.Validators[0].(func(string) error)
+	// publishdesiredDescPkg is the schema descriptor for pkg field.
+	publishdesiredDescPkg := publishdesiredFields[1].Descriptor()
+	// publishdesired.PkgValidator is a validator for the "pkg" field. It is called by the builders before save.
+	publishdesired.PkgValidator = publishdesiredDescPkg.Validators[0].(func(string) error)
+	// publishdesiredDescOs is the schema descriptor for os field.
+	publishdesiredDescOs := publishdesiredFields[2].Descriptor()
+	// publishdesired.OsValidator is a validator for the "os" field. It is called by the builders before save.
+	publishdesired.OsValidator = publishdesiredDescOs.Validators[0].(func(string) error)
+	// publishdesiredDescArch is the schema descriptor for arch field.
+	publishdesiredDescArch := publishdesiredFields[3].Descriptor()
+	// publishdesired.ArchValidator is a validator for the "arch" field. It is called by the builders before save.
+	publishdesired.ArchValidator = publishdesiredDescArch.Validators[0].(func(string) error)
+	// publishdesiredDescDesiredVersion is the schema descriptor for desired_version field.
+	publishdesiredDescDesiredVersion := publishdesiredFields[4].Descriptor()
+	// publishdesired.DesiredVersionValidator is a validator for the "desired_version" field. It is called by the builders before save.
+	publishdesired.DesiredVersionValidator = publishdesiredDescDesiredVersion.Validators[0].(func(string) error)
+	// publishdesiredDescRunningUnitID is the schema descriptor for running_unit_id field.
+	publishdesiredDescRunningUnitID := publishdesiredFields[8].Descriptor()
+	// publishdesired.RunningUnitIDValidator is a validator for the "running_unit_id" field. It is called by the builders before save.
+	publishdesired.RunningUnitIDValidator = publishdesiredDescRunningUnitID.Validators[0].(func(string) error)
+	// publishdesiredDescLastSucceededVersion is the schema descriptor for last_succeeded_version field.
+	publishdesiredDescLastSucceededVersion := publishdesiredFields[9].Descriptor()
+	// publishdesired.LastSucceededVersionValidator is a validator for the "last_succeeded_version" field. It is called by the builders before save.
+	publishdesired.LastSucceededVersionValidator = publishdesiredDescLastSucceededVersion.Validators[0].(func(string) error)
+	// publishdesiredDescLastFailedVersion is the schema descriptor for last_failed_version field.
+	publishdesiredDescLastFailedVersion := publishdesiredFields[10].Descriptor()
+	// publishdesired.LastFailedVersionValidator is a validator for the "last_failed_version" field. It is called by the builders before save.
+	publishdesired.LastFailedVersionValidator = publishdesiredDescLastFailedVersion.Validators[0].(func(string) error)
+	// publishdesiredDescCreatedAt is the schema descriptor for created_at field.
+	publishdesiredDescCreatedAt := publishdesiredFields[12].Descriptor()
+	// publishdesired.DefaultCreatedAt holds the default value on creation for the created_at field.
+	publishdesired.DefaultCreatedAt = publishdesiredDescCreatedAt.Default.(func() time.Time)
+	// publishdesiredDescUpdatedAt is the schema descriptor for updated_at field.
+	publishdesiredDescUpdatedAt := publishdesiredFields[13].Descriptor()
+	// publishdesired.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	publishdesired.DefaultUpdatedAt = publishdesiredDescUpdatedAt.Default.(func() time.Time)
+	// publishdesired.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	publishdesired.UpdateDefaultUpdatedAt = publishdesiredDescUpdatedAt.UpdateDefault.(func() time.Time)
 	publishlaneFields := schema.PublishLane{}.Fields()
 	_ = publishlaneFields
 	// publishlaneDescLane is the schema descriptor for lane field.
