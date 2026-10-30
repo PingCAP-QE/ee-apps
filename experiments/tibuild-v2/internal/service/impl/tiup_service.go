@@ -277,6 +277,7 @@ func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requested
 			MirrorURL:   mirrors[plan.Mirror],
 			ArtifactURL: artifactURL,
 			Digest:      digest,
+			Nightly:     plan.Nightly,
 			Packages:    plan.Packages,
 		}
 		raw, err := payloadMap(payload)

@@ -294,3 +294,47 @@ func TestExecuteTiUPOnceCompletesUnit(t *testing.T) {
 	require.Equal(t, PublishStepStateSucceeded, stepByID(t, svc, step.ID).State)
 	require.Equal(t, PublishStateSucceeded, unitByID(t, svc, unit.ID).State)
 }
+
+// The nightly channel reuses one version string, so a new build must replace
+// the previous package: refusing to overwrite would break nightly publishing.
+func TestExecuteTiUPStepOverwritesNightly(t *testing.T) {
+	nightlyFile := "tidb-v9.0.0-nightly-linux-amd64.tar.gz"
+	mirror := &fileMirror{files: map[string][]byte{nightlyFile: []byte("yesterday")}}
+	server := httptest.NewServer(mirror.handler())
+	defer server.Close()
+
+	svc := newTiUPTestService(t, server.URL)
+	marker := filepath.Join(t.TempDir(), "tiup-called")
+	script := fmt.Sprintf(`#!/bin/sh
+echo called >> %s
+name="$3"; version="$4"; file="$5"; os=""; arch=""
+for arg in "$@"; do
+  case "$prev" in
+    --os) os="$arg" ;;
+    --arch) arch="$arg" ;;
+  esac
+  prev="$arg"
+done
+curl -sS -X PUT --data-binary @"$file" "%s/$name-$version-$os-$arch.tar.gz" > /dev/null
+`, marker, server.URL)
+	svc.tiup.bin = writeFakeTiup(t, script)
+
+	_, step := createTiUPStep(t, svc, delivery.TiUPTargetStaging, TiUPStepPayload{
+		Mirror:      delivery.TiUPMirrorStaging,
+		MirrorURL:   server.URL,
+		ArtifactURL: "example.com/hub/pingcap/tidb/package:master_linux_amd64",
+		Nightly:     true,
+		Packages:    []delivery.TiUPPackage{{Name: "tidb", Version: "v9.0.0-nightly", OS: "linux", Arch: "amd64", EntryPoint: "tidb-server", File: tiupTestPackage.File}},
+	})
+
+	claimed, err := svc.claimStep(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+	svc.executeStep(context.Background(), claimed)
+
+	require.Equal(t, PublishStepStateSucceeded, stepByID(t, svc, step.ID).State)
+
+	mirror.mu.Lock()
+	defer mirror.mu.Unlock()
+	require.Equal(t, []byte("payload"), mirror.files[nightlyFile], "the nightly package must be replaced")
+}

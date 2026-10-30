@@ -80,8 +80,11 @@ Before publishing, the executor checks the remote tarball:
 
 - missing → publish, then verify the remote sha256;
 - present with the same sha256 → success without publishing;
-- present with a different sha256 → **refused** ("refusing to overwrite");
-  bump the version instead of overwriting a released package.
+- present with a different sha256 on a **released** version → refused
+  ("refusing to overwrite"); bump the version instead;
+- present with a different sha256 on the **nightly** channel → published, on
+  purpose: nightly reuses one version string, so each build replaces the
+  previous package.
 
 The `standalone` flag of the artifact config is deliberately not forwarded: the
 pre-migration publisher dropped it and this port preserves that behaviour.
@@ -114,7 +117,7 @@ base path, `/api/v2/publish`:
 | `POST /tiup/publish-request` | one explicit mirror, optional version override |
 | `POST /tiup/publish-request-single` | one package from a tarball URL or an OCI layer |
 | `GET /tiup/publish-request/{id}` | unit or step id → `queued/processing/success/failed/canceled` |
-| `POST /tiup/reset-rate-limit` | no-op |
+| `POST /tiup/reset-rate-limit` | no-op: the legacy Redis nightly throttle does not exist here; the convergence work is owned by the nightly track |
 
 Unit inspection and retry are **kind-agnostic** and live on the shared
 resource: `GET /publish/units`, `GET /publish/units/{id}` and

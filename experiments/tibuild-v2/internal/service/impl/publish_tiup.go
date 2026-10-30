@@ -59,7 +59,10 @@ type TiUPStepPayload struct {
 	SourceURL string `json:"source_url,omitempty"`
 	// Digest pins the artifact manifest, so a moved tag cannot change what is
 	// published.
-	Digest   string                 `json:"digest"`
+	Digest string `json:"digest"`
+	// Nightly marks the nightly channel: its version is a constant, so a new
+	// build is expected to replace the previous package of the same version.
+	Nightly  bool                   `json:"nightly,omitempty"`
 	Packages []delivery.TiUPPackage `json:"packages"`
 }
 
@@ -130,14 +133,17 @@ func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg d
 	if err != nil {
 		return nil, err
 	}
-	if exists {
-		if remoteSHA == localSHA {
-			return map[string]any{
-				tiupResultSkipped:      true,
-				tiupResultRemoteSHA256: remoteSHA,
-				"url":                  remoteURL,
-			}, nil
-		}
+	if exists && remoteSHA == localSHA {
+		return map[string]any{
+			tiupResultSkipped:      true,
+			tiupResultRemoteSHA256: remoteSHA,
+			"url":                  remoteURL,
+		}, nil
+	}
+	// The nightly channel reuses one version string on purpose, so a new build
+	// replaces the previous package. A released version must never be
+	// overwritten: that would silently change what users install.
+	if exists && !payload.Nightly {
 		return nil, fmt.Errorf("refusing to overwrite %s: remote sha256 %s differs from %s", remoteURL, remoteSHA, localSHA)
 	}
 
