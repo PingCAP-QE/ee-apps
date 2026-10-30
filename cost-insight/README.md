@@ -155,10 +155,10 @@ comparison sources for the other vendors are:
 - `warehouse-f80fbbe8e8.mart_cloud_cost.azure_daily_cost`
 - `warehouse-f80fbbe8e8.mart_cloud_cost.alibaba_daily_cost`
 
-AWS query builders now support explicit `warehouse_raw=True` for read-only
-compatibility validation of full CUR data; importer fetch/dispatch remains
-unchanged until a stable source contract is confirmed. This is not a new CLI
-import mode.
+AWS query builders support explicit `warehouse_raw=True` for full CUR data.
+The legacy import commands retain their existing source routing. The separate
+`sync-warehouse-billing-summary` command below uses permanent raw warehouse
+sources for ordinary AWS and Azure accounts.
 
 These marts are **not drop-in importer sources**: they omit detail/attribution
 fields (especially AWS tenant/usedby and split-cost lineage). Do not change the
@@ -184,9 +184,53 @@ mysql < sql/024_add_cost_currency.sql
 mysql < sql/025_add_tencent_billing_cost_source.sql
 ```
 
-All recurring summary, unmatched-resource, and attribution jobs discover active
-sources from `cost_sources`. The env account IDs are now fallback values for
-local validation when the registry table is empty.
+Legacy recurring summary, unmatched-resource, and attribution jobs discover active
+sources from `cost_sources`. Their env account IDs are fallback values for
+local validation when the registry table is empty. The warehouse daily command
+instead requires explicit account IDs and validates each against the registry.
+
+## Warehouse Daily Synchronization
+
+Run the same image command for ordinary AWS or Azure sources:
+
+```bash
+cost-insight sync-warehouse-billing-summary --vendor aws \
+  --account-id 131464424160 --account-id 296171618728 --dry-run
+cost-insight sync-warehouse-billing-summary --vendor azure \
+  --account-id aaa5414d-7537-4e24-99bd-a7a841221810 --dry-run
+```
+
+Set `COST_INSIGHT_BILLING_BQ_PROJECT` and `COST_INSIGHT_BILLING_BQ_LOCATION`
+explicitly. This command also uses that project for source table names:
+`raw_aws_billing.cur_line_items` or numeric monthly
+`raw_azure_billing.azure_billing_cost_YYYYMM01` tables. Azure uses explicit MCA
+physical tables, never a mixed-schema wildcard query. Missing/expiring tables,
+inactive/custom/split profiles, non-USD data and missing source days fail closed.
+It does not change registry entries or resume legacy importers.
+
+For each explicitly requested account, discover the latest actual usage date
+not later than UTC yesterday, then reread its trailing **five days** sequentially.
+Discovery is limited to 14 days and rejects a source more than seven days old.
+Every query is dry-run first with a fixed **2 GiB per-query** cap and finite
+timeouts; source metadata must remain stable. Canonical hash collisions are
+merged before exact account/billing-partition/day replacement. All source
+windows are validated before facts are written. Each day then refreshes
+attribution and verifies the active native publication conserves all four
+monetary fields. Other accounts, sibling days and unqueried partitions remain
+untouched. Recent billing dates remain provisional; revisions older than five
+days require a separately reviewed repair rather than a wider automatic scan.
+
+`--dry-run` performs source reads and database SELECTs only, including no job-state
+writes. Removing it enables writes **inside GKE only**. Progress and failure state
+use the existing `sync_aws_warehouse_daily` / `sync_azure_warehouse_daily` job keys,
+so migration cannot bypass a running or failed ConfigMap worker. An oversized
+local backlog, failure or interrupted worker requires operator inspection; there
+is no automatic replay. Inspect the exact account/day and repair/reconcile facts,
+attribution and publication before explicitly releasing its job-state latch.
+
+Deploy the application image first, validate both dry runs, then switch both ops
+CronJobs to this command and remove mounted workers. Preserve legacy-source holds
+and avoid overlapping old/new writers during the switch.
 
 ## Billing Summary Pipeline
 
