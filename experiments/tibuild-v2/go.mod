@@ -10,6 +10,7 @@ require (
 	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-20261022101411-c387612b2157
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
+	github.com/dlclark/regexp2 v1.12.0
 	github.com/go-co-op/gocron/v2 v2.21.2
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/go-containerregistry v0.21.6
