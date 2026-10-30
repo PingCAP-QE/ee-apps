@@ -57,6 +57,18 @@ func (f ImageSyncTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Valu
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ImageSyncTaskMutation", m)
 }
 
+// The PublishDesiredFunc type is an adapter to allow the use of ordinary
+// function as PublishDesired mutator.
+type PublishDesiredFunc func(context.Context, *ent.PublishDesiredMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f PublishDesiredFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.PublishDesiredMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PublishDesiredMutation", m)
+}
+
 // The PublishLaneFunc type is an adapter to allow the use of ordinary
 // function as PublishLane mutator.
 type PublishLaneFunc func(context.Context, *ent.PublishLaneMutation) (ent.Value, error)

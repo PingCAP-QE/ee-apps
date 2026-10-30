@@ -16,6 +16,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/alertlease"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/imagesynctask"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishdesired"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishlane"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
@@ -79,13 +80,14 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			alertevent.Table:    alertevent.ValidColumn,
-			alertlease.Table:    alertlease.ValidColumn,
-			devbuild.Table:      devbuild.ValidColumn,
-			imagesynctask.Table: imagesynctask.ValidColumn,
-			publishlane.Table:   publishlane.ValidColumn,
-			publishstep.Table:   publishstep.ValidColumn,
-			publishunit.Table:   publishunit.ValidColumn,
+			alertevent.Table:     alertevent.ValidColumn,
+			alertlease.Table:     alertlease.ValidColumn,
+			devbuild.Table:       devbuild.ValidColumn,
+			imagesynctask.Table:  imagesynctask.ValidColumn,
+			publishdesired.Table: publishdesired.ValidColumn,
+			publishlane.Table:    publishlane.ValidColumn,
+			publishstep.Table:    publishstep.ValidColumn,
+			publishunit.Table:    publishunit.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

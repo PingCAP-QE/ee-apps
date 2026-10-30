@@ -18,6 +18,9 @@ type DevBuild func(*sql.Selector)
 // ImageSyncTask is the predicate function for imagesynctask builders.
 type ImageSyncTask func(*sql.Selector)
 
+// PublishDesired is the predicate function for publishdesired builders.
+type PublishDesired func(*sql.Selector)
+
 // PublishLane is the predicate function for publishlane builders.
 type PublishLane func(*sql.Selector)
 

@@ -104,6 +104,42 @@ var (
 			},
 		},
 	}
+	// PublishDesiredColumns holds the columns for the "publish_desired" table.
+	PublishDesiredColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "target", Type: field.TypeString, Size: 32},
+		{Name: "pkg", Type: field.TypeString, Size: 64},
+		{Name: "os", Type: field.TypeString, Size: 16},
+		{Name: "arch", Type: field.TypeString, Size: 16},
+		{Name: "desired_version", Type: field.TypeString, Size: 64},
+		{Name: "desired_payload", Type: field.TypeJSON},
+		{Name: "desired_at", Type: field.TypeTime},
+		{Name: "next_run_at", Type: field.TypeTime},
+		{Name: "running_unit_id", Type: field.TypeString, Nullable: true, Size: 36},
+		{Name: "last_succeeded_version", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "last_failed_version", Type: field.TypeString, Nullable: true, Size: 64},
+		{Name: "last_error", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// PublishDesiredTable holds the schema information for the "publish_desired" table.
+	PublishDesiredTable = &schema.Table{
+		Name:       "publish_desired",
+		Columns:    PublishDesiredColumns,
+		PrimaryKey: []*schema.Column{PublishDesiredColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "uk_desired_key",
+				Unique:  true,
+				Columns: []*schema.Column{PublishDesiredColumns[1], PublishDesiredColumns[2], PublishDesiredColumns[3], PublishDesiredColumns[4]},
+			},
+			{
+				Name:    "idx_desired_due",
+				Unique:  false,
+				Columns: []*schema.Column{PublishDesiredColumns[1], PublishDesiredColumns[8]},
+			},
+		},
+	}
 	// PublishLaneColumns holds the columns for the "publish_lane" table.
 	PublishLaneColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -209,6 +245,7 @@ var (
 		AlertLeasesTable,
 		DevBuildsV2Table,
 		ImageSyncTasksTable,
+		PublishDesiredTable,
 		PublishLaneTable,
 		PublishStepTable,
 		PublishUnitTable,
@@ -221,6 +258,9 @@ func init() {
 	}
 	ImageSyncTasksTable.Annotation = &entsql.Annotation{
 		Table: "image_sync_tasks",
+	}
+	PublishDesiredTable.Annotation = &entsql.Annotation{
+		Table: "publish_desired",
 	}
 	PublishLaneTable.Annotation = &entsql.Annotation{
 		Table: "publish_lane",
