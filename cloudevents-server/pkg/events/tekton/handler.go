@@ -1,13 +1,13 @@
 package tekton
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +17,7 @@ import (
 	tektoncloudevent "github.com/tektoncd/pipeline/pkg/reconciler/events/cloudevent"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"knative.dev/pkg/apis"
 
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/config"
@@ -26,12 +27,20 @@ import (
 
 const (
 	eventContextAnnotationKey = "tekton.dev/ce-context"
+	maxStepLogBytes           = 1 << 20
 )
 
 // devbuildSourceReg matches the cloud event sources of devbuilds created by
 // both tibuild v1 (tibuild.pingcap.net/api/devbuilds/<id>) and tibuild-v2
 // (tibuild.pingcap.net/api/v2/devbuilds/<id>).
 var devbuildSourceReg = regexp.MustCompile(`^tibuild\.pingcap\.net/api/(v2/)?devbuilds/`)
+
+var stepLogHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
 
 func NewHandler(cfg config.Tekton) (handler.EventHandler, error) {
 	larkClient := lark.NewClient(cfg.Lark.AppID, cfg.Lark.AppSecret)
@@ -265,45 +274,60 @@ func getStepStatuses(status *v1beta1.TaskRunStatus, logGetter func(podName, cont
 }
 
 func getStepLog(baseURL, ns, podName, containerName string, tailLines int) (string, error) {
-	errLogEvent := log.Error().
-		Str("namespace", ns).
-		Str("pod", podName).
-		Str("container", containerName).
-		Int("tail", tailLines)
-
-	apiURL, err := url.JoinPath(baseURL, fmt.Sprintf("api/v1/namespaces/%s/pods/%s/log", ns, podName))
+	logs, err := getStepLogWithClient(stepLogHTTPClient, baseURL, ns, podName, containerName, tailLines)
 	if err != nil {
-		errLogEvent.Err(err).Send()
-		return "", err
+		log.Error().Err(err).
+			Str("namespace", ns).
+			Str("pod", podName).
+			Str("container", containerName).
+			Int("tail", tailLines).
+			Msg("get step log failed")
+	}
+	return logs, err
+}
+
+func getStepLogWithClient(client *http.Client, baseURL, ns, podName, containerName string, tailLines int) (string, error) {
+	// CloudEvent JSON is not Kubernetes admission-validated. Reject separators,
+	// dot segments and query delimiters before any URL normalization or I/O.
+	for _, field := range []struct {
+		name, value string
+		validate    func(string) []string
+	}{
+		{"namespace", ns, validation.IsDNS1123Label},
+		{"pod", podName, validation.IsDNS1123Subdomain},
+		{"container", containerName, validation.IsDNS1123Label},
+	} {
+		if len(field.validate(field.value)) != 0 {
+			return "", fmt.Errorf("invalid Tekton log %s", field.name)
+		}
 	}
 
-	// Create a custom transport with InsecureSkipVerify set to true
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	base, err := url.Parse(baseURL)
+	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+		return "", fmt.Errorf("invalid Tekton dashboard base URL")
 	}
-	// Create a custom HTTP client with the custom transport
-	client := &http.Client{Transport: transport}
+	apiURL := base.JoinPath("api", "v1", "namespaces", ns, "pods", podName, "log")
+	apiURL.RawQuery = url.Values{
+		"container": {containerName},
+		"tailLines": {strconv.Itoa(tailLines)},
+	}.Encode()
 
-	resp, err := client.Get(fmt.Sprintf("%s?container=%s&tailLines=%d", apiURL, containerName, tailLines))
+	resp, err := client.Get(apiURL.String())
 	if err != nil {
-		errLogEvent.Err(err).Send()
 		return "", err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return "", fmt.Errorf("Tekton log request returned HTTP %d", resp.StatusCode)
+	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxStepLogBytes+1))
 	if err != nil {
-		errLogEvent.Err(err).Send()
 		return "", err
 	}
-	errLogEvent.Discard()
-
-	log.Debug().
-		Str("namespace", ns).
-		Str("pod", podName).
-		Str("container", containerName).
-		Int("tail", tailLines).
-		Msg("get log succeed.")
+	if len(body) > maxStepLogBytes {
+		return "", fmt.Errorf("Tekton step log exceeds %d bytes", maxStepLogBytes)
+	}
 	return string(body), nil
 }
 
