@@ -516,8 +516,10 @@ func newStoreClient(cfg config.Store) (*ent.Client, error) {
 		return nil, err
 	}
 
-	// Run the auto migration tool.
-	if err := db.Schema.Create(context.Background()); err != nil {
+	// Run the auto migration tool. The API and the worker roll together, so the
+	// migration can lose a race against the other replica; createSchema retries
+	// that case instead of failing the process.
+	if err := createSchema(context.Background(), db); err != nil {
 		return nil, err
 	}
 
