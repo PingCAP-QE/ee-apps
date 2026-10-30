@@ -159,5 +159,19 @@ func (s *artifactsrvc) refreshMetricsAndAlerts(ctx context.Context) {
 	now := s.now()
 	s.ensureObservability()
 	s.metrics.refresh(stats, now)
+
+	if !s.alerts.isEnabled() {
+		// Metrics keep refreshing; only alert delivery is disabled.
+		return
+	}
+	// Every replica sees the same queue, so only the lease holder may evaluate.
+	leader, err := s.acquireAlertLease(ctx, now)
+	if err != nil {
+		s.logger.Err(err).Msg("failed to acquire the alert lease")
+		return
+	}
+	if !leader {
+		return
+	}
 	s.alerts.evaluate(ctx, s.alerter, stats, now, s.logger)
 }

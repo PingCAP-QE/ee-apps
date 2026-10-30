@@ -124,6 +124,11 @@ condition are suppressed for `dedupe` (default 1h).
 `worker.alerts.enabled: false` stops alert delivery but keeps the metrics
 above refreshing. Configure `lark.channels` to give the alerts recipients.
 
+Alert evaluation itself is elected through the `alert_leases` table: the
+workers of all clusters share one queue, so only the lease holder calls the
+notifier. The lease TTL is twice `metrics_interval`, and an evicted holder
+loses the election on the next tick instead of double-sending.
+
 ## Testing
 
 ```bash
