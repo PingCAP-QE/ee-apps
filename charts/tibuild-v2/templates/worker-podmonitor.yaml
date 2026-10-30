@@ -1,0 +1,27 @@
+{{- if and .Values.worker.enabled .Values.worker.podMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "tibuild-v2.fullname" . }}-worker
+  labels:
+    {{- include "tibuild-v2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+    {{- with .Values.worker.podMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "tibuild-v2.name" . }}-worker
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  podMetricsEndpoints:
+    - port: health
+      path: /metrics
+      interval: {{ .Values.worker.podMonitor.interval }}
+      {{- with .Values.worker.podMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+{{- end }}
