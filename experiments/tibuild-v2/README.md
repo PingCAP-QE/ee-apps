@@ -132,7 +132,9 @@ loses the election on the next tick instead of double-sending. A worker without
 recipients configured cannot take the lease and silence the others.
 
 Changing recipients, forcing an External Secrets sync and verifying delivery is
-documented in [`docs/worker-alerts.md`](./docs/worker-alerts.md).
+documented in [`docs/worker-alerts.md`](./docs/worker-alerts.md); scraping the
+metrics per cluster is in [`docs/worker-metrics.md`](./docs/worker-metrics.md)
+(prod2 uses the chart's `worker.podMonitor`, tke/gcp have no CRDs).
 
 ## Testing
 

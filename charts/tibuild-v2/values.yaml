@@ -180,6 +180,14 @@ worker:
   # Worker identity written to claimed_by. Defaults to the pod name.
   workerID: ""
   healthPort: 8081
+  # PodMonitor exports the worker /metrics to a Prometheus Operator. It is off
+  # by default because only clusters that ship the monitoring.coreos.com/v1
+  # CRDs (prod2) can accept it; tke/gcp do not install them.
+  podMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: ""
+    additionalLabels: {}
   podAnnotations: {}
   podLabels: {}
   securityContext: {}
