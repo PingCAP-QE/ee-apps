@@ -13,7 +13,11 @@ from typing import Any
 from google.cloud import bigquery
 
 from cost_insight.sources.aws_billing_export import build_aws_billing_summary_query
-from cost_insight.sources.azure_billing_export import build_azure_billing_summary_query
+from cost_insight.sources.azure_billing_export import (
+    azure_warehouse_tables,
+    build_azure_billing_summary_query,
+    build_azure_warehouse_relation,
+)
 
 LOG = logging.getLogger(__name__)
 MAX_BYTES = 2 * 1024**3
@@ -44,20 +48,6 @@ def source_table(vendor: str, project: str) -> str:
     raise ValueError("Warehouse vendor must be aws or azure")
 
 
-def _monthly_tables(table: str, start: date, end: date) -> dict[date, str]:
-    # Only date-derived numeric MCA identifiers enter schema resolution; EA schemas differ.
-    months = sorted({start.replace(day=1), end.replace(day=1)})
-    return {month: table[:-1] + month.strftime("%Y%m%d") for month in months}
-
-
-def _azure_relation(table: str, start: date, end: date) -> str:
-    return "(\n" + "\nUNION ALL\n".join(
-        f"SELECT raw.*, '{month:%Y%m%d}' AS _TABLE_SUFFIX FROM `{table_id}` AS raw "
-        "WHERE CAST(date AS DATE) BETWEEN @earliest_usage_date AND @usage_end_date"
-        for month, table_id in _monthly_tables(table, start, end).items()
-    ) + "\n)"
-
-
 def _control_query(vendor: str, table: str, start: date, end: date) -> str:
     if vendor == "aws":
         return f"""
@@ -83,7 +73,7 @@ SELECT SAFE.PARSE_DATE('%Y%m%d', _TABLE_SUFFIX) AS export_partition_date,
        SUM(SAFE_CAST(costInBillingCurrency AS NUMERIC)) AS effective_cost,
        CAST(0 AS NUMERIC) AS credit_amount,
        SUM(SAFE_CAST(costInBillingCurrency AS NUMERIC)) AS net_cost
-FROM {_azure_relation(table, start, end)}
+FROM {build_azure_warehouse_relation(table, start, end)}
 WHERE CAST(SubscriptionId AS STRING) = @account_id
 GROUP BY export_partition_date, usage_date
 """.strip()
@@ -91,19 +81,9 @@ GROUP BY export_partition_date, usage_date
 
 def _summary_query(vendor: str, table: str, start: date, end: date) -> str:
     if vendor == "aws":
-        sql = build_aws_billing_summary_query(billing_table=table, usage_end_date=end,
-                                            warehouse_raw=True)
-        needle = "WHERE line_item_usage_account_id = @account_id"
-        projection = "'aws' AS vendor,"
-        if sql.count(needle) != 1 or sql.count(projection) != 1:
-            raise ValueError("AWS summary query-builder contract changed")
-        return sql.replace(needle, needle + " AND line_item_currency_code = 'USD'", 1).replace(
-            projection, projection + "\n  'USD' AS currency,", 1)
-    sql = build_azure_billing_summary_query(billing_table=table)
-    needle = f"FROM `{table}`"
-    if sql.count(needle) != 1:
-        raise ValueError("Azure summary query-builder contract changed")
-    return sql.replace(needle, "FROM " + _azure_relation(table, start, end), 1)
+        return build_aws_billing_summary_query(billing_table=table, usage_end_date=end,
+                                               warehouse_raw=True, usd_only=True)
+    return build_azure_billing_summary_query(billing_table=table, warehouse_window=(start, end))
 
 
 def _parameters(account: str, start: date, end: date, sql: str):
@@ -191,7 +171,7 @@ def fetch_warehouse_window(
         raise ValueError("today must be a UTC date")
     yesterday = today - timedelta(days=1)
     lookup_start = yesterday - timedelta(days=13)
-    tables = (table,) if vendor == "aws" else _monthly_tables(table, lookup_start, yesterday).values()
+    tables = (table,) if vendor == "aws" else azure_warehouse_tables(table, lookup_start, yesterday).values()
     heartbeat()
     snapshots = _snapshot(client, tables)
     _log("source_snapshot", vendor=vendor, account_id=account_id, tables=snapshots)
@@ -212,7 +192,9 @@ def fetch_warehouse_window(
     if (today - end).days > 7:
         raise ValueError(f"Warehouse source is stale: {vendor}/{account_id}/{end}")
     start = end - timedelta(days=4)
-    controls = read(start, end, "control")
+    # Discovery already grouped the raw control by the same partition/day keys.
+    controls = [row for row in discovery if start <= _date(row["usage_date"]) <= end
+                and start.replace(day=1) <= _date(row["export_partition_date"]) <= end.replace(day=1)]
     rows = read(start, end, "summary", summary=True)
     _log("source_window_fetched", vendor=vendor, account_id=account_id,
          start=start, end=end, rows=len(rows))

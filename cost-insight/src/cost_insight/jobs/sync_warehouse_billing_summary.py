@@ -309,7 +309,6 @@ def run_sync_warehouse_billing_summary(
             for day in _dates(window.start, window.end):
                 progress["current_account_day"] = f"{account}/{day}"
                 _checkpoint(engine, name, progress)
-                assert_snapshot(client, snapshots)
                 with engine.connect() as connection:
                     _validate_registry(connection, vendor, account, project, window.start)
                     _verify_scopes(connection, plan, vendor, day, before=True)
@@ -329,7 +328,6 @@ def run_sync_warehouse_billing_summary(
                     engine, source=CostAttributionSource(vendor, account), start_date=day, end_date=day,
                     tcms_allocation_table=tcms_allocation_table)
                 with engine.connect() as connection:
-                    _verify_scopes(connection, plan, vendor, day)
                     _verify_publication(connection, vendor, account, day)
                 progress["completed_account_days"].append(progress["current_account_day"])
                 progress["percent"] = 100 * len(progress["completed_account_days"]) // (5 * len(plans))

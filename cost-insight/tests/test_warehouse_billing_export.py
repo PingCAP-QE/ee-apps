@@ -22,11 +22,11 @@ def metadata(**changes):
                            num_rows=100, etag="stable", **changes)
 
 
-def client_for(*, end=END, discovery=None, controls=None, rows=None):
+def client_for(*, end=END, discovery=None, rows=None):
     client = Mock()
     client.get_table.return_value = metadata()
-    results = [discovery if discovery is not None else [{"usage_date": end}],
-               controls if controls is not None else [{"usage_date": end, "n": 1}],
+    results = [discovery if discovery is not None else [
+                   {"export_partition_date": end.replace(day=1), "usage_date": end, "n": 1}],
                rows if rows is not None else [{"usage_date": end, "raw": "unchanged"}]]
     jobs = []
     for i, result in enumerate(results):
@@ -56,8 +56,8 @@ def test_both_routes_resolve_latest_actual_day_and_apply_all_query_bounds(vendor
         window = fetch(client, vendor, heartbeat=heartbeat)
     assert window.start == START and window.end == END  # Not UTC yesterday, which has no rows.
     assert window.rows == [{"usage_date": END, "raw": "unchanged"}]
-    assert window.controls == [{"usage_date": END, "n": 1}]
-    assert len(client.query.call_args_list) == 6
+    assert window.controls == [{"export_partition_date": END.replace(day=1), "usage_date": END, "n": 1}]
+    assert len(client.query.call_args_list) == 4  # Discovery control + summary, each previewed first.
     for index, call in enumerate(client.query.call_args_list):
         assert call.kwargs["timeout"] == 30
         assert call.kwargs["retry"] is None and call.kwargs["job_retry"] is None
@@ -84,12 +84,12 @@ def test_both_routes_resolve_latest_actual_day_and_apply_all_query_bounds(vendor
         f"{PROJECT}.raw_azure_billing.azure_billing_cost_20261001",
         f"{PROJECT}.raw_azure_billing.azure_billing_cost_20261101"})
     assert set(window.snapshots) == expected_tables
-    assert client.get_table.call_count == 7 * len(expected_tables)  # Initial, before/after each read.
-    assert heartbeat.call_count >= 10
+    assert client.get_table.call_count == 5 * len(expected_tables)  # Initial, before/after both reads.
+    assert heartbeat.call_count >= 7
     events = [json.loads(record.message) for record in caplog.records]
     previews = [event for event in events if event["event"] == "query_preflight"]
     actuals = [event for event in events if event["event"] == "query_fetched"]
-    assert len(previews) == len(actuals) == 3
+    assert len(previews) == len(actuals) == 2
     assert all(event["estimated_bytes"] == 100 and event["job_id"] for event in previews)
     assert all(event["bytes_processed"] == 90 and event["job_id"] for event in actuals)
 
@@ -97,7 +97,7 @@ def test_both_routes_resolve_latest_actual_day_and_apply_all_query_bounds(vendor
 def test_aws_uses_existing_warehouse_raw_builder_and_exact_usage_listcost_semantics():
     client, _ = client_for()
     fetch(client)
-    control, summary = [client.query.call_args_list[i].args[0] for i in (2, 4)]
+    control, summary = [client.query.call_args_list[i].args[0] for i in (0, 2)]
     assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in control
     assert "THEN COALESCE(line_item_unblended_cost, 0) ELSE 0 END) AS list_cost" in control
     assert "AS effective_cost" not in control and "AS net_cost" not in control
@@ -121,12 +121,12 @@ def test_azure_uses_explicit_numeric_mca_months_never_wildcard_from():
         assert "'20261101' AS _TABLE_SUFFIX" in sql
         assert "BETWEEN @earliest_usage_date AND @usage_end_date" in sql
         assert "CAST(SubscriptionId AS STRING) = @account_id" in sql
-    control = client.query.call_args_list[2].args[0]
+    control = client.query.call_args_list[0].args[0]
     for metric in ("list_cost", "effective_cost", "credit_amount", "net_cost"):
         assert f"AS {metric}" in control
     assert "AS invalid_money" in control
     assert "billingCurrency IS NULL OR billingCurrency != 'USD'" in control
-    summary = client.query.call_args_list[4].args[0]
+    summary = client.query.call_args_list[2].args[0]
     assert "SAFE_CAST(paygCostInBillingCurrency AS NUMERIC) AS list_cost" in summary
     assert "NULLIF(CAST(tags AS STRING), '') AS vendor_tags_json" in summary
 
@@ -161,7 +161,7 @@ def test_empty_or_invalid_actual_day_is_not_yesterday_or_zero(discovery, match):
 
 
 def test_iso_date_discovery_is_supported():
-    client, _ = client_for(discovery=[{"usage_date": str(END)}])
+    client, _ = client_for(discovery=[{"usage_date": str(END), "export_partition_date": str(END.replace(day=1))}])
     assert fetch(client).end == END
 
 
@@ -209,7 +209,7 @@ def test_partitioned_table_with_no_ttl_and_zero_rows_is_valid_metadata():
     ("modified", datetime(2026, 11, 5, tzinfo=timezone.utc)),
     ("num_rows", 101), ("etag", "changed"),
 ])
-@pytest.mark.parametrize("at_call,queries", [(2, 0), (3, 2), (7, 6)])
+@pytest.mark.parametrize("at_call,queries", [(2, 0), (3, 2), (5, 4)])
 def test_snapshot_changes_before_or_after_any_read_fail_closed(changed_field, value, at_call, queries):
     client, _ = client_for()
     count = 0
@@ -268,7 +268,7 @@ def test_page_iteration_is_also_deadline_bounded(monkeypatch):
 
 def test_iteration_fetches_all_pages_in_order():
     client, jobs = client_for()
-    jobs[5].result.return_value = iter([{"page": 1}, {"page": 2}, {"page": 3}])
+    jobs[3].result.return_value = iter([{"page": 1}, {"page": 2}, {"page": 3}])
     assert fetch(client).rows == [{"page": 1}, {"page": 2}, {"page": 3}]
 
 
@@ -286,10 +286,53 @@ def test_invalid_input_fails_before_any_bigquery_access(changes, match):
 
 
 @pytest.mark.parametrize("vendor", ["aws", "azure"])
-def test_changed_shared_query_builder_contract_fails_closed(monkeypatch, vendor):
+def test_builder_formatting_does_not_change_the_adapter_contract(monkeypatch, vendor):
     name = f"build_{vendor}_billing_summary_query"
-    monkeypatch.setattr(source, name, Mock(return_value="SELECT unexpected"))
+    original = getattr(source, name)
+    builder = Mock(side_effect=lambda **kw: original(**kw).replace("WHERE ", "WHERE\n").replace("FROM ", "FROM\n"))
+    monkeypatch.setattr(source, name, builder)
     client, _ = client_for()
-    with pytest.raises(ValueError, match="query-builder contract"):
-        fetch(client, vendor)
-    assert client.query.call_count == 4
+    assert fetch(client, vendor).end == END
+    builder.assert_called_once()
+    assert client.query.call_args_list[2].args[0] == builder.side_effect(**builder.call_args.kwargs)
+    if vendor == "aws":
+        assert builder.call_args.kwargs["usd_only"] is True
+        assert builder.call_args.kwargs["warehouse_raw"] is True
+    else:
+        assert builder.call_args.kwargs["warehouse_window"] == (START, END)
+
+
+@pytest.mark.parametrize("vendor", ["aws", "azure"])
+@pytest.mark.parametrize("today,end", [(date(2026, 11, 14), date(2026, 11, 12)),
+                                     (date(2027, 1, 4), date(2027, 1, 2))])
+def test_discovery_controls_are_reused_with_exact_day_and_month_scope(vendor, today, end):
+    start = end - timedelta(days=4)
+    controls = [{"export_partition_date": (start + timedelta(days=i)).replace(day=1),
+                 "usage_date": start + timedelta(days=i), "n": i + 1,
+                 "non_usd": 0, "list_cost": str(i + 10)} for i in range(5)]
+    discovery = [*controls,
+        {"export_partition_date": start.replace(day=1), "usage_date": start - timedelta(days=1), "n": 99},
+        {"export_partition_date": (start.replace(day=1) - timedelta(days=1)).replace(day=1),
+         "usage_date": end, "n": 999}]
+    client, _ = client_for(discovery=discovery)
+    window = fetch(client, vendor, today=today)
+    assert window.controls == controls and window.start == start and window.end == end
+    assert client.query.call_count == 4  # No second raw control query.
+
+
+@pytest.mark.parametrize("start,end", [(END, START), (START, START + timedelta(days=14))])
+def test_azure_builder_rejects_unbounded_physical_month_windows(start, end):
+    with pytest.raises(ValueError, match="at most 14 days"):
+        source.build_azure_billing_summary_query(
+            billing_table=source.source_table("azure", PROJECT), warehouse_window=(start, end))
+
+
+@pytest.mark.parametrize("vendor", ["aws", "azure"])
+def test_query_builder_defaults_leave_existing_import_routes_unchanged(vendor):
+    table = source.source_table(vendor, PROJECT)
+    query = getattr(source, f"build_{vendor}_billing_summary_query")(billing_table=table)
+    assert f"FROM `{table}`" in query
+    if vendor == "aws":
+        assert "'USD' AS currency" not in query and "line_item_currency_code = 'USD'" not in query
+    else:
+        assert "UNION ALL" not in query and "@usage_end_date" not in query

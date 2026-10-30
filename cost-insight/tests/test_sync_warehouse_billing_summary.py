@@ -295,13 +295,12 @@ def test_publication_must_conserve_four_fields_and_resolve_active_version(
 
 
 def test_changed_local_facts_after_preflight_stop_before_replacement(engine, vendor, monkeypatch):
-    calls = 0
-    def changed(client, snapshots):
-        nonlocal calls
-        calls += 1
-        if calls == 2:
+    checkpoint = job._checkpoint
+    def changed(engine, name, progress, *args):
+        checkpoint(engine, name, progress, *args)
+        if not args and progress.get("current_account_day") == f"{ACCOUNT}/{START}":
             write_summary_rows(engine, [normalized(vendor, day=START)], dry_run=False)
-    monkeypatch.setattr(job, "assert_snapshot", changed)
+    monkeypatch.setattr(job, "_checkpoint", changed)
     replacement = Mock()
     monkeypatch.setattr(job, "replace_summary_partition_usage_dates", replacement)
     with pytest.raises(ValueError, match="identity count"):
@@ -340,3 +339,33 @@ def test_cli_requires_billing_project_and_location(monkeypatch):
     monkeypatch.setattr(cli, "configure_logging", Mock())
     with pytest.raises(ValueError, match="project and location"):
         cli.main(["sync-warehouse-billing-summary", "--vendor", "aws", "--account-id", ACCOUNT, "--dry-run"])
+
+
+def test_each_write_has_one_snapshot_guard_and_one_post_write_scope_audit(engine, vendor, monkeypatch):
+    snapshot = Mock()
+    scopes = Mock(wraps=job._verify_scopes)
+    replacement = job.replace_summary_partition_usage_dates
+    checks_at_write = []
+    def replace(*args, **kw):
+        checks_at_write.append(snapshot.call_count)
+        return replacement(*args, **kw)
+    monkeypatch.setattr(job, "assert_snapshot", snapshot)
+    monkeypatch.setattr(job, "_verify_scopes", scopes)
+    monkeypatch.setattr(job, "replace_summary_partition_usage_dates", replace)
+    assert run(engine, vendor)["percent"] == 100
+    assert checks_at_write == [2, 3, 4, 5, 6]  # Joint preflight, then exactly one guard per write.
+    assert sum(c.kwargs.get("before", False) for c in scopes.call_args_list) == 5
+    assert len(scopes.call_args_list) == 10  # Pre-write identity guard + post-write audit, no third scan.
+
+
+def test_source_change_still_stops_later_writes_and_keeps_failure_latch(engine, vendor, monkeypatch):
+    monkeypatch.setattr(job, "assert_snapshot", Mock(side_effect=[None, None, ValueError("snapshot changed")]))
+    with pytest.raises(ValueError, match="snapshot changed"):
+        run(engine, vendor)
+    failed = state(engine, vendor)
+    assert failed.last_status == "failed"
+    assert failed.watermark["completed_account_days"] == [f"{ACCOUNT}/{START}"]
+    assert failed.watermark["current_account_day"] == f"{ACCOUNT}/{START + timedelta(days=1)}"
+    with pytest.raises(ValueError, match="inspect before recovery"):
+        run(engine, vendor)
+    assert state(engine, vendor) == failed
