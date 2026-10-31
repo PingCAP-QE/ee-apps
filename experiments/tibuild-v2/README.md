@@ -108,9 +108,12 @@ worker:
 ```
 
 The observability keys default to the values that used to be hard-coded, so an
-untouched config behaves exactly as before. `metrics_interval` and
-`reap_interval` are read when the worker starts; the alert thresholds are
-re-applied on config reload.
+untouched config behaves exactly as before. `metrics_interval`, `reap_interval`,
+the retry backoff and the alert thresholds are re-read on every tick, so a
+config reload applies them without a restart; the claim loop interval
+(`poll_interval`), `concurrency`, `kinds`, `targets` and the lease settings need
+a rollout. [`docs/config-reload.md`](./docs/config-reload.md) lists every hot key,
+the restart-only keys, the reload metrics and the rollback procedure.
 
 `worker.targets` must be a subset of the global target catalogue; an unknown
 target fails fast at startup. Until the target catalogue lands in
@@ -125,6 +128,10 @@ The worker serves `/metrics` on its health port (8081):
 - `publish_task_inflight{target}`
 - `publish_task_lease_expired_total`
 - `publish_task_failed_total{target,reason}`
+
+The config watcher adds `config_reload_total{result}`, `config_generation`,
+`config_last_reload_timestamp_seconds` and `config_restart_required_total{field}`
+on the same endpoint; see [`docs/config-reload.md`](./docs/config-reload.md).
 
 Alerts reuse the Lark notifier and fire when the backlog has been non-empty
 for `worker.alerts.backlog_after` (default 10m), when the oldest PENDING task
