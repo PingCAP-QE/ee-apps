@@ -24,7 +24,9 @@ build:
           org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
     - image: exp-tibuild-worker
       ko:
-        fromImage: gcr.io/distroless/static
+        # The worker shells out to `tiup mirror publish`; distroless/static has
+        # no tiup binary. Reuse the publisher worker base, which ships tiup.
+        fromImage: ghcr.io/pingcap-qe/cd/utils/release:v2026.10.26-10-g6670bb5
         main: ./cmd/tibuild-worker
         dependencies:
           paths:
