@@ -1,0 +1,6 @@
+name: "EE apps CodeQL configuration"
+
+# Archived subprojects are kept for history only; they are not built,
+# published, or deployed, so keep them out of security scanning.
+paths-ignore:
+  - 'archive/**'
