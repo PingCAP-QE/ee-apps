@@ -64,8 +64,6 @@ jobs:
               - 'roster/**'
             cloudevents-server:
               - 'cloudevents-server/**'
-            tibuild:
-              - 'tibuild/**'
             dl:
               - 'dl/**'
             publisher:
@@ -133,15 +131,6 @@ jobs:
             --push=false \
             --platform ${{ matrix.platform }} \
             --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Build image - tibuild
-        if: steps.changes.outputs.tibuild == 'true'
-        working-directory: tibuild
-        run: |
-          skaffold build \
-            --push=false \
-            --platform ${{ matrix.platform }} \
-            --default-repo ghcr.io/pingcap-qe/ee-apps
-
       - name: Build image - dl
         if: steps.changes.outputs.dl == 'true'
         working-directory: dl

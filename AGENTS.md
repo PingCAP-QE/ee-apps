@@ -8,7 +8,6 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 
 | Directory | Language | Framework | Binary Entrypoints |
 |-----------|----------|-----------|-------------------|
-| `tibuild/` | Go | Gin + GORM + Swagger | `cmd/tibuild/` |
 | `experiments/tibuild-v2/` | Go | Goa v2 + Ent ORM | `cmd/tibuild/`, `cmd/tibuild-cli/` |
 | `cloudevents-server/` | Go | Gin + Kafka + Ent | `cmd/server/` |
 | `publisher/` | Go | Goa + Kafka + Redis | `cmd/publisher/`, `cmd/worker/`, `cmd/publisher-cli/` |
@@ -25,18 +24,10 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 
 **Always `cd` into the subproject directory first.** There are no root-level build commands.
 
-### Go projects (tibuild, cloudevents-server, publisher, dl, chatops-lark)
+### Go projects (cloudevents-server, publisher, dl, chatops-lark)
 ```bash
 go test ./...
 go build ./...
-```
-
-### tibuild
-```bash
-cd tibuild
-make build    # swagger + test + go build
-make test     # go test ./...
-make swagger  # regenerates Swagger docs
 ```
 
 ### experiments/tibuild-v2
@@ -78,7 +69,7 @@ skaffold build --push=false -f <subproject>/skaffold.yaml
 skaffold build -f <subproject>/skaffold.yaml
 ```
 
-Build methods: Dockerfile (tibuild, dl, cloudevents-server, ci-dashboard, cost-insight, roster) or Ko (chatops-lark, publisher, tibuild-v2).
+Build methods: Dockerfile (dl, cloudevents-server, ci-dashboard, cost-insight, roster) or Ko (chatops-lark, publisher, tibuild-v2).
 
 ## Helm Charts
 
@@ -104,7 +95,7 @@ type(scope): description
 ```
 
 - **Types**: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`
-- **Scope**: subproject name — `tibuild`, `tibuild-v2`, `ci-dashboard`, `cost-insight`, `publisher`, `dl`, `chatops-lark`, `cloudevents-server`, `roster`, `charts`
+- **Scope**: subproject name — `tibuild-v2`, `ci-dashboard`, `cost-insight`, `publisher`, `dl`, `chatops-lark`, `cloudevents-server`, `roster`, `charts`
 - **No scope** for cross-cutting changes (e.g. `fix: auto fixes from pre-commit.com hooks`)
 - **Lowercase** description, no trailing period
 - English preferred; Chinese acceptable for clarity
