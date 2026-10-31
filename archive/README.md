@@ -8,6 +8,8 @@ They are kept for reference and history only:
   selected, so no image is built.
 - **Not packaged or published:** no Helm chart or release entry points here.
 - **Not deployed:** `PingCAP-QE/ee-ops` does not reference these directories.
+- **Not scanned:** CodeQL ignores `archive/**` through
+  [`.github/codeql/codeql-config.yml`](../.github/codeql/codeql-config.yml).
 
 Git history remains the authoritative record, and each project keeps its
 original layout under `archive/<project>/`.
