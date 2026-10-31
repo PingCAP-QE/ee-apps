@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -47,8 +48,27 @@ const (
 	tiupActionPublished          = "published"
 	tiupActionSkippedExisting    = "skipped_existing"
 	tiupActionOverwrittenNightly = "overwritten_nightly"
-	tiupActionRefusedOverwrite   = "refused_overwrite"
+	// tiupActionOverwrittenNonFormal is a non-formal version (pre/beta/rc,
+	// nextgen, rust, branch builds) that replaced a different remote package.
+	tiupActionOverwrittenNonFormal = "overwritten_non_formal"
+	// tiupActionRefusedFormalOverwrite is only logged on failure: a released
+	// vX.Y.Z package must never be replaced.
+	tiupActionRefusedFormalOverwrite = "refused_formal_overwrite"
+	// tiupActionFailed is the action logged for every other publish failure.
+	tiupActionFailed = "failed"
 )
+
+// formalTiUPVersionRegex matches the released vX.Y.Z versions. Those packages
+// are immutable: replacing one would silently change what users install.
+// Every other form (pre/beta/rc, nightly, nextgen, rust, branch builds) reuses
+// its version string on purpose, so a new build is expected to replace it.
+var formalTiUPVersionRegex = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+
+// isFormalTiUPVersion reports whether a published version is a released
+// vX.Y.Z version, the only form that may not be overwritten.
+func isFormalTiUPVersion(version string) bool {
+	return formalTiUPVersionRegex.MatchString(version)
+}
 
 // ErrLostLane means the worker no longer owns the publish lane, so it must not
 // touch the mirror or write a result.
@@ -109,8 +129,8 @@ func decodeTiUPStepPayload(stored map[string]any) (TiUPStepPayload, error) {
 // tiupRunner is the side-effect surface of the executor, replaceable in tests.
 type tiupRunner interface {
 	// PublishOne publishes one package and verifies the remote hash. It is
-	// idempotent: an identical remote package short-circuits, a different one
-	// is refused.
+	// idempotent: an identical remote package short-circuits, a different
+	// formal vX.Y.Z is refused, and a different non-formal version is replaced.
 	PublishOne(ctx context.Context, payload TiUPStepPayload, pkg delivery.TiUPPackage) (map[string]any, error)
 }
 
@@ -137,9 +157,10 @@ func newTiupCLI(bin string) *tiupCLI {
 // PublishOne implements idempotency and verification around `tiup mirror
 // publish`:
 //
-//   - remote missing            → publish, then verify the remote sha256
-//   - remote present, same sha  → success without publishing
-//   - remote present, other sha → refuse; a human must bump the version
+//   - remote missing                           → publish, verify the sha256
+//   - remote present, same sha                 → success without publishing
+//   - remote present, other sha, formal vX.Y.Z → refuse; bump the version
+//   - remote present, other sha, non-formal    → overwrite on purpose
 func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg delivery.TiUPPackage) (map[string]any, error) {
 	localPath, localSHA, err := t.downloadPackage(ctx, payload, pkg.File)
 	if err != nil {
@@ -156,13 +177,15 @@ func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg d
 	if exists && remoteSHA == localSHA {
 		return tiupPackageResult(pkg, remoteURL, localSHA, remoteSHA, tiupActionSkippedExisting, true), nil
 	}
-	// The nightly channel reuses one version string on purpose, so a new build
-	// replaces the previous package. A released version must never be
-	// overwritten: that would silently change what users install.
-	if exists && !payload.Nightly {
-		return nil, fmt.Errorf("refusing to overwrite %s: remote sha256 %s differs from %s", remoteURL, remoteSHA, localSHA)
+	// A released version must never be overwritten: that would silently change
+	// what users install. Every non-formal channel (nightly, pre/beta/rc,
+	// nextgen, rust, branch builds) reuses its version string on purpose, so a
+	// new build replaces the previous package.
+	if exists && isFormalTiUPVersion(pkg.Version) {
+		return nil, &tiupOverwriteRefusedError{pkg: pkg, url: remoteURL, remoteSHA: remoteSHA, localSHA: localSHA}
 	}
-	overwrittenNightly := exists && payload.Nightly
+	// `exists` is reused by the post-check below; keep what happened before.
+	overwritten := exists
 
 	if err := t.publish(ctx, payload.MirrorURL, localPath, pkg); err != nil {
 		return nil, err
@@ -180,10 +203,28 @@ func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg d
 	}
 
 	action := tiupActionPublished
-	if overwrittenNightly {
-		action = tiupActionOverwrittenNightly
+	if overwritten {
+		action = tiupActionOverwrittenNonFormal
+		if payload.Nightly {
+			action = tiupActionOverwrittenNightly
+		}
 	}
 	return tiupPackageResult(pkg, remoteURL, localSHA, published, action, false), nil
+}
+
+// tiupOverwriteRefusedError is returned when a released vX.Y.Z package differs
+// from the remote one. It carries the package coordinates so the executor logs
+// the refusal with the same fields as a successful action.
+type tiupOverwriteRefusedError struct {
+	pkg       delivery.TiUPPackage
+	url       string
+	remoteSHA string
+	localSHA  string
+}
+
+func (e *tiupOverwriteRefusedError) Error() string {
+	return fmt.Sprintf("refusing to overwrite formal version %s (%s): remote sha256 %s differs from %s",
+		e.pkg.Version, e.url, e.remoteSHA, e.localSHA)
 }
 
 func tiupPackageResult(pkg delivery.TiUPPackage, url, localSHA, remoteSHA, action string, skipped bool) map[string]any {
@@ -446,7 +487,7 @@ func (s *publishsrvc) runTiUPStep(ctx context.Context, step *ent.PublishStep) {
 			published++
 		case tiupActionSkippedExisting:
 			skipped++
-		case tiupActionOverwrittenNightly:
+		case tiupActionOverwrittenNightly, tiupActionOverwrittenNonFormal:
 			overwritten++
 		}
 	}
@@ -525,16 +566,33 @@ func (s *publishsrvc) executeTiUPStep(ctx context.Context, step *ent.PublishStep
 			return nil, err
 		}
 		started := time.Now()
+		if pkg.Version == "" {
+			log.Warn().
+				Str("pkg", pkg.Name).
+				Str("file", pkg.File).
+				Msg("tiup package has no version; treating it as non-formal (overwrite allowed)")
+		}
 		result, err := runner.PublishOne(runCtx, payload, pkg)
 		if err != nil {
-			log.Error().Err(err).
+			failure := log.Error().Err(err).
 				Str("pkg", pkg.Name).
 				Str("version", pkg.Version).
 				Str("os", pkg.OS).
 				Str("arch", pkg.Arch).
 				Str("file", pkg.File).
-				Dur("duration", time.Since(started)).
-				Msg("tiup package failed")
+				Bool("formal_version", isFormalTiUPVersion(pkg.Version)).
+				Dur("duration", time.Since(started))
+			var refused *tiupOverwriteRefusedError
+			if errors.As(err, &refused) {
+				failure = failure.
+					Str("action", tiupActionRefusedFormalOverwrite).
+					Str("remote_sha256", refused.remoteSHA).
+					Str("local_sha256", refused.localSHA).
+					Str("url", refused.url)
+			} else {
+				failure = failure.Str("action", tiupActionFailed)
+			}
+			failure.Msg("tiup package failed")
 			return nil, err
 		}
 		if result[tiupResultSkipped] != true {

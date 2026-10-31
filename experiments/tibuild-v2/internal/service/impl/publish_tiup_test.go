@@ -28,6 +28,36 @@ var tiupTestPackage = delivery.TiUPPackage{
 	File:        "tidb-v8.5.6-linux-amd64.tar.gz",
 }
 
+// Only the released vX.Y.Z form is immutable. Every other form reuses its
+// version string on purpose, so a new build must be allowed to replace it.
+func TestIsFormalTiUPVersion(t *testing.T) {
+	cases := []struct {
+		version string
+		formal  bool
+	}{
+		{version: "v8.5.6", formal: true},
+		{version: "v26.3.1", formal: true},
+		{version: "v8.5.6-release.1", formal: false},
+		{version: "v8.5.6-beta.1", formal: false},
+		{version: "v8.5.6-rc.1", formal: false},
+		{version: "v8.5.9-pre", formal: false},
+		{version: "v9.0.0-beta.2.pre-nightly", formal: false},
+		{version: "v9.0.0-beta.2.pre.rust", formal: false},
+		{version: "v26.3.1-nextgen", formal: false},
+		{version: "release-8.5", formal: false},
+		{version: "8.5.6", formal: false},
+		{version: "v8.5", formal: false},
+		{version: "v8.5.6.1", formal: false},
+		{version: "v8.5.6 ", formal: false},
+		{version: "", formal: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.version, func(t *testing.T) {
+			require.Equal(t, tc.formal, isFormalTiUPVersion(tc.version))
+		})
+	}
+}
+
 // fileMirror is a minimal mirror: GET serves stored files, PUT stores them.
 type fileMirror struct {
 	mu    sync.Mutex
@@ -108,7 +138,7 @@ func TestExecuteTiUPStepSkipsWhenRemoteMatches(t *testing.T) {
 	require.True(t, os.IsNotExist(err), "an identical remote package must not be republished")
 }
 
-func TestExecuteTiUPStepRefusesConflictingRemote(t *testing.T) {
+func TestExecuteTiUPStepRefusesConflictingFormal(t *testing.T) {
 	mirror := &fileMirror{files: map[string][]byte{tiupTestPackage.File: []byte("other content")}}
 	server := httptest.NewServer(mirror.handler())
 	defer server.Close()
@@ -125,10 +155,77 @@ func TestExecuteTiUPStepRefusesConflictingRemote(t *testing.T) {
 	})
 
 	_, err := svc.executeTiUPStep(context.Background(), step, "worker-1")
-	require.ErrorContains(t, err, "refusing to overwrite")
+	require.ErrorContains(t, err, "refusing to overwrite formal version v8.5.6")
+
+	// The refusal carries the coordinates the executor logs on failure.
+	var refused *tiupOverwriteRefusedError
+	require.ErrorAs(t, err, &refused)
+	require.Equal(t, "v8.5.6", refused.pkg.Version)
+	require.NotEmpty(t, refused.remoteSHA)
+	require.NotEmpty(t, refused.localSHA)
+	require.NotEqual(t, refused.remoteSHA, refused.localSHA)
 
 	_, statErr := os.Stat(marker)
-	require.True(t, os.IsNotExist(statErr), "a conflicting remote must not be overwritten")
+	require.True(t, os.IsNotExist(statErr), "a conflicting formal version must not be overwritten")
+
+	mirror.mu.Lock()
+	defer mirror.mu.Unlock()
+	require.Equal(t, []byte("other content"), mirror.files[tiupTestPackage.File])
+}
+
+// Non-formal versions (pre/beta/rc/nightly/nextgen/rust/branch builds) reuse
+// their version string on purpose, so a new build must replace the previous
+// package instead of failing the publish.
+func TestExecuteTiUPStepOverwritesNonFormal(t *testing.T) {
+	cases := []struct {
+		name    string
+		version string
+	}{
+		{name: "pre release build", version: "v8.5.9-pre"},
+		{name: "rust sql node build", version: "v9.0.0-beta.2.pre.rust"},
+		{name: "nextgen build", version: "v26.3.1-nextgen"},
+		{name: "empty version", version: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pkg := tiupTestPackage
+			pkg.Version = tc.version
+			pkg.File = fmt.Sprintf("tidb-%s-linux-amd64.tar.gz", tc.version)
+
+			mirror := &fileMirror{files: map[string][]byte{pkg.File: []byte("yesterday")}}
+			server := httptest.NewServer(mirror.handler())
+			defer server.Close()
+
+			svc := newTiUPTestService(t, server.URL)
+			svc.tiup.bin = writeFakeTiup(t, fmt.Sprintf(`#!/bin/sh
+name="$3"; version="$4"; file="$5"; os=""; arch=""
+for arg in "$@"; do
+  case "$prev" in
+    --os) os="$arg" ;;
+    --arch) arch="$arg" ;;
+  esac
+  prev="$arg"
+done
+curl -sS -X PUT --data-binary @"$file" "%s/$name-$version-$os-$arch.tar.gz" > /dev/null
+`, server.URL))
+
+			_, step := createTiUPStep(t, svc, delivery.TiUPTargetStaging, TiUPStepPayload{
+				Mirror:      delivery.TiUPMirrorStaging,
+				MirrorURL:   server.URL,
+				ArtifactURL: "example.com/hub/pingcap/tidb/package:master_linux_amd64",
+				Packages:    []delivery.TiUPPackage{pkg},
+			})
+
+			result, err := svc.executeTiUPStep(context.Background(), step, "worker-1")
+			require.NoError(t, err)
+			require.Equal(t, false, result["skipped_existing"])
+			require.Equal(t, tiupActionOverwrittenNonFormal, firstPackageResult(t, result)["action"])
+
+			mirror.mu.Lock()
+			defer mirror.mu.Unlock()
+			require.Equal(t, []byte("payload"), mirror.files[pkg.File], "the non-formal package must be replaced")
+		})
+	}
 }
 
 func TestExecuteTiUPStepPublishesAndVerifies(t *testing.T) {
@@ -355,4 +452,13 @@ curl -sS -X PUT --data-binary @"$file" "%s/$name-$version-$os-$arch.tar.gz" > /d
 	mirror.mu.Lock()
 	defer mirror.mu.Unlock()
 	require.Equal(t, []byte("payload"), mirror.files[nightlyFile], "the nightly package must be replaced")
+
+	// The nightly overwrite keeps its own action, distinct from non-formal ones.
+	stored := stepByID(t, svc, step.ID)
+	packages, ok := stored.Result[tiupResultPackages].([]any)
+	require.True(t, ok, "step result packages are %T", stored.Result[tiupResultPackages])
+	require.Len(t, packages, 1)
+	first, ok := packages[0].(map[string]any)
+	require.True(t, ok, "step result package is %T", packages[0])
+	require.Equal(t, tiupActionOverwrittenNightly, first[tiupResultAction])
 }
