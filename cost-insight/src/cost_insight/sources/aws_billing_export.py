@@ -100,6 +100,7 @@ def build_aws_billing_summary_query(
     usage_end_date: date | None = None,
     limit: int | None = None,
     warehouse_raw: bool = False,
+    usd_only: bool = False,
 ) -> str:
     table = build_warehouse_cur_relation(billing_table) if warehouse_raw else f"`{billing_table}`"
     usage_end_clause = (
@@ -107,6 +108,8 @@ def build_aws_billing_summary_query(
         if usage_end_date is not None
         else ""
     )
+    currency_clause = "\n    AND line_item_currency_code = 'USD'" if usd_only else ""
+    currency_projection = "\n  'USD' AS currency," if usd_only else ""
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     return f"""
 WITH normalized AS (
@@ -159,10 +162,10 @@ WITH normalized AS (
   FROM {table}
   WHERE line_item_usage_account_id = @account_id
     AND PARSE_DATE('%Y%m%d', billing_month) BETWEEN @export_partition_start AND @export_partition_end
-    AND DATE(line_item_usage_start_date) >= @earliest_usage_date{usage_end_clause}
+    AND DATE(line_item_usage_start_date) >= @earliest_usage_date{usage_end_clause}{currency_clause}
 )
 SELECT
-  'aws' AS vendor,
+  'aws' AS vendor,{currency_projection}
   account_id,
   billing_account_id,
   export_partition_date,

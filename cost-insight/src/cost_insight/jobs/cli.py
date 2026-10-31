@@ -66,6 +66,7 @@ from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
 )
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
 from cost_insight.jobs.sync_gcs_cache_ac_references import run_sync_gcs_cache_ac_references
+from cost_insight.jobs.sync_warehouse_billing_summary import run_sync_warehouse_billing_summary
 from cost_insight.jobs.validate_aws_reconciliation import (
     resolve_reconciliation_source,
     run_aws_reconciliation,
@@ -99,6 +100,15 @@ def _atomic_cutover_engine(engine, *, dry_run: bool):
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Cost job runner")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    warehouse = subparsers.add_parser(
+        "sync-warehouse-billing-summary",
+        help="Refresh the latest five warehouse usage days, attribution and native publication",
+    )
+    warehouse.add_argument("--vendor", choices=("aws", "azure"), required=True)
+    warehouse.add_argument("--account-id", action="append", required=True,
+                           help="Explicit active ordinary source identity; repeat for sequential accounts")
+    warehouse.add_argument("--dry-run", action="store_true")
 
     sync_summary = subparsers.add_parser(
         "sync-gcp-billing-summary",
@@ -415,6 +425,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         require_database = True
     settings = get_settings(require_database=require_database)
     configure_logging(settings.log_level)
+
+    if args.command == "sync-warehouse-billing-summary":
+        if not settings.billing_bigquery.project or not settings.billing_bigquery.location:
+            raise ValueError("Warehouse sync requires explicit billing BigQuery project and location")
+        engine = build_engine(settings)
+        try:
+            summary = run_sync_warehouse_billing_summary(
+                engine, client=build_billing_bigquery_client(settings.billing_bigquery),
+                vendor=args.vendor, account_ids=args.account_id,
+                project=settings.billing_bigquery.project,
+                tcms_allocation_table=settings.tcms_allocation.allocation_table,
+                dry_run=args.dry_run,
+            )
+            print(json.dumps(summary, default=str, indent=2, sort_keys=True))
+            return 0
+        finally:
+            engine.dispose()
 
     if args.command == "sync-gcp-billing-summary":
         if args.replace_existing_partitions and (

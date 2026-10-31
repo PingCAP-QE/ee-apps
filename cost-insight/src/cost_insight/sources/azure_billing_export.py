@@ -54,8 +54,30 @@ def fetch_azure_billing_summary_rows(
         yield dict(row.items())
 
 
-def build_azure_billing_summary_query(*, billing_table: str, limit: int | None = None) -> str:
+def azure_warehouse_tables(billing_table: str, start: date, end: date) -> dict[date, str]:
     billing_table = _validate_billing_table(billing_table)
+    if not 0 <= (end - start).days <= 13:
+        raise ValueError("Azure warehouse reads require a window of at most 14 days")
+    months = sorted({start.replace(day=1), end.replace(day=1)})
+    return {month: billing_table[:-1] + month.strftime("%Y%m%d") for month in months}
+
+
+def build_azure_warehouse_relation(billing_table: str, start: date, end: date) -> str:
+    # Never let BigQuery resolve a mixed-schema MCA/EA wildcard relation.
+    return "(\n" + "\nUNION ALL\n".join(
+        f"SELECT raw.*, '{month:%Y%m%d}' AS _TABLE_SUFFIX FROM `{table_id}` AS raw "
+        "WHERE CAST(date AS DATE) BETWEEN @earliest_usage_date AND @usage_end_date"
+        for month, table_id in azure_warehouse_tables(billing_table, start, end).items()
+    ) + "\n)"
+
+
+def build_azure_billing_summary_query(
+    *, billing_table: str, limit: int | None = None,
+    warehouse_window: tuple[date, date] | None = None,
+) -> str:
+    billing_table = _validate_billing_table(billing_table)
+    relation = (f"`{billing_table}`" if warehouse_window is None else
+                build_azure_warehouse_relation(billing_table, *warehouse_window))
     limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
     return f"""
 WITH normalized AS (
@@ -74,7 +96,7 @@ WITH normalized AS (
     SAFE_CAST(costInBillingCurrency AS NUMERIC) AS effective_cost,
     CAST(0 AS NUMERIC) AS credit_amount,
     SAFE_CAST(costInBillingCurrency AS NUMERIC) AS net_cost
-  FROM `{billing_table}`
+  FROM {relation}
   WHERE REGEXP_CONTAINS(_TABLE_SUFFIX, r'^[0-9]{{8}}$')
     AND SAFE.PARSE_DATE('%Y%m%d', _TABLE_SUFFIX) IS NOT NULL
     AND DATE_TRUNC(SAFE.PARSE_DATE('%Y%m%d', _TABLE_SUFFIX), MONTH)
