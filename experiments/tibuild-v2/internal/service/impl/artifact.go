@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
@@ -91,14 +93,28 @@ func (w *compositeWorker) Stop() {
 	}
 }
 
-// MetricsHandler returns the first handler a worker exposes.
+// MetricsHandler merges every worker registry into one endpoint. Workers that
+// only expose an opaque handler are used as a fallback, so adding a gatherer is
+// enough for the common case.
 func (w *compositeWorker) MetricsHandler() http.Handler {
+	gatherers := make(prometheus.Gatherers, 0, len(w.workers))
 	for _, worker := range w.workers {
+		if gatherer, ok := worker.(interface {
+			MetricsGatherer() prometheus.Gatherer
+		}); ok {
+			if g := gatherer.MetricsGatherer(); g != nil {
+				gatherers = append(gatherers, g)
+			}
+			continue
+		}
 		if handler := worker.MetricsHandler(); handler != nil {
 			return handler
 		}
 	}
-	return nil
+	if len(gatherers) == 0 {
+		return nil
+	}
+	return promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
 }
 
 // artifactsrvc is the artifact service implementation.

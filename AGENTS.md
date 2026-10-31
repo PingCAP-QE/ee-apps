@@ -13,17 +13,18 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 | `publisher/` | Go | Goa + Kafka + Redis | `cmd/publisher/`, `cmd/worker/`, `cmd/publisher-cli/` |
 | `dl/` | Go | Goa | `cmd/server/`, `cmd/server-cli/` |
 | `chatops-lark/` | Go | Lark WebSocket | `cmd/server/` |
-| `change-insight/` | Go | Gin + Viper | `main.go` (root) |
 | `ci-dashboard/` | Python | FastAPI + React | uvicorn + npm |
 | `cost-insight/` | Python | BigQuery/GCS | jobs only |
 | `roster/` | Python | Lark API sync | jobs only |
 | `mcp-servers/*/` | Python | MCP protocol | Flask/Next.js |
 
+**Archive convention:** retired subprojects live under `archive/` and are not built, published, or deployed. See [`archive/README.md`](archive/README.md).
+
 ## Build & Test Commands
 
 **Always `cd` into the subproject directory first.** There are no root-level build commands.
 
-### Go projects (cloudevents-server, publisher, dl, chatops-lark, change-insight)
+### Go projects (cloudevents-server, publisher, dl, chatops-lark)
 ```bash
 go test ./...
 go build ./...
@@ -94,7 +95,7 @@ type(scope): description
 ```
 
 - **Types**: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`
-- **Scope**: subproject name — `tibuild-v2`, `ci-dashboard`, `cost-insight`, `publisher`, `dl`, `chatops-lark`, `cloudevents-server`, `change-insight`, `roster`, `charts`
+- **Scope**: subproject name — `tibuild-v2`, `ci-dashboard`, `cost-insight`, `publisher`, `dl`, `chatops-lark`, `cloudevents-server`, `roster`, `charts`
 - **No scope** for cross-cutting changes (e.g. `fix: auto fixes from pre-commit.com hooks`)
 - **Lowercase** description, no trailing period
 - English preferred; Chinese acceptable for clarity

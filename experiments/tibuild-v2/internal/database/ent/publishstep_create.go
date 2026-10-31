@@ -66,6 +66,20 @@ func (_c *PublishStepCreate) SetState(v string) *PublishStepCreate {
 	return _c
 }
 
+// SetPriority sets the "priority" field.
+func (_c *PublishStepCreate) SetPriority(v int) *PublishStepCreate {
+	_c.mutation.SetPriority(v)
+	return _c
+}
+
+// SetNillablePriority sets the "priority" field if the given value is not nil.
+func (_c *PublishStepCreate) SetNillablePriority(v *int) *PublishStepCreate {
+	if v != nil {
+		_c.SetPriority(*v)
+	}
+	return _c
+}
+
 // SetPayload sets the "payload" field.
 func (_c *PublishStepCreate) SetPayload(v map[string]interface{}) *PublishStepCreate {
 	_c.mutation.SetPayload(v)
@@ -235,6 +249,10 @@ func (_c *PublishStepCreate) defaults() {
 		v := publishstep.DefaultDest
 		_c.mutation.SetDest(v)
 	}
+	if _, ok := _c.mutation.Priority(); !ok {
+		v := publishstep.DefaultPriority
+		_c.mutation.SetPriority(v)
+	}
 	if _, ok := _c.mutation.Attempts(); !ok {
 		v := publishstep.DefaultAttempts
 		_c.mutation.SetAttempts(v)
@@ -283,6 +301,9 @@ func (_c *PublishStepCreate) check() error {
 		if err := publishstep.StateValidator(v); err != nil {
 			return &ValidationError{Name: "state", err: fmt.Errorf(`ent: validator failed for field "PublishStep.state": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Priority(); !ok {
+		return &ValidationError{Name: "priority", err: errors.New(`ent: missing required field "PublishStep.priority"`)}
 	}
 	if _, ok := _c.mutation.Payload(); !ok {
 		return &ValidationError{Name: "payload", err: errors.New(`ent: missing required field "PublishStep.payload"`)}
@@ -357,6 +378,10 @@ func (_c *PublishStepCreate) createSpec() (*PublishStep, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.State(); ok {
 		_spec.SetField(publishstep.FieldState, field.TypeString, value)
 		_node.State = value
+	}
+	if value, ok := _c.mutation.Priority(); ok {
+		_spec.SetField(publishstep.FieldPriority, field.TypeInt, value)
+		_node.Priority = value
 	}
 	if value, ok := _c.mutation.Payload(); ok {
 		_spec.SetField(publishstep.FieldPayload, field.TypeJSON, value)

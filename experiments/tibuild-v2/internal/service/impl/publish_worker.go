@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"net/http"
 	"sync"
 	"time"
 
@@ -93,12 +92,6 @@ func (s *publishsrvc) Stop() {
 	s.inflight.Wait()
 }
 
-// MetricsHandler returns nil: the worker metrics are exposed by the artifact
-// worker, which serves /metrics for the process.
-func (s *publishsrvc) MetricsHandler() http.Handler {
-	return nil
-}
-
 // consumePublishSteps drains a small batch of claimable steps per poll.
 func (s *publishsrvc) consumePublishSteps(ctx context.Context) {
 	for i := 0; i < publishClaimBatchSize; i++ {
@@ -133,7 +126,7 @@ func (s *publishsrvc) claimStep(ctx context.Context) (*ent.PublishStep, error) {
 				entpublishstep.AvailableAtIsNil(),
 				entpublishstep.AvailableAtLTE(now),
 			)).
-			Order(entpublishstep.ByCreatedAt(), entpublishstep.ByID())
+			Order(ent.Desc(entpublishstep.FieldPriority), entpublishstep.ByCreatedAt(), entpublishstep.ByID())
 		if !hasWildcardTarget(cfg.Targets) {
 			query = query.Where(entpublishstep.TargetIn(cfg.Targets...))
 		}

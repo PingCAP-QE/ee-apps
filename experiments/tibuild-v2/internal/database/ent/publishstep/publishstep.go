@@ -23,6 +23,8 @@ const (
 	FieldDependsOn = "depends_on"
 	// FieldState holds the string denoting the state field in the database.
 	FieldState = "state"
+	// FieldPriority holds the string denoting the priority field in the database.
+	FieldPriority = "priority"
 	// FieldPayload holds the string denoting the payload field in the database.
 	FieldPayload = "payload"
 	// FieldResult holds the string denoting the result field in the database.
@@ -55,6 +57,7 @@ var Columns = []string{
 	FieldDest,
 	FieldDependsOn,
 	FieldState,
+	FieldPriority,
 	FieldPayload,
 	FieldResult,
 	FieldAttempts,
@@ -90,6 +93,8 @@ var (
 	DependsOnValidator func(string) error
 	// StateValidator is a validator for the "state" field. It is called by the builders before save.
 	StateValidator func(string) error
+	// DefaultPriority holds the default value on creation for the "priority" field.
+	DefaultPriority int
 	// DefaultAttempts holds the default value on creation for the "attempts" field.
 	DefaultAttempts int
 	// ClaimedByValidator is a validator for the "claimed_by" field. It is called by the builders before save.
@@ -131,6 +136,11 @@ func ByDependsOn(opts ...sql.OrderTermOption) OrderOption {
 // ByState orders the results by the state field.
 func ByState(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldState, opts...).ToFunc()
+}
+
+// ByPriority orders the results by the priority field.
+func ByPriority(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPriority, opts...).ToFunc()
 }
 
 // ByAttempts orders the results by the attempts field.
