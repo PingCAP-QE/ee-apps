@@ -124,12 +124,19 @@ publish:
   # publish only the newest artifact at each aligned window.
   # nightly:
   #   enabled: true
-  #   targets: ["tiup-staging"]
-  #   window: 12h
-  #   anchor: "02:00"
-  #   timezone: UTC
-  #   retry_after: 5m
-  #   jitter: 30m
   #   tick_interval: 1m
   #   batch: 10
-  #   on_failure: alert
+  #   default:
+  #     window: 12h
+  #     anchor: "02:00"
+  #     timezone: UTC
+  #     retry_after: 5m
+  #     jitter: 30m
+  #     on_failure: alert
+  #   targets:
+  #     tiup-staging:
+  #       window: 1h
+  #       anchor: "00:00"
+  #     tiup-prod:
+  #       window: 12h
+  #       anchor: "02:00"

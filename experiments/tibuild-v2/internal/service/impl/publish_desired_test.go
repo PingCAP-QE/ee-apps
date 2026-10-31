@@ -18,16 +18,33 @@ import (
 
 func boolPtr(v bool) *bool { return &v }
 
+func nightlyTestConfig(enabled bool, targets ...string) config.NightlyPublish {
+	cfg := config.NightlyPublish{
+		Enabled: boolPtr(enabled),
+		Default: config.NightlyWindow{
+			Window: "12h", Anchor: "02:00", Timezone: "UTC", RetryAfter: "5m", Jitter: "1ns",
+		},
+		Targets: make(map[string]config.NightlyWindow, len(targets)),
+	}
+	for _, target := range targets {
+		cfg.Targets[target] = config.NightlyWindow{}
+	}
+	return cfg
+}
+
 func newDesiredTestStore(t *testing.T) (*desiredStore, *ent.Client) {
 	t.Helper()
 	db := serverlessTestDB(t)
-	store := newDesiredStore(db, config.NightlyPublish{})
+	store := newDesiredStore(db, config.NightlyPublish{
+		Default: config.NightlyWindow{
+			Window:     "12h",
+			Anchor:     "02:00",
+			Timezone:   "UTC",
+			RetryAfter: "5m",
+			Jitter:     "1ns",
+		},
+	})
 	store.nowFn = func() time.Time { return time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC) }
-	store.window = 12 * time.Hour
-	store.anchor = 2 * time.Hour
-	store.loc = time.UTC
-	store.jitter = 0
-	store.retryAfter = 5 * time.Minute
 	store.batch = 10
 	return store, db
 }
@@ -56,7 +73,14 @@ func createDesiredRow(t *testing.T, db *ent.Client, key desiredKey, version stri
 }
 
 func TestNextRunAtAlignsToAnchorAndTimezone(t *testing.T) {
-	store := &desiredStore{window: 12 * time.Hour, anchor: 2 * time.Hour, loc: time.UTC}
+	store := &desiredStore{cfg: config.NightlyPublish{
+		Default: config.NightlyWindow{
+			Window:   "12h",
+			Anchor:   "02:00",
+			Timezone: "UTC",
+			Jitter:   "1ns",
+		},
+	}}
 	cases := []struct {
 		name string
 		now  time.Time
@@ -69,18 +93,46 @@ func TestNextRunAtAlignsToAnchorAndTimezone(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, store.nextRunAt(tc.now, "tidb"))
+			require.Equal(t, tc.want, store.nextRunAt(tc.now, "tiup-prod", "tidb"))
 		})
 	}
 
 	// The anchor is interpreted in the configured zone: 02:30 at UTC+8 is
-	// 18:30 UTC, so the next boundary is 14:00 UTC+8 = 06:00 UTC.
-	shanghai, err := time.LoadLocation("Asia/Shanghai")
-	require.NoError(t, err)
-	store.loc = shanghai
+	// 18:30 UTC, so the next boundary is 14:30 UTC+8 = 06:30 UTC.
+	store.cfg.Default.Timezone = "Asia/Shanghai"
+	store.cfg.Default.Anchor = "02:30"
 	require.Equal(t,
-		time.Date(2026, 10, 30, 6, 0, 0, 0, time.UTC),
-		store.nextRunAt(time.Date(2026, 10, 29, 18, 30, 0, 0, time.UTC), "tidb"))
+		time.Date(2026, 10, 30, 6, 30, 0, 0, time.UTC),
+		store.nextRunAt(time.Date(2026, 10, 29, 18, 30, 0, 0, time.UTC), "tiup-prod", "tidb"))
+}
+
+func TestNextRunAtUsesPerTargetWindows(t *testing.T) {
+	store := &desiredStore{cfg: config.NightlyPublish{
+		Default: config.NightlyWindow{
+			Window:   "12h",
+			Anchor:   "02:00",
+			Timezone: "UTC",
+			Jitter:   "1ns",
+		},
+		Targets: map[string]config.NightlyWindow{
+			"tiup-staging": {Window: "1h", Anchor: "00:00"},
+			"tiup-prod":    {Window: "12h", Anchor: "02:00"},
+		},
+	}}
+	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
+
+	require.Equal(t,
+		time.Date(2026, 10, 30, 13, 0, 0, 0, time.UTC),
+		store.nextRunAt(now, "tiup-staging", "tidb"),
+		"staging converges hourly")
+	require.Equal(t,
+		time.Date(2026, 10, 30, 14, 0, 0, 0, time.UTC),
+		store.nextRunAt(now, "tiup-prod", "tidb"),
+		"prod converges on the 12h anchor")
+	require.Equal(t,
+		time.Date(2026, 10, 30, 14, 0, 0, 0, time.UTC),
+		store.nextRunAt(now, "other-target", "tidb"),
+		"an unconfigured target inherits the default")
 }
 
 func TestDesiredUpsertKeepsLatestAndLeavesScheduleAlone(t *testing.T) {
@@ -221,13 +273,14 @@ func TestReconcileNightlyCreatesOneUnitAndSettlesOnCompletion(t *testing.T) {
 	enabled := true
 	svc.publishCfg.Nightly = config.NightlyPublish{
 		Enabled: &enabled,
-		Targets: []string{delivery.TiUPTargetProd},
+		Default: config.NightlyWindow{
+			Window: "12h", Anchor: "02:00", Timezone: "UTC", RetryAfter: "5m", Jitter: "1ns",
+		},
+		Targets: map[string]config.NightlyWindow{delivery.TiUPTargetProd: {}},
 	}
 	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
 	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly)
 	svc.desired.nowFn = func() time.Time { return *clock }
-	svc.desired.jitter = 0
-	svc.desired.retryAfter = 5 * time.Minute
 
 	key := desiredKeyForTest(delivery.TiUPTargetProd, "tidb", "linux", "amd64")
 	payload := TiUPStepPayload{
@@ -301,11 +354,13 @@ func TestDeliveryByRulesDefersOnlyTheConfiguredTarget(t *testing.T) {
 	enabled := true
 	cfg := config.Publish{Nightly: config.NightlyPublish{
 		Enabled: &enabled,
-		Targets: []string{delivery.TiUPTargetStaging},
+		Default: config.NightlyWindow{
+			Window: "12h", Anchor: "02:00", Timezone: "UTC", RetryAfter: "5m", Jitter: "1ns",
+		},
+		Targets: map[string]config.NightlyWindow{delivery.TiUPTargetStaging: {}},
 	}}
 	svc := newTiUPServiceForTest(t, cfg)
 	svc.desired = newDesiredStore(svc.db, cfg.Nightly)
-	svc.desired.jitter = 0
 	svc.planner = &publishPlanner{rules: goldenRulesLoader(t)}
 
 	ids, err := svc.DeliveryByRules(context.Background(), &publish.DeliveryByRulesPayload{ArtifactURL: nightlyArtifact})
@@ -326,18 +381,17 @@ func TestDeliveryByRulesDefersOnlyTheConfiguredTarget(t *testing.T) {
 }
 
 func TestDesiredJitterIsStableAndBounded(t *testing.T) {
-	store := &desiredStore{jitter: 30 * time.Minute}
-	first := store.jitterFor("tidb")
-	if first != store.jitterFor("tidb") {
+	store := &desiredStore{}
+	first := store.jitterFor("tidb", 30*time.Minute)
+	if first != store.jitterFor("tidb", 30*time.Minute) {
 		t.Fatal("jitterFor() is not stable for the same package")
 	}
 	for _, pkg := range []string{"tidb", "tikv", "pd", "tiflow", "ticdc", "tiflash", "tiproxy", "tidb-binlog", "tidb-dashboard", "monitoring", "tiup", "ctl", "tici"} {
-		if got := store.jitterFor(pkg); got < 0 || got >= 30*time.Minute {
+		if got := store.jitterFor(pkg, 30*time.Minute); got < 0 || got >= 30*time.Minute {
 			t.Fatalf("jitterFor(%q) = %v, want [0, 30m)", pkg, got)
 		}
 	}
-	store.jitter = 0
-	if got := store.jitterFor("tidb"); got != 0 {
+	if got := store.jitterFor("tidb", 0); got != 0 {
 		t.Fatalf("jitterFor() = %v with jitter disabled, want 0", got)
 	}
 }
@@ -366,11 +420,10 @@ func TestNightlySweepReleasesRowsWhoseUnitDisappeared(t *testing.T) {
 	svc, clock := newFlowTestService(t)
 	ctx := context.Background()
 	enabled := true
-	svc.publishCfg.Nightly = config.NightlyPublish{Enabled: &enabled, Targets: []string{delivery.TiUPTargetProd}}
+	svc.publishCfg.Nightly = nightlyTestConfig(enabled, delivery.TiUPTargetProd)
 	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
 	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly)
 	svc.desired.nowFn = func() time.Time { return *clock }
-	svc.desired.retryAfter = 5 * time.Minute
 
 	key := desiredKeyForTest(delivery.TiUPTargetProd, "tidb", "linux", "amd64")
 	createDesiredRow(t, svc.db, key, "v9.0.0-nightly", clock.Add(-time.Minute), "ghost-unit")
@@ -388,7 +441,7 @@ func TestReconcileNightlyReleasesMalformedDesiredRows(t *testing.T) {
 	svc, clock := newFlowTestService(t)
 	ctx := context.Background()
 	enabled := true
-	svc.publishCfg.Nightly = config.NightlyPublish{Enabled: &enabled, Targets: []string{delivery.TiUPTargetProd}}
+	svc.publishCfg.Nightly = nightlyTestConfig(enabled, delivery.TiUPTargetProd)
 	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
 	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly)
 	svc.desired.nowFn = func() time.Time { return *clock }
@@ -409,15 +462,11 @@ func TestReconcileNightlyReleasesMalformedDesiredRows(t *testing.T) {
 func TestNightlyReconcilerRunsOnItsTick(t *testing.T) {
 	svc, clock := newFlowTestService(t)
 	enabled := true
-	svc.publishCfg.Nightly = config.NightlyPublish{
-		Enabled:      &enabled,
-		Targets:      []string{delivery.TiUPTargetProd},
-		TickInterval: "5ms",
-	}
+	svc.publishCfg.Nightly = nightlyTestConfig(enabled, delivery.TiUPTargetProd)
+	svc.publishCfg.Nightly.TickInterval = "5ms"
 	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
 	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly)
 	svc.desired.nowFn = func() time.Time { return *clock }
-	svc.desired.jitter = 0
 
 	key := desiredKeyForTest(delivery.TiUPTargetProd, "tidb", "linux", "amd64")
 	payload := TiUPStepPayload{
