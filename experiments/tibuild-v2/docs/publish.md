@@ -80,11 +80,28 @@ Before publishing, the executor checks the remote tarball:
 
 - missing → publish, then verify the remote sha256;
 - present with the same sha256 → success without publishing;
-- present with a different sha256 on a **released** version → refused
-  ("refusing to overwrite"); bump the version instead;
-- present with a different sha256 on the **nightly** channel → published, on
-  purpose: nightly reuses one version string, so each build replaces the
-  previous package.
+- present with a different sha256 on a **formal `vX.Y.Z`** version → refused
+  ("refusing to overwrite formal version"); a released package is immutable, so
+  bump the version instead;
+- present with a different sha256 on a **non-formal** version — pre/beta/rc,
+  nightly, nextgen, rust and branch builds — → overwritten on purpose: those
+  channels reuse one version string, so each build replaces the previous
+  package.
+
+Only the strict `^v[0-9]+\.[0-9]+\.[0-9]+$` form is treated as a released
+version. The per-package outcome is recorded in the step result's `action`:
+
+| action | meaning |
+| --- | --- |
+| `published` | the remote package was missing and is now published |
+| `skipped_existing` | the remote package already had the same sha256 |
+| `overwritten_nightly` | a nightly build replaced the previous package |
+| `overwritten_non_formal` | a pre/beta/rc/nextgen/rust/branch build replaced the previous package |
+| `refused_formal_overwrite` | failure log only: the replacement of a released `vX.Y.Z` was refused |
+
+A package with an empty version is treated as non-formal (overwrite allowed) and
+logged as a warning: the planner always sets a version, so an empty one means a
+rule/artifact-config anomaly rather than a released package.
 
 The `standalone` flag of the artifact config is deliberately not forwarded: the
 pre-migration publisher dropped it and this port preserves that behaviour.
