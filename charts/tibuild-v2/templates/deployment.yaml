@@ -50,10 +50,18 @@ spec:
             {{- if .Values.server.debug }}
             - -debug
             {{- end }}
+            {{- if .Values.server.metricsPort }}
+            - -metrics-addr=:{{ .Values.server.metricsPort }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            {{- if .Values.server.metricsPort }}
+            - name: metrics
+              containerPort: {{ .Values.server.metricsPort }}
+              protocol: TCP
+            {{- end }}
           {{- with .Values.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
