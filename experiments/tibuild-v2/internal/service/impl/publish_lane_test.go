@@ -267,3 +267,32 @@ func TestLaneBusyDeferDoesNotConsumeAttempts(t *testing.T) {
 	require.NotNil(t, stored.AvailableAt)
 	require.GreaterOrEqual(t, stored.AvailableAt.Sub(svc.now()), 24*time.Second)
 }
+
+// A lane that stays busy for a long time must not exhaust the step's execution
+// budget: waiting is not an attempt, however many times it is requeued.
+func TestLaneBusyRequeueKeepsAttemptsAcrossManyWaits(t *testing.T) {
+	svc, clock := newFlowTestService(t)
+	ctx := context.Background()
+	_, step := createTiUPStep(t, svc, "tiup-staging", TiUPStepPayload{
+		Mirror: "staging", MirrorURL: "http://127.0.0.1:1",
+	})
+	svc.workerCfg.MaxAttempts = 3
+
+	for i := 0; i < 100; i++ {
+		claimed, err := svc.claimStep(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, claimed, "wait %d: the step must stay claimable", i)
+		require.Equal(t, 1, claimed.Attempts, "wait %d: the claim itself is the only attempt", i)
+
+		ok, err := svc.deferStep(ctx, claimed)
+		require.NoError(t, err)
+		require.True(t, ok, "wait %d: the step must be requeued", i)
+
+		stored, err := svc.db.PublishStep.Get(ctx, step.ID)
+		require.NoError(t, err)
+		require.Equal(t, 0, stored.Attempts, "wait %d: waiting must not consume an attempt", i)
+		require.Equal(t, PublishStepStatePending, stored.State)
+
+		*clock = clock.Add(40 * time.Second)
+	}
+}

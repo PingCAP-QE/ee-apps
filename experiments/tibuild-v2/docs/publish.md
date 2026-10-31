@@ -34,6 +34,26 @@ two units interleave `prod(A) → prod(B) → staging(A) → staging(B)`.
 tiup-staging`). Set it to `{}` to run the mirrors in parallel — the direction is
 data, not code.
 
+### Lane lifecycle
+
+A unit acquires the lane when one of its steps starts executing and releases it
+as soon as the unit reaches a terminal state (`succeeded`, `partial`, `failed`,
+`canceled`); the next unit can then acquire immediately instead of waiting for
+the lease to expire. `retry` needs no special handling: the terminal unit has
+already released the lane, and the re-queued step acquires it again.
+
+Finding the lane busy is **not** an execution attempt. The claim increments
+`publish_step.attempts`, the requeue decrements it again, so `max_attempts`
+only counts real execution failures and timeouts. A busy requeue backs off for
+`30s ± 20%` per target, and the wait is exported as `publish_lane_wait_seconds`
+alongside the `publish_lane_busy_total` counter.
+
+Known limitation: a unit with two ordered steps (prod → staging) is executed by
+two different worker deployments, one per target. The lane is held by the unit,
+so the worker that finished prod keeps it until its lease expires (12m) while
+the unit is still running; the staging step then reports the lane busy. Fixing
+that needs a holder hand-off inside one unit, which is tracked separately.
+
 ## Targets
 
 | Target | Mirror | Worker config |

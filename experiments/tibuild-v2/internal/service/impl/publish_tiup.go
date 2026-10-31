@@ -448,15 +448,17 @@ func (s *publishsrvc) runTiUPStep(ctx context.Context, step *ent.PublishStep) {
 	switch {
 	case errors.Is(err, ErrLaneBusy):
 		// Another unit legitimately owns the mirror; the step waits its turn.
+		waited := s.laneWait(step)
 		if s.metrics != nil {
 			s.metrics.recordLaneBusy(step.Target)
+			s.metrics.recordLaneWait(step.Target, waited)
 		}
 		if ok, deferErr := s.deferStep(ctx, step); deferErr != nil {
 			log.Err(deferErr).Msg("failed to requeue the step for a busy lane")
 		} else if ok {
 			log.Warn().
 				Int("attempts", step.Attempts).
-				Dur("waited", s.now().Sub(step.CreatedAt)).
+				Dur("waited", waited).
 				Msg("publish lane busy, step requeued")
 		}
 		return
