@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
@@ -56,6 +57,8 @@ type desiredStore struct {
 	nowFn func() time.Time
 	newID func() string
 
+	// mu guards the schedule copied from the current configuration revision.
+	mu    sync.RWMutex
 	cfg   config.NightlyPublish
 	batch int
 }
@@ -68,6 +71,21 @@ func newDesiredStore(db *ent.Client, cfg config.NightlyPublish) *desiredStore {
 		cfg:   cfg,
 		batch: cfg.BatchSize(),
 	}
+}
+
+// setConfig applies a new nightly schedule: windows, retry backoff and the tick
+// batch size all follow the current revision.
+func (s *desiredStore) setConfig(cfg config.NightlyPublish) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cfg = cfg
+	s.batch = cfg.BatchSize()
+}
+
+func (s *desiredStore) schedule() (config.NightlyPublish, int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cfg, s.batch
 }
 
 func (s *desiredStore) now() time.Time {
@@ -89,7 +107,8 @@ func (s *desiredStore) id() string {
 // in the target's zone; the result is normalised to UTC so the database stores
 // one instant.
 func (s *desiredStore) nextRunAt(now time.Time, target, pkg string) time.Time {
-	window := s.cfg.WindowFor(target)
+	nightly, _ := s.schedule()
+	window := nightly.WindowFor(target)
 	loc := window.Location()
 	local := now.In(loc)
 	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
@@ -164,6 +183,7 @@ func (s *desiredStore) Upsert(ctx context.Context, key desiredKey, version strin
 // The conditional UPDATE is the multi-worker guard: a row is claimed exactly
 // once even when several workers select it.
 func (s *desiredStore) ClaimDue(ctx context.Context, targets []string, now time.Time) ([]*desiredClaim, error) {
+	_, batch := s.schedule()
 	query := s.db.PublishDesired.Query().
 		Where(
 			idleDesired(),
@@ -174,7 +194,7 @@ func (s *desiredStore) ClaimDue(ctx context.Context, targets []string, now time.
 	}
 	rows, err := query.
 		Order(entpublishdesired.ByNextRunAt(), entpublishdesired.ByID()).
-		Limit(s.batch).
+		Limit(batch).
 		All(ctx)
 	if err != nil {
 		return nil, err
@@ -212,10 +232,11 @@ func (s *desiredStore) ClaimDue(ctx context.Context, targets []string, now time.
 // Release returns a claimed row to the schedule after the unit could not be
 // created. It is fenced on the claimed unit id.
 func (s *desiredStore) Release(ctx context.Context, key desiredKey, unitID string, cause error, now time.Time) error {
+	nightly, _ := s.schedule()
 	update := s.db.PublishDesired.Update().
 		Where(append(key.predicates(), entpublishdesired.RunningUnitID(unitID))...).
 		ClearRunningUnitID().
-		SetNextRunAt(now.Add(s.cfg.WindowFor(key.Target).RetryAfterDuration())).
+		SetNextRunAt(now.Add(nightly.WindowFor(key.Target).RetryAfterDuration())).
 		SetUpdatedAt(now)
 	if cause != nil {
 		update = update.SetLastError(truncateErrorMessage(cause.Error()))
@@ -256,6 +277,7 @@ func (s *desiredStore) completeRow(ctx context.Context, row *ent.PublishDesired,
 	if version == "" {
 		version = row.DesiredVersion
 	}
+	nightly, _ := s.schedule()
 	update := s.db.PublishDesired.Update().
 		Where(append(key.predicates(), entpublishdesired.RunningUnitID(unitID))...).
 		ClearRunningUnitID().
@@ -267,7 +289,7 @@ func (s *desiredStore) completeRow(ctx context.Context, row *ent.PublishDesired,
 			ClearLastError().
 			SetNextRunAt(s.nextRunAt(now, row.Target, row.Pkg))
 	} else {
-		next := now.Add(s.cfg.WindowFor(row.Target).RetryAfterDuration())
+		next := now.Add(nightly.WindowFor(row.Target).RetryAfterDuration())
 		if row.LastFailedVersion == version {
 			next = s.nextRunAt(now, row.Target, row.Pkg)
 		}
@@ -295,7 +317,7 @@ func (s *desiredStore) Get(ctx context.Context, key desiredKey) (*ent.PublishDes
 
 // nightlyEnabled reports whether this worker should run the reconciler.
 func (s *publishsrvc) nightlyEnabled() bool {
-	if s.desired == nil || !s.publishCfg.Nightly.EnabledValue() {
+	if s.desired == nil || !s.publishConfig().Nightly.EnabledValue() {
 		return false
 	}
 	return len(s.nightlyTargets()) > 0
@@ -305,8 +327,8 @@ func (s *publishsrvc) nightlyEnabled() bool {
 // publish targets, not worker.targets, are authoritative: the two are separated
 // so concentrating publication does not re-shard the image sync queue.
 func (s *publishsrvc) nightlyTargets() []string {
-	return s.publishCfg.Nightly.DesiredTargets(
-		s.publishCfg.PublicationTargets(s.workerCfg.Targets))
+	return s.publishConfig().Nightly.DesiredTargets(
+		s.publishConfig().PublicationTargets(s.workerConfig().Targets))
 }
 
 // enqueueNightlyPlans records the newest artifact for every nightly plan. It
@@ -345,17 +367,81 @@ func (s *publishsrvc) enqueueNightlyPlans(ctx context.Context, artifactURL, dige
 	return nil
 }
 
-// runNightlyReconciler drives the window-aligned tick.
+// runNightlyReconciler drives the window-aligned tick. The interval, the
+// schedules and the enabled flag are read every tick, so a validated reload
+// changes them without a restart.
 func (s *publishsrvc) runNightlyReconciler(ctx context.Context) {
-	interval := s.publishCfg.Nightly.TickEvery()
-	if interval <= 0 {
-		interval = time.Minute
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	interval := s.nightlyInterval()
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 
+	s.logNightlySchedules()
+	s.logger.Info().
+		Dur("tick_interval", interval).
+		Strs("targets", s.nightlyTargets()).
+		Msg("nightly desired-state reconciler started")
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info().Msg("nightly desired-state reconciler stopped")
+			return
+		case <-s.reloadNotify:
+			// The interval may have shrunk; do not wait for the old one.
+			next := s.nightlyInterval()
+			if next != interval {
+				s.logger.Info().Dur("tick_interval", next).Msg("nightly reconciler interval changed by configuration reload")
+				interval = next
+			}
+			resetTimer(timer, interval)
+			continue
+		case <-timer.C:
+		}
+
+		if s.nightlyEnabled() {
+			s.refreshNightlyMetricsAndAlerts(ctx)
+			created, err := s.reconcileNightlyOnce(ctx)
+			if err != nil {
+				s.logger.Err(err).Msg("nightly reconcile failed")
+			} else if created > 0 {
+				s.logger.Info().Int("units", created).Msg("nightly reconcile queued publication units")
+			}
+		}
+
+		if next := s.nightlyInterval(); next != interval {
+			s.logger.Info().Dur("tick_interval", next).Msg("nightly reconciler interval changed by configuration reload")
+			interval = next
+		}
+		timer.Reset(interval)
+	}
+}
+
+// nightlyInterval returns the reconciler tick of the current revision.
+func (s *publishsrvc) nightlyInterval() time.Duration {
+	if interval := s.publishConfig().Nightly.TickEvery(); interval > 0 {
+		return interval
+	}
+	return time.Minute
+}
+
+// resetTimer restarts a timer that may not have fired yet.
+func resetTimer(timer *time.Timer, d time.Duration) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(d)
+}
+
+// logNightlySchedules records the effective schedule of every converging target.
+// It runs at startup and after a reload, so the log is the evidence that a change
+// reached the worker.
+func (s *publishsrvc) logNightlySchedules() {
+	nightly := s.publishConfig().Nightly
 	for _, target := range s.nightlyTargets() {
-		window := s.publishCfg.Nightly.WindowFor(target)
+		window := nightly.WindowFor(target)
 		anchor := window.Anchor
 		if anchor == "" {
 			anchor = config.DefaultNightlyAnchor
@@ -369,31 +455,9 @@ func (s *publishsrvc) runNightlyReconciler(ctx context.Context) {
 			Dur("window", window.WindowDuration()).
 			Str("anchor", anchor).
 			Str("timezone", zone).
+			Dur("retry_after", window.RetryAfterDuration()).
+			Bool("enabled", nightly.EnabledValue()).
 			Msg("nightly target schedule")
-	}
-
-	s.logger.Info().
-		Dur("tick_interval", interval).
-		Strs("targets", s.nightlyTargets()).
-		Msg("nightly desired-state reconciler started")
-
-	s.refreshNightlyMetricsAndAlerts(ctx)
-	for {
-		select {
-		case <-ctx.Done():
-			s.logger.Info().Msg("nightly desired-state reconciler stopped")
-			return
-		case <-ticker.C:
-			s.refreshNightlyMetricsAndAlerts(ctx)
-			created, err := s.reconcileNightlyOnce(ctx)
-			if err != nil {
-				s.logger.Err(err).Msg("nightly reconcile failed")
-				continue
-			}
-			if created > 0 {
-				s.logger.Info().Int("units", created).Msg("nightly reconcile queued publication units")
-			}
-		}
 	}
 }
 

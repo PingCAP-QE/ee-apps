@@ -150,23 +150,23 @@ func (s *artifactsrvc) reapOnce(ctx context.Context) (int, error) {
 }
 
 func (s *artifactsrvc) runReaper(ctx context.Context) {
-	ticker := time.NewTicker(s.workerConfig().ReapEvery())
-	defer ticker.Stop()
+	timer := time.NewTimer(s.workerConfig().ReapEvery())
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			n, err := s.reapAndRecord(ctx)
 			if err != nil {
 				s.logger.Err(err).Msg("failed to reap expired task leases")
-				continue
-			}
-			if n > 0 {
+			} else if n > 0 {
 				s.logger.Warn().Int("count", n).Msg("reclaimed expired task leases")
 			}
 		}
+		// A reload may change the reaper interval; the next tick follows it.
+		timer.Reset(s.workerConfig().ReapEvery())
 	}
 }
 

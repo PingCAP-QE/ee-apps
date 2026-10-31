@@ -18,7 +18,6 @@ import (
 const (
 	publishClaimRetries   = 5
 	publishClaimBatchSize = 5
-	publishReapInterval   = 30 * time.Second
 	publishBackoffBase    = 10 * time.Second
 	publishBackoffMax     = 5 * time.Minute
 )
@@ -39,7 +38,7 @@ type imageCopyResult struct {
 // parallel by the regional workers that can reach them. There is no lane: image
 // targets have no ordering between each other.
 func (s *publishsrvc) Start(ctx context.Context) {
-	cfg := s.workerCfg
+	cfg := s.workerConfig()
 	// One claim loop serves every kind: executeStep dispatches on the unit kind.
 	// The target shard keeps the kinds apart (image workers claim registry
 	// hosts, TiUP workers claim tiup-staging/tiup-prod). A TiUP-only worker
@@ -76,13 +75,14 @@ func (s *publishsrvc) Start(ctx context.Context) {
 		}
 	}
 
-	if runNightly {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			s.runNightlyReconciler(ctx)
-		}()
-	}
+	// The reconciler always runs once the worker is active: publish.nightly is a
+	// hot field, so switching convergence on must not need a restart. It is a
+	// no-op while convergence is disabled.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.runNightlyReconciler(ctx)
+	}()
 
 	wg.Wait()
 }
@@ -116,7 +116,7 @@ func (s *publishsrvc) consumePublishSteps(ctx context.Context) {
 // workers may select the same row, but only one UPDATE observes state=pending
 // and increments attempts; the loser moves on to the next candidate.
 func (s *publishsrvc) claimStep(ctx context.Context) (*ent.PublishStep, error) {
-	cfg := s.workerCfg
+	cfg := s.workerConfig()
 
 	for i := 0; i < publishClaimRetries; i++ {
 		now := s.now()
@@ -174,7 +174,7 @@ func (s *publishsrvc) claimStep(ctx context.Context) (*ent.PublishStep, error) {
 }
 
 func (s *publishsrvc) claimToken() string {
-	return fmt.Sprintf("%s-%s", s.workerCfg.ID, newUUID())
+	return fmt.Sprintf("%s-%s", s.workerConfig().ID, newUUID())
 }
 
 func (s *publishsrvc) markUnitRunning(ctx context.Context, unitID string) error {
@@ -213,7 +213,7 @@ func (s *publishsrvc) executeStep(ctx context.Context, step *ent.PublishStep) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if hardTimeout := s.workerCfg.HardTimeoutDuration(); hardTimeout > 0 {
+	if hardTimeout := s.workerConfig().HardTimeoutDuration(); hardTimeout > 0 {
 		timeoutCtx, timeoutCancel := context.WithTimeout(runCtx, hardTimeout)
 		defer timeoutCancel()
 		runCtx = timeoutCtx
@@ -311,7 +311,7 @@ func (s *publishsrvc) copyImage(ctx context.Context, payload ImageCopyPayload) (
 // heartbeatStep renews the lease until the execution finishes. A failed
 // renewal means the lease was lost: cancel the copy so it stops early.
 func (s *publishsrvc) heartbeatStep(ctx context.Context, cancel context.CancelFunc, id, token string) {
-	interval := s.workerCfg.HeartbeatDuration()
+	interval := s.workerConfig().HeartbeatDuration()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -341,7 +341,7 @@ func (s *publishsrvc) renewStepLease(ctx context.Context, id, token string) (boo
 			entpublishstep.ClaimedBy(token),
 			entpublishstep.State(PublishStepStateClaimed),
 		).
-		SetLeaseUntil(s.now().Add(s.workerCfg.LeaseDuration())).
+		SetLeaseUntil(s.now().Add(s.workerConfig().LeaseDuration())).
 		Save(ctx)
 	return updated == 1, err
 }
@@ -388,7 +388,7 @@ func (s *publishsrvc) handleStepFailure(ctx context.Context, step *ent.PublishSt
 		).
 		SetLastError(truncateErrorMessage(cause.Error()))
 
-	if step.Attempts >= s.workerCfg.MaxAttempts {
+	if step.Attempts >= s.workerConfig().MaxAttempts {
 		update = update.
 			SetState(PublishStepStateFailed).
 			SetFinishedAt(now).
@@ -403,7 +403,7 @@ func (s *publishsrvc) handleStepFailure(ctx context.Context, step *ent.PublishSt
 	}
 
 	updated, err := update.Save(ctx)
-	if err == nil && updated == 1 && step.Attempts >= s.workerCfg.MaxAttempts {
+	if err == nil && updated == 1 && step.Attempts >= s.workerConfig().MaxAttempts {
 		if skipErr := s.skipDependents(ctx, step.ID); skipErr != nil {
 			return false, skipErr
 		}
@@ -421,7 +421,7 @@ func (s *publishsrvc) recordStepFailure(ctx context.Context, step *ent.PublishSt
 		log.Warn().Msg("step lease lost, failure not recorded")
 		return
 	}
-	if step.Attempts >= s.workerCfg.MaxAttempts {
+	if step.Attempts >= s.workerConfig().MaxAttempts {
 		log.Err(cause).Msg("step failed, giving up")
 	} else {
 		log.Warn().Err(cause).Int("attempt", step.Attempts).Msg("step failed, re-queued with backoff")
@@ -550,23 +550,23 @@ func isTerminalUnitState(state string) bool {
 // runPublishReaper returns expired claims to pending. A worker that dies
 // mid-copy must not strand its step.
 func (s *publishsrvc) runPublishReaper(ctx context.Context) {
-	ticker := time.NewTicker(publishReapInterval)
-	defer ticker.Stop()
+	timer := time.NewTimer(s.workerConfig().ReapEvery())
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			n, err := s.reapExpiredSteps(ctx)
 			if err != nil {
 				s.logger.Err(err).Msg("failed to reap expired publish step leases")
-				continue
-			}
-			if n > 0 {
+			} else if n > 0 {
 				s.logger.Warn().Int("count", n).Msg("reclaimed expired publish step leases")
 			}
 		}
+		// A reload may change the reaper interval; the next tick follows it.
+		timer.Reset(s.workerConfig().ReapEvery())
 	}
 }
 
@@ -594,7 +594,7 @@ func (s *publishsrvc) reapExpiredSteps(ctx context.Context) (int, error) {
 				entpublishstep.State(PublishStepStateClaimed),
 				entpublishstep.LeaseUntilLT(now),
 			)
-		if step.Attempts >= s.workerCfg.MaxAttempts {
+		if step.Attempts >= s.workerConfig().MaxAttempts {
 			update = update.
 				SetState(PublishStepStateFailed).
 				SetLastError("lease expired after repeated attempts").
@@ -613,7 +613,7 @@ func (s *publishsrvc) reapExpiredSteps(ctx context.Context) (int, error) {
 			return updated, err
 		}
 		updated += n
-		if n == 1 && step.Attempts >= s.workerCfg.MaxAttempts {
+		if n == 1 && step.Attempts >= s.workerConfig().MaxAttempts {
 			if err := s.skipDependents(ctx, step.ID); err != nil {
 				return updated, err
 			}

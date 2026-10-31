@@ -35,15 +35,7 @@ func nightlyTestConfig(enabled bool, targets ...string) config.NightlyPublish {
 func newDesiredTestStore(t *testing.T) (*desiredStore, *ent.Client) {
 	t.Helper()
 	db := serverlessTestDB(t)
-	store := newDesiredStore(db, config.NightlyPublish{
-		Default: config.NightlyWindow{
-			Window:     "12h",
-			Anchor:     "02:00",
-			Timezone:   "UTC",
-			RetryAfter: "5m",
-			Jitter:     "1ns",
-		},
-	})
+	store := newDesiredStore(db, storeConfigForTest())
 	store.nowFn = func() time.Time { return time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC) }
 	store.batch = 10
 	return store, db
@@ -190,7 +182,8 @@ func TestDesiredClaimTakesOnlyDueIdleRowsForTheWorkerTargets(t *testing.T) {
 	require.Equal(t, claims[0].UnitID, claims[0].Row.RunningUnitID)
 
 	// A second worker (a second store over the same database) sees no claim.
-	other := *store
+	other := newDesiredStore(db, storeConfigForTest())
+	other.nowFn = store.nowFn
 	other.newID = func() string { return "other-unit" }
 	claims, err = other.ClaimDue(ctx, []string{"tiup-prod"}, now)
 	require.NoError(t, err)
@@ -504,4 +497,18 @@ func TestNightlyReconcilerRunsOnItsTick(t *testing.T) {
 		count, err := svc.db.PublishUnit.Query().Count(ctx)
 		return err == nil && count == 1
 	}, 2*time.Second, 20*time.Millisecond)
+}
+
+// storeConfigForTest is the schedule the desired-store tests use: a 12h window
+// with a 1ns jitter so the next run is deterministic.
+func storeConfigForTest() config.NightlyPublish {
+	return config.NightlyPublish{
+		Default: config.NightlyWindow{
+			Window:     "12h",
+			Anchor:     "02:00",
+			Timezone:   "UTC",
+			RetryAfter: "5m",
+			Jitter:     "1ns",
+		},
+	}
 }

@@ -34,6 +34,9 @@ type Worker interface {
 	Start(context.Context)
 	Stop()
 	MetricsHandler() http.Handler
+	MetricsGatherer() prometheus.Gatherer
+	// Reload applies a validated configuration revision to the running worker.
+	Reload(*config.Service)
 }
 
 // NewWorker builds the standalone background executor. The image sync queue and
@@ -86,10 +89,18 @@ func (w *compositeWorker) Stop() {
 	}
 }
 
-// MetricsHandler merges every worker registry into one endpoint. Workers that
-// only expose an opaque handler are used as a fallback, so adding a gatherer is
-// enough for the common case.
-func (w *compositeWorker) MetricsHandler() http.Handler {
+// Reload applies a validated revision to every worker that keeps runtime state.
+func (w *compositeWorker) Reload(cfg *config.Service) {
+	for _, worker := range w.workers {
+		if reloader, ok := worker.(interface{ Reload(*config.Service) }); ok {
+			reloader.Reload(cfg)
+		}
+	}
+}
+
+// MetricsGatherer merges the per-worker registries. A worker that only exposes
+// an opaque handler is skipped here and served by MetricsHandler instead.
+func (w *compositeWorker) MetricsGatherer() prometheus.Gatherer {
 	gatherers := make(prometheus.Gatherers, 0, len(w.workers))
 	for _, worker := range w.workers {
 		if gatherer, ok := worker.(interface {
@@ -98,16 +109,25 @@ func (w *compositeWorker) MetricsHandler() http.Handler {
 			if g := gatherer.MetricsGatherer(); g != nil {
 				gatherers = append(gatherers, g)
 			}
-			continue
-		}
-		if handler := worker.MetricsHandler(); handler != nil {
-			return handler
 		}
 	}
 	if len(gatherers) == 0 {
 		return nil
 	}
-	return promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
+	return gatherers
+}
+
+// MetricsHandler merges every worker registry into one endpoint.
+func (w *compositeWorker) MetricsHandler() http.Handler {
+	if gatherer := w.MetricsGatherer(); gatherer != nil {
+		return promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{})
+	}
+	for _, worker := range w.workers {
+		if handler := worker.MetricsHandler(); handler != nil {
+			return handler
+		}
+	}
+	return nil
 }
 
 // artifactsrvc is the artifact service implementation.
