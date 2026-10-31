@@ -110,6 +110,41 @@ func (_u *PublishUnitUpdate) ClearRequestedBy() *PublishUnitUpdate {
 	return _u
 }
 
+// SetSource sets the "source" field.
+func (_u *PublishUnitUpdate) SetSource(v string) *PublishUnitUpdate {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *PublishUnitUpdate) SetNillableSource(v *string) *PublishUnitUpdate {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// SetPriority sets the "priority" field.
+func (_u *PublishUnitUpdate) SetPriority(v int) *PublishUnitUpdate {
+	_u.mutation.ResetPriority()
+	_u.mutation.SetPriority(v)
+	return _u
+}
+
+// SetNillablePriority sets the "priority" field if the given value is not nil.
+func (_u *PublishUnitUpdate) SetNillablePriority(v *int) *PublishUnitUpdate {
+	if v != nil {
+		_u.SetPriority(*v)
+	}
+	return _u
+}
+
+// AddPriority adds value to the "priority" field.
+func (_u *PublishUnitUpdate) AddPriority(v int) *PublishUnitUpdate {
+	_u.mutation.AddPriority(v)
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *PublishUnitUpdate) SetCreatedAt(v time.Time) *PublishUnitUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -203,6 +238,11 @@ func (_u *PublishUnitUpdate) check() error {
 			return &ValidationError{Name: "requested_by", err: fmt.Errorf(`ent: validator failed for field "PublishUnit.requested_by": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Source(); ok {
+		if err := publishunit.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "PublishUnit.source": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -238,6 +278,15 @@ func (_u *PublishUnitUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	}
 	if _u.mutation.RequestedByCleared() {
 		_spec.ClearField(publishunit.FieldRequestedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(publishunit.FieldSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Priority(); ok {
+		_spec.SetField(publishunit.FieldPriority, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPriority(); ok {
+		_spec.AddField(publishunit.FieldPriority, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(publishunit.FieldCreatedAt, field.TypeTime, value)
@@ -350,6 +399,41 @@ func (_u *PublishUnitUpdateOne) ClearRequestedBy() *PublishUnitUpdateOne {
 	return _u
 }
 
+// SetSource sets the "source" field.
+func (_u *PublishUnitUpdateOne) SetSource(v string) *PublishUnitUpdateOne {
+	_u.mutation.SetSource(v)
+	return _u
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_u *PublishUnitUpdateOne) SetNillableSource(v *string) *PublishUnitUpdateOne {
+	if v != nil {
+		_u.SetSource(*v)
+	}
+	return _u
+}
+
+// SetPriority sets the "priority" field.
+func (_u *PublishUnitUpdateOne) SetPriority(v int) *PublishUnitUpdateOne {
+	_u.mutation.ResetPriority()
+	_u.mutation.SetPriority(v)
+	return _u
+}
+
+// SetNillablePriority sets the "priority" field if the given value is not nil.
+func (_u *PublishUnitUpdateOne) SetNillablePriority(v *int) *PublishUnitUpdateOne {
+	if v != nil {
+		_u.SetPriority(*v)
+	}
+	return _u
+}
+
+// AddPriority adds value to the "priority" field.
+func (_u *PublishUnitUpdateOne) AddPriority(v int) *PublishUnitUpdateOne {
+	_u.mutation.AddPriority(v)
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *PublishUnitUpdateOne) SetCreatedAt(v time.Time) *PublishUnitUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -456,6 +540,11 @@ func (_u *PublishUnitUpdateOne) check() error {
 			return &ValidationError{Name: "requested_by", err: fmt.Errorf(`ent: validator failed for field "PublishUnit.requested_by": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.Source(); ok {
+		if err := publishunit.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "PublishUnit.source": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -508,6 +597,15 @@ func (_u *PublishUnitUpdateOne) sqlSave(ctx context.Context) (_node *PublishUnit
 	}
 	if _u.mutation.RequestedByCleared() {
 		_spec.ClearField(publishunit.FieldRequestedBy, field.TypeString)
+	}
+	if value, ok := _u.mutation.Source(); ok {
+		_spec.SetField(publishunit.FieldSource, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Priority(); ok {
+		_spec.SetField(publishunit.FieldPriority, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPriority(); ok {
+		_spec.AddField(publishunit.FieldPriority, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(publishunit.FieldCreatedAt, field.TypeTime, value)

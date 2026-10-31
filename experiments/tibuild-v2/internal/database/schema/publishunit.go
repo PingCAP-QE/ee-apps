@@ -10,6 +10,18 @@ import (
 	"entgo.io/ent/schema/index"
 )
 
+// Publication sources and priorities. The lane orders units by priority so an
+// hourly nightly stream cannot starve release or direct API publications.
+const (
+	PublishSourceAPI     = "api"
+	PublishSourceNightly = "nightly"
+	PublishSourceResume  = "resume"
+
+	PublishPriorityNightly = 10
+	PublishPriorityAPI     = 20
+	PublishPriorityRelease = 30
+)
+
 // PublishUnit holds the schema definition for the PublishUnit entity.
 //
 // A unit is one publication intent: an artifact published to a set of targets.
@@ -49,6 +61,15 @@ func (PublishUnit) Fields() []ent.Field {
 			MaxLen(128).
 			Optional().
 			Comment("Caller identity, when known"),
+
+		field.String("source").
+			MaxLen(16).
+			Default(PublishSourceAPI).
+			Comment("Trigger source: api, nightly, or resume"),
+
+		field.Int("priority").
+			Default(PublishPriorityAPI).
+			Comment("Lane priority: release > api > nightly"),
 
 		field.Time("created_at").
 			Default(time.Now).

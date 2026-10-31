@@ -89,6 +89,16 @@ func RequestedBy(v string) predicate.PublishUnit {
 	return predicate.PublishUnit(sql.FieldEQ(FieldRequestedBy, v))
 }
 
+// Source applies equality check predicate on the "source" field. It's identical to SourceEQ.
+func Source(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldEQ(FieldSource, v))
+}
+
+// Priority applies equality check predicate on the "priority" field. It's identical to PriorityEQ.
+func Priority(v int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldEQ(FieldPriority, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.PublishUnit {
 	return predicate.PublishUnit(sql.FieldEQ(FieldCreatedAt, v))
@@ -442,6 +452,111 @@ func RequestedByEqualFold(v string) predicate.PublishUnit {
 // RequestedByContainsFold applies the ContainsFold predicate on the "requested_by" field.
 func RequestedByContainsFold(v string) predicate.PublishUnit {
 	return predicate.PublishUnit(sql.FieldContainsFold(FieldRequestedBy, v))
+}
+
+// SourceEQ applies the EQ predicate on the "source" field.
+func SourceEQ(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldEQ(FieldSource, v))
+}
+
+// SourceNEQ applies the NEQ predicate on the "source" field.
+func SourceNEQ(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldNEQ(FieldSource, v))
+}
+
+// SourceIn applies the In predicate on the "source" field.
+func SourceIn(vs ...string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldIn(FieldSource, vs...))
+}
+
+// SourceNotIn applies the NotIn predicate on the "source" field.
+func SourceNotIn(vs ...string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldNotIn(FieldSource, vs...))
+}
+
+// SourceGT applies the GT predicate on the "source" field.
+func SourceGT(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldGT(FieldSource, v))
+}
+
+// SourceGTE applies the GTE predicate on the "source" field.
+func SourceGTE(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldGTE(FieldSource, v))
+}
+
+// SourceLT applies the LT predicate on the "source" field.
+func SourceLT(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldLT(FieldSource, v))
+}
+
+// SourceLTE applies the LTE predicate on the "source" field.
+func SourceLTE(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldLTE(FieldSource, v))
+}
+
+// SourceContains applies the Contains predicate on the "source" field.
+func SourceContains(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldContains(FieldSource, v))
+}
+
+// SourceHasPrefix applies the HasPrefix predicate on the "source" field.
+func SourceHasPrefix(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldHasPrefix(FieldSource, v))
+}
+
+// SourceHasSuffix applies the HasSuffix predicate on the "source" field.
+func SourceHasSuffix(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldHasSuffix(FieldSource, v))
+}
+
+// SourceEqualFold applies the EqualFold predicate on the "source" field.
+func SourceEqualFold(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldEqualFold(FieldSource, v))
+}
+
+// SourceContainsFold applies the ContainsFold predicate on the "source" field.
+func SourceContainsFold(v string) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldContainsFold(FieldSource, v))
+}
+
+// PriorityEQ applies the EQ predicate on the "priority" field.
+func PriorityEQ(v int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldEQ(FieldPriority, v))
+}
+
+// PriorityNEQ applies the NEQ predicate on the "priority" field.
+func PriorityNEQ(v int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldNEQ(FieldPriority, v))
+}
+
+// PriorityIn applies the In predicate on the "priority" field.
+func PriorityIn(vs ...int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldIn(FieldPriority, vs...))
+}
+
+// PriorityNotIn applies the NotIn predicate on the "priority" field.
+func PriorityNotIn(vs ...int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldNotIn(FieldPriority, vs...))
+}
+
+// PriorityGT applies the GT predicate on the "priority" field.
+func PriorityGT(v int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldGT(FieldPriority, v))
+}
+
+// PriorityGTE applies the GTE predicate on the "priority" field.
+func PriorityGTE(v int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldGTE(FieldPriority, v))
+}
+
+// PriorityLT applies the LT predicate on the "priority" field.
+func PriorityLT(v int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldLT(FieldPriority, v))
+}
+
+// PriorityLTE applies the LTE predicate on the "priority" field.
+func PriorityLTE(v int) predicate.PublishUnit {
+	return predicate.PublishUnit(sql.FieldLTE(FieldPriority, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -51,6 +51,10 @@ func (PublishStep) Fields() []ent.Field {
 			MaxLen(16).
 			Comment("Step state: blocked, pending, claimed, succeeded, failed, skipped"),
 
+		field.Int("priority").
+			Default(PublishPriorityAPI).
+			Comment("Claim priority copied from the owning unit: release > api > nightly"),
+
 		field.JSON("payload", map[string]any{}).
 			Comment("Full execution parameters, replayable by any worker"),
 
@@ -110,7 +114,7 @@ func (PublishStep) Indexes() []ent.Index {
 		// SQLite keeps index names per database, MySQL per table; prefix the
 		// claim index so the two publish tables cannot collide with the image
 		// sync queue in the sqlite-backed tests.
-		index.Fields("target", "state", "available_at", "id").
+		index.Fields("target", "state", "priority", "available_at", "id").
 			StorageKey("idx_publish_claim"),
 		index.Fields("unit_id").
 			StorageKey("idx_unit"),

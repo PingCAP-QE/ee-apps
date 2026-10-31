@@ -171,6 +171,7 @@ var (
 		{Name: "dest", Type: field.TypeString, Size: 256, Default: ""},
 		{Name: "depends_on", Type: field.TypeString, Nullable: true, Size: 36},
 		{Name: "state", Type: field.TypeString, Size: 16},
+		{Name: "priority", Type: field.TypeInt, Default: 20},
 		{Name: "payload", Type: field.TypeJSON},
 		{Name: "result", Type: field.TypeJSON, Nullable: true},
 		{Name: "attempts", Type: field.TypeInt, Default: 0},
@@ -196,7 +197,7 @@ var (
 			{
 				Name:    "idx_publish_claim",
 				Unique:  false,
-				Columns: []*schema.Column{PublishStepColumns[2], PublishStepColumns[5], PublishStepColumns[11], PublishStepColumns[0]},
+				Columns: []*schema.Column{PublishStepColumns[2], PublishStepColumns[5], PublishStepColumns[6], PublishStepColumns[12], PublishStepColumns[0]},
 			},
 			{
 				Name:    "idx_unit",
@@ -218,6 +219,8 @@ var (
 		{Name: "digest", Type: field.TypeString, Nullable: true, Size: 128},
 		{Name: "state", Type: field.TypeString, Size: 16},
 		{Name: "requested_by", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "source", Type: field.TypeString, Size: 16, Default: "api"},
+		{Name: "priority", Type: field.TypeInt, Default: 20},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "finished_at", Type: field.TypeTime, Nullable: true},
 	}
@@ -230,7 +233,7 @@ var (
 			{
 				Name:    "idx_unit_state",
 				Unique:  false,
-				Columns: []*schema.Column{PublishUnitColumns[4], PublishUnitColumns[6]},
+				Columns: []*schema.Column{PublishUnitColumns[4], PublishUnitColumns[8]},
 			},
 			{
 				Name:    "idx_unit_artifact",

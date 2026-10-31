@@ -66,6 +66,34 @@ func (_c *PublishUnitCreate) SetNillableRequestedBy(v *string) *PublishUnitCreat
 	return _c
 }
 
+// SetSource sets the "source" field.
+func (_c *PublishUnitCreate) SetSource(v string) *PublishUnitCreate {
+	_c.mutation.SetSource(v)
+	return _c
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_c *PublishUnitCreate) SetNillableSource(v *string) *PublishUnitCreate {
+	if v != nil {
+		_c.SetSource(*v)
+	}
+	return _c
+}
+
+// SetPriority sets the "priority" field.
+func (_c *PublishUnitCreate) SetPriority(v int) *PublishUnitCreate {
+	_c.mutation.SetPriority(v)
+	return _c
+}
+
+// SetNillablePriority sets the "priority" field if the given value is not nil.
+func (_c *PublishUnitCreate) SetNillablePriority(v *int) *PublishUnitCreate {
+	if v != nil {
+		_c.SetPriority(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *PublishUnitCreate) SetCreatedAt(v time.Time) *PublishUnitCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -135,6 +163,14 @@ func (_c *PublishUnitCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *PublishUnitCreate) defaults() {
+	if _, ok := _c.mutation.Source(); !ok {
+		v := publishunit.DefaultSource
+		_c.mutation.SetSource(v)
+	}
+	if _, ok := _c.mutation.Priority(); !ok {
+		v := publishunit.DefaultPriority
+		_c.mutation.SetPriority(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := publishunit.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -176,6 +212,17 @@ func (_c *PublishUnitCreate) check() error {
 		if err := publishunit.RequestedByValidator(v); err != nil {
 			return &ValidationError{Name: "requested_by", err: fmt.Errorf(`ent: validator failed for field "PublishUnit.requested_by": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Source(); !ok {
+		return &ValidationError{Name: "source", err: errors.New(`ent: missing required field "PublishUnit.source"`)}
+	}
+	if v, ok := _c.mutation.Source(); ok {
+		if err := publishunit.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "PublishUnit.source": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.Priority(); !ok {
+		return &ValidationError{Name: "priority", err: errors.New(`ent: missing required field "PublishUnit.priority"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "PublishUnit.created_at"`)}
@@ -239,6 +286,14 @@ func (_c *PublishUnitCreate) createSpec() (*PublishUnit, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RequestedBy(); ok {
 		_spec.SetField(publishunit.FieldRequestedBy, field.TypeString, value)
 		_node.RequestedBy = value
+	}
+	if value, ok := _c.mutation.Source(); ok {
+		_spec.SetField(publishunit.FieldSource, field.TypeString, value)
+		_node.Source = value
+	}
+	if value, ok := _c.mutation.Priority(); ok {
+		_spec.SetField(publishunit.FieldPriority, field.TypeInt, value)
+		_node.Priority = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(publishunit.FieldCreatedAt, field.TypeTime, value)

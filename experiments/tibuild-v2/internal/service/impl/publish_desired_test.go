@@ -220,7 +220,9 @@ func TestDesiredFailureRetriesShortThenWaitsForTheWindow(t *testing.T) {
 	claims, err := store.ClaimDue(ctx, []string{"tiup-prod"}, now)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
-	require.NoError(t, store.Settle(ctx, claims[0].UnitID, PublishStateFailed, "v9.0.0-nightly", "publish failed", now))
+	settled, err := store.Settle(ctx, claims[0].UnitID, PublishStateFailed, "v9.0.0-nightly", "publish failed", now)
+	require.NoError(t, err)
+	require.Equal(t, 1, settled)
 
 	row, err := store.Get(ctx, key)
 	require.NoError(t, err)
@@ -234,7 +236,9 @@ func TestDesiredFailureRetriesShortThenWaitsForTheWindow(t *testing.T) {
 	claims, err = store.ClaimDue(ctx, []string{"tiup-prod"}, now)
 	require.NoError(t, err)
 	require.Len(t, claims, 1)
-	require.NoError(t, store.Settle(ctx, claims[0].UnitID, PublishStateFailed, "v9.0.0-nightly", "publish failed again", now))
+	settled, err = store.Settle(ctx, claims[0].UnitID, PublishStateFailed, "v9.0.0-nightly", "publish failed again", now)
+	require.NoError(t, err)
+	require.Equal(t, 1, settled)
 
 	row, err = store.Get(ctx, key)
 	require.NoError(t, err)
@@ -257,7 +261,9 @@ func TestDesiredSuccessRecordsVersionAndAdvancesWindow(t *testing.T) {
 	_, err = store.Upsert(ctx, key, "v9.0.1-nightly", map[string]any{"version": "v9.0.1-nightly"}, now.Add(time.Second))
 	require.NoError(t, err)
 
-	require.NoError(t, store.Settle(ctx, claims[0].UnitID, PublishStateSucceeded, "v9.0.0-nightly", "", now.Add(time.Minute)))
+	settled, err := store.Settle(ctx, claims[0].UnitID, PublishStateSucceeded, "v9.0.0-nightly", "", now.Add(time.Minute))
+	require.NoError(t, err)
+	require.Equal(t, 1, settled)
 
 	row, err := store.Get(ctx, key)
 	require.NoError(t, err)

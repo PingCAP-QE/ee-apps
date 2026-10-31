@@ -225,21 +225,25 @@ func (s *desiredStore) Release(ctx context.Context, key desiredKey, unitID strin
 }
 
 // Settle closes every desired row currently claimed by unitID. It is called
-// from the unit aggregator and, as a safety sweep, from every tick.
-func (s *desiredStore) Settle(ctx context.Context, unitID, state, version, detail string, now time.Time) error {
+// from the unit aggregator and, as a safety sweep, from every tick. The count
+// is used to emit one outcome metric per unit, even when the callback and the
+// sweep race.
+func (s *desiredStore) Settle(ctx context.Context, unitID, state, version, detail string, now time.Time) (int, error) {
 	rows, err := s.db.PublishDesired.Query().
 		Where(entpublishdesired.RunningUnitID(unitID)).
 		All(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
+	settled := 0
 	for _, row := range rows {
 		key := desiredKey{Target: row.Target, Pkg: row.Pkg, OS: row.Os, Arch: row.Arch}
 		if err := s.completeRow(ctx, row, key, unitID, state, version, detail, now); err != nil {
-			return err
+			return settled, err
 		}
+		settled++
 	}
-	return nil
+	return settled, nil
 }
 
 // completeRow advances the schedule and records the outcome.
@@ -373,12 +377,14 @@ func (s *publishsrvc) runNightlyReconciler(ctx context.Context) {
 		Strs("targets", s.nightlyTargets()).
 		Msg("nightly desired-state reconciler started")
 
+	s.refreshNightlyMetricsAndAlerts(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			s.logger.Info().Msg("nightly desired-state reconciler stopped")
 			return
 		case <-ticker.C:
+			s.refreshNightlyMetricsAndAlerts(ctx)
 			created, err := s.reconcileNightlyOnce(ctx)
 			if err != nil {
 				s.logger.Err(err).Msg("nightly reconcile failed")
@@ -404,6 +410,11 @@ func (s *publishsrvc) reconcileNightlyOnce(ctx context.Context) (int, error) {
 	claims, err := s.desired.ClaimDue(ctx, s.nightlyTargets(), s.now())
 	if err != nil {
 		return 0, err
+	}
+	if s.metrics != nil {
+		for _, claim := range claims {
+			s.metrics.recordDue(claim.Row.Target)
+		}
 	}
 
 	created := 0
@@ -501,7 +512,11 @@ func (s *publishsrvc) settleNightlyUnit(ctx context.Context, unitID string) {
 		}
 	}
 
-	if err := s.desired.Settle(ctx, unitID, unit.State, version, detail, s.now()); err != nil {
+	settled, err := s.desired.Settle(ctx, unitID, unit.State, version, detail, s.now())
+	if err != nil {
 		s.logger.Err(err).Str("unit_id", unitID).Msg("failed to settle the nightly desired rows")
+	}
+	if settled > 0 && s.metrics != nil {
+		s.metrics.recordPublished(unit.State)
 	}
 }

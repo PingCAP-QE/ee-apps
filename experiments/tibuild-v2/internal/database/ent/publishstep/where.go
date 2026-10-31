@@ -89,6 +89,11 @@ func State(v string) predicate.PublishStep {
 	return predicate.PublishStep(sql.FieldEQ(FieldState, v))
 }
 
+// Priority applies equality check predicate on the "priority" field. It's identical to PriorityEQ.
+func Priority(v int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldEQ(FieldPriority, v))
+}
+
 // Attempts applies equality check predicate on the "attempts" field. It's identical to AttemptsEQ.
 func Attempts(v int) predicate.PublishStep {
 	return predicate.PublishStep(sql.FieldEQ(FieldAttempts, v))
@@ -462,6 +467,46 @@ func StateEqualFold(v string) predicate.PublishStep {
 // StateContainsFold applies the ContainsFold predicate on the "state" field.
 func StateContainsFold(v string) predicate.PublishStep {
 	return predicate.PublishStep(sql.FieldContainsFold(FieldState, v))
+}
+
+// PriorityEQ applies the EQ predicate on the "priority" field.
+func PriorityEQ(v int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldEQ(FieldPriority, v))
+}
+
+// PriorityNEQ applies the NEQ predicate on the "priority" field.
+func PriorityNEQ(v int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldNEQ(FieldPriority, v))
+}
+
+// PriorityIn applies the In predicate on the "priority" field.
+func PriorityIn(vs ...int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldIn(FieldPriority, vs...))
+}
+
+// PriorityNotIn applies the NotIn predicate on the "priority" field.
+func PriorityNotIn(vs ...int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldNotIn(FieldPriority, vs...))
+}
+
+// PriorityGT applies the GT predicate on the "priority" field.
+func PriorityGT(v int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldGT(FieldPriority, v))
+}
+
+// PriorityGTE applies the GTE predicate on the "priority" field.
+func PriorityGTE(v int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldGTE(FieldPriority, v))
+}
+
+// PriorityLT applies the LT predicate on the "priority" field.
+func PriorityLT(v int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldLT(FieldPriority, v))
+}
+
+// PriorityLTE applies the LTE predicate on the "priority" field.
+func PriorityLTE(v int) predicate.PublishStep {
+	return predicate.PublishStep(sql.FieldLTE(FieldPriority, v))
 }
 
 // ResultIsNil applies the IsNil predicate on the "result" field.
