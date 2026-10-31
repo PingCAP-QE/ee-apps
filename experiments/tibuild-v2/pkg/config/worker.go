@@ -222,12 +222,20 @@ func validateTargets(targets, knownTargets []string) error {
 
 	hasWildcard := false
 	for _, target := range targets {
+		if target == "" {
+			return fmt.Errorf("worker.targets contains an empty target")
+		}
 		if target == wildcardTarget {
 			hasWildcard = true
 			continue
 		}
+		// An empty catalogue means the deployment does not declare one here
+		// (image workers are validated against delivery.yaml instead).
+		if len(knownTargets) == 0 {
+			continue
+		}
 		if _, ok := known[target]; !ok {
-			return fmt.Errorf("unknown worker target %q: not in the global target catalogue", target)
+			return fmt.Errorf("unknown worker target %q: not in the configured target catalogue", target)
 		}
 	}
 	if hasWildcard && len(targets) > 1 {

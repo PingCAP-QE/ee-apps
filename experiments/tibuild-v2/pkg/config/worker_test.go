@@ -88,6 +88,24 @@ func TestWorkerValidateAcceptsWildcard(t *testing.T) {
 	}
 }
 
+func TestWorkerValidateAllowsConcreteTargetsWithoutCatalogue(t *testing.T) {
+	// Image workers have no catalogue here; delivery.yaml is authoritative.
+	w := Worker{Targets: []string{"docker.io", "gcr.io"}}
+	if err := w.Validate(nil); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+}
+
+func TestWorkerValidateUsesConfiguredCatalogue(t *testing.T) {
+	w := Worker{Targets: []string{"tiup-staging"}}
+	if err := w.Validate([]string{"tiup-staging", "tiup-prod"}); err != nil {
+		t.Fatalf("Validate() error = %v, want nil", err)
+	}
+	if err := w.Validate([]string{"tiup-prod"}); err == nil {
+		t.Fatal("Validate() = nil, want an unknown target error outside the catalogue")
+	}
+}
+
 func TestWorkerValidateRejectsMalformedDurations(t *testing.T) {
 	for name, w := range map[string]Worker{
 		"poll_interval": {PollInterval: "soon"},
