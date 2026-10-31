@@ -68,6 +68,14 @@ func (m *fileMirror) handler() http.Handler {
 
 // createTiUPStep persists a queued unit with one pending step.
 
+func firstPackageResult(t *testing.T, result map[string]any) map[string]any {
+	t.Helper()
+	packages, ok := result[tiupResultPackages].([]map[string]any)
+	require.True(t, ok, "packages result is %T", result[tiupResultPackages])
+	require.Len(t, packages, 1)
+	return packages[0]
+}
+
 func TestExecuteTiUPStepSkipsWhenRemoteMatches(t *testing.T) {
 	content := []byte("payload")
 	mirror := &fileMirror{files: map[string][]byte{tiupTestPackage.File: content}}
@@ -89,6 +97,12 @@ func TestExecuteTiUPStepSkipsWhenRemoteMatches(t *testing.T) {
 	result, err := svc.executeTiUPStep(context.Background(), step, "worker-1")
 	require.NoError(t, err)
 	require.Equal(t, true, result["skipped_existing"])
+	pkgResult := firstPackageResult(t, result)
+	require.Equal(t, tiupActionSkippedExisting, pkgResult["action"])
+	require.Equal(t, "tidb", pkgResult["name"])
+	require.Equal(t, "v8.5.6", pkgResult["version"])
+	require.Equal(t, "linux", pkgResult["os"])
+	require.Equal(t, "amd64", pkgResult["arch"])
 
 	_, err = os.Stat(marker)
 	require.True(t, os.IsNotExist(err), "an identical remote package must not be republished")
@@ -165,6 +179,10 @@ echo "curl-exit=$? remote=$remote" >> %s
 		t.Fatalf("execute failed: %v; tiup log:\n%s; mirror keys=%v", err, debug, keys)
 	}
 	require.Equal(t, false, result["skipped_existing"])
+	pkgResult := firstPackageResult(t, result)
+	require.Equal(t, tiupActionPublished, pkgResult["action"])
+	require.Equal(t, "tidb", pkgResult["name"])
+	require.Equal(t, "v8.5.6", pkgResult["version"])
 
 	_, err = os.Stat(marker)
 	require.NoError(t, err, "the package must be published")
