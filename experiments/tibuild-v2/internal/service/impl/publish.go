@@ -14,6 +14,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entpublishstep "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
 	entpublishunit "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishunit"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/publish"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/delivery"
@@ -60,6 +61,11 @@ type publishsrvc struct {
 	// desired is the nightly desired-state inbox and scheduler; nil when the
 	// feature is disabled in the configuration.
 	desired *desiredStore
+	// metrics and nightlyAlerts expose the desired-state queue and alert on
+	// rows that wait longer than 1.5 windows.
+	metrics       *nightlyMetrics
+	nightlyAlerts *nightlyAlertTracker
+	alerter       AlertNotifier
 	// tiup publishes packages to a mirror.
 	tiup *tiupCLI
 	// publishCfg carries the publish-domain configuration used by the legacy
@@ -96,6 +102,11 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 	// registry, independently from the image sync queue sharding.
 	workerCfg.Targets = cfg.Publish.PublicationTargets(workerCfg.Targets)
 
+	var alerter AlertNotifier
+	if cfg.Lark.Enabled && cfg.Lark.AppID != "" && cfg.Lark.AppSecret != "" {
+		alerter = NewLarkNotifier(cfg.Lark.AppID, cfg.Lark.AppSecret, cfg.Lark.Channels, logger)
+	}
+
 	return &publishsrvc{
 		logger: logger,
 		db:     db,
@@ -103,15 +114,18 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 			rules:    &rulesLoader{path: cfg.Publish.DeliveryConfigPathOrDefault()},
 			resolver: craneImageOps{},
 		},
-		workerCfg:   workerCfg,
-		images:      craneImageOps{},
-		lane:        newPublishLane(db, PublishLaneTiUP),
-		desired:     newDesiredStore(db, cfg.Publish.Nightly),
-		tiup:        newTiupCLI(cfg.Publish.TiUPBinary),
-		publishCfg:  cfg.Publish,
-		fetchConfig: fetchTiUPArtifactConfig,
-		nowFn:       time.Now,
-		newID:       newUUID,
+		workerCfg:     workerCfg,
+		images:        craneImageOps{},
+		lane:          newPublishLane(db, PublishLaneTiUP),
+		desired:       newDesiredStore(db, cfg.Publish.Nightly),
+		metrics:       newNightlyMetrics(),
+		nightlyAlerts: newNightlyAlertTracker(time.Hour),
+		alerter:       alerter,
+		tiup:          newTiupCLI(cfg.Publish.TiUPBinary),
+		publishCfg:    cfg.Publish,
+		fetchConfig:   fetchTiUPArtifactConfig,
+		nowFn:         time.Now,
+		newID:         newUUID,
 	}
 }
 
@@ -186,6 +200,23 @@ func (s *publishsrvc) PublishImages(ctx context.Context, p *publish.PublishImage
 	return s.toPublishUnit(unit, steps), nil
 }
 
+// publishSourceAndPriority maps an internal caller label to the unit source and
+// lane priority. "release" is reserved for release automation; every other API
+// caller is "api"; nightly units are the lowest priority so an hourly staging
+// stream cannot starve them.
+func publishSourceAndPriority(requestedBy string) (string, int) {
+	switch requestedBy {
+	case "nightly":
+		return schema.PublishSourceNightly, schema.PublishPriorityNightly
+	case "release":
+		return schema.PublishSourceAPI, schema.PublishPriorityRelease
+	case "resume":
+		return schema.PublishSourceResume, schema.PublishPriorityAPI
+	default:
+		return schema.PublishSourceAPI, schema.PublishPriorityAPI
+	}
+}
+
 // createUnit persists the unit and its steps atomically.
 func (s *publishsrvc) createUnit(ctx context.Context, plan *publicationPlan) (*ent.PublishUnit, []*ent.PublishStep, error) {
 	now := s.now()
@@ -207,6 +238,8 @@ func (s *publishsrvc) createUnit(ctx context.Context, plan *publicationPlan) (*e
 		SetArtifactURL(plan.ArtifactURL).
 		SetDigest(plan.Digest).
 		SetState(PublishStateQueued).
+		SetSource(schema.PublishSourceAPI).
+		SetPriority(schema.PublishPriorityAPI).
 		SetCreatedAt(now).
 		Save(ctx)
 	if err != nil {
@@ -225,6 +258,7 @@ func (s *publishsrvc) createUnit(ctx context.Context, plan *publicationPlan) (*e
 			SetTarget(step.Target).
 			SetDest(step.Dest).
 			SetState(PublishStepStatePending).
+			SetPriority(schema.PublishPriorityAPI).
 			SetPayload(payload).
 			SetCreatedAt(now))
 	}

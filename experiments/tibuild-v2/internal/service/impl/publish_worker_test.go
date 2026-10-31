@@ -162,6 +162,65 @@ func TestClaimStepIsExclusive(t *testing.T) {
 	require.Nil(t, second, "a claimed step is invisible to other workers")
 }
 
+func TestClaimStepPrefersHigherPriority(t *testing.T) {
+	svc := newPublishTestService(t, publishTestRules, nil)
+	ctx := context.Background()
+	now := svc.now()
+
+	create := func(source string, priority int, createdAt time.Time) *ent.PublishUnit {
+		unit, err := svc.db.PublishUnit.Create().
+			SetID(svc.id()).
+			SetKind(PublishKindImageCopy).
+			SetArtifactURL("example.com/hub/pingcap/widget/image:v8.5.0").
+			SetState(PublishStateQueued).
+			SetSource(source).
+			SetPriority(priority).
+			SetCreatedAt(createdAt).
+			Save(ctx)
+		require.NoError(t, err)
+		_, err = svc.db.PublishStep.Create().
+			SetID(svc.id()).
+			SetUnitID(unit.ID).
+			SetTarget("docker.io").
+			SetState(PublishStepStatePending).
+			SetPriority(priority).
+			SetPayload(map[string]any{}).
+			SetCreatedAt(createdAt).
+			Save(ctx)
+		require.NoError(t, err)
+		return unit
+	}
+
+	nightly := create("nightly", 10, now)
+	release := create("api", 30, now.Add(time.Second))
+
+	first, err := svc.claimStep(ctx)
+	require.NoError(t, err)
+	require.Equal(t, release.ID, first.UnitID, "the release step is claimed before the older nightly step")
+
+	second, err := svc.claimStep(ctx)
+	require.NoError(t, err)
+	require.Equal(t, nightly.ID, second.UnitID)
+}
+
+func TestPublishSourcesAndPriorities(t *testing.T) {
+	cases := []struct {
+		requestedBy string
+		source      string
+		priority    int
+	}{
+		{"nightly", "nightly", 10},
+		{"release", "api", 30},
+		{"resume", "resume", 20},
+		{"delivery-by-rules", "api", 20},
+	}
+	for _, tc := range cases {
+		source, priority := publishSourceAndPriority(tc.requestedBy)
+		require.Equal(t, tc.source, source, tc.requestedBy)
+		require.Equal(t, tc.priority, priority, tc.requestedBy)
+	}
+}
+
 func TestExecuteStepCopiesThenSkipsOnSecondRun(t *testing.T) {
 	ops := newRegistryStub(map[string]string{
 		"example.com/hub/pingcap/widget/image:v8.5.0": publishTestDigest,

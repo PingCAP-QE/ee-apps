@@ -6220,6 +6220,8 @@ type PublishStepMutation struct {
 	dest          *string
 	depends_on    *string
 	state         *string
+	priority      *int
+	addpriority   *int
 	payload       *map[string]interface{}
 	result        *map[string]interface{}
 	attempts      *int
@@ -6532,6 +6534,62 @@ func (m *PublishStepMutation) OldState(ctx context.Context) (v string, err error
 // ResetState resets all changes to the "state" field.
 func (m *PublishStepMutation) ResetState() {
 	m.state = nil
+}
+
+// SetPriority sets the "priority" field.
+func (m *PublishStepMutation) SetPriority(i int) {
+	m.priority = &i
+	m.addpriority = nil
+}
+
+// Priority returns the value of the "priority" field in the mutation.
+func (m *PublishStepMutation) Priority() (r int, exists bool) {
+	v := m.priority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPriority returns the old "priority" field's value of the PublishStep entity.
+// If the PublishStep object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishStepMutation) OldPriority(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPriority is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPriority requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPriority: %w", err)
+	}
+	return oldValue.Priority, nil
+}
+
+// AddPriority adds i to the "priority" field.
+func (m *PublishStepMutation) AddPriority(i int) {
+	if m.addpriority != nil {
+		*m.addpriority += i
+	} else {
+		m.addpriority = &i
+	}
+}
+
+// AddedPriority returns the value that was added to the "priority" field in this mutation.
+func (m *PublishStepMutation) AddedPriority() (r int, exists bool) {
+	v := m.addpriority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPriority resets all changes to the "priority" field.
+func (m *PublishStepMutation) ResetPriority() {
+	m.priority = nil
+	m.addpriority = nil
 }
 
 // SetPayload sets the "payload" field.
@@ -7039,7 +7097,7 @@ func (m *PublishStepMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PublishStepMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.unit_id != nil {
 		fields = append(fields, publishstep.FieldUnitID)
 	}
@@ -7054,6 +7112,9 @@ func (m *PublishStepMutation) Fields() []string {
 	}
 	if m.state != nil {
 		fields = append(fields, publishstep.FieldState)
+	}
+	if m.priority != nil {
+		fields = append(fields, publishstep.FieldPriority)
 	}
 	if m.payload != nil {
 		fields = append(fields, publishstep.FieldPayload)
@@ -7103,6 +7164,8 @@ func (m *PublishStepMutation) Field(name string) (ent.Value, bool) {
 		return m.DependsOn()
 	case publishstep.FieldState:
 		return m.State()
+	case publishstep.FieldPriority:
+		return m.Priority()
 	case publishstep.FieldPayload:
 		return m.Payload()
 	case publishstep.FieldResult:
@@ -7142,6 +7205,8 @@ func (m *PublishStepMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldDependsOn(ctx)
 	case publishstep.FieldState:
 		return m.OldState(ctx)
+	case publishstep.FieldPriority:
+		return m.OldPriority(ctx)
 	case publishstep.FieldPayload:
 		return m.OldPayload(ctx)
 	case publishstep.FieldResult:
@@ -7205,6 +7270,13 @@ func (m *PublishStepMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetState(v)
+		return nil
+	case publishstep.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPriority(v)
 		return nil
 	case publishstep.FieldPayload:
 		v, ok := value.(map[string]interface{})
@@ -7284,6 +7356,9 @@ func (m *PublishStepMutation) SetField(name string, value ent.Value) error {
 // this mutation.
 func (m *PublishStepMutation) AddedFields() []string {
 	var fields []string
+	if m.addpriority != nil {
+		fields = append(fields, publishstep.FieldPriority)
+	}
 	if m.addattempts != nil {
 		fields = append(fields, publishstep.FieldAttempts)
 	}
@@ -7295,6 +7370,8 @@ func (m *PublishStepMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *PublishStepMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case publishstep.FieldPriority:
+		return m.AddedPriority()
 	case publishstep.FieldAttempts:
 		return m.AddedAttempts()
 	}
@@ -7306,6 +7383,13 @@ func (m *PublishStepMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *PublishStepMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case publishstep.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPriority(v)
+		return nil
 	case publishstep.FieldAttempts:
 		v, ok := value.(int)
 		if !ok {
@@ -7406,6 +7490,9 @@ func (m *PublishStepMutation) ResetField(name string) error {
 	case publishstep.FieldState:
 		m.ResetState()
 		return nil
+	case publishstep.FieldPriority:
+		m.ResetPriority()
+		return nil
 	case publishstep.FieldPayload:
 		m.ResetPayload()
 		return nil
@@ -7499,6 +7586,9 @@ type PublishUnitMutation struct {
 	digest        *string
 	state         *string
 	requested_by  *string
+	source        *string
+	priority      *int
+	addpriority   *int
 	created_at    *time.Time
 	finished_at   *time.Time
 	clearedFields map[string]struct{}
@@ -7817,6 +7907,98 @@ func (m *PublishUnitMutation) ResetRequestedBy() {
 	delete(m.clearedFields, publishunit.FieldRequestedBy)
 }
 
+// SetSource sets the "source" field.
+func (m *PublishUnitMutation) SetSource(s string) {
+	m.source = &s
+}
+
+// Source returns the value of the "source" field in the mutation.
+func (m *PublishUnitMutation) Source() (r string, exists bool) {
+	v := m.source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSource returns the old "source" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldSource(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSource: %w", err)
+	}
+	return oldValue.Source, nil
+}
+
+// ResetSource resets all changes to the "source" field.
+func (m *PublishUnitMutation) ResetSource() {
+	m.source = nil
+}
+
+// SetPriority sets the "priority" field.
+func (m *PublishUnitMutation) SetPriority(i int) {
+	m.priority = &i
+	m.addpriority = nil
+}
+
+// Priority returns the value of the "priority" field in the mutation.
+func (m *PublishUnitMutation) Priority() (r int, exists bool) {
+	v := m.priority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPriority returns the old "priority" field's value of the PublishUnit entity.
+// If the PublishUnit object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PublishUnitMutation) OldPriority(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPriority is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPriority requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPriority: %w", err)
+	}
+	return oldValue.Priority, nil
+}
+
+// AddPriority adds i to the "priority" field.
+func (m *PublishUnitMutation) AddPriority(i int) {
+	if m.addpriority != nil {
+		*m.addpriority += i
+	} else {
+		m.addpriority = &i
+	}
+}
+
+// AddedPriority returns the value that was added to the "priority" field in this mutation.
+func (m *PublishUnitMutation) AddedPriority() (r int, exists bool) {
+	v := m.addpriority
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPriority resets all changes to the "priority" field.
+func (m *PublishUnitMutation) ResetPriority() {
+	m.priority = nil
+	m.addpriority = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *PublishUnitMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -7936,7 +8118,7 @@ func (m *PublishUnitMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PublishUnitMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 9)
 	if m.kind != nil {
 		fields = append(fields, publishunit.FieldKind)
 	}
@@ -7951,6 +8133,12 @@ func (m *PublishUnitMutation) Fields() []string {
 	}
 	if m.requested_by != nil {
 		fields = append(fields, publishunit.FieldRequestedBy)
+	}
+	if m.source != nil {
+		fields = append(fields, publishunit.FieldSource)
+	}
+	if m.priority != nil {
+		fields = append(fields, publishunit.FieldPriority)
 	}
 	if m.created_at != nil {
 		fields = append(fields, publishunit.FieldCreatedAt)
@@ -7976,6 +8164,10 @@ func (m *PublishUnitMutation) Field(name string) (ent.Value, bool) {
 		return m.State()
 	case publishunit.FieldRequestedBy:
 		return m.RequestedBy()
+	case publishunit.FieldSource:
+		return m.Source()
+	case publishunit.FieldPriority:
+		return m.Priority()
 	case publishunit.FieldCreatedAt:
 		return m.CreatedAt()
 	case publishunit.FieldFinishedAt:
@@ -7999,6 +8191,10 @@ func (m *PublishUnitMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldState(ctx)
 	case publishunit.FieldRequestedBy:
 		return m.OldRequestedBy(ctx)
+	case publishunit.FieldSource:
+		return m.OldSource(ctx)
+	case publishunit.FieldPriority:
+		return m.OldPriority(ctx)
 	case publishunit.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case publishunit.FieldFinishedAt:
@@ -8047,6 +8243,20 @@ func (m *PublishUnitMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRequestedBy(v)
 		return nil
+	case publishunit.FieldSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSource(v)
+		return nil
+	case publishunit.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPriority(v)
+		return nil
 	case publishunit.FieldCreatedAt:
 		v, ok := value.(time.Time)
 		if !ok {
@@ -8068,13 +8278,21 @@ func (m *PublishUnitMutation) SetField(name string, value ent.Value) error {
 // AddedFields returns all numeric fields that were incremented/decremented during
 // this mutation.
 func (m *PublishUnitMutation) AddedFields() []string {
-	return nil
+	var fields []string
+	if m.addpriority != nil {
+		fields = append(fields, publishunit.FieldPriority)
+	}
+	return fields
 }
 
 // AddedField returns the numeric value that was incremented/decremented on a field
 // with the given name. The second boolean return value indicates that this field
 // was not set, or was not defined in the schema.
 func (m *PublishUnitMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case publishunit.FieldPriority:
+		return m.AddedPriority()
+	}
 	return nil, false
 }
 
@@ -8083,6 +8301,13 @@ func (m *PublishUnitMutation) AddedField(name string) (ent.Value, bool) {
 // type.
 func (m *PublishUnitMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case publishunit.FieldPriority:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPriority(v)
+		return nil
 	}
 	return fmt.Errorf("unknown PublishUnit numeric field %s", name)
 }
@@ -8145,6 +8370,12 @@ func (m *PublishUnitMutation) ResetField(name string) error {
 		return nil
 	case publishunit.FieldRequestedBy:
 		m.ResetRequestedBy()
+		return nil
+	case publishunit.FieldSource:
+		m.ResetSource()
+		return nil
+	case publishunit.FieldPriority:
+		m.ResetPriority()
 		return nil
 	case publishunit.FieldCreatedAt:
 		m.ResetCreatedAt()

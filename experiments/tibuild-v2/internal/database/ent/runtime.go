@@ -289,16 +289,20 @@ func init() {
 	publishstepDescState := publishstepFields[5].Descriptor()
 	// publishstep.StateValidator is a validator for the "state" field. It is called by the builders before save.
 	publishstep.StateValidator = publishstepDescState.Validators[0].(func(string) error)
+	// publishstepDescPriority is the schema descriptor for priority field.
+	publishstepDescPriority := publishstepFields[6].Descriptor()
+	// publishstep.DefaultPriority holds the default value on creation for the priority field.
+	publishstep.DefaultPriority = publishstepDescPriority.Default.(int)
 	// publishstepDescAttempts is the schema descriptor for attempts field.
-	publishstepDescAttempts := publishstepFields[8].Descriptor()
+	publishstepDescAttempts := publishstepFields[9].Descriptor()
 	// publishstep.DefaultAttempts holds the default value on creation for the attempts field.
 	publishstep.DefaultAttempts = publishstepDescAttempts.Default.(int)
 	// publishstepDescClaimedBy is the schema descriptor for claimed_by field.
-	publishstepDescClaimedBy := publishstepFields[9].Descriptor()
+	publishstepDescClaimedBy := publishstepFields[10].Descriptor()
 	// publishstep.ClaimedByValidator is a validator for the "claimed_by" field. It is called by the builders before save.
 	publishstep.ClaimedByValidator = publishstepDescClaimedBy.Validators[0].(func(string) error)
 	// publishstepDescCreatedAt is the schema descriptor for created_at field.
-	publishstepDescCreatedAt := publishstepFields[13].Descriptor()
+	publishstepDescCreatedAt := publishstepFields[14].Descriptor()
 	// publishstep.DefaultCreatedAt holds the default value on creation for the created_at field.
 	publishstep.DefaultCreatedAt = publishstepDescCreatedAt.Default.(func() time.Time)
 	// publishstepDescID is the schema descriptor for id field.
@@ -327,8 +331,18 @@ func init() {
 	publishunitDescRequestedBy := publishunitFields[5].Descriptor()
 	// publishunit.RequestedByValidator is a validator for the "requested_by" field. It is called by the builders before save.
 	publishunit.RequestedByValidator = publishunitDescRequestedBy.Validators[0].(func(string) error)
+	// publishunitDescSource is the schema descriptor for source field.
+	publishunitDescSource := publishunitFields[6].Descriptor()
+	// publishunit.DefaultSource holds the default value on creation for the source field.
+	publishunit.DefaultSource = publishunitDescSource.Default.(string)
+	// publishunit.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	publishunit.SourceValidator = publishunitDescSource.Validators[0].(func(string) error)
+	// publishunitDescPriority is the schema descriptor for priority field.
+	publishunitDescPriority := publishunitFields[7].Descriptor()
+	// publishunit.DefaultPriority holds the default value on creation for the priority field.
+	publishunit.DefaultPriority = publishunitDescPriority.Default.(int)
 	// publishunitDescCreatedAt is the schema descriptor for created_at field.
-	publishunitDescCreatedAt := publishunitFields[6].Descriptor()
+	publishunitDescCreatedAt := publishunitFields[8].Descriptor()
 	// publishunit.DefaultCreatedAt holds the default value on creation for the created_at field.
 	publishunit.DefaultCreatedAt = publishunitDescCreatedAt.Default.(func() time.Time)
 	// publishunitDescID is the schema descriptor for id field.

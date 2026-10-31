@@ -23,6 +23,10 @@ const (
 	FieldState = "state"
 	// FieldRequestedBy holds the string denoting the requested_by field in the database.
 	FieldRequestedBy = "requested_by"
+	// FieldSource holds the string denoting the source field in the database.
+	FieldSource = "source"
+	// FieldPriority holds the string denoting the priority field in the database.
+	FieldPriority = "priority"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldFinishedAt holds the string denoting the finished_at field in the database.
@@ -39,6 +43,8 @@ var Columns = []string{
 	FieldDigest,
 	FieldState,
 	FieldRequestedBy,
+	FieldSource,
+	FieldPriority,
 	FieldCreatedAt,
 	FieldFinishedAt,
 }
@@ -64,6 +70,12 @@ var (
 	StateValidator func(string) error
 	// RequestedByValidator is a validator for the "requested_by" field. It is called by the builders before save.
 	RequestedByValidator func(string) error
+	// DefaultSource holds the default value on creation for the "source" field.
+	DefaultSource string
+	// SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	SourceValidator func(string) error
+	// DefaultPriority holds the default value on creation for the "priority" field.
+	DefaultPriority int
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
@@ -101,6 +113,16 @@ func ByState(opts ...sql.OrderTermOption) OrderOption {
 // ByRequestedBy orders the results by the requested_by field.
 func ByRequestedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRequestedBy, opts...).ToFunc()
+}
+
+// BySource orders the results by the source field.
+func BySource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSource, opts...).ToFunc()
+}
+
+// ByPriority orders the results by the priority field.
+func ByPriority(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPriority, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

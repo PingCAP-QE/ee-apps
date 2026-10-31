@@ -99,6 +99,13 @@ func (s *artifactsrvc) MetricsHandler() http.Handler {
 	return s.metrics.Handler()
 }
 
+// MetricsGatherer lets compositeWorker merge this registry with the publish
+// worker's nightly metrics.
+func (s *artifactsrvc) MetricsGatherer() prometheus.Gatherer {
+	s.ensureObservability()
+	return s.metrics.registry
+}
+
 // collectTaskStats aggregates PENDING/PROCESSING tasks by target key.
 func (s *artifactsrvc) collectTaskStats(ctx context.Context) (map[string]taskStats, error) {
 	tasks, err := s.db.ImageSyncTask.Query().

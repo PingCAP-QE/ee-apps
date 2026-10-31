@@ -90,6 +90,27 @@ func (_u *PublishStepUpdate) SetNillableState(v *string) *PublishStepUpdate {
 	return _u
 }
 
+// SetPriority sets the "priority" field.
+func (_u *PublishStepUpdate) SetPriority(v int) *PublishStepUpdate {
+	_u.mutation.ResetPriority()
+	_u.mutation.SetPriority(v)
+	return _u
+}
+
+// SetNillablePriority sets the "priority" field if the given value is not nil.
+func (_u *PublishStepUpdate) SetNillablePriority(v *int) *PublishStepUpdate {
+	if v != nil {
+		_u.SetPriority(*v)
+	}
+	return _u
+}
+
+// AddPriority adds value to the "priority" field.
+func (_u *PublishStepUpdate) AddPriority(v int) *PublishStepUpdate {
+	_u.mutation.AddPriority(v)
+	return _u
+}
+
 // SetPayload sets the "payload" field.
 func (_u *PublishStepUpdate) SetPayload(v map[string]interface{}) *PublishStepUpdate {
 	_u.mutation.SetPayload(v)
@@ -352,6 +373,12 @@ func (_u *PublishStepUpdate) sqlSave(ctx context.Context) (_node int, err error)
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(publishstep.FieldState, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.Priority(); ok {
+		_spec.SetField(publishstep.FieldPriority, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPriority(); ok {
+		_spec.AddField(publishstep.FieldPriority, field.TypeInt, value)
+	}
 	if value, ok := _u.mutation.Payload(); ok {
 		_spec.SetField(publishstep.FieldPayload, field.TypeJSON, value)
 	}
@@ -485,6 +512,27 @@ func (_u *PublishStepUpdateOne) SetNillableState(v *string) *PublishStepUpdateOn
 	if v != nil {
 		_u.SetState(*v)
 	}
+	return _u
+}
+
+// SetPriority sets the "priority" field.
+func (_u *PublishStepUpdateOne) SetPriority(v int) *PublishStepUpdateOne {
+	_u.mutation.ResetPriority()
+	_u.mutation.SetPriority(v)
+	return _u
+}
+
+// SetNillablePriority sets the "priority" field if the given value is not nil.
+func (_u *PublishStepUpdateOne) SetNillablePriority(v *int) *PublishStepUpdateOne {
+	if v != nil {
+		_u.SetPriority(*v)
+	}
+	return _u
+}
+
+// AddPriority adds value to the "priority" field.
+func (_u *PublishStepUpdateOne) AddPriority(v int) *PublishStepUpdateOne {
+	_u.mutation.AddPriority(v)
 	return _u
 }
 
@@ -779,6 +827,12 @@ func (_u *PublishStepUpdateOne) sqlSave(ctx context.Context) (_node *PublishStep
 	}
 	if value, ok := _u.mutation.State(); ok {
 		_spec.SetField(publishstep.FieldState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Priority(); ok {
+		_spec.SetField(publishstep.FieldPriority, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPriority(); ok {
+		_spec.AddField(publishstep.FieldPriority, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Payload(); ok {
 		_spec.SetField(publishstep.FieldPayload, field.TypeJSON, value)

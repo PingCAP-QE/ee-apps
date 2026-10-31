@@ -28,6 +28,10 @@ type PublishUnit struct {
 	State string `json:"state,omitempty"`
 	// Caller identity, when known
 	RequestedBy string `json:"requested_by,omitempty"`
+	// Trigger source: api, nightly, or resume
+	Source string `json:"source,omitempty"`
+	// Lane priority: release > api > nightly
+	Priority int `json:"priority,omitempty"`
 	// Time when the unit was created
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// Time when every step reached a terminal state
@@ -40,7 +44,9 @@ func (*PublishUnit) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case publishunit.FieldID, publishunit.FieldKind, publishunit.FieldArtifactURL, publishunit.FieldDigest, publishunit.FieldState, publishunit.FieldRequestedBy:
+		case publishunit.FieldPriority:
+			values[i] = new(sql.NullInt64)
+		case publishunit.FieldID, publishunit.FieldKind, publishunit.FieldArtifactURL, publishunit.FieldDigest, publishunit.FieldState, publishunit.FieldRequestedBy, publishunit.FieldSource:
 			values[i] = new(sql.NullString)
 		case publishunit.FieldCreatedAt, publishunit.FieldFinishedAt:
 			values[i] = new(sql.NullTime)
@@ -94,6 +100,18 @@ func (_m *PublishUnit) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field requested_by", values[i])
 			} else if value.Valid {
 				_m.RequestedBy = value.String
+			}
+		case publishunit.FieldSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field source", values[i])
+			} else if value.Valid {
+				_m.Source = value.String
+			}
+		case publishunit.FieldPriority:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field priority", values[i])
+			} else if value.Valid {
+				_m.Priority = int(value.Int64)
 			}
 		case publishunit.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -158,6 +176,12 @@ func (_m *PublishUnit) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("requested_by=")
 	builder.WriteString(_m.RequestedBy)
+	builder.WriteString(", ")
+	builder.WriteString("source=")
+	builder.WriteString(_m.Source)
+	builder.WriteString(", ")
+	builder.WriteString("priority=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Priority))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

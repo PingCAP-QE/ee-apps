@@ -296,6 +296,7 @@ func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requested
 		return err
 	}
 
+	source, priority := publishSourceAndPriority(requestedBy)
 	unit, err := tx.PublishUnit.Create().
 		SetID(s.id()).
 		SetKind(PublishKindTiUP).
@@ -303,6 +304,8 @@ func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requested
 		SetDigest(digest).
 		SetState(PublishStateQueued).
 		SetRequestedBy(requestedBy).
+		SetSource(source).
+		SetPriority(priority).
 		SetCreatedAt(now).
 		Save(ctx)
 	if err != nil {
@@ -329,6 +332,7 @@ func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requested
 			SetID(s.id()).
 			SetUnitID(unit.ID).
 			SetTarget(plan.Target).
+			SetPriority(priority).
 			SetPayload(raw).
 			SetCreatedAt(now)
 		if i == 0 {
@@ -374,12 +378,15 @@ func (s *publishsrvc) createSingleStepUnitWithID(ctx context.Context, unitID, ar
 	if err != nil {
 		return nil, nil, err
 	}
+	source, priority := publishSourceAndPriority(requestedBy)
 	unit, err := tx.PublishUnit.Create().
 		SetID(unitID).
 		SetKind(PublishKindTiUP).
 		SetArtifactURL(artifactURL).
 		SetState(PublishStateQueued).
 		SetRequestedBy(requestedBy).
+		SetSource(source).
+		SetPriority(priority).
 		SetCreatedAt(now).
 		Save(ctx)
 	if err != nil {
@@ -391,6 +398,7 @@ func (s *publishsrvc) createSingleStepUnitWithID(ctx context.Context, unitID, ar
 		SetUnitID(unit.ID).
 		SetTarget(tiupTargetForMirrorName(payload.Mirror)).
 		SetState(PublishStepStatePending).
+		SetPriority(priority).
 		SetPayload(raw).
 		SetCreatedAt(now).
 		Save(ctx)

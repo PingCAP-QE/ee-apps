@@ -29,6 +29,8 @@ type PublishStep struct {
 	DependsOn string `json:"depends_on,omitempty"`
 	// Step state: blocked, pending, claimed, succeeded, failed, skipped
 	State string `json:"state,omitempty"`
+	// Claim priority copied from the owning unit: release > api > nightly
+	Priority int `json:"priority,omitempty"`
 	// Full execution parameters, replayable by any worker
 	Payload map[string]interface{} `json:"payload,omitempty"`
 	// Execution outcome recorded by the worker
@@ -59,7 +61,7 @@ func (*PublishStep) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case publishstep.FieldPayload, publishstep.FieldResult:
 			values[i] = new([]byte)
-		case publishstep.FieldAttempts:
+		case publishstep.FieldPriority, publishstep.FieldAttempts:
 			values[i] = new(sql.NullInt64)
 		case publishstep.FieldID, publishstep.FieldUnitID, publishstep.FieldTarget, publishstep.FieldDest, publishstep.FieldDependsOn, publishstep.FieldState, publishstep.FieldClaimedBy, publishstep.FieldLastError:
 			values[i] = new(sql.NullString)
@@ -115,6 +117,12 @@ func (_m *PublishStep) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field state", values[i])
 			} else if value.Valid {
 				_m.State = value.String
+			}
+		case publishstep.FieldPriority:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field priority", values[i])
+			} else if value.Valid {
+				_m.Priority = int(value.Int64)
 			}
 		case publishstep.FieldPayload:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -234,6 +242,9 @@ func (_m *PublishStep) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("state=")
 	builder.WriteString(_m.State)
+	builder.WriteString(", ")
+	builder.WriteString("priority=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Priority))
 	builder.WriteString(", ")
 	builder.WriteString("payload=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Payload))
