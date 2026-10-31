@@ -1,5 +1,7 @@
 package command
 
+// CodeQL archive-exclusion probe (must not be analyzed).
+
 import (
 	"bytes"
 	"fmt"

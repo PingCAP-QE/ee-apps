@@ -1,5 +1,7 @@
 package lark
 
+// CodeQL archive-exclusion probe (non-archive control).
+
 import (
 	"crypto/tls"
 	"net/http"
