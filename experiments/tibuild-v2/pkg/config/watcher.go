@@ -104,6 +104,10 @@ type ReloadResult struct {
 	Fields []string
 	// Err carries the field-level error for rejected or unreadable documents.
 	Err error
+
+	// repeat marks a rejection of the document that was already rejected by the
+	// previous attempt, so the poll loop logs it once instead of every interval.
+	repeat bool
 }
 
 // Watcher polls a YAML configuration file and publishes validated revisions
@@ -118,6 +122,12 @@ type Watcher struct {
 	mu         sync.Mutex // serializes reloads
 	handlersMu sync.RWMutex
 	handlers   []ReloadHandler
+
+	// lastRejectKey identifies the document (content hash or read error) that
+	// the previous attempt rejected, so a rejected file is logged once instead
+	// of every poll interval. Guarded by mu.
+	lastRejectKey    string
+	lastRejectResult string
 }
 
 // watcherMetrics is nil when no registerer was supplied.
@@ -290,6 +300,7 @@ func (w *Watcher) reloadLocked(initial bool) (ReloadResult, []ReloadHandler) {
 	if err != nil {
 		res.Result = ReloadReadError
 		res.Err = fmt.Errorf("read %s: %w", w.path, err)
+		res.repeat = w.noteRejection(res.Result, err.Error())
 		w.observe(res, initial)
 		return res, nil
 	}
@@ -298,6 +309,7 @@ func (w *Watcher) reloadLocked(initial bool) (ReloadResult, []ReloadHandler) {
 	if previous != nil && previous.hash == hash {
 		res.Result = ReloadUnchanged
 		res.Candidate = applied
+		w.clearRejection()
 		w.observe(res, initial)
 		return res, nil
 	}
@@ -306,6 +318,7 @@ func (w *Watcher) reloadLocked(initial bool) (ReloadResult, []ReloadHandler) {
 	if err := yaml.Unmarshal(data, &parsed); err != nil {
 		res.Result = ReloadInvalid
 		res.Err = fmt.Errorf("parse %s: %w", w.path, err)
+		res.repeat = w.noteRejection(res.Result, hash)
 		w.observe(res, initial)
 		return res, nil
 	}
@@ -316,6 +329,7 @@ func (w *Watcher) reloadLocked(initial bool) (ReloadResult, []ReloadHandler) {
 			res.Result = ReloadRestartRequired
 			res.Fields = fields
 			res.Err = fmt.Errorf("%s requires a restart", strings.Join(fields, ", "))
+			res.repeat = w.noteRejection(res.Result, hash)
 			w.observe(res, initial)
 			return res, nil
 		}
@@ -325,6 +339,7 @@ func (w *Watcher) reloadLocked(initial bool) (ReloadResult, []ReloadHandler) {
 	if err := w.opts.Validate(&parsed); err != nil {
 		res.Result = ReloadInvalid
 		res.Err = err
+		res.repeat = w.noteRejection(res.Result, hash)
 		w.observe(res, initial)
 		return res, nil
 	}
@@ -342,6 +357,7 @@ func (w *Watcher) reloadLocked(initial bool) (ReloadResult, []ReloadHandler) {
 
 	res.Result = ReloadSuccess
 	res.Generation = res.Candidate
+	w.clearRejection()
 	w.observe(res, initial)
 	return res, w.snapshotHandlers()
 }
@@ -352,8 +368,24 @@ func (w *Watcher) snapshotHandlers() []ReloadHandler {
 	return append([]ReloadHandler(nil), w.handlers...)
 }
 
+// noteRejection records which document the attempt rejected and reports whether
+// the previous attempt rejected the same one.
+func (w *Watcher) noteRejection(result, key string) bool {
+	repeat := w.lastRejectResult == result && w.lastRejectKey == key
+	w.lastRejectResult, w.lastRejectKey = result, key
+	return repeat
+}
+
+// clearRejection forgets the last rejected document after an accepted one.
+func (w *Watcher) clearRejection() {
+	w.lastRejectResult, w.lastRejectKey = "", ""
+}
+
 // observe records the metrics and the structured log line for one attempt. Only
-// field paths are logged, never field values.
+// field paths are logged, never field values. A document that stays rejected is
+// logged once at error level and then at debug level: the mount retries every
+// poll interval, and an operator should not get four errors a minute per pod
+// until they fix the file.
 func (w *Watcher) observe(res ReloadResult, initial bool) {
 	if initial && res.Result != ReloadSuccess {
 		return // the constructor returns the error; this is not a reload
@@ -364,6 +396,15 @@ func (w *Watcher) observe(res ReloadResult, initial bool) {
 	}
 
 	logger := w.opts.Logger
+	if res.repeat {
+		logger.Debug().
+			Uint64("generation", res.Generation).
+			Uint64("candidate", res.Candidate).
+			Str("result", res.Result).
+			Err(res.Err).
+			Msg("config reload still rejected, document unchanged")
+		return
+	}
 	switch res.Result {
 	case ReloadSuccess:
 		message := "config reload applied"

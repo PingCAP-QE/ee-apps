@@ -81,6 +81,11 @@ config reload deferred generation=2 error="read ...: no such file or directory"
 | `rejected` | the document did not parse or did not validate; the previous revision keeps running |
 | `ignored` | a restart-only field changed; the whole document was rejected |
 | `deferred` | the file could not be read (swap window, broken mount); retried on the next poll |
+| `still rejected, document unchanged` | the same rejected document is still mounted; logged at debug so a forgotten bad edit does not fill the log every poll |
+
+A rejected document is retried on every poll: the counters keep counting attempts
+(so a rate alert still fires), but the error line is emitted only when the
+document or the verdict changes.
 
 ## Metrics
 

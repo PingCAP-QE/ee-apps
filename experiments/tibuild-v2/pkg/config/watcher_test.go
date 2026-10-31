@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -668,6 +669,66 @@ publish:
 	}
 	if calls != 1 {
 		t.Fatalf("handlers were notified %d times, want 1", calls)
+	}
+}
+
+func TestWatcherLogsARepeatedRejectionOnce(t *testing.T) {
+	path := writeTempConfig(t, baseConfig)
+	var logs bytes.Buffer
+	logger := zerolog.New(&logs).Level(zerolog.DebugLevel)
+	w, err := NewWatcher(path, WatcherOptions{Logger: &logger, Registerer: prometheus.NewRegistry()})
+	if err != nil {
+		t.Fatalf("NewWatcher: %v", err)
+	}
+
+	invalid := strings.Replace(baseConfig, `window: 1h`, `window: "0s"`, 1)
+	rewriteConfig(t, path, invalid)
+
+	for i := 0; i < 3; i++ {
+		if res := w.Reload(); res.Result != ReloadInvalid {
+			t.Fatalf("attempt %d: result = %q, want %q", i, res.Result, ReloadInvalid)
+		}
+	}
+
+	if got := strings.Count(logs.String(), `"message":"config reload rejected"`); got != 1 {
+		t.Errorf("error-level rejection lines = %d, want 1 (buffered log: %s)", got, logs.String())
+	}
+	if got := strings.Count(logs.String(), `"message":"config reload still rejected, document unchanged"`); got != 2 {
+		t.Errorf("debug-level repeat lines = %d, want 2", got)
+	}
+
+	// Every attempt is still counted, so an alert on the rate keeps working.
+	if got := testutil.ToFloat64(w.metrics.reloads.WithLabelValues(ReloadInvalid)); got != 3 {
+		t.Errorf("config_reload_total{invalid} = %v, want 3", got)
+	}
+
+	// A corrected document is logged normally again.
+	rewriteConfig(t, path, strings.Replace(baseConfig, `window: 1h`, `window: 2h`, 1))
+	if res := w.Reload(); res.Result != ReloadSuccess {
+		t.Fatalf("result = %q, want %q (err: %v)", res.Result, ReloadSuccess, res.Err)
+	}
+	if got := strings.Count(logs.String(), `"message":"config reload applied"`); got != 1 {
+		t.Errorf("applied lines = %d, want 1", got)
+	}
+}
+
+func TestWatcherLogsARepeatedRestartOnlyRejectionOnce(t *testing.T) {
+	path := writeTempConfig(t, baseConfig)
+	var logs bytes.Buffer
+	logger := zerolog.New(&logs).Level(zerolog.DebugLevel)
+	w, err := NewWatcher(path, WatcherOptions{Logger: &logger})
+	if err != nil {
+		t.Fatalf("NewWatcher: %v", err)
+	}
+
+	rewriteConfig(t, path, strings.Replace(baseConfig, `targets: ["gcr.io"]`, `targets: ["docker.io"]`, 1))
+	for i := 0; i < 3; i++ {
+		if res := w.Reload(); res.Result != ReloadRestartRequired {
+			t.Fatalf("attempt %d: result = %q, want %q", i, res.Result, ReloadRestartRequired)
+		}
+	}
+	if got := strings.Count(logs.String(), `"message":"config reload ignored"`); got != 1 {
+		t.Errorf("ignored lines = %d, want 1 (buffered log: %s)", got, logs.String())
 	}
 }
 
