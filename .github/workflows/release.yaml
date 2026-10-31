@@ -65,8 +65,6 @@ jobs:
               - 'roster/**'
             cloudevents-server:
               - 'cloudevents-server/**'
-            tibuild:
-              - 'tibuild/**'
             tibuild-v2:
               - 'experiments/tibuild-v2/**'
             dl:
@@ -126,11 +124,6 @@ jobs:
       - name: Publish image - roster
         if: steps.changes.outputs.roster == 'true'
         working-directory: roster
-        run: |
-          skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Publish image - tibuild
-        if: steps.changes.outputs.tibuild == 'true'
-        working-directory: tibuild
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
       - name: Publish image - tibuild-v2

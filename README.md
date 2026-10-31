@@ -6,8 +6,7 @@ Internal tooling and services for PingCAP Engineering Effectiveness.
 
 | Directory | Description | Language | Docs |
 |-----------|-------------|----------|------|
-| [`tibuild/`](tibuild/) | Build orchestration platform (DevBuild, Hotfix, Tekton/Jenkins triggers) | Go | [README](tibuild/README.md) |
-| [`experiments/tibuild-v2/`](experiments/tibuild-v2/) | Next-gen tibuild with Goa + Ent ORM | Go | [README](experiments/tibuild-v2/README.md) |
+| [`experiments/tibuild-v2/`](experiments/tibuild-v2/) | Build orchestration platform (DevBuild, Hotfix, Tekton/Jenkins triggers) — Goa + Ent ORM | Go | [README](experiments/tibuild-v2/README.md) |
 | [`cloudevents-server/`](cloudevents-server/) | CloudEvents router — receives Tekton events, dispatches via Kafka | Go | [README](cloudevents-server/README.md) |
 | [`publisher/`](publisher/) | Artifact publisher — TiUP packages, tarballs, container images | Go | [README](publisher/README.md) |
 | [`dl/`](dl/) | Download server for OCI artifacts and KS3 objects | Go | [README](dl/README.md) |
@@ -27,16 +26,13 @@ Each subproject is an independent module with its own build system. There is no 
 
 ```bash
 # Go services
-cd tibuild && make build
-
-# Go services (no Makefile)
 cd experiments/tibuild-v2 && go test ./... && go build ./cmd/tibuild
 
 # Python services
 cd ci-dashboard && make test && make lint
 
 # Container build (any service with skaffold.yaml)
-skaffold build --push=false -f tibuild/skaffold.yaml
+skaffold build --push=false -f experiments/tibuild-v2/skaffold.yaml
 ```
 
 ## CI
