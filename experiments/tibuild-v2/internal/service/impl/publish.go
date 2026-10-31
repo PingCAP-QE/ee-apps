@@ -57,6 +57,9 @@ type publishsrvc struct {
 	// lane serializes publication intents that must not overlap; only the TiUP
 	// kind uses it.
 	lane *publishLane
+	// desired is the nightly desired-state inbox and scheduler; nil when the
+	// feature is disabled in the configuration.
+	desired *desiredStore
 	// tiup publishes packages to a mirror.
 	tiup *tiupCLI
 	// publishCfg carries the publish-domain configuration used by the legacy
@@ -74,6 +77,10 @@ type publishsrvc struct {
 
 // NewPublish returns the publish service implementation.
 func NewPublish(logger *zerolog.Logger, cfg *config.Service) publish.Service {
+	if err := cfg.Publish.Nightly.Validate(); err != nil {
+		logger.Err(err).Msg("invalid nightly publish configuration")
+		return nil
+	}
 	db, err := newStoreClient(cfg.Store)
 	if err != nil {
 		logger.Err(err).Msg("failed to create store client")
@@ -99,6 +106,7 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 		workerCfg:   workerCfg,
 		images:      craneImageOps{},
 		lane:        newPublishLane(db, PublishLaneTiUP),
+		desired:     newDesiredStore(db, cfg.Publish.Nightly),
 		tiup:        newTiupCLI(cfg.Publish.TiUPBinary),
 		publishCfg:  cfg.Publish,
 		fetchConfig: fetchTiUPArtifactConfig,

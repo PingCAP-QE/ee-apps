@@ -56,7 +56,36 @@ func (s *publishsrvc) DeliveryByRules(ctx context.Context, p *publish.DeliveryBy
 		return []string{}, nil
 	}
 
-	_, steps, err := s.createTiUPUnit(ctx, src, "delivery-by-rules", digest, plans)
+	// Nightly targets that converge accept the push without publishing it: the
+	// newest row is upserted and the window-aligned tick publishes it later.
+	// Targets that are not enabled keep the immediate path, which is what makes
+	// the staging-first rollout possible.
+	publishTargets := s.publishCfg.PublicationTargets(s.workerCfg.Targets)
+	immediate := make([]delivery.TiUPPlan, 0, len(plans))
+	deferred := make([]delivery.TiUPPlan, 0, len(plans))
+	for _, plan := range plans {
+		if plan.Nightly && s.publishCfg.Nightly.WantsTarget(plan.Target, publishTargets) {
+			deferred = append(deferred, plan)
+			continue
+		}
+		immediate = append(immediate, plan)
+	}
+
+	if len(deferred) > 0 {
+		if err := s.enqueueNightlyPlans(ctx, src, digest, deferred); err != nil {
+			return nil, publishFault(err)
+		}
+		s.logger.Info().
+			Str("artifact", src).
+			Int("targets", len(deferred)).
+			Msg("nightly desired state upserted")
+	}
+
+	if len(immediate) == 0 {
+		return []string{}, nil
+	}
+
+	_, steps, err := s.createTiUPUnit(ctx, src, "delivery-by-rules", digest, immediate)
 	if err != nil {
 		return nil, publishFault(err)
 	}
@@ -328,6 +357,13 @@ func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requested
 
 // createSingleStepUnit persists a one-step unit for the single-package path.
 func (s *publishsrvc) createSingleStepUnit(ctx context.Context, artifactURL, sourceURL, requestedBy string, payload TiUPStepPayload) (*ent.PublishUnit, *ent.PublishStep, error) {
+	return s.createSingleStepUnitWithID(ctx, s.id(), artifactURL, sourceURL, requestedBy, payload)
+}
+
+// createSingleStepUnitWithID is createSingleStepUnit with a caller-chosen unit
+// id. The nightly reconciler reserves the id on publish_desired before the unit
+// exists, so the completion callback can find the row by that id.
+func (s *publishsrvc) createSingleStepUnitWithID(ctx context.Context, unitID, artifactURL, sourceURL, requestedBy string, payload TiUPStepPayload) (*ent.PublishUnit, *ent.PublishStep, error) {
 	raw, err := payloadMap(payload)
 	if err != nil {
 		return nil, nil, err
@@ -339,7 +375,7 @@ func (s *publishsrvc) createSingleStepUnit(ctx context.Context, artifactURL, sou
 		return nil, nil, err
 	}
 	unit, err := tx.PublishUnit.Create().
-		SetID(s.id()).
+		SetID(unitID).
 		SetKind(PublishKindTiUP).
 		SetArtifactURL(artifactURL).
 		SetState(PublishStateQueued).

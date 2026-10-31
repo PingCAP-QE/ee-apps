@@ -18,6 +18,9 @@ var ErrPublishRulesUnavailable = errors.New("delivery rules are not available")
 // those steps pending forever, which looks like a stuck queue instead of a
 // configuration error.
 func ValidatePublishTargets(cfg *config.Service) error {
+	if err := cfg.Publish.Nightly.Validate(); err != nil {
+		return err
+	}
 	workerCfg := cfg.Worker
 	workerCfg.ApplyDefaults()
 	// Only the image kind claims registry hosts from the delivery rules. A TiUP

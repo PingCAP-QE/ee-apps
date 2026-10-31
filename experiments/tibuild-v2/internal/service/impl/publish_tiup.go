@@ -62,8 +62,13 @@ type TiUPStepPayload struct {
 	Digest string `json:"digest"`
 	// Nightly marks the nightly channel: its version is a constant, so a new
 	// build is expected to replace the previous package of the same version.
-	Nightly  bool                   `json:"nightly,omitempty"`
-	Packages []delivery.TiUPPackage `json:"packages"`
+	Nightly bool `json:"nightly,omitempty"`
+	// NightlyVersion is the version this row asked for. It is recorded when a
+	// desired row is published, so the completion callback records the version
+	// that was actually published even if a newer push replaced desired_version
+	// while the unit was running.
+	NightlyVersion string                 `json:"nightly_version,omitempty"`
+	Packages       []delivery.TiUPPackage `json:"packages"`
 }
 
 // tiupRunner returns the runner used by the executor.
