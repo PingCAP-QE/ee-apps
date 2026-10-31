@@ -10,9 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ReloadHandler is a callback invoked with the new config after a successful reload.
-type ReloadHandler func(*Service)
-
 // Reloadable wraps Service with thread-safe reload capability.
 // It watches a YAML config file for changes and notifies registered handlers.
 type Reloadable struct {
