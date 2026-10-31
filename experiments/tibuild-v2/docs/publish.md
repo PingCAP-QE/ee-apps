@@ -92,16 +92,18 @@ pre-migration publisher dropped it and this port preserves that behaviour.
 ## Nightly convergence
 
 Nightly is a **desired state**, not a queue. With `publish.nightly.enabled`
-set for a target, a nightly push only upserts `publish_desired` (one row per
-`target/pkg/os/arch`, newest wins) and a window-aligned tick publishes the
-newest artifact once. A push that arrives while a unit is running replaces the
-desired fields without touching the in-flight unit, so the next tick publishes
-it.
+set and the target listed under `publish.nightly.targets`, a nightly push only
+upserts `publish_desired` (one row per `target/pkg/os/arch`, newest wins) and a
+window-aligned tick publishes the newest artifact once. A push that arrives
+while a unit is running replaces the desired fields without touching the
+in-flight unit, so the next tick publishes it.
 
-The window is aligned to a fixed anchor (default `12h`, `02:00` UTC): the
-publish time no longer drifts with the first push. Each package gets a stable
-hash-based jitter inside the window, so a batch of nightly builds does not hit
-the serial TiUP lane at the same instant.
+Each target has its own window and anchor (`publish.nightly.default` plus
+`publish.nightly.targets.<target>` overrides): staging can converge hourly while
+prod converges twice a day. The window is aligned to the anchor, so the publish
+time no longer drifts with the first push. Each package gets a stable hash-based
+jitter inside the window, capped at a quarter of the window, so a batch of
+nightly builds does not hit the serial TiUP lane at the same instant.
 
 A failure keeps `desired_version` unchanged and records `last_failed_version` /
 `last_error`: the first failure retries after `retry_after` (default 5m), later
@@ -130,15 +132,22 @@ publish:
   tiup_binary: tiup         # optional override
   nightly:                  # off unless enabled explicitly
     enabled: false
-    targets: ["tiup-staging"]   # empty inherits publish.targets
-    window: 12h
-    anchor: "02:00"          # interpreted in timezone
-    timezone: UTC
-    retry_after: 5m
-    jitter: 30m
     tick_interval: 1m
     batch: 10
-    on_failure: alert        # rollback is not implemented
+    default:                # schedule for unlisted targets
+      window: 12h
+      anchor: "02:00"        # interpreted in timezone
+      timezone: UTC
+      retry_after: 5m
+      jitter: 30m
+      on_failure: alert      # rollback is not implemented
+    targets:                 # per-target overrides
+      tiup-staging:
+        window: 1h
+        anchor: "00:00"
+      tiup-prod:
+        window: 12h
+        anchor: "02:00"
 ```
 
 ## Legacy API

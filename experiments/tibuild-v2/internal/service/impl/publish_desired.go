@@ -56,25 +56,17 @@ type desiredStore struct {
 	nowFn func() time.Time
 	newID func() string
 
-	window     time.Duration
-	anchor     time.Duration
-	loc        *time.Location
-	jitter     time.Duration
-	retryAfter time.Duration
-	batch      int
+	cfg   config.NightlyPublish
+	batch int
 }
 
 func newDesiredStore(db *ent.Client, cfg config.NightlyPublish) *desiredStore {
 	return &desiredStore{
-		db:         db,
-		nowFn:      time.Now,
-		newID:      newUUID,
-		window:     cfg.WindowDuration(),
-		anchor:     cfg.AnchorOffset(),
-		loc:        cfg.Location(),
-		jitter:     cfg.JitterDuration(),
-		retryAfter: cfg.RetryAfterDuration(),
-		batch:      cfg.BatchSize(),
+		db:    db,
+		nowFn: time.Now,
+		newID: newUUID,
+		cfg:   cfg,
+		batch: cfg.BatchSize(),
 	}
 }
 
@@ -92,28 +84,31 @@ func (s *desiredStore) id() string {
 	return newUUID()
 }
 
-// nextRunAt returns the first window boundary strictly after now, shifted by a
-// stable per-package jitter. The anchor is interpreted in the configured zone;
-// the result is normalised to UTC so the database stores one instant.
-func (s *desiredStore) nextRunAt(now time.Time, pkg string) time.Time {
-	local := now.In(s.loc)
-	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, s.loc)
-	candidate := day.Add(s.anchor)
+// nextRunAt returns the first boundary strictly after now for the target's
+// schedule, shifted by a stable per-package jitter. The anchor is interpreted
+// in the target's zone; the result is normalised to UTC so the database stores
+// one instant.
+func (s *desiredStore) nextRunAt(now time.Time, target, pkg string) time.Time {
+	window := s.cfg.WindowFor(target)
+	loc := window.Location()
+	local := now.In(loc)
+	day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
+	candidate := day.Add(window.AnchorOffset())
 	for !candidate.After(now) {
-		candidate = candidate.Add(s.window)
+		candidate = candidate.Add(window.WindowDuration())
 	}
-	return candidate.Add(s.jitterFor(pkg)).UTC()
+	return candidate.Add(s.jitterFor(pkg, window.JitterDuration())).UTC()
 }
 
 // jitterFor spreads packages that share a window boundary. It is stable across
 // processes and ticks because it hashes the package name, not the clock.
-func (s *desiredStore) jitterFor(pkg string) time.Duration {
-	if s.jitter <= 0 {
+func (s *desiredStore) jitterFor(pkg string, limit time.Duration) time.Duration {
+	if limit <= 0 {
 		return 0
 	}
 	sum := sha256.Sum256([]byte(pkg))
 	n := binary.BigEndian.Uint64(sum[:8])
-	return time.Duration(n % uint64(s.jitter))
+	return time.Duration(n % uint64(limit))
 }
 
 // Upsert records the newest desired artifact. It never touches next_run_at or
@@ -150,7 +145,7 @@ func (s *desiredStore) Upsert(ctx context.Context, key desiredKey, version strin
 		SetDesiredVersion(version).
 		SetDesiredPayload(payload).
 		SetDesiredAt(now).
-		SetNextRunAt(s.nextRunAt(now, key.Pkg)).
+		SetNextRunAt(s.nextRunAt(now, key.Target, key.Pkg)).
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -220,7 +215,7 @@ func (s *desiredStore) Release(ctx context.Context, key desiredKey, unitID strin
 	update := s.db.PublishDesired.Update().
 		Where(append(key.predicates(), entpublishdesired.RunningUnitID(unitID))...).
 		ClearRunningUnitID().
-		SetNextRunAt(now.Add(s.retryAfter)).
+		SetNextRunAt(now.Add(s.cfg.WindowFor(key.Target).RetryAfterDuration())).
 		SetUpdatedAt(now)
 	if cause != nil {
 		update = update.SetLastError(truncateErrorMessage(cause.Error()))
@@ -266,11 +261,11 @@ func (s *desiredStore) completeRow(ctx context.Context, row *ent.PublishDesired,
 		update = update.
 			SetLastSucceededVersion(version).
 			ClearLastError().
-			SetNextRunAt(s.nextRunAt(now, row.Pkg))
+			SetNextRunAt(s.nextRunAt(now, row.Target, row.Pkg))
 	} else {
-		next := now.Add(s.retryAfter)
+		next := now.Add(s.cfg.WindowFor(row.Target).RetryAfterDuration())
 		if row.LastFailedVersion == version {
-			next = s.nextRunAt(now, row.Pkg)
+			next = s.nextRunAt(now, row.Target, row.Pkg)
 		}
 		if detail == "" {
 			detail = fmt.Sprintf("publish unit finished in state %s", state)
@@ -354,6 +349,24 @@ func (s *publishsrvc) runNightlyReconciler(ctx context.Context) {
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	for _, target := range s.nightlyTargets() {
+		window := s.publishCfg.Nightly.WindowFor(target)
+		anchor := window.Anchor
+		if anchor == "" {
+			anchor = config.DefaultNightlyAnchor
+		}
+		zone := window.Timezone
+		if zone == "" {
+			zone = config.DefaultNightlyTimezone
+		}
+		s.logger.Info().
+			Str("target", target).
+			Dur("window", window.WindowDuration()).
+			Str("anchor", anchor).
+			Str("timezone", zone).
+			Msg("nightly target schedule")
+	}
 
 	s.logger.Info().
 		Dur("tick_interval", interval).

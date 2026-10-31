@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -25,16 +26,29 @@ const (
 // the desired-state reconciler: a push only upserts the newest artifact and a
 // window-aligned tick publishes it.
 //
-// Targets is the staging-first rollout knob: with `targets: [tiup-staging]`
-// only staging converges while prod keeps publishing on every request.
+// Default supplies the schedule for every target; Targets overrides individual
+// fields per target. This is what lets staging converge hourly while prod
+// converges twice a day without code changes.
 type NightlyPublish struct {
 	// Enabled switches the listed targets to desired-state reconciliation. It
 	// is a pointer so an omitted key means "keep the legacy behaviour" while
 	// an explicit `enabled: false` is preserved.
 	Enabled *bool `yaml:"enabled,omitempty" json:"enabled,omitempty"`
-	// Targets lists the publish targets whose nightly requests converge.
-	// Empty inherits publish.targets.
-	Targets []string `yaml:"targets,omitempty" json:"targets,omitempty"`
+	// TickInterval is how often the reconciler looks for due rows
+	// (default 1m).
+	TickInterval string `yaml:"tick_interval,omitempty" json:"tick_interval,omitempty"`
+	// Batch bounds how many rows one tick claims (default 10).
+	Batch int `yaml:"batch,omitempty" json:"batch,omitempty"`
+	// Default is the schedule for targets without an explicit override.
+	Default NightlyWindow `yaml:"default,omitempty" json:"default,omitempty"`
+	// Targets maps a publish target to its schedule override. Empty targets
+	// inherits publish.targets when convergence is enabled.
+	Targets map[string]NightlyWindow `yaml:"targets,omitempty" json:"targets,omitempty"`
+}
+
+// NightlyWindow is one target's converge schedule. Empty fields inherit the
+// parent NightlyPublish.Default.
+type NightlyWindow struct {
 	// Window is the reconcile period (default 12h).
 	Window string `yaml:"window,omitempty" json:"window,omitempty"`
 	// Anchor is the first publish time of a day, as HH:MM in Timezone
@@ -46,14 +60,9 @@ type NightlyPublish struct {
 	// (default 5m). Later failures advance by one window instead.
 	RetryAfter string `yaml:"retry_after,omitempty" json:"retry_after,omitempty"`
 	// Jitter is the maximum stable per-package offset inside a window
-	// (default 30m), so a batch of nightly packages does not hit the lane at
-	// the same instant.
+	// (default 30m, capped at window/4), so a batch of nightly packages does
+	// not hit the lane at the same instant.
 	Jitter string `yaml:"jitter,omitempty" json:"jitter,omitempty"`
-	// TickInterval is how often the reconciler looks for due rows
-	// (default 1m).
-	TickInterval string `yaml:"tick_interval,omitempty" json:"tick_interval,omitempty"`
-	// Batch bounds how many rows one tick claims (default 10).
-	Batch int `yaml:"batch,omitempty" json:"batch,omitempty"`
 	// OnFailure is "alert" (default): a failed publication is recorded and
 	// alerted, and the next window retries the same newest version. The
 	// rollback strategy is not implemented by this track.
@@ -67,44 +76,33 @@ func (n NightlyPublish) EnabledValue() bool {
 	return n.Enabled != nil && *n.Enabled
 }
 
-// WindowDuration returns the parsed window.
-func (n NightlyPublish) WindowDuration() time.Duration {
-	return parseNightlyDuration(n.Window, DefaultNightlyWindow)
-}
-
-// AnchorOffset returns the anchor as an offset from local midnight.
-func (n NightlyPublish) AnchorOffset() time.Duration {
-	offset, err := ParseNightlyAnchor(n.Anchor)
-	if err != nil {
-		return 2 * time.Hour
+// WindowFor returns the target's effective schedule: the default merged with
+// the target override, field by field.
+func (n NightlyPublish) WindowFor(target string) NightlyWindow {
+	merged := n.Default
+	override, ok := n.Targets[target]
+	if !ok {
+		return merged
 	}
-	return offset
-}
-
-// Location returns the configured zone, defaulting to UTC.
-func (n NightlyPublish) Location() *time.Location {
-	if n.Timezone == "" {
-		return time.UTC
+	if override.Window != "" {
+		merged.Window = override.Window
 	}
-	loc, err := time.LoadLocation(n.Timezone)
-	if err != nil {
-		return time.UTC
+	if override.Anchor != "" {
+		merged.Anchor = override.Anchor
 	}
-	return loc
-}
-
-// RetryAfterDuration returns the first-failure backoff.
-func (n NightlyPublish) RetryAfterDuration() time.Duration {
-	return parseNightlyDuration(n.RetryAfter, DefaultNightlyRetryAfter)
-}
-
-// JitterDuration returns the maximum jitter, capped below one window.
-func (n NightlyPublish) JitterDuration() time.Duration {
-	jitter := parseNightlyDuration(n.Jitter, DefaultNightlyJitter)
-	if window := n.WindowDuration(); jitter >= window {
-		return window / 2
+	if override.Timezone != "" {
+		merged.Timezone = override.Timezone
 	}
-	return jitter
+	if override.RetryAfter != "" {
+		merged.RetryAfter = override.RetryAfter
+	}
+	if override.Jitter != "" {
+		merged.Jitter = override.Jitter
+	}
+	if override.OnFailure != "" {
+		merged.OnFailure = override.OnFailure
+	}
+	return merged
 }
 
 // TickEvery returns the reconciler interval.
@@ -122,12 +120,18 @@ func (n NightlyPublish) BatchSize() int {
 
 // DesiredTargets resolves the targets that use desired-state reconciliation.
 // It returns nil when the feature is off, so callers can keep the legacy path.
+// Explicit target names are sorted so startup logs and tests are deterministic.
 func (n NightlyPublish) DesiredTargets(publishTargets []string) []string {
 	if !n.EnabledValue() {
 		return nil
 	}
 	if len(n.Targets) > 0 {
-		return append([]string(nil), n.Targets...)
+		targets := make([]string, 0, len(n.Targets))
+		for target := range n.Targets {
+			targets = append(targets, target)
+		}
+		sort.Strings(targets)
+		return targets
 	}
 	return append([]string(nil), publishTargets...)
 }
@@ -140,6 +144,122 @@ func (n NightlyPublish) WantsTarget(target string, publishTargets []string) bool
 		}
 	}
 	return false
+}
+
+// WindowDuration returns the parsed window.
+func (w NightlyWindow) WindowDuration() time.Duration {
+	return parseNightlyDuration(w.Window, DefaultNightlyWindow)
+}
+
+// AnchorOffset returns the anchor as an offset from local midnight.
+func (w NightlyWindow) AnchorOffset() time.Duration {
+	offset, err := ParseNightlyAnchor(w.Anchor)
+	if err != nil {
+		return 2 * time.Hour
+	}
+	return offset
+}
+
+// Location returns the configured zone, defaulting to UTC.
+func (w NightlyWindow) Location() *time.Location {
+	if w.Timezone == "" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(w.Timezone)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
+// RetryAfterDuration returns the first-failure backoff.
+func (w NightlyWindow) RetryAfterDuration() time.Duration {
+	return parseNightlyDuration(w.RetryAfter, DefaultNightlyRetryAfter)
+}
+
+// JitterDuration returns the maximum jitter, capped below one window. The cap
+// is window/4 (at most the 30m default): a one-hour staging window should not
+// spread packages over half an hour.
+func (w NightlyWindow) JitterDuration() time.Duration {
+	jitter := parseNightlyDuration(w.Jitter, DefaultNightlyJitter)
+	limit := w.WindowDuration() / 4
+	if limit > DefaultNightlyJitter {
+		limit = DefaultNightlyJitter
+	}
+	if jitter > limit {
+		return limit
+	}
+	return jitter
+}
+
+// Validate checks one schedule. It only rejects values that would silently
+// misbehave; an empty schedule is valid and gets the defaults.
+func (w NightlyWindow) Validate(prefix string) error {
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{prefix + ".window", w.Window},
+		{prefix + ".retry_after", w.RetryAfter},
+		{prefix + ".jitter", w.Jitter},
+	} {
+		if err := ValidateOptionalDuration(field.name, field.value); err != nil {
+			return err
+		}
+	}
+	if _, err := ParseNightlyAnchor(w.Anchor); err != nil {
+		return fmt.Errorf("invalid %s.anchor: %w", prefix, err)
+	}
+	if w.Timezone != "" {
+		if _, err := time.LoadLocation(w.Timezone); err != nil {
+			return fmt.Errorf("invalid %s.timezone %q: %w", prefix, w.Timezone, err)
+		}
+	}
+	jitter := DefaultNightlyJitter
+	if w.Jitter != "" {
+		parsed, err := time.ParseDuration(w.Jitter)
+		if err != nil {
+			return fmt.Errorf("invalid %s.jitter %q: %w", prefix, w.Jitter, err)
+		}
+		jitter = parsed
+	}
+	if jitter >= w.WindowDuration() {
+		return fmt.Errorf("invalid %s.jitter %q: must be shorter than one window", prefix, w.Jitter)
+	}
+	switch w.OnFailure {
+	case "", "alert":
+	case "rollback":
+		return fmt.Errorf("%s.on_failure=rollback is not implemented; use \"alert\"", prefix)
+	default:
+		return fmt.Errorf("invalid %s.on_failure %q: want alert", prefix, w.OnFailure)
+	}
+	return nil
+}
+
+// Validate checks the nightly configuration. It only rejects values that would
+// silently misbehave; an unset section is valid (feature off).
+func (n NightlyPublish) Validate() error {
+	if !n.EnabledValue() {
+		return nil
+	}
+	if err := ValidateOptionalDuration("nightly.tick_interval", n.TickInterval); err != nil {
+		return err
+	}
+	if n.Batch < 0 {
+		return fmt.Errorf("invalid nightly.batch %d: must be at least 1", n.Batch)
+	}
+	if err := n.Default.Validate("nightly.default"); err != nil {
+		return err
+	}
+	for target, window := range n.Targets {
+		if strings.TrimSpace(target) == "" {
+			return fmt.Errorf("invalid nightly.targets: empty target name")
+		}
+		if err := window.Validate("nightly.targets." + target); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ParseNightlyAnchor parses "HH:MM" or "HH:MM:SS" into an offset from
@@ -157,57 +277,6 @@ func ParseNightlyAnchor(value string) (time.Duration, error) {
 		}
 	}
 	return 0, fmt.Errorf("invalid nightly.anchor %q: want HH:MM", value)
-}
-
-// Validate checks the nightly configuration. It only rejects values that would
-// silently misbehave; an unset section is valid (feature off).
-func (n NightlyPublish) Validate() error {
-	if !n.EnabledValue() {
-		return nil
-	}
-	for _, field := range []struct {
-		name  string
-		value string
-	}{
-		{"nightly.window", n.Window},
-		{"nightly.retry_after", n.RetryAfter},
-		{"nightly.jitter", n.Jitter},
-		{"nightly.tick_interval", n.TickInterval},
-	} {
-		if err := ValidateOptionalDuration(field.name, field.value); err != nil {
-			return err
-		}
-	}
-	if _, err := ParseNightlyAnchor(n.Anchor); err != nil {
-		return err
-	}
-	if n.Timezone != "" {
-		if _, err := time.LoadLocation(n.Timezone); err != nil {
-			return fmt.Errorf("invalid nightly.timezone %q: %w", n.Timezone, err)
-		}
-	}
-	jitter := DefaultNightlyJitter
-	if n.Jitter != "" {
-		parsed, err := time.ParseDuration(n.Jitter)
-		if err != nil {
-			return fmt.Errorf("invalid nightly.jitter %q: %w", n.Jitter, err)
-		}
-		jitter = parsed
-	}
-	if jitter >= n.WindowDuration() {
-		return fmt.Errorf("invalid nightly.jitter %q: must be shorter than one window", n.Jitter)
-	}
-	if n.Batch < 0 {
-		return fmt.Errorf("invalid nightly.batch %d: must be at least 1", n.Batch)
-	}
-	switch n.OnFailure {
-	case "", "alert":
-	case "rollback":
-		return fmt.Errorf("nightly.on_failure=rollback is not implemented; use \"alert\"")
-	default:
-		return fmt.Errorf("invalid nightly.on_failure %q: want alert", n.OnFailure)
-	}
-	return nil
 }
 
 // ValidateOptionalDuration rejects malformed or non-positive durations while
