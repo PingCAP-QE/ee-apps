@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -14,6 +15,8 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 	"goa.design/clue/debug"
 	"goa.design/clue/log"
@@ -35,12 +38,13 @@ func main() {
 	// Define command line flags, add any other flag required to configure the
 	// service.
 	var (
-		hostF      = flag.String("host", "development", "Server host (valid values: development, product)")
-		domainF    = flag.String("domain", "", "Host domain name (overrides host domain specified in service design)")
-		httpPortF  = flag.String("http-port", "", "HTTP port (overrides host HTTP port specified in service design)")
-		secureF    = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
-		dbgF       = flag.Bool("debug", false, "Log request and response bodies")
-		configFile = flag.String("config", "config.yaml", "Path to config file")
+		hostF       = flag.String("host", "development", "Server host (valid values: development, product)")
+		domainF     = flag.String("domain", "", "Host domain name (overrides host domain specified in service design)")
+		httpPortF   = flag.String("http-port", "", "HTTP port (overrides host HTTP port specified in service design)")
+		secureF     = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
+		dbgF        = flag.Bool("debug", false, "Log request and response bodies")
+		configFile  = flag.String("config", "config.yaml", "Path to config file")
+		metricsAddr = flag.String("metrics-addr", "", "Address for the /metrics endpoint, empty disables it")
 	)
 	flag.Parse()
 
@@ -57,7 +61,8 @@ func main() {
 	log.Print(ctx, log.KV{K: "http-port", V: *httpPortF})
 
 	// Load configuration with hot-reload support.
-	cfg, err := loadConfig(*configFile)
+	metricsRegistry := prometheus.NewRegistry()
+	cfg, err := loadConfig(*configFile, metricsRegistry)
 	if err != nil {
 		log.Fatalf(ctx, err, "failed to load configuration")
 	}
@@ -151,6 +156,11 @@ func main() {
 			if publishSvc == nil {
 				log.Fatalf(ctx, errors.New("failed to initialize publish service"), "please check the configuration")
 			}
+
+			// Register publish config hot-reload handler.
+			if r, ok := publishSvc.(reloader); ok {
+				cfg.OnReload(func(newCfg *config.Service) { r.Reload(newCfg) })
+			}
 		}
 	}
 
@@ -207,6 +217,27 @@ func main() {
 	// Start the config watcher: poll the mounted file and apply validated
 	// revisions without a restart.
 	go cfg.Start(ctx)
+
+	// Serve the watcher metrics on a private listener. The business mux stays
+	// public, so /metrics is never routed through the ingress.
+	if *metricsAddr != "" {
+		metricsServer := &http.Server{
+			Addr:              *metricsAddr,
+			Handler:           promhttp.HandlerFor(metricsRegistry, promhttp.HandlerOpts{}),
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			log.Printf(ctx, "metrics server listening on %q", *metricsAddr)
+			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf(ctx, "metrics server failed: %v", err)
+			}
+		}()
+		defer func() {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			_ = metricsServer.Shutdown(shutdownCtx)
+		}()
+	}
 
 	// Start the servers and send errors (if any) to the error channel.
 	switch *hostF {

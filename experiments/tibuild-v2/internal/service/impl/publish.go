@@ -51,9 +51,13 @@ type publishsrvc struct {
 	logger *zerolog.Logger
 	db     *ent.Client
 
-	planner   *publishPlanner
-	workerCfg config.Worker
-	images    imageOps
+	planner *publishPlanner
+	images  imageOps
+
+	// cfgMu guards the configuration copied from the current revision.
+	cfgMu      sync.RWMutex
+	workerCfg  config.Worker
+	publishCfg config.Publish
 
 	// lane serializes publication intents that must not overlap; only the TiUP
 	// kind uses it.
@@ -68,15 +72,16 @@ type publishsrvc struct {
 	alerter       AlertNotifier
 	// tiup publishes packages to a mirror.
 	tiup *tiupCLI
-	// publishCfg carries the publish-domain configuration used by the legacy
-	// TiUP surface (mirror URLs, dependency seeding).
-	publishCfg config.Publish
 	// fetchConfig reads an OCI artifact config and its manifest digest. It is
 	// a field so tests can replay a recorded artifact without a registry.
 	fetchConfig func(ctx context.Context, artifactURL string) (map[string]any, string, error)
 
 	nowFn func() time.Time
 	newID func() string
+
+	// reloadNotify wakes loops whose interval was shortened by a reload, so a
+	// new tick interval does not have to wait for the old one to elapse.
+	reloadNotify chan struct{}
 
 	inflight sync.WaitGroup
 }
@@ -126,7 +131,85 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 		fetchConfig:   fetchTiUPArtifactConfig,
 		nowFn:         time.Now,
 		newID:         newUUID,
+		reloadNotify:  make(chan struct{}, 1),
 	}
+}
+
+// Reload applies a validated configuration revision to the running executor.
+// The publish service copies the nightly schedule, the mirror definitions, the
+// delivery rules path and the worker timing thresholds into its own state, so
+// every tick reads them through publishConfig/workerConfig.
+func (s *publishsrvc) Reload(cfg *config.Service) {
+	workerCfg := cfg.Worker
+	workerCfg.ApplyDefaults()
+	// Publication may be concentrated independently from the image sync queue,
+	// exactly as at construction.
+	workerCfg.Targets = cfg.Publish.PublicationTargets(workerCfg.Targets)
+
+	s.cfgMu.Lock()
+	s.workerCfg = workerCfg
+	s.publishCfg = cfg.Publish
+	s.cfgMu.Unlock()
+
+	if s.desired != nil {
+		s.desired.setConfig(cfg.Publish.Nightly)
+	}
+	if s.planner != nil {
+		s.planner.setRulesPath(cfg.Publish.DeliveryConfigPathOrDefault())
+	}
+	s.reloadAlerter(cfg.Lark)
+	s.logNightlySchedules()
+	s.notifyReload()
+
+	s.logger.Info().
+		Bool("nightly_enabled", cfg.Publish.Nightly.EnabledValue()).
+		Strs("nightly_targets", s.nightlyTargets()).
+		Dur("tick_interval", cfg.Publish.Nightly.TickEvery()).
+		Msg("publish configuration reloaded")
+}
+
+// reloadAlerter refreshes the notification recipients. Lark credentials that
+// were absent at construction still need a restart, because that decides whether
+// an alerter exists at all.
+func (s *publishsrvc) reloadAlerter(lark config.Lark) {
+	notifier, ok := s.alerter.(*LarkNotifier)
+	if !ok {
+		if lark.Enabled && lark.AppID != "" && lark.AppSecret != "" {
+			s.logger.Warn().Msg("lark alerts were disabled at startup; enabling them requires a restart")
+		}
+		return
+	}
+	if !lark.Enabled {
+		notifier.Disable()
+		return
+	}
+	notifier.Reload(lark.AppID, lark.AppSecret, lark.Channels)
+}
+
+// notifyReload wakes the long-interval loops so they re-read the configuration
+// instead of waiting for their previous interval to elapse.
+func (s *publishsrvc) notifyReload() {
+	if s.reloadNotify == nil {
+		return
+	}
+	select {
+	case s.reloadNotify <- struct{}{}:
+	default:
+	}
+}
+
+// publishConfig returns the publish configuration of the current revision.
+func (s *publishsrvc) publishConfig() config.Publish {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.publishCfg
+}
+
+// workerConfig returns the worker configuration of the current revision.
+func (s *publishsrvc) workerConfig() config.Worker {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.workerCfg
 }
 
 func (s *publishsrvc) now() time.Time {

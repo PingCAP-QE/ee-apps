@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -38,8 +40,10 @@ func main() {
 	zerolog.SetGlobalLevel(level)
 	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", "tibuild-worker").Logger()
 
+	metricsRegistry := prometheus.NewRegistry()
 	cfg, err := config.NewWatcher(*configFile, config.WatcherOptions{
-		Logger: &logger,
+		Logger:     &logger,
+		Registerer: metricsRegistry,
 		// Defaults and the worker identity are process-level overrides: they are
 		// applied to every revision before it is validated and published.
 		Normalize: func(s *config.Service) {
@@ -75,10 +79,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Apply validated configuration revisions to the running workers and start
+	// polling the mounted file.
+	cfg.OnReload(worker.Reload)
+	go cfg.Start(ctx)
+
 	if *healthAddr != "" {
 		server := &http.Server{
 			Addr:              *healthAddr,
-			Handler:           newHealthMux(worker.MetricsHandler()),
+			Handler:           newHealthMux(metricsHandler(worker.MetricsGatherer(), metricsRegistry)),
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		go func() {
@@ -135,4 +144,14 @@ func validateWorkerConfig(s *config.Service) error {
 		knownTargets = s.Publish.Targets
 	}
 	return s.Worker.Validate(knownTargets)
+}
+
+// metricsHandler merges the watcher registry with the worker registries so one
+// endpoint serves both.
+func metricsHandler(workerGatherer prometheus.Gatherer, watcherRegistry *prometheus.Registry) http.Handler {
+	gatherers := prometheus.Gatherers{watcherRegistry}
+	if workerGatherer != nil {
+		gatherers = append(gatherers, workerGatherer)
+	}
+	return promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
 }

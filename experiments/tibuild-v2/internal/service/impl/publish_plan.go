@@ -88,14 +88,24 @@ type rulesLoader struct {
 	size    int64
 }
 
+// setPath points the loader at a new rules file. The next read re-parses it.
+func (l *rulesLoader) setPath(path string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.path == path {
+		return
+	}
+	l.path, l.cached, l.modTime, l.size = path, nil, time.Time{}, 0
+}
+
 func (l *rulesLoader) config() (*delivery.Config, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	info, err := os.Stat(l.path)
 	if err != nil {
 		return nil, fmt.Errorf("delivery rules: %w", err)
 	}
-
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.cached != nil && info.ModTime().Equal(l.modTime) && info.Size() == l.size {
 		return l.cached, nil
 	}
@@ -126,6 +136,14 @@ type publicationPlan struct {
 type publishPlanner struct {
 	rules    *rulesLoader
 	resolver imageOps
+}
+
+// setRulesPath points the planner at a new delivery rules file.
+func (p *publishPlanner) setRulesPath(path string) {
+	if p.rules == nil {
+		p.rules = &rulesLoader{}
+	}
+	p.rules.setPath(path)
 }
 
 // plan expands an image reference.

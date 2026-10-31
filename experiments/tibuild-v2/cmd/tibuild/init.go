@@ -4,6 +4,7 @@ import (
 	"os"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
@@ -11,10 +12,11 @@ import (
 
 // loadConfig reads, validates and watches the YAML config file. The returned
 // watcher keeps the previous revision when a new document is rejected.
-func loadConfig(configFile string) (*config.Watcher, error) {
+func loadConfig(configFile string, registerer prometheus.Registerer) (*config.Watcher, error) {
 	logger := zerolog.New(os.Stderr).With().Timestamp().Str("component", "config").Logger()
 	return config.NewWatcher(configFile, config.WatcherOptions{
-		Logger: &logger,
+		Logger:     &logger,
+		Registerer: registerer,
 		// The HTTP middleware and the reconciler schedule are built once at
 		// startup, so a change to them needs a rollout.
 		ExtraRestartOnlyFields: []string{

@@ -142,18 +142,20 @@ func (s *artifactsrvc) collectTaskStats(ctx context.Context) (map[string]taskSta
 }
 
 func (s *artifactsrvc) runMetrics(ctx context.Context) {
-	// MetricsEvery() always resolves to a positive interval, defaulting to 15s.
-	ticker := time.NewTicker(s.workerConfig().MetricsEvery())
-	defer ticker.Stop()
+	// Both intervals always resolve to a positive value, defaulting to 15s and
+	// 30s; a reload is picked up on the next tick.
+	timer := time.NewTimer(s.workerConfig().MetricsEvery())
+	defer timer.Stop()
 
 	s.refreshMetricsAndAlerts(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			s.refreshMetricsAndAlerts(ctx)
 		}
+		timer.Reset(s.workerConfig().MetricsEvery())
 	}
 }
 

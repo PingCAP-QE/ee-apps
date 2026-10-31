@@ -6,11 +6,11 @@ import (
 )
 
 func (s *publishsrvc) laneLease() time.Duration {
-	heartbeat := s.workerCfg.HeartbeatDuration()
-	lease := s.workerCfg.LeaseDuration()
+	heartbeat := s.workerConfig().HeartbeatDuration()
+	lease := s.workerConfig().LeaseDuration()
 	// A step that hit its hard timeout must not outlive the lane, otherwise a
 	// second unit could start writing the same mirror.
-	if hard := s.workerCfg.HardTimeoutDuration(); hard > 0 {
+	if hard := s.workerConfig().HardTimeoutDuration(); hard > 0 {
 		if want := hard + 2*heartbeat; want > lease {
 			lease = want
 		}

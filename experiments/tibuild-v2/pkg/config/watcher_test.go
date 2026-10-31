@@ -604,6 +604,73 @@ func TestWatcherReloadIgnoresCommentOnlyEdits(t *testing.T) {
 	}
 }
 
+func TestWatcherDoesNotNotifyHandlersOnRejectedReload(t *testing.T) {
+	path := writeTempConfig(t, baseConfig)
+	w := newTestWatcher(t, path, WatcherOptions{})
+
+	calls := 0
+	w.OnReload(func(*Service) { calls++ })
+
+	invalid := `
+store:
+  driver: mysql
+  dsn: root@tcp(127.0.0.1:4000)/tibuild
+worker:
+  targets: ["gcr.io"]
+publish:
+  delivery_config_path: /etc/delivery/delivery.yaml
+  nightly:
+    enabled: true
+    targets:
+      tiup-staging:
+        window: "0s"
+`
+	rewriteConfig(t, path, invalid)
+	if res := w.Reload(); res.Result != ReloadInvalid {
+		t.Fatalf("result = %q, want %q", res.Result, ReloadInvalid)
+	}
+
+	restartOnly := `
+store:
+  driver: mysql
+  dsn: root@tcp(127.0.0.1:4000)/tibuild
+worker:
+  targets: ["docker.io"]
+publish:
+  delivery_config_path: /etc/delivery/delivery.yaml
+  nightly:
+    enabled: true
+    targets:
+      tiup-staging:
+        window: "1h"
+`
+	rewriteConfig(t, path, restartOnly)
+	if res := w.Reload(); res.Result != ReloadRestartRequired {
+		t.Fatalf("result = %q, want %q", res.Result, ReloadRestartRequired)
+	}
+
+	if calls != 0 {
+		t.Fatalf("handlers were notified %d times for rejected documents", calls)
+	}
+
+	// The last-known-good document is still the applied one.
+	if got := w.Get().Publish.Nightly.WindowFor("tiup-staging").WindowDuration(); got != time.Hour {
+		t.Errorf("window = %s, want the last-known-good 1h", got)
+	}
+	if got := w.Get().Worker.Targets; len(got) != 1 || got[0] != "gcr.io" {
+		t.Errorf("worker.targets = %v, want the last-known-good [gcr.io]", got)
+	}
+
+	accepted := strings.Replace(invalid, `window: "0s"`, `window: "3h"`, 1)
+	rewriteConfig(t, path, accepted)
+	if res := w.Reload(); res.Result != ReloadSuccess {
+		t.Fatalf("result = %q, want %q (err: %v)", res.Result, ReloadSuccess, res.Err)
+	}
+	if calls != 1 {
+		t.Fatalf("handlers were notified %d times, want 1", calls)
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

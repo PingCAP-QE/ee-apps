@@ -208,6 +208,6 @@ func (s *publishsrvc) refreshNightlyMetricsAndAlerts(ctx context.Context) {
 		return
 	}
 	s.nightlyAlerts.evaluate(ctx, s.alerter, rows, now, func(target string) time.Duration {
-		return s.publishCfg.Nightly.WindowFor(target).WindowDuration()
+		return s.publishConfig().Nightly.WindowFor(target).WindowDuration()
 	}, s.logger)
 }

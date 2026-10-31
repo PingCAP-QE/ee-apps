@@ -60,11 +60,11 @@ func (s *publishsrvc) DeliveryByRules(ctx context.Context, p *publish.DeliveryBy
 	// newest row is upserted and the window-aligned tick publishes it later.
 	// Targets that are not enabled keep the immediate path, which is what makes
 	// the staging-first rollout possible.
-	publishTargets := s.publishCfg.PublicationTargets(s.workerCfg.Targets)
+	publishTargets := s.publishConfig().PublicationTargets(s.workerConfig().Targets)
 	immediate := make([]delivery.TiUPPlan, 0, len(plans))
 	deferred := make([]delivery.TiUPPlan, 0, len(plans))
 	for _, plan := range plans {
-		if plan.Nightly && s.publishCfg.Nightly.WantsTarget(plan.Target, publishTargets) {
+		if plan.Nightly && s.publishConfig().Nightly.WantsTarget(plan.Target, publishTargets) {
 			deferred = append(deferred, plan)
 			continue
 		}
@@ -282,7 +282,7 @@ func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requested
 		return nil, nil, err
 	}
 
-	plans = orderTiUPPlans(plans, s.publishCfg.TiUPStageDependencies())
+	plans = orderTiUPPlans(plans, s.publishConfig().TiUPStageDependencies())
 
 	now := s.now()
 	tx, err := s.db.Tx(ctx)
@@ -415,7 +415,7 @@ func (s *publishsrvc) createSingleStepUnitWithID(ctx context.Context, unitID, ar
 // stepDependency resolves the depends_on target for a plan from the configured
 // dependency map.
 func (s *publishsrvc) stepDependency(target string, stepIDByTarget map[string]string) string {
-	for dependency, dependent := range s.publishCfg.TiUPStageDependencies() {
+	for dependency, dependent := range s.publishConfig().TiUPStageDependencies() {
 		if dependent != target {
 			continue
 		}
@@ -433,7 +433,7 @@ func (s *publishsrvc) mirrorURLs() (map[string]string, error) {
 		delivery.TiUPMirrorStaging: "http://tiup.pingcap.net:8988",
 		delivery.TiUPMirrorProd:    "http://tiup.pingcap.net:8987",
 	}
-	for mirror, url := range s.publishCfg.TiUPMirrors {
+	for mirror, url := range s.publishConfig().TiUPMirrors {
 		if url != "" {
 			out[mirror] = strings.TrimSuffix(url, "/")
 		}

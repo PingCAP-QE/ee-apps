@@ -546,7 +546,7 @@ func (s *publishsrvc) executeTiUPStep(ctx context.Context, step *ent.PublishStep
 	}
 
 	runCtx := ctx
-	if hard := s.workerCfg.HardTimeoutDuration(); hard > 0 {
+	if hard := s.workerConfig().HardTimeoutDuration(); hard > 0 {
 		var cancel context.CancelFunc
 		runCtx, cancel = context.WithTimeout(ctx, hard)
 		defer cancel()
@@ -555,7 +555,7 @@ func (s *publishsrvc) executeTiUPStep(ctx context.Context, step *ent.PublishStep
 	defer cancelRun()
 
 	go s.lane.heartbeat(runCtx, cancelRun, step.UnitID, workerID,
-		s.workerCfg.HeartbeatDuration(), s.laneLease())
+		s.workerConfig().HeartbeatDuration(), s.laneLease())
 
 	if ok, err := s.validateLane(runCtx, step.UnitID, workerID); err != nil {
 		return nil, err
