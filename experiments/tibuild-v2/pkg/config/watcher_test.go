@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/rs/zerolog"
 )
@@ -58,6 +59,9 @@ func newTestWatcher(t *testing.T, path string, opts WatcherOptions) *Watcher {
 	if opts.Validate == nil {
 		opts.Validate = func(s *Service) error { return s.Validate() }
 	}
+	if opts.Registerer == nil {
+		opts.Registerer = prometheus.NewRegistry()
+	}
 	w, err := NewWatcher(path, opts)
 	if err != nil {
 		t.Fatalf("NewWatcher: %v", err)
@@ -82,7 +86,7 @@ func TestNewWatcherLoadsInitialSnapshot(t *testing.T) {
 	if got := svc.Publish.Nightly.WindowFor("tiup-staging").WindowDuration(); got != time.Hour {
 		t.Errorf("window = %s, want 1h", got)
 	}
-	if got := testutil.ToFloat64(w.generation); got != 1 {
+	if got := testutil.ToFloat64(w.metrics.generation); got != 1 {
 		t.Errorf("config_generation = %v, want 1", got)
 	}
 }
@@ -113,7 +117,7 @@ func TestWatcherReloadUnchanged(t *testing.T) {
 	if res.Generation != 1 || w.Generation() != 1 {
 		t.Fatalf("generation = %d/%d, want 1", res.Generation, w.Generation())
 	}
-	if got := testutil.ToFloat64(w.reloads.WithLabelValues(ReloadUnchanged)); got != 1 {
+	if got := testutil.ToFloat64(w.metrics.reloads.WithLabelValues(ReloadUnchanged)); got != 1 {
 		t.Errorf("config_reload_total{unchanged} = %v, want 1", got)
 	}
 }
@@ -150,10 +154,10 @@ publish:
 	if !contains(res.Changed, "publish.nightly.targets.tiup-staging.window") {
 		t.Errorf("changed = %v, want the nightly window path", res.Changed)
 	}
-	if got := testutil.ToFloat64(w.reloads.WithLabelValues(ReloadSuccess)); got != 1 {
+	if got := testutil.ToFloat64(w.metrics.reloads.WithLabelValues(ReloadSuccess)); got != 1 {
 		t.Errorf("config_reload_total{success} = %v, want 1", got)
 	}
-	if got := testutil.ToFloat64(w.generation); got != 2 {
+	if got := testutil.ToFloat64(w.metrics.generation); got != 2 {
 		t.Errorf("config_generation = %v, want 2", got)
 	}
 }
@@ -189,7 +193,7 @@ publish:
 	if got := w.Get().Publish.Nightly.WindowFor("tiup-staging").WindowDuration(); got != time.Hour {
 		t.Errorf("window = %s, want the last-known-good 1h", got)
 	}
-	if got := testutil.ToFloat64(w.reloads.WithLabelValues(ReloadInvalid)); got != 1 {
+	if got := testutil.ToFloat64(w.metrics.reloads.WithLabelValues(ReloadInvalid)); got != 1 {
 		t.Errorf("config_reload_total{invalid} = %v, want 1", got)
 	}
 }
@@ -223,7 +227,7 @@ publish:
 	if got := w.Get().Worker.Targets; len(got) != 1 || got[0] != "gcr.io" {
 		t.Errorf("worker.targets = %v, want the last-known-good [gcr.io]", got)
 	}
-	if got := testutil.ToFloat64(w.restartRequired.WithLabelValues("worker.targets")); got != 1 {
+	if got := testutil.ToFloat64(w.metrics.restartRequired.WithLabelValues("worker.targets")); got != 1 {
 		t.Errorf("config_restart_required_total{worker.targets} = %v, want 1", got)
 	}
 }
@@ -242,7 +246,7 @@ func TestWatcherReloadKeepsSnapshotOnReadError(t *testing.T) {
 	if w.Generation() != 1 || w.Get() == nil {
 		t.Fatalf("generation = %d, want the last-known-good 1", w.Generation())
 	}
-	if got := testutil.ToFloat64(w.reloads.WithLabelValues(ReloadReadError)); got != 1 {
+	if got := testutil.ToFloat64(w.metrics.reloads.WithLabelValues(ReloadReadError)); got != 1 {
 		t.Errorf("config_reload_total{read_error} = %v, want 1", got)
 	}
 }
@@ -457,7 +461,7 @@ publish:
 	}
 }
 
-func TestWatcherAccessorsAndMetricsGatherer(t *testing.T) {
+func TestWatcherAccessorsAndMetrics(t *testing.T) {
 	var zero Watcher
 	if zero.Get() != nil {
 		t.Error("zero watcher Get() should be nil")
@@ -470,14 +474,15 @@ func TestWatcherAccessorsAndMetricsGatherer(t *testing.T) {
 	}
 
 	path := writeTempConfig(t, baseConfig)
-	w := newTestWatcher(t, path, WatcherOptions{})
+	registry := prometheus.NewRegistry()
+	w := newTestWatcher(t, path, WatcherOptions{Registerer: registry})
 
 	snapshot := w.Snapshot()
 	if snapshot == nil || snapshot.Generation != 1 || snapshot.Service == nil || snapshot.LoadedAt.IsZero() {
 		t.Fatalf("snapshot = %+v, want an applied revision 1", snapshot)
 	}
 
-	families, err := w.MetricsGatherer().Gather()
+	families, err := registry.Gather()
 	if err != nil {
 		t.Fatalf("gather: %v", err)
 	}
@@ -489,6 +494,29 @@ func TestWatcherAccessorsAndMetricsGatherer(t *testing.T) {
 		if !contains(names, want) {
 			t.Errorf("metric families = %v, want %s", names, want)
 		}
+	}
+}
+
+func TestWatcherWithoutRegistererStillReloads(t *testing.T) {
+	path := writeTempConfig(t, baseConfig)
+	logger := zerolog.Nop()
+	w, err := NewWatcher(path, WatcherOptions{Logger: &logger})
+	if err != nil {
+		t.Fatalf("NewWatcher: %v", err)
+	}
+	// No logger and no registerer: the reload must still apply and must not panic.
+	noLogger, err := NewWatcher(path, WatcherOptions{})
+	if err != nil {
+		t.Fatalf("NewWatcher: %v", err)
+	}
+	for _, watcher := range []*Watcher{w, noLogger} {
+		rewriteConfig(t, path, baseConfig+"\n# changed\n")
+		if res := watcher.Reload(); res.Result != ReloadSuccess {
+			t.Fatalf("result = %q, want %q (err: %v)", res.Result, ReloadSuccess, res.Err)
+		}
+	}
+	if noLogger.metrics != nil {
+		t.Error("metrics should stay nil without a registerer")
 	}
 }
 
