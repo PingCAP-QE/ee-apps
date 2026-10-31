@@ -353,6 +353,7 @@ func TestExecuteTiUPOnceRequeuesWhenLaneIsBusy(t *testing.T) {
 
 	svc := newTiUPTestService(t, server.URL)
 	svc.tiup.bin = writeFakeTiup(t, "#!/bin/sh\nexit 0\n")
+	svc.metrics = newNightlyMetrics()
 
 	holderUnit, holderStep := createTiUPStep(t, svc, delivery.TiUPTargetProd, TiUPStepPayload{
 		Mirror:    delivery.TiUPMirrorProd,
@@ -373,6 +374,12 @@ func TestExecuteTiUPOnceRequeuesWhenLaneIsBusy(t *testing.T) {
 		ArtifactURL: "example.com/hub/pingcap/tidb/package:v8.5.6_linux_amd64",
 		Packages:    []delivery.TiUPPackage{tiupTestPackage},
 	})
+	// The step has been waiting for the lane for 90s; the age of the queue row
+	// is older, but only the wait counts.
+	require.NoError(t, svc.db.PublishStep.UpdateOneID(step.ID).
+		SetCreatedAt(svc.now().Add(-2*time.Minute)).
+		SetStartedAt(svc.now().Add(-90*time.Second)).
+		Exec(context.Background()))
 
 	claimed, err := svc.claimStep(context.Background())
 	require.NoError(t, err)
@@ -383,6 +390,10 @@ func TestExecuteTiUPOnceRequeuesWhenLaneIsBusy(t *testing.T) {
 	stored := stepByID(t, svc, step.ID)
 	require.Equal(t, PublishStepStatePending, stored.State, "the step must be requeued, not failed")
 	require.NotNil(t, stored.AvailableAt)
+
+	body := scrapeNightlyMetrics(t, svc)
+	require.Contains(t, body, `publish_lane_busy_total{target="tiup-staging"} 1`)
+	require.Contains(t, body, `publish_lane_wait_seconds{target="tiup-staging"} 90`)
 }
 
 // A successful execution completes the step and converges the unit.

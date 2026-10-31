@@ -15,6 +15,21 @@ Every replica exposes the same series for the shared queue, so dashboards should
 aggregate with `max by (target)` (or scrape a single replica) to avoid summing
 the same task three times.
 
+The TiUP queue and nightly reconciler expose their own series on the same
+endpoint:
+
+| Metric | Labels | Meaning |
+| --- | --- | --- |
+| `publish_desired_due_total` | `target` | Desired rows claimed for publication |
+| `publish_desired_lag_seconds` | `target` | Age of the oldest desired artifact that has not been published |
+| `nightly_publish_total` | `result` | Settled nightly units by result |
+| `publish_lane_busy_total` | `target` | Steps requeued because another unit held the lane |
+| `publish_lane_wait_seconds` | `target` | Wait of the step that last found the lane busy |
+
+`publish_lane_wait_seconds` is a gauge: each busy event overwrites the previous
+value for its target, so it shows the current wait rather than a lifetime
+maximum.
+
 ## prod2: ServiceMonitor
 
 prod2 runs the KSY MSP vmagent (`prom-89e6db30/msp-vmagent-0`), which builds its

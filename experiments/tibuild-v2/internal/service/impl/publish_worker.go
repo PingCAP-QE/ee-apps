@@ -439,6 +439,25 @@ func (s *publishsrvc) laneBusyBackoff(_ int) time.Duration {
 	return d - jitter + time.Duration(rand.Int64N(int64(2*jitter)+1))
 }
 
+// laneWait reports how long the step has been waiting for the lane. The clock
+// starts at the first claim: the time before that was spent queued behind other
+// work, not behind the lane. A step that has never been claimed falls back to
+// its creation time.
+func (s *publishsrvc) laneWait(step *ent.PublishStep) time.Duration {
+	if step == nil {
+		return 0
+	}
+	since := step.CreatedAt
+	if step.StartedAt != nil {
+		since = *step.StartedAt
+	}
+	waited := s.now().Sub(since)
+	if waited < 0 {
+		return 0
+	}
+	return waited
+}
+
 // publishBackoff grows exponentially and is capped, with +/-20% jitter.
 func (s *publishsrvc) publishBackoff(attempts int) time.Duration {
 	if attempts < 1 {

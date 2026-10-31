@@ -23,6 +23,7 @@ type nightlyMetrics struct {
 	lag       *prometheus.GaugeVec
 	published *prometheus.CounterVec
 	laneBusy  *prometheus.CounterVec
+	laneWait  *prometheus.GaugeVec
 }
 
 func newNightlyMetrics() *nightlyMetrics {
@@ -44,8 +45,12 @@ func newNightlyMetrics() *nightlyMetrics {
 			Name: "publish_lane_busy_total",
 			Help: "Number of TiUP steps requeued because another unit holds the publish lane.",
 		}, []string{"target"}),
+		laneWait: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "publish_lane_wait_seconds",
+			Help: "Seconds spent waiting for the publish lane by the step that last found it busy, per target.",
+		}, []string{"target"}),
 	}
-	m.registry.MustRegister(m.due, m.lag, m.published, m.laneBusy)
+	m.registry.MustRegister(m.due, m.lag, m.published, m.laneBusy, m.laneWait)
 	return m
 }
 
@@ -86,6 +91,16 @@ func (m *nightlyMetrics) recordPublished(result string) {
 
 func (m *nightlyMetrics) recordLaneBusy(target string) {
 	m.laneBusy.WithLabelValues(target).Inc()
+}
+
+// recordLaneWait publishes how long the requeued step has been waiting for the
+// lane. Each busy event overwrites the previous value: the gauge is the current
+// wait of a target, not a lifetime maximum.
+func (m *nightlyMetrics) recordLaneWait(target string, waited time.Duration) {
+	if waited < 0 {
+		waited = 0
+	}
+	m.laneWait.WithLabelValues(target).Set(waited.Seconds())
 }
 
 // refresh recomputes the lag gauge from rows whose desired version has not
