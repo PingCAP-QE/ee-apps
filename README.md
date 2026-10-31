@@ -12,12 +12,13 @@ Internal tooling and services for PingCAP Engineering Effectiveness.
 | [`publisher/`](publisher/) | Artifact publisher — TiUP packages, tarballs, container images | Go | [README](publisher/README.md) |
 | [`dl/`](dl/) | Download server for OCI artifacts and KS3 objects | Go | [README](dl/README.md) |
 | [`chatops-lark/`](chatops-lark/) | Lark (Feishu) ChatOps bot — devbuild, hotfix, cherry-pick commands | Go | [README](chatops-lark/README.md) |
-| [`change-insight/`](change-insight/) | Configuration change analysis platform | Go | [README](change-insight/README.md) |
 | [`ci-dashboard/`](ci-dashboard/) | CI metrics dashboard — FastAPI backend, React frontend | Python | [README](ci-dashboard/README.md) |
 | [`cost-insight/`](cost-insight/) | Cloud cost collection and attribution (GCP BigQuery, AWS) | Python | [README](cost-insight/README.md) |
 | [`roster/`](roster/) | Team roster sync from Lark for cost attribution | Python | [README](roster/README.md) |
 | [`mcp-servers/`](mcp-servers/) | MCP servers — knowledge base search and PR analysis | Python | — |
 | [`charts/`](charts/) | Helm charts for all deployable services | Helm | — |
+
+Retired subprojects live in [`archive/`](archive/) and are not built or deployed.
 
 ## Repository Structure
 

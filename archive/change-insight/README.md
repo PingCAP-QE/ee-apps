@@ -1,3 +1,5 @@
+> **Archived (2026-10-31):** no active development; not built, published, or deployed. See [archive/README.md](../README.md) for the archive policy.
+
 ### Configuration Change Insight Platform
 
 Configuration Insight Platform help you to check config changes between two versions.
