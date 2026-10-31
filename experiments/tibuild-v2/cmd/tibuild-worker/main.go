@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -47,7 +48,15 @@ func main() {
 	if *workerID != "" {
 		workerCfg.ID = *workerID
 	}
-	if err := workerCfg.Validate(impl.DefaultWorkerTargets()); err != nil {
+	// A TiUP worker declares its mirror shard in publish.targets; validate
+	// worker.targets against that deployment-owned catalogue instead of a
+	// hard-coded list. Image workers have no catalogue here: their registry
+	// hosts are checked against delivery.yaml by ValidatePublishTargets.
+	var knownTargets []string
+	if slices.Contains(workerCfg.Kinds, impl.PublishKindTiUP) {
+		knownTargets = cfg.Get().Publish.Targets
+	}
+	if err := workerCfg.Validate(knownTargets); err != nil {
 		logger.Fatal().Err(err).Msg("invalid worker configuration")
 	}
 	// NewWorker reads the same snapshot; publish the validated overrides

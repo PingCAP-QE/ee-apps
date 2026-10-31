@@ -36,13 +36,6 @@ type Worker interface {
 	MetricsHandler() http.Handler
 }
 
-// DefaultWorkerTargets returns the global target catalogue used for startup
-// validation. Only the wildcard exists until pkg/delivery owns the catalogue;
-// concrete per-target workers arrive with the image delivery track.
-func DefaultWorkerTargets() []string {
-	return []string{"*"}
-}
-
 // NewWorker builds the standalone background executor. The image sync queue and
 // the publish step executor share one process and one set of per-target
 // registry credentials.
