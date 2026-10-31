@@ -1,0 +1,26 @@
+{{- if and .Values.server.enabled .Values.server.metricsPort .Values.server.podMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "tibuild-v2.fullname" . }}-server
+  labels:
+    {{- include "tibuild-v2.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+    {{- with .Values.server.podMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "tibuild-v2.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.server.podMonitor.interval }}
+      {{- with .Values.server.podMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+{{- end }}

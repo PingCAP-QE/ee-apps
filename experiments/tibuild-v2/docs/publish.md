@@ -187,6 +187,11 @@ publish:
         anchor: "02:00"
 ```
 
+Everything under `publish` except `targets` and `tiup_binary` is applied without
+a restart: a new window, a new target list or a new rules path takes effect
+within 15s. See [`docs/config-reload.md`](./config-reload.md) for the full list of
+hot keys, the restart-only keys and the reload metrics.
+
 ## Legacy API
 
 The pre-migration routes are preserved externally: the gateway rewrites

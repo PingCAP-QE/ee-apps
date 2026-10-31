@@ -155,6 +155,16 @@ server:
   config:
     secretName: ""
     secretKey: config.yaml
+  # Optional /metrics listener for the API on a pod-only port. 0 disables it; the
+  # endpoint is never routed through the ingress.
+  metricsPort: 0
+  # PodMonitor exports the API /metrics to a Prometheus Operator. Requires
+  # metricsPort and the monitoring.coreos.com/v1 CRDs (prod2 has them).
+  podMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: ""
+    additionalLabels: {}
   # Additional volumes to mount, e.g. registry credentials:
   #   volumes:
   #     - name: docker-cred
