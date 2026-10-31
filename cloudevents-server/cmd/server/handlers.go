@@ -11,7 +11,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/custom/testcaserun"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/handler"
 	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tekton"
-	"github.com/PingCAP-QE/ee-apps/cloudevents-server/pkg/events/tibuild"
 )
 
 func indexHandler(c *gin.Context) {
@@ -61,13 +60,6 @@ func newCloudEventsHandler(cfg *config.Config) (handler.EventHandler, error) {
 				return nil, nil
 			}
 			return tekton.NewHandler(*cfg.Tekton)
-		},
-		// tibuild handler
-		func() (handler.EventHandler, error) {
-			if cfg.TiBuild == nil {
-				return nil, nil
-			}
-			return tibuild.NewHandler(*cfg.TiBuild)
 		},
 	}
 

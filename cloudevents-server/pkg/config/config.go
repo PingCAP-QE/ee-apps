@@ -65,11 +65,6 @@ type Kafka struct {
 	Consumer       kafka.Consumer       `yaml:"consumer" json:"consumer"`
 }
 
-type TiBuild struct {
-	ResultSinkURL  string `yaml:"result_sink_url,omitempty" json:"result_sink_url,omitempty"`
-	TriggerSinkURL string `yaml:"trigger_sink_url,omitempty" json:"trigger_sink_url,omitempty"`
-}
-
 type TestCaseRun struct {
 	Store Store `yaml:"store" json:"store"`
 }
@@ -80,7 +75,6 @@ type Config struct {
 	// service config fields.
 	TestCaseRun *TestCaseRun `yaml:"test_case_run,omitempty" json:"test_case_run,omitempty"`
 	Tekton      *Tekton      `yaml:"tekton,omitempty" json:"tekton,omitempty"`
-	TiBuild     *TiBuild     `yaml:"tibuild,omitempty" json:"tibuild,omitempty"`
 }
 
 func (c *Config) LoadFromFile(file string) error {
