@@ -212,7 +212,7 @@ func TestSyncImage_ConfigHotReload(t *testing.T) {
 	storeBlock := fmt.Sprintf("store:\n  driver: sqlite3\n  dsn: %q\n", dsn)
 	writeConfig(storeBlock)
 
-	cfg, err := config.Load(filepath.Join(filepath.Dir(dsn), "config.yaml"))
+	cfg, err := config.NewWatcher(filepath.Join(filepath.Dir(dsn), "config.yaml"), config.WatcherOptions{})
 	require.NoError(t, err)
 
 	logger := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
@@ -231,7 +231,7 @@ func TestSyncImage_ConfigHotReload(t *testing.T) {
 
 	// Update the config file on disk and trigger a reload.
 	writeConfig(storeBlock + "image_sync:\n  source_regx: \"^hub\\\\.pingcap\\\\.net/\"\n  target_regx: \"^pingcap/\"\n")
-	require.NoError(t, cfg.Reload())
+	require.Equal(t, config.ReloadSuccess, cfg.Reload().Result)
 
 	// New rules are enforced after reload.
 	_, err = svc.SyncImage(context.Background(), &artifact.ImageSyncRequest{

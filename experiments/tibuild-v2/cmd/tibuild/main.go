@@ -189,8 +189,8 @@ func main() {
 		sig := <-c
 		if sig == syscall.SIGHUP {
 			log.Printf(ctx, "received SIGHUP, reloading configuration")
-			if err := cfg.Reload(); err != nil {
-				log.Printf(ctx, "config reload on SIGHUP failed: %v", err)
+			if res := cfg.Reload(); res.Result != config.ReloadSuccess && res.Result != config.ReloadUnchanged {
+				log.Printf(ctx, "config reload on SIGHUP failed: %v", res.Err)
 			} else {
 				log.Printf(ctx, "configuration reloaded successfully")
 			}
@@ -204,8 +204,9 @@ func main() {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
 
-	// Start background config file watcher (polls every 30 seconds).
-	go cfg.AutoReload(ctx, 30*time.Second)
+	// Start the config watcher: poll the mounted file and apply validated
+	// revisions without a restart.
+	go cfg.Start(ctx)
 
 	// Start the servers and send errors (if any) to the error channel.
 	switch *hostF {

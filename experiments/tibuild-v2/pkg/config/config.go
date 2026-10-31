@@ -104,6 +104,20 @@ func (p Publish) DeliveryConfigPathOrDefault() string {
 // DefaultDeliveryConfigPath is where the deployment mounts delivery.yaml.
 const DefaultDeliveryConfigPath = "/etc/delivery/delivery.yaml"
 
+// Validate checks the configuration that is valid for every process. It is the
+// validation the config watcher applies to every revision: a document that
+// fails here never replaces the last-known-good snapshot.
+//
+// Process-specific checks stay in the binaries: the publish target catalogue
+// (`ValidatePublishTargets`) reads delivery.yaml, and worker.targets is checked
+// against the kind's own catalogue there.
+func (s *Service) Validate() error {
+	if err := s.Publish.Nightly.Validate(); err != nil {
+		return err
+	}
+	return s.Worker.Validate(nil)
+}
+
 type Github struct {
 	Token string `yaml:"token,omitempty" json:"token,omitempty"`
 	// APIURL overrides the GitHub API base URL (for tests or GitHub Enterprise).

@@ -38,30 +38,23 @@ func main() {
 	zerolog.SetGlobalLevel(level)
 	logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", "tibuild-worker").Logger()
 
-	cfg, err := config.Load(*configFile)
+	cfg, err := config.NewWatcher(*configFile, config.WatcherOptions{
+		Logger: &logger,
+		// Defaults and the worker identity are process-level overrides: they are
+		// applied to every revision before it is validated and published.
+		Normalize: func(s *config.Service) {
+			s.Worker.ApplyDefaults()
+			if *workerID != "" {
+				s.Worker.ID = *workerID
+			}
+		},
+		Validate: validateWorkerConfig,
+	})
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to load configuration")
 	}
 
 	workerCfg := cfg.Get().Worker
-	workerCfg.ApplyDefaults()
-	if *workerID != "" {
-		workerCfg.ID = *workerID
-	}
-	// A TiUP worker declares its mirror shard in publish.targets; validate
-	// worker.targets against that deployment-owned catalogue instead of a
-	// hard-coded list. Image workers have no catalogue here: their registry
-	// hosts are checked against delivery.yaml by ValidatePublishTargets.
-	var knownTargets []string
-	if slices.Contains(workerCfg.Kinds, impl.PublishKindTiUP) {
-		knownTargets = cfg.Get().Publish.Targets
-	}
-	if err := workerCfg.Validate(knownTargets); err != nil {
-		logger.Fatal().Err(err).Msg("invalid worker configuration")
-	}
-	// NewWorker reads the same snapshot; publish the validated overrides
-	// before any goroutine starts.
-	cfg.Get().Worker = workerCfg
 
 	// A publish target typo would leave those steps pending forever, so it is
 	// fatal. The rules file is mounted by Flux and may not exist yet on the
@@ -125,4 +118,21 @@ func newHealthMux(metrics http.Handler) http.Handler {
 		mux.Handle("/metrics", metrics)
 	}
 	return mux
+}
+
+// validateWorkerConfig applies the worker-specific rules to a revision: the
+// nightly schedule NewPublish needs, and worker.targets against the catalogue of
+// the declared kinds. A TiUP worker declares its mirror shard in
+// publish.targets, so that deployment-owned list is the catalogue; image workers
+// have none here because their registry hosts are checked against delivery.yaml
+// by ValidatePublishTargets.
+func validateWorkerConfig(s *config.Service) error {
+	if err := s.Publish.Nightly.Validate(); err != nil {
+		return err
+	}
+	var knownTargets []string
+	if slices.Contains(s.Worker.Kinds, impl.PublishKindTiUP) {
+		knownTargets = s.Publish.Targets
+	}
+	return s.Worker.Validate(knownTargets)
 }
