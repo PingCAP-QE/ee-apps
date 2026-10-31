@@ -20,3 +20,5 @@ original layout under `archive/<project>/`.
 
 To revive an archived project, move it back to the repository root, restore its
 CI path filters and chart, and update this table.
+
+<!-- codeql archive-exclusion verification probe; safe to discard -->
