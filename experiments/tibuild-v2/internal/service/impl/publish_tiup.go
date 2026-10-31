@@ -31,8 +31,23 @@ import (
 // TiUP execution outcomes recorded on the step.
 const (
 	tiupResultRemoteSHA256 = "remote_sha256"
+	tiupResultLocalSHA256  = "local_sha256"
 	tiupResultSkipped      = "skipped_existing"
 	tiupResultPackages     = "packages"
+	tiupResultAction       = "action"
+	tiupResultName         = "name"
+	tiupResultVersion      = "version"
+	tiupResultOS           = "os"
+	tiupResultArch         = "arch"
+	tiupResultFile         = "file"
+	tiupResultURL          = "url"
+)
+
+const (
+	tiupActionPublished          = "published"
+	tiupActionSkippedExisting    = "skipped_existing"
+	tiupActionOverwrittenNightly = "overwritten_nightly"
+	tiupActionRefusedOverwrite   = "refused_overwrite"
 )
 
 // ErrLostLane means the worker no longer owns the publish lane, so it must not
@@ -139,11 +154,7 @@ func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg d
 		return nil, err
 	}
 	if exists && remoteSHA == localSHA {
-		return map[string]any{
-			tiupResultSkipped:      true,
-			tiupResultRemoteSHA256: remoteSHA,
-			"url":                  remoteURL,
-		}, nil
+		return tiupPackageResult(pkg, remoteURL, localSHA, remoteSHA, tiupActionSkippedExisting, true), nil
 	}
 	// The nightly channel reuses one version string on purpose, so a new build
 	// replaces the previous package. A released version must never be
@@ -151,6 +162,7 @@ func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg d
 	if exists && !payload.Nightly {
 		return nil, fmt.Errorf("refusing to overwrite %s: remote sha256 %s differs from %s", remoteURL, remoteSHA, localSHA)
 	}
+	overwrittenNightly := exists && payload.Nightly
 
 	if err := t.publish(ctx, payload.MirrorURL, localPath, pkg); err != nil {
 		return nil, err
@@ -167,11 +179,26 @@ func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg d
 		return nil, fmt.Errorf("post check failed: %s sha256 %s != %s", remoteURL, published, localSHA)
 	}
 
+	action := tiupActionPublished
+	if overwrittenNightly {
+		action = tiupActionOverwrittenNightly
+	}
+	return tiupPackageResult(pkg, remoteURL, localSHA, published, action, false), nil
+}
+
+func tiupPackageResult(pkg delivery.TiUPPackage, url, localSHA, remoteSHA, action string, skipped bool) map[string]any {
 	return map[string]any{
-		tiupResultSkipped:      false,
-		tiupResultRemoteSHA256: published,
-		"url":                  remoteURL,
-	}, nil
+		tiupResultSkipped:      skipped,
+		tiupResultRemoteSHA256: remoteSHA,
+		tiupResultLocalSHA256:  localSHA,
+		tiupResultAction:       action,
+		tiupResultName:         pkg.Name,
+		tiupResultVersion:      pkg.Version,
+		tiupResultOS:           pkg.OS,
+		tiupResultArch:         pkg.Arch,
+		tiupResultFile:         pkg.File,
+		tiupResultURL:          url,
+	}
 }
 
 // downloadPackage resolves the local tarball for a package, from a direct URL
@@ -410,7 +437,25 @@ func (s *publishsrvc) runTiUPStep(ctx context.Context, step *ent.PublishStep) {
 		return
 	}
 	s.refreshUnit(ctx, step.UnitID)
-	log.Info().Msg("tiup packages published")
+
+	packages, _ := result[tiupResultPackages].([]map[string]any)
+	published, skipped, overwritten := 0, 0, 0
+	for _, pkg := range packages {
+		switch pkg[tiupResultAction] {
+		case tiupActionPublished:
+			published++
+		case tiupActionSkippedExisting:
+			skipped++
+		case tiupActionOverwrittenNightly:
+			overwritten++
+		}
+	}
+	log.Info().
+		Int("packages", len(packages)).
+		Int("published", published).
+		Int("skipped", skipped).
+		Int("overwritten", overwritten).
+		Msg("tiup step finished")
 }
 
 // deferStep puts a claimed step back into the queue with a backoff, fenced on
@@ -465,6 +510,13 @@ func (s *publishsrvc) executeTiUPStep(ctx context.Context, step *ent.PublishStep
 		return nil, ErrLostLane
 	}
 
+	log := s.logger.With().
+		Str("unit_id", step.UnitID).
+		Str("step_id", step.ID).
+		Str("target", step.Target).
+		Str("mirror", payload.Mirror).
+		Logger()
+
 	runner := s.tiupRunner()
 	results := make([]map[string]any, 0, len(payload.Packages))
 	allSkipped := true
@@ -472,13 +524,34 @@ func (s *publishsrvc) executeTiUPStep(ctx context.Context, step *ent.PublishStep
 		if err := runCtx.Err(); err != nil {
 			return nil, err
 		}
+		started := time.Now()
 		result, err := runner.PublishOne(runCtx, payload, pkg)
 		if err != nil {
+			log.Error().Err(err).
+				Str("pkg", pkg.Name).
+				Str("version", pkg.Version).
+				Str("os", pkg.OS).
+				Str("arch", pkg.Arch).
+				Str("file", pkg.File).
+				Dur("duration", time.Since(started)).
+				Msg("tiup package failed")
 			return nil, err
 		}
 		if result[tiupResultSkipped] != true {
 			allSkipped = false
 		}
+		log.Info().
+			Str("pkg", pkg.Name).
+			Str("version", pkg.Version).
+			Str("os", pkg.OS).
+			Str("arch", pkg.Arch).
+			Str("file", pkg.File).
+			Str("action", fmt.Sprint(result[tiupResultAction])).
+			Bool("skipped", result[tiupResultSkipped] == true).
+			Str("remote_sha256", fmt.Sprint(result[tiupResultRemoteSHA256])).
+			Str("url", fmt.Sprint(result[tiupResultURL])).
+			Dur("duration", time.Since(started)).
+			Msg("tiup package processed")
 		results = append(results, result)
 	}
 
