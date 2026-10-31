@@ -219,3 +219,51 @@ func TestLaneSurvivesRepeatedSchemaCreate(t *testing.T) {
 	row := laneRow(t, lane)
 	require.Equal(t, "unit-a", row.UnitID)
 }
+
+func TestTerminalUnitReleasesLane(t *testing.T) {
+	svc, clock := newFlowTestService(t)
+	ctx := context.Background()
+	unit, step := createTiUPStep(t, svc, "tiup-staging", TiUPStepPayload{
+		Mirror: "staging", MirrorURL: "http://127.0.0.1:1",
+	})
+
+	ok, err := svc.lane.Acquire(ctx, unit.ID, "worker-1", 12*time.Minute)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	_, err = svc.db.PublishStep.UpdateOneID(step.ID).
+		SetState(PublishStepStateSucceeded).
+		SetFinishedAt(*clock).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc.refreshUnit(ctx, unit.ID)
+
+	ok, err = svc.lane.Acquire(ctx, "other-unit", "worker-2", time.Minute)
+	require.NoError(t, err)
+	require.True(t, ok, "a terminal unit must release the lane immediately")
+}
+
+func TestLaneBusyDeferDoesNotConsumeAttempts(t *testing.T) {
+	svc, _ := newFlowTestService(t)
+	ctx := context.Background()
+	_, step := createTiUPStep(t, svc, "tiup-staging", TiUPStepPayload{
+		Mirror: "staging", MirrorURL: "http://127.0.0.1:1",
+	})
+
+	claimed, err := svc.claimStep(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+	require.Equal(t, 1, claimed.Attempts)
+
+	ok, err := svc.deferStep(ctx, claimed)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	stored, err := svc.db.PublishStep.Get(ctx, step.ID)
+	require.NoError(t, err)
+	require.Equal(t, 0, stored.Attempts, "waiting for the lane is not an execution attempt")
+	require.Equal(t, PublishStepStatePending, stored.State)
+	require.NotNil(t, stored.AvailableAt)
+	require.GreaterOrEqual(t, stored.AvailableAt.Sub(svc.now()), 24*time.Second)
+}

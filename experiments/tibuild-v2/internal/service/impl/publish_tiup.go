@@ -407,10 +407,16 @@ func (s *publishsrvc) runTiUPStep(ctx context.Context, step *ent.PublishStep) {
 	switch {
 	case errors.Is(err, ErrLaneBusy):
 		// Another unit legitimately owns the mirror; the step waits its turn.
+		if s.metrics != nil {
+			s.metrics.recordLaneBusy(step.Target)
+		}
 		if ok, deferErr := s.deferStep(ctx, step); deferErr != nil {
 			log.Err(deferErr).Msg("failed to requeue the step for a busy lane")
 		} else if ok {
-			log.Info().Msg("publish lane busy, step requeued")
+			log.Warn().
+				Int("attempts", step.Attempts).
+				Dur("waited", s.now().Sub(step.CreatedAt)).
+				Msg("publish lane busy, step requeued")
 		}
 		return
 	case errors.Is(err, ErrLostLane):
@@ -466,11 +472,15 @@ func (s *publishsrvc) deferStep(ctx context.Context, step *ent.PublishStep) (boo
 			entpublishstep.ID(step.ID),
 			entpublishstep.State(PublishStepStateClaimed),
 			entpublishstep.ClaimedBy(step.ClaimedBy),
+			entpublishstep.AttemptsGT(0),
 		).
 		SetState(PublishStepStatePending).
-		SetAvailableAt(s.now().Add(publishBackoffBase)).
+		SetAvailableAt(s.now().Add(s.laneBusyBackoff(step.Attempts))).
 		ClearClaimedBy().
 		ClearLeaseUntil().
+		// The claim incremented attempts before the lane was known to be busy.
+		// Waiting for the lane is not an execution attempt, so undo it.
+		AddAttempts(-1).
 		Save(ctx)
 	return updated == 1, err
 }
