@@ -429,6 +429,16 @@ func (s *publishsrvc) recordStepFailure(ctx context.Context, step *ent.PublishSt
 	s.refreshUnit(ctx, step.UnitID)
 }
 
+// laneBusyBackoff is deliberately longer than the execution backoff: a unit
+// waiting behind a large mirror publish should not hammer the queue every few
+// seconds. The fixed base plus jitter also avoids a thundering herd when the
+// lane frees.
+func (s *publishsrvc) laneBusyBackoff(_ int) time.Duration {
+	d := 30 * time.Second
+	jitter := d / 5
+	return d - jitter + time.Duration(rand.Int64N(int64(2*jitter)+1))
+}
+
 // publishBackoff grows exponentially and is capped, with +/-20% jitter.
 func (s *publishsrvc) publishBackoff(attempts int) time.Duration {
 	if attempts < 1 {
@@ -470,6 +480,9 @@ func (s *publishsrvc) refreshUnit(ctx context.Context, unitID string) {
 		s.logger.Err(err).Str("unit_id", unitID).Str("state", state).Msg("failed to update the publish unit state")
 	}
 	if isTerminalUnitState(state) {
+		if err := s.lane.Release(ctx, unitID); err != nil {
+			s.logger.Err(err).Str("unit_id", unitID).Msg("failed to release the publish lane")
+		}
 		s.settleNightlyUnit(ctx, unitID)
 	}
 }

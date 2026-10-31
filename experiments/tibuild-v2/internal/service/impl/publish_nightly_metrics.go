@@ -22,6 +22,7 @@ type nightlyMetrics struct {
 	due       *prometheus.CounterVec
 	lag       *prometheus.GaugeVec
 	published *prometheus.CounterVec
+	laneBusy  *prometheus.CounterVec
 }
 
 func newNightlyMetrics() *nightlyMetrics {
@@ -39,8 +40,12 @@ func newNightlyMetrics() *nightlyMetrics {
 			Name: "nightly_publish_total",
 			Help: "Number of settled nightly publish units by result.",
 		}, []string{"result"}),
+		laneBusy: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "publish_lane_busy_total",
+			Help: "Number of TiUP steps requeued because another unit holds the publish lane.",
+		}, []string{"target"}),
 	}
-	m.registry.MustRegister(m.due, m.lag, m.published)
+	m.registry.MustRegister(m.due, m.lag, m.published, m.laneBusy)
 	return m
 }
 
@@ -77,6 +82,10 @@ func (m *nightlyMetrics) recordDue(target string) {
 
 func (m *nightlyMetrics) recordPublished(result string) {
 	m.published.WithLabelValues(result).Inc()
+}
+
+func (m *nightlyMetrics) recordLaneBusy(target string) {
+	m.laneBusy.WithLabelValues(target).Inc()
 }
 
 // refresh recomputes the lag gauge from rows whose desired version has not
