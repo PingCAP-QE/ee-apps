@@ -2,6 +2,7 @@ package logserver
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestServer(t *testing.T, maxBuildBytes int64) *httptest.Server {
@@ -252,5 +254,77 @@ func TestServerMissingLogAndMethodErrors(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 after delete, got %d", resp.StatusCode)
+	}
+}
+
+func TestServerLimitsConcurrentFollowers(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		Store:                NewStore(t.TempDir()),
+		MaxConcurrentFollows: 1,
+		FollowPollInterval:   10 * time.Millisecond,
+	})
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+	_ = putLogChunk(t, ts.URL, "ee-cd", 0, "hello").Body.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, ts.URL+"/v1/logs/ee-cd/macbuild-abc?follow=true", nil)
+	if err != nil {
+		t.Fatalf("follow request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("start follow: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if _, err := io.ReadFull(resp.Body, make([]byte, len("hello"))); err != nil {
+		t.Fatalf("read initial log: %v", err)
+	}
+
+	second, err := http.Get(ts.URL + "/v1/logs/ee-cd/macbuild-abc?follow=true")
+	if err != nil {
+		t.Fatalf("second follow: %v", err)
+	}
+	defer func() { _ = second.Body.Close() }()
+	if second.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 for an extra follower, got %d", second.StatusCode)
+	}
+}
+
+func TestServerFollowClosesWhenIdle(t *testing.T) {
+	t.Parallel()
+
+	server := New(Config{
+		Store:              NewStore(t.TempDir()),
+		FollowPollInterval: 10 * time.Millisecond,
+		FollowIdleTimeout:  80 * time.Millisecond,
+	})
+	ts := httptest.NewServer(server.Handler())
+	defer ts.Close()
+	_ = putLogChunk(t, ts.URL, "ee-cd", 0, "hello").Body.Close()
+
+	resp, err := http.Get(ts.URL + "/v1/logs/ee-cd/macbuild-abc?follow=true")
+	if err != nil {
+		t.Fatalf("follow: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	done := make(chan struct{})
+	var body []byte
+	go func() {
+		body, _ = io.ReadAll(resp.Body)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("follow stream did not close after the idle timeout")
+	}
+	if string(body) != "hello" {
+		t.Fatalf("unexpected log body: %q", body)
 	}
 }

@@ -93,3 +93,29 @@ func TestBuildLogRedactsTokens(t *testing.T) {
 		t.Fatalf("expected redaction marker:\n%s", data)
 	}
 }
+
+func TestBuildLogRedactsPartialLineOnClose(t *testing.T) {
+	t.Parallel()
+
+	log, err := NewBuildLog(t.TempDir(), "ee-cd", "macbuild-abc", 1024*1024)
+	if err != nil {
+		t.Fatalf("new log: %v", err)
+	}
+	token := "ghp_" + strings.Repeat("b", 30)
+	if _, err := log.CommandWriter().Write([]byte("token=" + token)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := log.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	data, err := os.ReadFile(log.Path())
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if strings.Contains(string(data), token) {
+		t.Fatalf("partial line bypassed redaction:\n%s", data)
+	}
+	if !strings.Contains(string(data), "[REDACTED]") {
+		t.Fatalf("expected redaction marker:\n%s", data)
+	}
+}

@@ -36,6 +36,8 @@ type Uploader struct {
 	URL       string
 	ChunkSize int
 	Interval  time.Duration
+	// MaxBackoff caps the exponential retry delay (default 30s).
+	MaxBackoff time.Duration
 }
 
 // NewUploader builds an uploader that reaches the log service through the API
@@ -78,14 +80,21 @@ func (u *Uploader) Run(ctx context.Context) error {
 	}
 	_ = u.Reset(ctx)
 	offset := int64(0)
+	delay := u.interval()
 	for {
 		advanced, _ := u.uploadOnce(ctx, &offset)
-		if !advanced {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-time.After(u.interval()):
-			}
+		if advanced {
+			delay = u.interval()
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(delay):
+		}
+		delay *= 2
+		if max := u.maxBackoff(); delay > max {
+			delay = max
 		}
 	}
 }
@@ -234,4 +243,11 @@ func (u *Uploader) interval() time.Duration {
 		return u.Interval
 	}
 	return defaultInterval
+}
+
+func (u *Uploader) maxBackoff() time.Duration {
+	if u.MaxBackoff > 0 {
+		return u.MaxBackoff
+	}
+	return 30 * time.Second
 }

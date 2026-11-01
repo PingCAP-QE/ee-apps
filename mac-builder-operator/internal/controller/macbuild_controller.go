@@ -99,6 +99,9 @@ type LogUploadConfig struct {
 	ServiceNamespace string
 	ServiceName      string
 	ServicePort      int
+	// FinalizeTimeout bounds each finalize attempt (default 10s). The agent
+	// retries three times with backoff before leaving the log local-only.
+	FinalizeTimeout time.Duration
 }
 
 type buildPhaseReporter func(string, string) error
@@ -463,7 +466,9 @@ func (r *MacBuildReconciler) runNativeBuild(
 	}
 
 	if logSink != nil {
-		_ = logSink.Close()
+		if closeErr := logSink.Close(); closeErr != nil {
+			logger.Error(closeErr, "Failed to close build log")
+		}
 	}
 	if cancelUpload != nil {
 		cancelUpload()
@@ -473,11 +478,9 @@ func (r *MacBuildReconciler) runNativeBuild(
 	if logSink != nil {
 		logInfo = &buildLogInfo{Size: logSink.Size()}
 		if uploader != nil {
-			finalizeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			meta, finalizeErr := uploader.Finalize(finalizeCtx)
-			cancel()
+			meta, finalizeErr := r.finalizeBuildLog(uploader)
 			if finalizeErr != nil {
-				logger.Error(finalizeErr, "Failed to finalize build log")
+				logger.Error(finalizeErr, "Failed to finalize build log after retries")
 			} else {
 				logInfo.Size = meta.Size
 				logInfo.Complete = meta.Complete
@@ -485,6 +488,31 @@ func (r *MacBuildReconciler) runNativeBuild(
 		}
 	}
 	return result, logInfo, err
+}
+
+// finalizeBuildLog uploads the remaining chunks and marks the remote log
+// complete. A log service outage must not fail the build, so the caller only
+// logs the final error; each attempt is bounded by FinalizeTimeout.
+func (r *MacBuildReconciler) finalizeBuildLog(uploader *logging.Uploader) (logging.RemoteMeta, error) {
+	timeout := 10 * time.Second
+	if r.LogUpload != nil && r.LogUpload.FinalizeTimeout > 0 {
+		timeout = r.LogUpload.FinalizeTimeout
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		meta, err := uploader.Finalize(ctx)
+		cancel()
+		if err == nil {
+			return meta, nil
+		}
+		lastErr = err
+		if attempt < 3 {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+	}
+	return logging.RemoteMeta{}, lastErr
 }
 
 func (r *MacBuildReconciler) patchBuildLogStatus(

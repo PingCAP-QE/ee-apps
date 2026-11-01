@@ -2,6 +2,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/logging"
 )
 
 const (
@@ -538,5 +542,53 @@ func TestReconcileWritesBuildLog(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "[Building] captured phase") {
 		t.Fatalf("log does not contain the phase marker:\n%s", data)
+	}
+}
+
+func TestFinalizeBuildLogRetries(t *testing.T) {
+	t.Parallel()
+
+	buildLog, err := logging.NewBuildLog(t.TempDir(), "default", "build-log-retry", 1024*1024)
+	if err != nil {
+		t.Fatalf("new log: %v", err)
+	}
+	if _, err := buildLog.CommandWriter().Write([]byte("hello\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := buildLog.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	size := buildLog.Size()
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			_, _ = fmt.Fprintf(w, `{"size":%d}`, size)
+		case http.MethodPost:
+			attempts++
+			if attempts == 1 {
+				http.Error(w, "temporary", http.StatusInternalServerError)
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"size":%d,"complete":true}`, size)
+		default:
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	uploader := &logging.Uploader{
+		Log:    buildLog,
+		Client: server.Client(),
+		URL:    server.URL + "/v1/logs/default/build-log-retry",
+	}
+	reconciler := &MacBuildReconciler{LogUpload: &LogUploadConfig{FinalizeTimeout: time.Second}}
+	meta, err := reconciler.finalizeBuildLog(uploader)
+	if err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+	if !meta.Complete || attempts != 2 {
+		t.Fatalf("unexpected finalize result: meta=%#v attempts=%d", meta, attempts)
 	}
 }

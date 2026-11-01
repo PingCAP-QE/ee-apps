@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -39,12 +40,17 @@ type options struct {
 }
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] != "logs" {
-		fmt.Fprint(os.Stderr, usageText)
-		os.Exit(2)
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] != "logs" {
+		_, _ = fmt.Fprint(stderr, usageText)
+		return 2
 	}
 
-	fs := flag.NewFlagSet("logs", flag.ExitOnError)
+	fs := flag.NewFlagSet("logs", flag.ContinueOnError)
+	fs.SetOutput(stderr)
 	opts := options{}
 	fs.StringVar(&opts.namespace, "namespace", "ee-cd", "MacBuild namespace")
 	fs.StringVar(&opts.namespace, "n", "ee-cd", "MacBuild namespace")
@@ -55,18 +61,26 @@ func main() {
 	fs.StringVar(&opts.logNamespace, "log-namespace", "ee-cd", "Log server namespace")
 	fs.IntVar(&opts.logPort, "log-port", 8080, "Log server port")
 	fs.StringVar(&opts.server, "server", "", "Direct log server URL")
-	_ = fs.Parse(os.Args[2:])
-
-	if fs.NArg() != 1 {
-		fmt.Fprint(os.Stderr, usageText)
-		os.Exit(2)
+	name, flagArgs, err := splitArgs(args[1:])
+	if err != nil {
+		_, _ = fmt.Fprint(stderr, usageText)
+		return 2
 	}
-	name := fs.Arg(0)
+	if err := fs.Parse(flagArgs); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if fs.NArg() != 0 {
+		_, _ = fmt.Fprint(stderr, usageText)
+		return 2
+	}
 
 	client, endpoint, err := buildRequest(opts, name)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
 	}
 
 	query := url.Values{}
@@ -82,29 +96,78 @@ func main() {
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		fmt.Fprintf(os.Stderr, "error: log server returned %d: %s\n", resp.StatusCode, strings.TrimSpace(string(body)))
+		_, _ = fmt.Fprintf(stderr, "error: log server returned %d: %s\n", resp.StatusCode, strings.TrimSpace(string(body)))
 		if resp.StatusCode == http.StatusForbidden {
-			fmt.Fprintln(os.Stderr, "hint: you need get on services/proxy; alternatively run: "+
+			_, _ = fmt.Fprintln(stderr, "hint: you need get on services/proxy; alternatively run: "+
 				"kubectl port-forward svc/"+opts.logService+" 8080:8080 -n "+opts.logNamespace+
 				" and use --server http://127.0.0.1:8080")
 		}
-		os.Exit(1)
+		return 1
 	}
-	if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
-		fmt.Fprintf(os.Stderr, "error: read log: %v\n", err)
-		os.Exit(1)
+	if _, err := io.Copy(stdout, resp.Body); err != nil {
+		_, _ = fmt.Fprintf(stderr, "error: read log: %v\n", err)
+		return 1
 	}
+	return 0
+}
+
+// splitArgs separates the single positional build name from flags so users can
+// write either `logs <name> -n ns` or `logs -n ns <name>`, matching kubectl.
+func splitArgs(args []string) (string, []string, error) {
+	valueFlags := map[string]struct{}{
+		"-n": {}, "--namespace": {},
+		"--tail":        {},
+		"--log-service": {}, "--log-namespace": {}, "--log-port": {},
+		"--server": {},
+	}
+
+	var name string
+	flags := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			for _, remaining := range args[i+1:] {
+				if name != "" {
+					return "", nil, fmt.Errorf("unexpected argument %q", remaining)
+				}
+				name = remaining
+			}
+			break
+		}
+		if strings.HasPrefix(arg, "-") && arg != "-" {
+			flags = append(flags, arg)
+			if strings.Contains(arg, "=") {
+				continue
+			}
+			if _, ok := valueFlags[arg]; ok {
+				if i+1 >= len(args) {
+					return "", nil, fmt.Errorf("flag %s requires a value", arg)
+				}
+				i++
+				flags = append(flags, args[i])
+			}
+			continue
+		}
+		if name != "" {
+			return "", nil, fmt.Errorf("unexpected argument %q", arg)
+		}
+		name = arg
+	}
+	if name == "" {
+		return "", nil, fmt.Errorf("build name is required")
+	}
+	return name, flags, nil
 }
 
 func buildRequest(opts options, name string) (*http.Client, string, error) {

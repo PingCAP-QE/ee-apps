@@ -88,7 +88,7 @@ func main() {
 		offlineThreshold, macAgentRequeueInterval              time.Duration
 		assignmentTimeout, shutdownGrace, workspaceMaxAge      time.Duration
 		diskCheckRetryInterval                                 time.Duration
-		logRetention                                           time.Duration
+		logRetention, logFinalizeTimeout                       time.Duration
 	)
 	var maxAssignmentAttempts, diskCheckAttempts int
 	var minFreeDiskBytes, logMaxBuildBytes, logMaxStoreBytes int64
@@ -163,6 +163,8 @@ func main() {
 		"Directory for per-build local logs (default: the per-user config dir).")
 	flag.Int64Var(&logMaxBuildBytes, "log-max-build-bytes", 100*1024*1024,
 		"Maximum bytes captured per build log.")
+	flag.DurationVar(&logFinalizeTimeout, "log-finalize-timeout", 10*time.Second,
+		"Timeout for each build log finalize attempt (retried three times).")
 	flag.BoolVar(&logUpload, "log-upload", true,
 		"Upload build logs to the operator log service.")
 	flag.StringVar(&logService, "log-service", "mac-builder-operator-logs",
@@ -270,6 +272,10 @@ func main() {
 	}
 	if enableAgent && logMaxBuildBytes <= 0 {
 		setupLog.Info("log-max-build-bytes must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && logFinalizeTimeout <= 0 {
+		setupLog.Info("log-finalize-timeout must be greater than zero")
 		os.Exit(1)
 	}
 	if enableAgent && logUpload && (logService == "" || logServiceNamespace == "" || logServicePort <= 0) {
@@ -476,6 +482,7 @@ func main() {
 				ServiceNamespace: logServiceNamespace,
 				ServiceName:      logService,
 				ServicePort:      logServicePort,
+				FinalizeTimeout:  logFinalizeTimeout,
 			},
 			DiskFreeBytes: func(ctx context.Context) int64 {
 				return inventoryProvider.CollectRuntime(ctx).DiskFreeBytes

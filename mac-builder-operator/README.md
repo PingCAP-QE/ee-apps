@@ -40,7 +40,9 @@ The worker persists the in-flight build in
 `--state-file`) so a restart can decide whether to rerun or fail the build.
 `--shutdown-grace` (default 10m) lets an active build finish after SIGTERM;
 stale `macbuild-*` workspaces in the temp dir are removed after
-`--workspace-max-age` (default 7d).
+`--workspace-max-age` (default 7d). `--log-finalize-timeout` (default 10s)
+bounds each log finalize attempt; the agent retries three times before leaving
+the log local-only.
 
 ### Scheduling and MacAgent
 
@@ -78,6 +80,13 @@ needs `get` on `services/proxy`. If your account cannot use the proxy, run
 `kubectl port-forward svc/mac-builder-operator-logs 8080:8080 -n ee-cd` and pass
 `--server http://127.0.0.1:8080`. `kubectl describe macbuild` shows the
 `Status.Logs.Command` hint.
+
+The log Service is plain HTTP inside the cluster. Access through the API server
+proxy is authenticated and TLS-protected by the API server, but any workload
+that can reach the ClusterIP directly can read logs. Keep the namespace
+restricted (for example with a NetworkPolicy) and treat build logs as
+non-secret data: common token shapes are redacted, but logs must not contain
+credentials.
 
 ### MacBuild API Notes
 

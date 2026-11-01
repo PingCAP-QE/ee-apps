@@ -49,6 +49,8 @@ agent:
   logService: mac-builder-operator-logs
   logServiceNamespace: ee-cd
   logServicePort: 8080
+  # Bounds each log finalize attempt; the agent retries three times.
+  logFinalizeTimeout: 10s
   buildTimeout: 24h
   buildPollInterval: 5m
 
@@ -61,12 +63,15 @@ scheduler:
   maxAssignmentAttempts: 3
 
 logServer:
+  # Serve build logs from the operator process. The Service is reached through
+  # the Kubernetes API service proxy, so callers need `get` on services/proxy.
   enabled: false
   port: 8080
   persistence:
     enabled: true
     size: 10Gi
     storageClassName: ""
+  # Completed logs older than this are pruned hourly.
   retention: 168h
   maxBuildLogBytes: 104857600
   maxStoreBytes: 10737418240

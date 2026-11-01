@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -115,7 +116,7 @@ func (l *Log) writeCommand(p []byte) {
 
 	l.partial = append(l.partial, p...)
 	for {
-		idx := strings.IndexByte(string(l.partial), '\n')
+		idx := bytes.IndexByte(l.partial, '\n')
 		if idx < 0 {
 			break
 		}

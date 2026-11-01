@@ -33,12 +33,23 @@ type Config struct {
 	MaxStoreBytes int64
 	Retention     time.Duration
 	Now           func() time.Time
+
+	// MaxConcurrentFollows limits long-lived follow streams (default 8).
+	MaxConcurrentFollows int
+	// FollowPollInterval is how often a follow stream checks for new bytes.
+	FollowPollInterval time.Duration
+	// FollowIdleTimeout closes a follow stream after this long without new
+	// bytes so a forgotten client cannot pin a connection forever.
+	FollowIdleTimeout time.Duration
+	// GCInterval controls how often completed logs are pruned (default 1h).
+	GCInterval time.Duration
 }
 
 // Server serves the build log HTTP API from inside the operator process.
 type Server struct {
 	config     Config
 	httpServer *http.Server
+	followSem  chan struct{}
 }
 
 // New returns a log server.
@@ -61,7 +72,22 @@ func New(config Config) *Server {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
-	return &Server{config: config}
+	if config.MaxConcurrentFollows <= 0 {
+		config.MaxConcurrentFollows = 8
+	}
+	if config.FollowPollInterval <= 0 {
+		config.FollowPollInterval = 500 * time.Millisecond
+	}
+	if config.FollowIdleTimeout <= 0 {
+		config.FollowIdleTimeout = 30 * time.Minute
+	}
+	if config.GCInterval <= 0 {
+		config.GCInterval = time.Hour
+	}
+	return &Server{
+		config:    config,
+		followSem: make(chan struct{}, config.MaxConcurrentFollows),
+	}
 }
 
 // Start listens until the manager context is cancelled.
@@ -200,6 +226,17 @@ func (s *Server) handlePut(w http.ResponseWriter, r *http.Request, namespace, na
 }
 
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, namespace, name string) {
+	follow := r.URL.Query().Get("follow") == "true"
+	if follow {
+		select {
+		case s.followSem <- struct{}{}:
+			defer func() { <-s.followSem }()
+		default:
+			writeError(w, http.StatusTooManyRequests, "too many concurrent log followers")
+			return
+		}
+	}
+
 	meta, err := s.config.Store.Meta(namespace, name)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -243,7 +280,7 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, namespace, na
 	if err != nil {
 		return
 	}
-	if r.URL.Query().Get("follow") != "true" {
+	if !follow {
 		return
 	}
 	flusher, ok := w.(http.Flusher)
@@ -252,11 +289,12 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, namespace, na
 	}
 	flusher.Flush()
 
+	lastData := time.Now()
 	for {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(s.config.FollowPollInterval):
 		}
 
 		stat, err := os.Stat(mustLogPath(s.config.Store, namespace, name))
@@ -272,12 +310,16 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, namespace, na
 				return
 			}
 			offset += copied
+			lastData = time.Now()
 			flusher.Flush()
 			continue
 		}
 
 		meta, metaErr := s.config.Store.Meta(namespace, name)
 		if metaErr == nil && meta.Complete {
+			return
+		}
+		if time.Since(lastData) > s.config.FollowIdleTimeout {
 			return
 		}
 	}
@@ -313,17 +355,41 @@ func (s *Server) gcLoop(ctx context.Context, logger interface {
 	Info(string, ...any)
 	Error(error, string, ...any)
 }) {
-	ticker := time.NewTicker(time.Hour)
+	ticker := time.NewTicker(s.config.GCInterval)
 	defer ticker.Stop()
 	for {
-		if _, err := s.config.Store.GC(s.config.Retention, s.config.MaxStoreBytes, s.config.Now()); err != nil {
-			logger.Error(err, "log store GC failed")
-		}
+		s.runGC(ctx, logger)
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+func (s *Server) runGC(ctx context.Context, logger interface {
+	Info(string, ...any)
+	Error(error, string, ...any)
+}) {
+	backoff := time.Second
+	for attempt := 1; attempt <= 3; attempt++ {
+		removed, err := s.config.Store.GC(s.config.Retention, s.config.MaxStoreBytes, s.config.Now())
+		if err == nil {
+			if removed > 0 {
+				logger.Info("Removed expired build logs", "count", removed)
+			}
+			return
+		}
+		logger.Error(err, "Log store GC failed", "attempt", attempt)
+		if attempt == 3 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff *= 2
 	}
 }
 

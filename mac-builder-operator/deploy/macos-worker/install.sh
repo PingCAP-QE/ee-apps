@@ -42,6 +42,7 @@ LOG_SERVICE="${LOG_SERVICE:-mac-builder-operator-logs}"
 LOG_SERVICE_NAMESPACE="${LOG_SERVICE_NAMESPACE:-ee-cd}"
 LOG_SERVICE_PORT="${LOG_SERVICE_PORT:-8080}"
 LOG_MAX_BUILD_BYTES="${LOG_MAX_BUILD_BYTES:-104857600}"
+LOG_FINALIZE_TIMEOUT="${LOG_FINALIZE_TIMEOUT:-10s}"
 WORKER_ARCH="${WORKER_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/')}"
 MACBUILD_NAMESPACE="${MACBUILD_NAMESPACE:-ee-cd}"
 KUBECONFIG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
@@ -76,6 +77,7 @@ Usage: install.sh [OPTIONS]
   --log-service-namespace NS log server namespace (default: ee-cd)
   --log-service-port N    log server Service port (default: 8080)
   --log-max-build-bytes N max bytes per build log (default: 104857600)
+  --log-finalize-timeout D per-attempt finalize timeout (default: 10s)
   --agent-version VERSION version reported in MacAgent status (default: --eeapps-ref)
   --state-file PATH       in-flight build state file (default: per-user config dir)
   --namespace NS          namespace where MacBuilds live (default: ee-cd)
@@ -108,6 +110,7 @@ while [[ $# -gt 0 ]]; do
     --log-service-namespace) LOG_SERVICE_NAMESPACE="$2"; shift 2 ;;
     --log-service-port) LOG_SERVICE_PORT="$2"; shift 2 ;;
     --log-max-build-bytes) LOG_MAX_BUILD_BYTES="$2"; shift 2 ;;
+    --log-finalize-timeout) LOG_FINALIZE_TIMEOUT="$2"; shift 2 ;;
     --agent-version)  AGENT_VERSION="$2"; shift 2 ;;
     --state-file)     STATE_FILE="$2"; shift 2 ;;
     --namespace)      MACBUILD_NAMESPACE="$2"; shift 2 ;;
@@ -173,7 +176,8 @@ agent_args=(--enable-agent --enable-gc=false --enable-customrun=false \
   --shutdown-grace="$SHUTDOWN_GRACE" \
   --workspace-max-age="$WORKSPACE_MAX_AGE" --log-upload="$LOG_UPLOAD" \
   --log-service="$LOG_SERVICE" --log-service-namespace="$LOG_SERVICE_NAMESPACE" \
-  --log-service-port="$LOG_SERVICE_PORT" --log-max-build-bytes="$LOG_MAX_BUILD_BYTES")
+  --log-service-port="$LOG_SERVICE_PORT" --log-max-build-bytes="$LOG_MAX_BUILD_BYTES" \
+  --log-finalize-timeout="$LOG_FINALIZE_TIMEOUT")
 if [[ -n "$AGENT_NAME" ]]; then
   agent_args+=(--agent-name="$AGENT_NAME")
 fi

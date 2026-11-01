@@ -45,6 +45,14 @@ kubectl macbuild logs <build> -n ee-cd -f --tail 200
 - `kubectl describe macbuild` shows `Status.Logs.Command`, `SizeBytes` and
   `Complete`.
 
+The log Service is plain HTTP inside the cluster. API server proxy requests are
+authenticated and TLS-protected by the API server, but any pod that can reach
+the ClusterIP can read logs. Restrict the namespace with a NetworkPolicy, size
+the PVC for `logServer.maxStoreBytes`, and avoid writing credentials to build
+output; common GitHub token shapes are redacted, but redaction is best-effort.
+The agent retries finalization three times (`--log-finalize-timeout`, default
+10s per attempt) and keeps the local copy if the service stays unavailable.
+
 ## Offline and reconnect
 
 - 60s without a heartbeat marks the agent `Offline` (`Ready=False`,

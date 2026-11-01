@@ -58,11 +58,12 @@ spec:
             - --disk-check-retry-interval={{ .Values.agent.diskCheckRetryInterval }}
             - --shutdown-grace={{ .Values.agent.shutdownGrace }}
             - --workspace-max-age={{ .Values.agent.workspaceMaxAge }}
-            - --log-max-build-bytes={{ .Values.agent.logMaxBuildBytes }}
+            - --log-max-build-bytes={{ .Values.agent.logMaxBuildBytes | int64 }}
             - --log-upload={{ .Values.agent.logUpload }}
             - --log-service={{ .Values.agent.logService }}
             - --log-service-namespace={{ .Values.agent.logServiceNamespace }}
             - --log-service-port={{ .Values.agent.logServicePort }}
+            - --log-finalize-timeout={{ .Values.agent.logFinalizeTimeout }}
             {{- with .Values.agent.labels }}
             - --labels={{ . }}
             {{- end }}
@@ -100,8 +101,8 @@ spec:
             - --enable-log-server
             - --log-store-dir=/var/lib/macbuild-logs
             - --log-retention={{ .Values.logServer.retention }}
-            - --log-max-build-bytes={{ .Values.logServer.maxBuildLogBytes }}
-            - --log-max-store-bytes={{ .Values.logServer.maxStoreBytes }}
+            - --log-max-build-bytes={{ .Values.logServer.maxBuildLogBytes | int64 }}
+            - --log-max-store-bytes={{ .Values.logServer.maxStoreBytes | int64 }}
             - --log-server-port={{ .Values.logServer.port }}
             {{- end }}
             {{- if and .Values.controller.leaderElection (or .Values.controller.gc .Values.controller.customRun .Values.controller.macAgent .Values.controller.scheduler) }}
