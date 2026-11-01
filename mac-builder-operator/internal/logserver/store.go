@@ -2,6 +2,8 @@ package logserver
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,7 +57,9 @@ func (s *Store) logPath(namespace, name string) (string, error) {
 	if err := validatePathPart(name); err != nil {
 		return "", fmt.Errorf("name: %w", err)
 	}
-	return filepath.Join(s.dir, namespace, name+".log"), nil
+	// Hash the user-provided names so the on-disk path never contains them.
+	sum := sha256.Sum256([]byte(namespace + "/" + name))
+	return filepath.Join(s.dir, hex.EncodeToString(sum[:])+".log"), nil
 }
 
 func (s *Store) donePath(namespace, name string) (string, error) {

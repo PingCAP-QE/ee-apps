@@ -3,7 +3,6 @@ package logserver
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -97,7 +96,10 @@ func TestStoreGC(t *testing.T) {
 		t.Fatalf("finalize new: %v", err)
 	}
 
-	oldPath := filepath.Join(store.Dir(), "ee-cd", "old.log")
+	oldPath, err := store.logPath("ee-cd", "old")
+	if err != nil {
+		t.Fatalf("log path: %v", err)
+	}
 	oldTime := now.Add(-48 * time.Hour)
 	if err := os.Chtimes(oldPath, oldTime, oldTime); err != nil {
 		t.Fatalf("chtimes old: %v", err)
@@ -113,10 +115,12 @@ func TestStoreGC(t *testing.T) {
 	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
 		t.Fatalf("old log still exists: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(store.Dir(), "ee-cd", "new.log")); err != nil {
+	newPath, _ := store.logPath("ee-cd", "new")
+	if _, err := os.Stat(newPath); err != nil {
 		t.Fatalf("new log was removed: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(store.Dir(), "ee-cd", "running.log")); err != nil {
+	runningPath, _ := store.logPath("ee-cd", "running")
+	if _, err := os.Stat(runningPath); err != nil {
 		t.Fatalf("unfinished log was removed: %v", err)
 	}
 }
@@ -152,7 +156,10 @@ func TestStoreGCMaxBytes(t *testing.T) {
 			t.Fatalf("finalize %s: %v", name, err)
 		}
 	}
-	oldest := filepath.Join(store.Dir(), "ee-cd", "oldest.log")
+	oldest, err := store.logPath("ee-cd", "oldest")
+	if err != nil {
+		t.Fatalf("log path: %v", err)
+	}
 	oldTime := now.Add(-time.Hour)
 	if err := os.Chtimes(oldest, oldTime, oldTime); err != nil {
 		t.Fatalf("chtimes: %v", err)
