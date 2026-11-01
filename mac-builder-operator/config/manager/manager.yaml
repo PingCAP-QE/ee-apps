@@ -63,6 +63,9 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
+          - --enable-macagent
+          - --enable-scheduler
+          - --macbuild-namespace=default
         image: controller:latest
         name: manager
         ports: []
