@@ -39,6 +39,7 @@ func Cleanup(root, prefix string, maxAge time.Duration, now time.Time) (int, err
 			continue
 		}
 		if err := os.RemoveAll(filepath.Join(root, entry.Name())); err != nil {
+			cleanupFailures.Inc()
 			errs = append(errs, fmt.Errorf("remove %s: %w", entry.Name(), err))
 			continue
 		}

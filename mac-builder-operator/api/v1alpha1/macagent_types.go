@@ -45,6 +45,9 @@ const (
 // a negative sentinel.
 const MacAgentDiskUnknownBytes int64 = -1
 
+// MacAgentDiskFullBytes marks a filesystem with no free space.
+const MacAgentDiskFullBytes int64 = 0
+
 // MacAgent condition reasons.
 const (
 	MacAgentReasonNoHeartbeat    string = "NoHeartbeat"

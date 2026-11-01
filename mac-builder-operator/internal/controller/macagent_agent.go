@@ -218,7 +218,7 @@ func (h *MacAgentHeartbeat) setDiskPressureCondition(
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = buildv1alpha1.MacAgentReasonDiskUnknown
 		condition.Message = "disk usage is not available"
-	case runtime.DiskFreeBytes == 0:
+	case runtime.DiskFreeBytes == buildv1alpha1.MacAgentDiskFullBytes:
 		condition.Status = metav1.ConditionTrue
 		condition.Reason = buildv1alpha1.MacAgentReasonDiskPressure
 		condition.Message = "0 B free (disk full)"

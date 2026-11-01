@@ -17,7 +17,7 @@ var (
 	}, []string{"result"})
 
 	macBuildAgentLost = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "macbuilder_build_agent_lost_total",
+		Name: "macbuilder_agent_lost_total",
 		Help: "Builds failed because their MacAgent stopped reporting.",
 	})
 )

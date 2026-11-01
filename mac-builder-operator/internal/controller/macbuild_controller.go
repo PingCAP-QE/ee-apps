@@ -53,6 +53,10 @@ type MacBuildReconciler struct {
 	DiskFreeBytes func(context.Context) int64
 	// MinFreeDiskBytes is the minimum free space required to start a build.
 	MinFreeDiskBytes int64
+	// DiskCheckAttempts is the number of disk measurements before failing a
+	// build (default 2); DiskCheckRetryInterval is the delay between them.
+	DiskCheckAttempts      int
+	DiskCheckRetryInterval time.Duration
 
 	// Tracker counts active builds so SIGTERM can wait for them.
 	Tracker *BuildTracker
@@ -80,6 +84,9 @@ type buildPhaseReporter func(string, string) error
 const (
 	defaultBuildTimeout      = 24 * time.Hour
 	defaultBuildPollInterval = 5 * time.Minute
+
+	defaultDiskCheckAttempts      = 2
+	defaultDiskCheckRetryInterval = 100 * time.Millisecond
 )
 
 // +kubebuilder:rbac:groups=tibuild.pingcap.net,resources=macbuilds,verbs=get;list;watch;create;update;patch;delete
@@ -251,12 +258,30 @@ func (r *MacBuildReconciler) reconcileActive(
 	}
 
 	if r.DiskFreeBytes != nil && r.MinFreeDiskBytes > 0 {
-		free := r.DiskFreeBytes(ctx)
-		if free < 0 {
-			// df can fail transiently while a worker is busy; retry once before
-			// failing the build.
-			logger.Info("Disk metrics unavailable; retrying", "worker", r.WorkerID)
+		attempts := r.DiskCheckAttempts
+		if attempts <= 0 {
+			attempts = defaultDiskCheckAttempts
+		}
+		interval := r.DiskCheckRetryInterval
+		if interval <= 0 {
+			interval = defaultDiskCheckRetryInterval
+		}
+
+		free := buildv1alpha1.MacAgentDiskUnknownBytes
+		for attempt := 1; attempt <= attempts; attempt++ {
 			free = r.DiskFreeBytes(ctx)
+			if free >= 0 {
+				break
+			}
+			if attempt < attempts {
+				logger.Info("Disk metrics unavailable; retrying",
+					"worker", r.WorkerID, "attempt", attempt, "attempts", attempts)
+				select {
+				case <-ctx.Done():
+					return ctrl.Result{}, ctx.Err()
+				case <-time.After(interval):
+				}
+			}
 		}
 		if free < 0 {
 			logger.Info("Disk metrics unavailable; failing build before start", "worker", r.WorkerID)

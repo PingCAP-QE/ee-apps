@@ -85,8 +85,9 @@ func main() {
 		buildTimeout, buildPollInterval, customRunPollInterval time.Duration
 		offlineThreshold, macAgentRequeueInterval              time.Duration
 		assignmentTimeout, shutdownGrace, workspaceMaxAge      time.Duration
+		diskCheckRetryInterval                                 time.Duration
 	)
-	var maxAssignmentAttempts int
+	var maxAssignmentAttempts, diskCheckAttempts int
 	var minFreeDiskBytes int64
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
 	var macBuildNamespace string
@@ -144,6 +145,10 @@ func main() {
 		"Path to the in-flight build state file (default: the per-user config dir).")
 	flag.Int64Var(&minFreeDiskBytes, "min-free-disk-bytes", 20*1024*1024*1024,
 		"Minimum free disk required before starting a build.")
+	flag.IntVar(&diskCheckAttempts, "disk-check-attempts", 2,
+		"Number of disk measurements before failing a build.")
+	flag.DurationVar(&diskCheckRetryInterval, "disk-check-retry-interval", 100*time.Millisecond,
+		"Delay between disk measurement attempts.")
 	flag.DurationVar(&shutdownGrace, "shutdown-grace", 10*time.Minute,
 		"How long to wait for active builds after SIGTERM.")
 	flag.DurationVar(&workspaceMaxAge, "workspace-max-age", 7*24*time.Hour,
@@ -217,6 +222,14 @@ func main() {
 	}
 	if enableAgent && minFreeDiskBytes <= 0 {
 		setupLog.Info("min-free-disk-bytes must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && diskCheckAttempts <= 0 {
+		setupLog.Info("disk-check-attempts must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && diskCheckRetryInterval <= 0 {
+		setupLog.Info("disk-check-retry-interval must be greater than zero")
 		os.Exit(1)
 	}
 	if enableAgent && shutdownGrace <= 0 {
@@ -395,17 +408,19 @@ func main() {
 		inventoryProvider := inventory.NewProvider()
 
 		if err := (&controller.MacBuildReconciler{
-			Client:                mgr.GetClient(),
-			APIReader:             mgr.GetAPIReader(),
-			Scheme:                mgr.GetScheme(),
-			WorkerID:              workerName,
-			WorkerArch:            workerArch,
-			BuildTimeout:          buildTimeout,
-			BuildPollInterval:     buildPollInterval,
-			ArtifactsScriptSource: artifactsScriptSource,
-			StateStore:            stateStore,
-			MinFreeDiskBytes:      minFreeDiskBytes,
-			Tracker:               buildTracker,
+			Client:                 mgr.GetClient(),
+			APIReader:              mgr.GetAPIReader(),
+			Scheme:                 mgr.GetScheme(),
+			WorkerID:               workerName,
+			WorkerArch:             workerArch,
+			BuildTimeout:           buildTimeout,
+			BuildPollInterval:      buildPollInterval,
+			ArtifactsScriptSource:  artifactsScriptSource,
+			StateStore:             stateStore,
+			MinFreeDiskBytes:       minFreeDiskBytes,
+			DiskCheckAttempts:      diskCheckAttempts,
+			DiskCheckRetryInterval: diskCheckRetryInterval,
+			Tracker:                buildTracker,
 			DiskFreeBytes: func(ctx context.Context) int64 {
 				return inventoryProvider.CollectRuntime(ctx).DiskFreeBytes
 			},

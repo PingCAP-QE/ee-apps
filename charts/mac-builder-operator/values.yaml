@@ -38,6 +38,8 @@ agent:
   heartbeatInterval: 20s
   staticRefreshInterval: 10m
   minFreeDiskBytes: 21474836480
+  diskCheckAttempts: 2
+  diskCheckRetryInterval: 100ms
   shutdownGrace: 10m
   workspaceMaxAge: 168h
   agentVersion: ""

@@ -316,6 +316,7 @@ func TestReconcileFailsUnknownDiskMetrics(t *testing.T) {
 	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
 	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
 	reconciler.MinFreeDiskBytes = 20 * 1024 * 1024 * 1024
+	reconciler.DiskCheckAttempts = 3
 	calls := 0
 	reconciler.DiskFreeBytes = func(context.Context) int64 {
 		calls++
@@ -340,8 +341,8 @@ func TestReconcileFailsUnknownDiskMetrics(t *testing.T) {
 	if runCalled {
 		t.Fatal("runBuild must not be called when disk metrics are unavailable")
 	}
-	if calls != 2 {
-		t.Fatalf("expected one disk metrics retry, got %d calls", calls)
+	if calls != 3 {
+		t.Fatalf("expected three configured disk measurements, got %d calls", calls)
 	}
 }
 

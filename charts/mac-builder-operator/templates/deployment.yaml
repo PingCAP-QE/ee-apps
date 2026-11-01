@@ -49,7 +49,9 @@ spec:
             - --capacity={{ .Values.agent.capacity }}
             - --heartbeat-interval={{ .Values.agent.heartbeatInterval }}
             - --static-refresh-interval={{ .Values.agent.staticRefreshInterval }}
-            - --min-free-disk-bytes={{ .Values.agent.minFreeDiskBytes }}
+            - --min-free-disk-bytes={{ .Values.agent.minFreeDiskBytes | int64 }}
+            - --disk-check-attempts={{ .Values.agent.diskCheckAttempts }}
+            - --disk-check-retry-interval={{ .Values.agent.diskCheckRetryInterval }}
             - --shutdown-grace={{ .Values.agent.shutdownGrace }}
             - --workspace-max-age={{ .Values.agent.workspaceMaxAge }}
             {{- with .Values.agent.labels }}

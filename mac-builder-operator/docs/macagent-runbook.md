@@ -49,9 +49,14 @@ the worker with insufficient disk fails before cloning with an `insufficient
 disk` message; free space and retrigger the build.
 
 `DiskUnknown` means the worker could not read `df`; it also keeps the agent out
-of scheduling. The agent retries the measurement once before failing a build
-with `disk metrics unavailable`. Check the agent logs, then restart the
-LaunchAgent after fixing the command/runner.
+of scheduling. The agent retries with `--disk-check-attempts` (default 2) and
+`--disk-check-retry-interval` (default 100ms) before failing a build with
+`disk metrics unavailable`. Check the agent logs and the raw command, then
+restart the LaunchAgent after fixing the runner:
+
+```bash
+ssh mac-worker 'df -k /; launchctl print gui/$(id -u)/net.pingcap.macbuild-agent | head -40'
+```
 
 Change the threshold per worker or for the whole cluster:
 
@@ -77,7 +82,9 @@ The operator exposes:
 - `macbuilder_agent_ready{agent}` — 1 when the agent is ready.
 - `macbuilder_build_assignment_total{result}` — assignment outcomes
   (`assigned`, `reassigned`, `failed`, `no_candidate`).
-- `macbuilder_build_agent_lost_total` — builds failed after the offline grace.
+- `macbuilder_agent_lost_total` — builds failed after the offline grace.
+- `macbuilder_workspace_cleanup_failures_total` — stale workspace directories
+  that could not be removed.
 
 ## Graceful shutdown
 
