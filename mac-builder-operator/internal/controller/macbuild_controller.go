@@ -25,12 +25,14 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/state"
 )
 
 // MacBuildReconciler reconciles a MacBuild object
@@ -43,6 +45,10 @@ type MacBuildReconciler struct {
 	BuildPollInterval     time.Duration
 	ArtifactsScriptSource ArtifactsScriptSourceConfig
 
+	// StateStore persists the in-flight build so a restarted agent can decide
+	// whether to rerun, fail, or discard it.
+	StateStore *state.Store
+
 	// APIReader reads directly from the API server (uncached). The reconciler
 	// uses it for the reads that decide whether to (re)run a build, so it never
 	// acts on a stale phase: a reconcile triggered right after a build completes
@@ -52,6 +58,8 @@ type MacBuildReconciler struct {
 
 	now      func() time.Time
 	runBuild func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error)
+
+	restartChecked bool
 }
 
 type buildResult struct {
@@ -95,137 +103,27 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
-	// init the status for the object
-	if macBuild.Status.Phase == "" {
-		logger.Info("Setting initial status to Pending")
-
-		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
-			status.SetPhase(buildv1alpha1.PhasePending, "Waiting for a matching macOS worker to claim this build.", now)
-		})
-		if err != nil {
-			logger.Error(err, "Failed to update MacBuild status to Pending")
-			return ctrl.Result{}, err
+	if r.StateStore != nil && !r.restartChecked {
+		if err := r.reconcileRestart(ctx); err != nil {
+			logger.Error(err, "Failed to reconcile the persisted in-flight build; retrying")
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
 		}
-		macBuild = *updatedBuild
-
-		return ctrl.Result{Requeue: true}, nil
+		r.restartChecked = true
 	}
 
-	logger.Info("MacBuild already has status", "Phase", macBuild.Status.Phase)
 	switch macBuild.Status.Phase {
-	case buildv1alpha1.PhasePending:
-		if !r.matchesBuildArch(macBuild) {
-			logger.Info(
-				"Pending build does not match this worker architecture. Leaving it for another worker.",
-				"workerArch", r.WorkerArch,
-				"buildArch", buildArchFor(macBuild),
-			)
-			return ctrl.Result{}, nil
-		}
-
-		logger.Info("Phase: Pending. Claiming and setting to Preparing.")
-		// The claim must be exclusive: several same-arch workers reconcile the
-		// same Pending MacBuild concurrently, and an unconditional status update
-		// would let more than one of them transition it to Preparing and then run
-		// the build (each seeing itself as the owner). Only claim when the
-		// freshly-read phase is still Pending — the first writer wins, the rest
-		// back off without touching the status.
-		claimed := false
-		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
-			claimed = false
-			if status.Phase != buildv1alpha1.PhasePending {
-				// Another worker claimed it first; leave the status untouched.
-				return
-			}
-			status.SetPhase(buildv1alpha1.PhasePreparing, "Build claimed by worker and preparing workspace.", now)
-			status.WorkerID = &r.WorkerID
-			status.WorkerArch = optionalString(r.WorkerArch)
-			status.StartTime = &now
-			status.CompletionTime = nil
-			status.Message = nil
-			claimed = true
-		})
-		if err != nil {
-			logger.Error(err, "Failed to update status to Preparing")
-			return ctrl.Result{}, err
-		}
-		if !claimed {
-			logger.Info("Pending build was already claimed by another worker. Leaving it.")
-			return ctrl.Result{}, nil
-		}
-		macBuild = *updatedBuild
-
-		return ctrl.Result{Requeue: true}, nil
-	case buildv1alpha1.PhasePreparing, buildv1alpha1.PhaseBuilding, buildv1alpha1.PhasePublishing:
-		logger.Info("Phase: Active build phase. Starting or resuming build process.", "phase", macBuild.Status.Phase)
-
-		if macBuild.Status.StartTime == nil {
-			return r.failBuild(ctx, logger, &macBuild, "build entered an active phase without startTime")
-		}
-		if macBuild.Status.WorkerID == nil || *macBuild.Status.WorkerID == "" {
-			return r.failBuild(ctx, logger, &macBuild, "build entered an active phase without workerID")
-		}
-		if r.hasTimedOut(macBuild.Status.StartTime.Time) {
-			return r.failBuild(
-				ctx,
-				logger,
-				&macBuild,
-				fmt.Sprintf("build timed out after %s on worker %q", r.buildTimeout(), *macBuild.Status.WorkerID),
-			)
-		}
-
-		if *macBuild.Status.WorkerID != r.WorkerID {
-			logger.Info(
-				"This build is assigned to another worker. Rechecking later.",
-				"assignedWorker", *macBuild.Status.WorkerID,
-				"requeueAfter", r.buildPollInterval(),
-			)
-			return ctrl.Result{RequeueAfter: r.buildPollInterval()}, nil
-		}
-
-		result, err := r.runNativeBuild(ctx, macBuild, func(phase string, message string) error {
-			updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
-				status.SetPhase(phase, message, now)
-				status.WorkerID = &r.WorkerID
-				status.WorkerArch = optionalString(r.WorkerArch)
-				if status.StartTime == nil {
-					status.StartTime = &now
-				}
-				status.CompletionTime = nil
-				status.Message = nil
-			})
-			if err != nil {
-				return err
-			}
-			macBuild = *updatedBuild
-			return nil
-		})
-
-		if err != nil {
-			logger.Error(err, "Build failed")
-			return r.failBuild(ctx, logger, &macBuild, err.Error())
-		}
-
-		logger.Info("Build succeeded")
-		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
-			status.SetPhase(buildv1alpha1.PhaseSucceeded, "Build completed successfully.", now)
-			status.Message = nil
-			status.CompletionTime = &now
-			status.WorkerArch = optionalString(r.WorkerArch)
-			status.CommitHash = &result.CommitHash
-			if result.PushedArtifactsYaml != "" {
-				if status.Outputs == nil {
-					status.Outputs = &buildv1alpha1.MacBuildResultOutputs{}
-				}
-				status.Outputs.PushedArtifactsYaml = &result.PushedArtifactsYaml
-			}
-		})
-		if err != nil {
-			logger.Error(err, "Failed to update status to Succeeded")
-			return ctrl.Result{}, err
-		}
-		macBuild = *updatedBuild
+	case "":
+		// The cluster scheduler owns the initial Pending transition.
+		logger.V(1).Info("MacBuild has no phase yet; waiting for the scheduler.")
 		return ctrl.Result{}, nil
+	case buildv1alpha1.PhasePending:
+		// The cluster scheduler owns assignment; agents never claim Pending builds.
+		logger.V(1).Info("MacBuild is Pending; waiting for the scheduler to assign it.")
+		return ctrl.Result{}, nil
+	case buildv1alpha1.PhaseAssigned:
+		return r.reconcileAssigned(ctx, logger, macBuild)
+	case buildv1alpha1.PhasePreparing, buildv1alpha1.PhaseBuilding, buildv1alpha1.PhasePublishing:
+		return r.reconcileActive(ctx, logger, macBuild)
 	case buildv1alpha1.PhaseSucceeded, buildv1alpha1.PhaseFailed:
 		logger.WithValues("phase", macBuild.Status.Phase).Info("Nothing to do.")
 		return ctrl.Result{}, nil
@@ -233,6 +131,160 @@ func (r *MacBuildReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		logger.Info("Unknown phase, ignoring", "Phase", macBuild.Status.Phase)
 		return ctrl.Result{}, nil
 	}
+}
+
+func (r *MacBuildReconciler) reconcileAssigned(
+	ctx context.Context,
+	logger logr.Logger,
+	macBuild buildv1alpha1.MacBuild,
+) (ctrl.Result, error) {
+	if macBuild.Status.Assignment == nil {
+		return r.failBuild(ctx, logger, &macBuild, "assigned build has no assignment")
+	}
+	if !r.assignedToSelf(macBuild) {
+		logger.V(1).Info(
+			"Build is assigned to another agent; ignoring.",
+			"assignedAgent", macBuild.Status.Assignment.AgentName,
+			"workerID", r.WorkerID,
+		)
+		return ctrl.Result{}, nil
+	}
+	if !r.matchesBuildArch(macBuild) {
+		return r.failBuild(
+			ctx,
+			logger,
+			&macBuild,
+			fmt.Sprintf("build arch %q does not match agent arch %q", buildArchFor(macBuild), r.WorkerArch),
+		)
+	}
+
+	logger.Info("Phase: Assigned. Claiming and setting to Preparing.")
+	claimed := false
+	updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+		claimed = false
+		if status.Phase != buildv1alpha1.PhaseAssigned {
+			return
+		}
+		if status.Assignment == nil || status.Assignment.AgentName != r.WorkerID {
+			return
+		}
+		status.SetPhase(buildv1alpha1.PhasePreparing, "Build claimed by worker and preparing workspace.", now)
+		status.WorkerID = &r.WorkerID
+		status.WorkerArch = optionalString(r.WorkerArch)
+		status.StartTime = &now
+		status.CompletionTime = nil
+		status.Message = nil
+		if status.Assignment != nil {
+			status.Assignment.LeaseDeadline = nil
+		}
+		claimed = true
+	})
+	if err != nil {
+		logger.Error(err, "Failed to update status to Preparing")
+		return ctrl.Result{}, err
+	}
+	if !claimed {
+		logger.Info("Assigned build was already claimed or reassigned. Leaving it.")
+		return ctrl.Result{}, nil
+	}
+	macBuild = *updatedBuild
+
+	return ctrl.Result{Requeue: true}, nil
+}
+
+func (r *MacBuildReconciler) reconcileActive(
+	ctx context.Context,
+	logger logr.Logger,
+	macBuild buildv1alpha1.MacBuild,
+) (ctrl.Result, error) {
+	logger.Info("Phase: Active build phase. Starting or resuming build process.", "phase", macBuild.Status.Phase)
+
+	if macBuild.Status.Assignment == nil {
+		return r.failBuild(ctx, logger, &macBuild, "build entered an active phase without an assignment")
+	}
+	if !r.assignedToSelf(macBuild) {
+		logger.V(1).Info(
+			"Active build is assigned to another agent; ignoring.",
+			"assignedAgent", macBuild.Status.Assignment.AgentName,
+			"workerID", r.WorkerID,
+		)
+		return ctrl.Result{}, nil
+	}
+	if !r.matchesBuildArch(macBuild) {
+		return r.failBuild(
+			ctx,
+			logger,
+			&macBuild,
+			fmt.Sprintf("build arch %q does not match agent arch %q", buildArchFor(macBuild), r.WorkerArch),
+		)
+	}
+
+	if macBuild.Status.StartTime == nil {
+		return r.failBuild(ctx, logger, &macBuild, "build entered an active phase without startTime")
+	}
+	if macBuild.Status.WorkerID == nil || *macBuild.Status.WorkerID == "" {
+		return r.failBuild(ctx, logger, &macBuild, "build entered an active phase without workerID")
+	}
+	if r.hasTimedOut(macBuild.Status.StartTime.Time) {
+		return r.failBuild(
+			ctx,
+			logger,
+			&macBuild,
+			fmt.Sprintf("build timed out after %s on worker %q", r.buildTimeout(), *macBuild.Status.WorkerID),
+		)
+	}
+	if *macBuild.Status.WorkerID != r.WorkerID {
+		return r.failBuild(
+			ctx,
+			logger,
+			&macBuild,
+			fmt.Sprintf("build is assigned to %q but status.workerID is %q", r.WorkerID, *macBuild.Status.WorkerID),
+		)
+	}
+
+	result, err := r.runNativeBuild(ctx, macBuild, func(phase string, message string) error {
+		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+			status.SetPhase(phase, message, now)
+			status.WorkerID = &r.WorkerID
+			status.WorkerArch = optionalString(r.WorkerArch)
+			if status.StartTime == nil {
+				status.StartTime = &now
+			}
+			status.CompletionTime = nil
+			status.Message = nil
+		})
+		if err != nil {
+			return err
+		}
+		macBuild = *updatedBuild
+		return nil
+	})
+
+	if err != nil {
+		logger.Error(err, "Build failed")
+		return r.failBuild(ctx, logger, &macBuild, err.Error())
+	}
+
+	logger.Info("Build succeeded")
+	updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
+		status.SetPhase(buildv1alpha1.PhaseSucceeded, "Build completed successfully.", now)
+		status.Message = nil
+		status.CompletionTime = &now
+		status.WorkerArch = optionalString(r.WorkerArch)
+		status.CommitHash = &result.CommitHash
+		if result.PushedArtifactsYaml != "" {
+			if status.Outputs == nil {
+				status.Outputs = &buildv1alpha1.MacBuildResultOutputs{}
+			}
+			status.Outputs.PushedArtifactsYaml = &result.PushedArtifactsYaml
+		}
+	})
+	if err != nil {
+		logger.Error(err, "Failed to update status to Succeeded")
+		return ctrl.Result{}, err
+	}
+	macBuild = *updatedBuild
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -248,13 +300,105 @@ func (r *MacBuildReconciler) runNativeBuild(
 	macBuild buildv1alpha1.MacBuild,
 	reportPhase buildPhaseReporter,
 ) (*buildResult, error) {
+	logger := logf.FromContext(ctx)
+
+	if r.StateStore != nil {
+		r.persistBuildState(ctx, macBuild, macBuild.Status.Phase)
+		defer func() {
+			if err := r.StateStore.Clear(); err != nil {
+				logger.Error(err, "Failed to clear agent build state")
+			}
+		}()
+	}
+
+	wrappedReportPhase := func(phase string, message string) error {
+		err := reportPhase(phase, message)
+		r.persistBuildState(ctx, macBuild, phase)
+		return err
+	}
+
 	if r.runBuild != nil {
-		return r.runBuild(ctx, macBuild, reportPhase)
+		return r.runBuild(ctx, macBuild, wrappedReportPhase)
 	}
 	job := newNativeBuildJob(ctx, macBuild, r.ArtifactsScriptSource)
 	job.credentialsReader = r.secretReader()
-	job.reportPhase = reportPhase
+	job.reportPhase = wrappedReportPhase
 	return job.Run()
+}
+
+func (r *MacBuildReconciler) persistBuildState(ctx context.Context, macBuild buildv1alpha1.MacBuild, phase string) {
+	if r.StateStore == nil {
+		return
+	}
+	startedAt := r.currentTime()
+	if macBuild.Status.StartTime != nil {
+		startedAt = macBuild.Status.StartTime.Time
+	}
+	assignmentID := ""
+	if macBuild.Status.Assignment != nil {
+		assignmentID = string(macBuild.Status.Assignment.AgentUID)
+	}
+	if err := r.StateStore.Save(state.State{
+		Namespace:    macBuild.Namespace,
+		Name:         macBuild.Name,
+		AssignmentID: assignmentID,
+		Phase:        phase,
+		StartedAt:    startedAt,
+	}); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to persist agent build state")
+	}
+}
+
+func (r *MacBuildReconciler) reconcileRestart(ctx context.Context) error {
+	logger := logf.FromContext(ctx)
+
+	persisted, err := r.StateStore.Load()
+	if err != nil {
+		logger.Error(err, "Discarding unreadable persisted agent state")
+		return r.StateStore.Clear()
+	}
+	if persisted == nil {
+		return nil
+	}
+
+	key := types.NamespacedName{Namespace: persisted.Namespace, Name: persisted.Name}
+	var build buildv1alpha1.MacBuild
+	if err := r.reader().Get(ctx, key, &build); err != nil {
+		if apierrors.IsNotFound(err) {
+			return r.StateStore.Clear()
+		}
+		return err
+	}
+
+	if build.Status.Phase == buildv1alpha1.PhaseSucceeded ||
+		build.Status.Phase == buildv1alpha1.PhaseFailed ||
+		build.Status.Assignment == nil ||
+		build.Status.Assignment.AgentName != r.WorkerID {
+		return r.StateStore.Clear()
+	}
+
+	switch persisted.Phase {
+	case buildv1alpha1.PhasePublishing:
+		message := fmt.Sprintf(
+			"agent restarted while publishing build (last phase %s); refusing to rerun the publish step",
+			build.Status.Phase,
+		)
+		if _, err := r.failBuild(ctx, logger, &build, message); err != nil {
+			return err
+		}
+		return r.StateStore.Clear()
+	case buildv1alpha1.PhasePreparing, buildv1alpha1.PhaseBuilding:
+		base := build.DeepCopy()
+		if build.Status.Assignment != nil {
+			build.Status.Assignment.Restarts++
+		}
+		if err := r.Status().Patch(ctx, &build, client.MergeFrom(base)); err != nil {
+			return err
+		}
+		return r.StateStore.Clear()
+	default:
+		return r.StateStore.Clear()
+	}
 }
 
 // secretReader returns the client used to read git credential Secrets. Like
@@ -286,13 +430,6 @@ func (r *MacBuildReconciler) buildTimeout() time.Duration {
 		return r.BuildTimeout
 	}
 	return defaultBuildTimeout
-}
-
-func (r *MacBuildReconciler) buildPollInterval() time.Duration {
-	if r.BuildPollInterval > 0 {
-		return r.BuildPollInterval
-	}
-	return defaultBuildPollInterval
 }
 
 func (r *MacBuildReconciler) hasTimedOut(startTime time.Time) bool {
@@ -347,6 +484,10 @@ func (r *MacBuildReconciler) updateBuildStatus(
 
 func (r *MacBuildReconciler) matchesBuildArch(macBuild buildv1alpha1.MacBuild) bool {
 	return buildArchFor(macBuild) == buildv1alpha1.NormalizeBuildArch(r.WorkerArch)
+}
+
+func (r *MacBuildReconciler) assignedToSelf(macBuild buildv1alpha1.MacBuild) bool {
+	return macBuild.Status.Assignment != nil && macBuild.Status.Assignment.AgentName == r.WorkerID
 }
 
 func buildArchFor(macBuild buildv1alpha1.MacBuild) string {

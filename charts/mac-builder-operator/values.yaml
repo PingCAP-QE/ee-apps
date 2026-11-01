@@ -12,23 +12,43 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# Controllers to run in this Deployment. In the cluster (GC mode) run gc +
-# customRun; on a macOS worker run only agent.
+# Controllers to run in this Deployment. In the cluster run gc + customRun +
+# macAgent + scheduler; on a macOS worker run only agent.
 controller:
   agent: false
   gc: true
   customRun: true
+  macAgent: true
+  scheduler: true
+  # Leader election is used by the cluster controllers. The worker agent does
+  # not need it.
+  leaderElection: true
 
-# Namespace where the CustomRun controller creates MacBuild objects.
+# Namespace where MacBuild objects live. The CustomRun controller creates them
+# here; the worker cache and RBAC are scoped here.
 # Defaults to the release namespace when empty.
 macBuildNamespace: ""
 
 agent:
-  # Defaults to the pod hostname when empty.
+  # Defaults to the stable machine identity derived from IOPlatformUUID.
   workerName: ""
   workerArch: ""
+  capacity: 1
+  labels: ""
+  heartbeatInterval: 20s
+  staticRefreshInterval: 10m
+  agentVersion: ""
+  stateFile: ""
   buildTimeout: 24h
   buildPollInterval: 5m
+
+macAgent:
+  offlineThreshold: 60s
+  requeueInterval: 30s
+
+scheduler:
+  assignmentTimeout: 2m
+  maxAssignmentAttempts: 3
 
 artifactsRepo:
   url: https://github.com/PingCAP-QE/artifacts.git

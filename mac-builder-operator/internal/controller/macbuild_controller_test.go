@@ -92,8 +92,8 @@ var _ = Describe("MacBuild Controller", func() {
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
 
-		It("should only claim builds that match the worker arch and record phase progression", func() {
-			resourceName := "arch-aware-resource"
+		It("should execute only builds assigned to this agent and record phase progression", func() {
+			resourceName := "assigned-resource"
 			key := types.NamespacedName{Name: resourceName, Namespace: "default"}
 			resource := &buildv1alpha1.MacBuild{
 				ObjectMeta: metav1.ObjectMeta{
@@ -119,6 +119,17 @@ var _ = Describe("MacBuild Controller", func() {
 			DeferCleanup(func() {
 				_ = k8sClient.Delete(ctx, resource)
 			})
+			Expect(k8sClient.Get(ctx, key, resource)).To(Succeed())
+			resource.Status.Phase = buildv1alpha1.PhaseAssigned
+			resource.Status.Assignment = &buildv1alpha1.MacBuildAssignment{
+				AgentName:  "worker-amd64",
+				AssignedAt: metav1.Now(),
+			}
+			resource.Status.PhaseHistory = []buildv1alpha1.MacBuildPhaseHistoryEntry{{
+				Phase:          buildv1alpha1.PhaseAssigned,
+				TransitionTime: metav1.Now(),
+			}}
+			Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())
 
 			foreignReconciler := &MacBuildReconciler{
 				Client:     k8sClient,
@@ -131,10 +142,10 @@ var _ = Describe("MacBuild Controller", func() {
 			_, err = foreignReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 			Expect(err).NotTo(HaveOccurred())
 
-			pending := &buildv1alpha1.MacBuild{}
-			Expect(k8sClient.Get(ctx, key, pending)).To(Succeed())
-			Expect(pending.Status.Phase).To(Equal(buildv1alpha1.PhasePending))
-			Expect(pending.Status.WorkerID).To(BeNil())
+			assigned := &buildv1alpha1.MacBuild{}
+			Expect(k8sClient.Get(ctx, key, assigned)).To(Succeed())
+			Expect(assigned.Status.Phase).To(Equal(buildv1alpha1.PhaseAssigned))
+			Expect(assigned.Status.WorkerID).To(BeNil())
 
 			matchingReconciler := &MacBuildReconciler{
 				Client:     k8sClient,
@@ -163,7 +174,7 @@ var _ = Describe("MacBuild Controller", func() {
 			Expect(updated.Status.WorkerArch).NotTo(BeNil())
 			Expect(*updated.Status.WorkerArch).To(Equal(buildv1alpha1.BuildArchAMD64))
 			Expect(updated.Status.PhaseHistory).To(HaveLen(5))
-			Expect(updated.Status.PhaseHistory[0].Phase).To(Equal(buildv1alpha1.PhasePending))
+			Expect(updated.Status.PhaseHistory[0].Phase).To(Equal(buildv1alpha1.PhaseAssigned))
 			Expect(updated.Status.PhaseHistory[1].Phase).To(Equal(buildv1alpha1.PhasePreparing))
 			Expect(updated.Status.PhaseHistory[2].Phase).To(Equal(buildv1alpha1.PhaseBuilding))
 			Expect(updated.Status.PhaseHistory[3].Phase).To(Equal(buildv1alpha1.PhasePublishing))

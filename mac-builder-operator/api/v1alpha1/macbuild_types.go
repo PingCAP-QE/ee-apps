@@ -20,11 +20,13 @@ import (
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Build phases
 const (
 	PhasePending    string = "Pending"
+	PhaseAssigned   string = "Assigned"
 	PhasePreparing  string = "Preparing"
 	PhaseBuilding   string = "Building"
 	PhasePublishing string = "Publishing"
@@ -57,6 +59,12 @@ type MacBuildSpec struct {
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('0s')",message="ttl must be a valid, non-negative duration (e.g. 1h, 90m)"
 	Ttl *metav1.Duration `json:"ttl,omitempty"`
+
+	// WorkerSelector selects MacAgent label values that a worker must match to
+	// run this build. All entries must match the MacAgent's metadata labels.
+	// +optional
+	// +kubebuilder:validation:MaxProperties=16
+	WorkerSelector map[string]string `json:"workerSelector,omitempty"`
 }
 
 // SourceSpec defines the code source
@@ -149,9 +157,9 @@ type ArtifactsSpec struct {
 
 // MacBuildStatus defines the observed state of MacBuild
 type MacBuildStatus struct {
-	// Current phase of the build (Pending, Preparing, Building, Publishing, Succeeded, Failed)
+	// Current phase of the build (Pending, Assigned, Preparing, Building, Publishing, Succeeded, Failed)
 	// +optional
-	// +kubebuilder:validation:Enum=Pending;Preparing;Building;Publishing;Succeeded;Failed
+	// +kubebuilder:validation:Enum=Pending;Assigned;Preparing;Building;Publishing;Succeeded;Failed
 	Phase string `json:"phase,omitempty"`
 
 	// A detailed error or terminal message about the current status.
@@ -190,12 +198,73 @@ type MacBuildStatus struct {
 	// URLs of the final artifacts after completion
 	// +optional
 	Outputs *MacBuildResultOutputs `json:"outputs,omitempty"`
+
+	// Assignment records the scheduler decision that placed this build on a
+	// MacAgent. It remains set after the build reaches a terminal phase for audit.
+	// +optional
+	Assignment *MacBuildAssignment `json:"assignment,omitempty"`
+
+	// AssignmentAttempts is the total number of scheduling attempts across
+	// reassignments. It survives clearing Assignment while a build returns to Pending.
+	// +optional
+	AssignmentAttempts int32 `json:"assignmentAttempts,omitempty"`
+
+	// Logs describes the build log available through the log service.
+	// +optional
+	Logs *MacBuildLogs `json:"logs,omitempty"`
+}
+
+// MacBuildAssignment records which MacAgent owns a build and until when.
+type MacBuildAssignment struct {
+	// AgentName is the MacAgent name that owns this build.
+	AgentName string `json:"agentName"`
+
+	// AgentUID is the UID of the MacAgent at assignment time.
+	// +optional
+	AgentUID types.UID `json:"agentUID,omitempty"`
+
+	// AssignedAt is when the scheduler assigned the build.
+	AssignedAt metav1.Time `json:"assignedAt"`
+
+	// LeaseDeadline is when the scheduler may reassign a build that has not
+	// started (still Assigned) yet.
+	// +optional
+	LeaseDeadline *metav1.Time `json:"leaseDeadline,omitempty"`
+
+	// Attempt is the current assignment attempt number.
+	Attempt int32 `json:"attempt"`
+
+	// Restarts is the number of times the agent reran the build after a restart.
+	// +optional
+	Restarts int32 `json:"restarts,omitempty"`
+}
+
+// MacBuildLogs describes the build log available through the log service.
+type MacBuildLogs struct {
+	// Available is true once at least one log chunk has been stored.
+	Available bool `json:"available"`
+
+	// Complete is true once the agent finalized the log.
+	// +optional
+	Complete bool `json:"complete,omitempty"`
+
+	// SizeBytes is the number of stored log bytes.
+	// +optional
+	SizeBytes int64 `json:"sizeBytes,omitempty"`
+
+	// UpdatedAt is when the log was last updated.
+	// +optional
+	UpdatedAt *metav1.Time `json:"updatedAt,omitempty"`
+
+	// Command is a copy-pasteable command to read the log.
+	// +optional
+	Command string `json:"command,omitempty"`
 }
 
 // MacBuildPhaseHistoryEntry records a phase transition for a build.
 type MacBuildPhaseHistoryEntry struct {
 	// Phase entered at this point in time.
-	// +kubebuilder:validation:Enum=Pending;Preparing;Building;Publishing;Succeeded;Failed
+	// +kubebuilder:validation:Enum=Pending;Assigned;Preparing;Building;Publishing;Succeeded;Failed
 	Phase string `json:"phase"`
 
 	// TransitionTime is when the phase was first observed.
@@ -214,6 +283,8 @@ type MacBuildResultOutputs struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.phase",description="The current build status"
+// +kubebuilder:printcolumn:name="Agent",type="string",JSONPath=".status.assignment.agentName",description="Assigned MacAgent"
+// +kubebuilder:printcolumn:name="Arch",type="string",JSONPath=".spec.build.arch",description="Build architecture"
 // +kubebuilder:printcolumn:name="GitRef",type="string",JSONPath=".spec.source.gitRef",description="Git Ref"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 

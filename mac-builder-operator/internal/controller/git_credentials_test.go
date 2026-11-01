@@ -76,6 +76,7 @@ func TestResolveSourceGitCredentialsBasicAuth(t *testing.T) {
 	}
 	if creds == nil {
 		t.Fatal("expected materialized credentials")
+		return
 	}
 
 	if creds.kind != gitCredentialKindBasicAuth {

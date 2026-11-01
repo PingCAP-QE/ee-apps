@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -312,6 +313,13 @@ func buildMacBuildFromCustomRun(cr *tektonv1beta1.CustomRun, namespace, name str
 	if ttl := parseDuration(params["ttl"]); ttl != nil {
 		spec.Ttl = ttl
 	}
+	if selector := strings.TrimSpace(params["worker-selector"]); selector != "" {
+		parsed, err := parseWorkerSelector(selector)
+		if err != nil {
+			return nil, fmt.Errorf("customrun %s/%s: invalid worker-selector: %w", cr.GetNamespace(), cr.GetName(), err)
+		}
+		spec.WorkerSelector = parsed
+	}
 
 	return &buildv1alpha1.MacBuild{
 		ObjectMeta: metav1.ObjectMeta{
@@ -368,4 +376,39 @@ func parseDuration(value string) *metav1.Duration {
 		return nil
 	}
 	return &metav1.Duration{Duration: d}
+}
+
+func parseWorkerSelector(value string) (map[string]string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+
+	selector := make(map[string]string)
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key, labelValue, ok := strings.Cut(item, "=")
+		key = strings.TrimSpace(key)
+		labelValue = strings.TrimSpace(labelValue)
+		if !ok || key == "" {
+			return nil, fmt.Errorf("invalid entry %q: expected key=value", item)
+		}
+		if errs := validation.IsQualifiedName(key); len(errs) > 0 {
+			return nil, fmt.Errorf("invalid key %q: %s", key, strings.Join(errs, "; "))
+		}
+		if errs := validation.IsValidLabelValue(labelValue); len(errs) > 0 {
+			return nil, fmt.Errorf("invalid value for %q: %s", key, strings.Join(errs, "; "))
+		}
+		if _, exists := selector[key]; exists {
+			return nil, fmt.Errorf("duplicate key %q", key)
+		}
+		selector[key] = labelValue
+	}
+	if len(selector) == 0 {
+		return nil, nil
+	}
+	return selector, nil
 }

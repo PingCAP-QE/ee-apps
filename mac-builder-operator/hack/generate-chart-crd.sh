@@ -2,10 +2,10 @@
 # Generate (or verify) the mac-builder-operator Helm chart CRD template from the
 # controller-gen output.
 #
-# The chart ships its own copy of the MacBuild CRD, which MUST stay identical to
-# `mac-builder-operator/config/crd/bases/tibuild.pingcap.net_macbuilds.yaml`
-# (only the Helm wrapper and the labels include differ). Any field added to the
-# CRD but missing here is silently pruned by the API server on real clusters.
+# The chart ships its own copies of the MacBuild and MacAgent CRDs, which MUST
+# stay identical to `mac-builder-operator/config/crd/bases/*.yaml` (only the Helm
+# wrapper and the labels include differ). Any field added to a CRD but missing
+# here is silently pruned by the API server on real clusters.
 #
 # Usage:
 #   ./hack/generate-chart-crd.sh          # rewrite the chart template
@@ -13,23 +13,33 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-base="$root/mac-builder-operator/config/crd/bases/tibuild.pingcap.net_macbuilds.yaml"
+macbuild_base="$root/mac-builder-operator/config/crd/bases/tibuild.pingcap.net_macbuilds.yaml"
+macagent_base="$root/mac-builder-operator/config/crd/bases/tibuild.pingcap.net_macagents.yaml"
 chart="$root/charts/mac-builder-operator/templates/crd.yaml"
 
-if [[ ! -f "$base" ]]; then
-  echo "missing generated CRD: $base (run 'make manifests' first)" >&2
-  exit 1
-fi
+for base in "$macbuild_base" "$macagent_base"; do
+  if [[ ! -f "$base" ]]; then
+    echo "missing generated CRD: $base (run 'make manifests' first)" >&2
+    exit 1
+  fi
+done
 
-render() {
-  printf '%s\n' '{{- if .Values.crd.create -}}'
+render_crd() {
+  local base="$1" name="$2"
   # Drop the leading '---' and inject the chart labels into the metadata block.
-  tail -n +2 "$base" | awk '
+  tail -n +2 "$base" | awk -v target="$name" '
     { print }
-    /^  name: macbuilds\.tibuild\.pingcap\.net$/ {
+    $0 == "  name: " target {
       print "  labels:"
       print "    {{- include \"mac-builder-operator.labels\" . | nindent 4 }}"
     }'
+}
+
+render() {
+  printf '%s\n' '{{- if .Values.crd.create -}}'
+  render_crd "$macbuild_base" "macbuilds.tibuild.pingcap.net"
+  printf '%s\n' '---'
+  render_crd "$macagent_base" "macagents.tibuild.pingcap.net"
   printf '%s\n' '{{- end }}'
 }
 

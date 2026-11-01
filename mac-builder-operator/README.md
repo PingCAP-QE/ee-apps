@@ -8,21 +8,60 @@ This project aims to bring macOS platform build tasks into the Kubernetes declar
 
 ### Running Controllers
 
-- Cluster GC only: `go run ./cmd/main.go --enable-gc=true`
-- Mac worker agent: `go run ./cmd/main.go --enable-agent --worker-name="$(hostname)" --worker-arch="$(go env GOARCH)" --build-timeout=24h --build-poll-interval=5m`
+Cluster mode (scheduler + MacAgent inventory + GC + Tekton CustomRun):
 
-`--build-timeout` bounds how long a job may remain in `Building` before it is marked `Failed`, and
-`--build-poll-interval` controls how often agents recheck jobs owned by another worker.
-The agent also pins the external `artifacts.git` build-script source to an immutable revision via
-`--artifacts-repo-revision` plus `--artifacts-repo-commit`; branch refs such as `main` are rejected.
-`--worker-name` defaults to the local hostname, and `--worker-arch` defaults to the local Go runtime arch.
-Supported worker/build architectures are `amd64` and `arm64`.
+```sh
+go run ./cmd/main.go --enable-gc --enable-customrun --enable-macagent --enable-scheduler \
+  --macbuild-namespace=ee-cd
+```
+
+Mac worker agent:
+
+```sh
+go run ./cmd/main.go --enable-agent --enable-gc=false --enable-customrun=false \
+  --macbuild-namespace=ee-cd \
+  --worker-arch="$(go env GOARCH)" --capacity=1 \
+  --heartbeat-interval=20s --build-timeout=24h
+```
+
+The agent derives its `MacAgent` name from the machine's `IOPlatformUUID` (serial
+number and hostname are fallbacks). `--agent-name` overrides it; `--worker-name`
+is a deprecated alias. `--labels key=value,...` adds scheduling labels such as
+`tibuild.pingcap.net/pool=mac-mini`.
+
+`--build-timeout` bounds how long a job may remain active before it is marked
+`Failed`. `--build-poll-interval` is retained for compatibility; agents no longer
+poll jobs owned by other workers. The agent pins the external `artifacts.git`
+build-script source through `--artifacts-repo-revision` plus
+`--artifacts-repo-commit`; branch refs such as `main` are rejected.
+
+The worker persists the in-flight build in
+`~/Library/Application Support/macbuild-agent/state.json` (override with
+`--state-file`) so a restart can decide whether to rerun or fail the build.
+
+### Scheduling and MacAgent
+
+- The cluster scheduler assigns `Pending` builds to a `MacAgent` by architecture,
+  `spec.workerSelector` labels, capacity and least normalized load. Agents execute
+  only builds whose `status.assignment.agentName` matches their own name.
+- `MacAgent` is cluster-scoped. `kubectl get macagents` shows phase, architecture,
+  host, IP, active/capacity builds and online duration; `kubectl describe macagent`
+  shows OS, CPU/memory, load averages, disk, conditions and assigned builds.
+- Heartbeat is 20s. After 60s without a heartbeat the agent is `Offline`; active
+  builds keep a 10m grace period (`spec.offlineGracePeriod`), then fail with
+  `AgentLost`. Reconnecting within the grace window lets the build continue.
+- `spec.unschedulable=true` cordons an agent; `spec.drain=true` stops new
+  assignments and waits for active builds to finish.
 
 ### MacBuild API Notes
 
 - `.spec.build.arch` is optional and defaults to `amd64`.
-- Agents record `.status.workerID`, `.status.workerArch`, `.status.phaseMessage`, and `.status.phaseHistory[]`.
-- Phase history entries capture the phase name, timestamp, and a short message for each transition.
+- The scheduler sets `.status.phase=Assigned`, `.status.assignment`, and
+  `.status.logs.command`; the agent sets `.status.workerID`, `.status.workerArch`,
+  `.status.phaseMessage`, and `.status.phaseHistory[]` when it starts the build.
+- `.spec.workerSelector` requires all entries to match the `MacAgent`'s labels.
+- Phase history entries capture the phase name, timestamp, and a short message for
+  each transition.
 
 Example `MacBuild`:
 
@@ -38,8 +77,11 @@ spec:
   build:
     component: tidb
     version: nightly
+    arch: arm64
   artifacts:
     push: false
+  workerSelector:
+    tibuild.pingcap.net/pool: mac-mini
 ```
 
 ### Prerequisites

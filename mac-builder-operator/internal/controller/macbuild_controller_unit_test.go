@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+
+	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
 )
 
 const (
@@ -22,84 +22,55 @@ const (
 	testWorkerArch = buildv1alpha1.BuildArchAMD64
 )
 
-func TestReconcileInitializesPendingStatusWithPhaseHistory(t *testing.T) {
+func TestReconcileIgnoresPendingBuild(t *testing.T) {
 	t.Parallel()
 
 	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
-	macBuild := &buildv1alpha1.MacBuild{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "build-pending",
-			Namespace: "default",
-		},
-	}
-
+	macBuild := newTestBuild("build-pending", buildv1alpha1.PhasePending, "")
 	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
-	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
-	})
-	if err != nil {
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
 		t.Fatalf("reconcile failed: %v", err)
 	}
 
-	var updated buildv1alpha1.MacBuild
-	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(macBuild), &updated); err != nil {
-		t.Fatalf("get updated MacBuild: %v", err)
-	}
+	updated := getTestBuild(t, k8sClient, macBuild)
 	if updated.Status.Phase != buildv1alpha1.PhasePending {
 		t.Fatalf("expected phase %q, got %q", buildv1alpha1.PhasePending, updated.Status.Phase)
 	}
-	if updated.Status.PhaseMessage == nil || *updated.Status.PhaseMessage == "" {
-		t.Fatalf("expected phase message to be populated, got %#v", updated.Status.PhaseMessage)
-	}
-	if len(updated.Status.PhaseHistory) != 1 {
-		t.Fatalf("expected one phase history entry, got %#v", updated.Status.PhaseHistory)
-	}
-	if updated.Status.PhaseHistory[0].Phase != buildv1alpha1.PhasePending {
-		t.Fatalf("expected pending phase history entry, got %#v", updated.Status.PhaseHistory[0])
-	}
-	if !updated.Status.PhaseHistory[0].TransitionTime.Time.Equal(fixedNow) {
-		t.Fatalf("expected pending transition time %s, got %#v", fixedNow, updated.Status.PhaseHistory[0].TransitionTime)
+	if updated.Status.WorkerID != nil || updated.Status.Assignment != nil {
+		t.Fatalf("agent must not claim Pending builds: %#v", updated.Status)
 	}
 }
 
-func TestReconcilePendingClaimRecordsWorkerIdentityAndPhaseHistory(t *testing.T) {
+func TestReconcileIgnoresEmptyPhase(t *testing.T) {
 	t.Parallel()
 
 	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
-	pendingAt := metav1.NewTime(fixedNow.Add(-time.Minute))
-	macBuild := &buildv1alpha1.MacBuild{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "build-claim",
-			Namespace: "default",
-		},
-		Status: buildv1alpha1.MacBuildStatus{
-			Phase:        buildv1alpha1.PhasePending,
-			PhaseMessage: stringPtr("Waiting for a matching macOS worker to claim this build."),
-			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
-				{
-					Phase:          buildv1alpha1.PhasePending,
-					TransitionTime: pendingAt,
-					Message:        stringPtr("Waiting for a matching macOS worker to claim this build."),
-				},
-			},
-		},
-	}
-
+	macBuild := newTestBuild("build-empty", "", "")
 	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
-	reconciler.WorkerID = testWorkerA
-	reconciler.WorkerArch = testWorkerArch
 
-	_, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
-	})
-	if err != nil {
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
 		t.Fatalf("reconcile failed: %v", err)
 	}
 
-	var updated buildv1alpha1.MacBuild
-	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(macBuild), &updated); err != nil {
-		t.Fatalf("get updated MacBuild: %v", err)
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Phase != "" {
+		t.Fatalf("agent must not initialize the phase; got %q", updated.Status.Phase)
 	}
+}
+
+func TestReconcileClaimsAssignedBuildForSelf(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := newTestBuild("build-assigned", buildv1alpha1.PhaseAssigned, testWorkerA)
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	updated := getTestBuild(t, k8sClient, macBuild)
 	if updated.Status.Phase != buildv1alpha1.PhasePreparing {
 		t.Fatalf("expected phase %q, got %q", buildv1alpha1.PhasePreparing, updated.Status.Phase)
 	}
@@ -112,187 +83,68 @@ func TestReconcilePendingClaimRecordsWorkerIdentityAndPhaseHistory(t *testing.T)
 	if updated.Status.StartTime == nil || !updated.Status.StartTime.Time.Equal(fixedNow) {
 		t.Fatalf("expected start time %s, got %#v", fixedNow, updated.Status.StartTime)
 	}
-	if updated.Status.PhaseMessage == nil || *updated.Status.PhaseMessage == "" {
-		t.Fatalf("expected phase message to be populated, got %#v", updated.Status.PhaseMessage)
+	if updated.Status.Assignment == nil || updated.Status.Assignment.LeaseDeadline != nil {
+		t.Fatalf("expected assignment with cleared lease deadline, got %#v", updated.Status.Assignment)
 	}
-	if len(updated.Status.PhaseHistory) != 2 {
-		t.Fatalf("expected two phase history entries, got %#v", updated.Status.PhaseHistory)
-	}
-	if updated.Status.PhaseHistory[1].Phase != buildv1alpha1.PhasePreparing {
-		t.Fatalf("expected second phase history entry to be Preparing, got %#v", updated.Status.PhaseHistory[1])
+	if len(updated.Status.PhaseHistory) != 1 || updated.Status.PhaseHistory[0].Phase != buildv1alpha1.PhasePreparing {
+		t.Fatalf("unexpected phase history: %#v", updated.Status.PhaseHistory)
 	}
 }
 
-func TestReconcilePendingMismatchedArchDoesNotClaimBuild(t *testing.T) {
+func TestReconcileIgnoresBuildAssignedToAnotherAgent(t *testing.T) {
 	t.Parallel()
 
 	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
-	pendingAt := metav1.NewTime(fixedNow.Add(-time.Minute))
-	macBuild := &buildv1alpha1.MacBuild{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "build-mismatch",
-			Namespace: "default",
-		},
-		Spec: buildv1alpha1.MacBuildSpec{
-			Build: buildv1alpha1.BuildSpec{
-				Arch: buildv1alpha1.BuildArchARM64,
-			},
-		},
-		Status: buildv1alpha1.MacBuildStatus{
-			Phase:        buildv1alpha1.PhasePending,
-			PhaseMessage: stringPtr("Waiting for a matching macOS worker to claim this build."),
-			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
-				{
-					Phase:          buildv1alpha1.PhasePending,
-					TransitionTime: pendingAt,
-					Message:        stringPtr("Waiting for a matching macOS worker to claim this build."),
-				},
-			},
-		},
-	}
-
+	macBuild := newTestBuild("build-foreign", buildv1alpha1.PhaseAssigned, testWorkerB)
 	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
-	reconciler.WorkerID = testWorkerA
-	reconciler.WorkerArch = testWorkerArch
-	reconciler.runBuild = func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
-		t.Fatal("runBuild should not be called for an arch mismatch")
-		return nil, nil
-	}
 
-	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
-	})
-	if err != nil {
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
 		t.Fatalf("reconcile failed: %v", err)
 	}
-	if result != (ctrl.Result{}) {
-		t.Fatalf("expected no requeue on arch mismatch, got %+v", result)
-	}
 
-	var updated buildv1alpha1.MacBuild
-	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(macBuild), &updated); err != nil {
-		t.Fatalf("get updated MacBuild: %v", err)
-	}
-	if updated.Status.Phase != buildv1alpha1.PhasePending {
-		t.Fatalf("expected phase to remain %q, got %q", buildv1alpha1.PhasePending, updated.Status.Phase)
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Phase != buildv1alpha1.PhaseAssigned {
+		t.Fatalf("foreign assignment was modified: %#v", updated.Status)
 	}
 	if updated.Status.WorkerID != nil {
-		t.Fatalf("expected workerID to remain nil, got %#v", updated.Status.WorkerID)
-	}
-	if updated.Status.WorkerArch != nil {
-		t.Fatalf("expected workerArch to remain nil, got %#v", updated.Status.WorkerArch)
+		t.Fatalf("foreign assignment set workerID: %#v", updated.Status.WorkerID)
 	}
 }
 
-func TestReconcileDoesNotClaimBuildRacedByAnotherWorker(t *testing.T) {
+func TestReconcileFailsAssignedBuildWithoutAssignment(t *testing.T) {
 	t.Parallel()
 
 	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
-	macBuild := &buildv1alpha1.MacBuild{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "build-race",
-			Namespace: "default",
-		},
-		Status: buildv1alpha1.MacBuildStatus{
-			Phase: buildv1alpha1.PhasePending,
-			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
-				{
-					Phase:          buildv1alpha1.PhasePending,
-					TransitionTime: metav1.NewTime(fixedNow.Add(-time.Minute)),
-				},
-			},
-		},
-	}
+	macBuild := newTestBuild("build-no-assignment", buildv1alpha1.PhaseAssigned, "")
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
 
-	scheme := runtime.NewScheme()
-	if err := buildv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add buildv1alpha1 scheme: %v", err)
-	}
-	base := fake.NewClientBuilder().
-		WithScheme(scheme).
-		WithStatusSubresource(&buildv1alpha1.MacBuild{}).
-		WithObjects(macBuild).
-		Build()
-
-	// Simulate another same-arch worker winning the claim between this worker's
-	// initial read and the status update: from the second Get (the one inside
-	// the claim update) the object already looks claimed by worker-b.
-	getCalls := 0
-	k8sClient := interceptor.NewClient(base, interceptor.Funcs{
-		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-			getCalls++
-			if err := c.Get(ctx, key, obj, opts...); err != nil {
-				return err
-			}
-			if getCalls >= 2 {
-				if mb, ok := obj.(*buildv1alpha1.MacBuild); ok && mb.Status.Phase == buildv1alpha1.PhasePending {
-					mb.Status.Phase = buildv1alpha1.PhasePreparing
-					mb.Status.WorkerID = stringPtr(testWorkerB)
-					mb.Status.StartTime = &metav1.Time{Time: fixedNow}
-				}
-			}
-			return nil
-		},
-	})
-
-	reconciler := &MacBuildReconciler{
-		Client:     k8sClient,
-		Scheme:     scheme,
-		WorkerID:   testWorkerA,
-		WorkerArch: testWorkerArch,
-		now:        func() time.Time { return fixedNow },
-		runBuild: func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
-			t.Fatal("runBuild should not be called when another worker claimed the build")
-			return nil, nil
-		},
-	}
-
-	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
-	})
-	if err != nil {
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
 		t.Fatalf("reconcile failed: %v", err)
 	}
-	if result != (ctrl.Result{}) {
-		t.Fatalf("expected no requeue when the build was claimed elsewhere, got %+v", result)
-	}
 
-	var updated buildv1alpha1.MacBuild
-	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(macBuild), &updated); err != nil {
-		t.Fatalf("get updated MacBuild: %v", err)
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Phase != buildv1alpha1.PhaseFailed {
+		t.Fatalf("expected failed phase, got %q", updated.Status.Phase)
 	}
-	if updated.Status.WorkerID == nil || *updated.Status.WorkerID != testWorkerB {
-		t.Fatalf("expected the other worker's claim to stand, got workerID %#v", updated.Status.WorkerID)
+	if updated.Status.Message == nil || !strings.Contains(*updated.Status.Message, "no assignment") {
+		t.Fatalf("unexpected message: %#v", updated.Status.Message)
 	}
 }
 
-func TestReconcilePreparingSuccessInitializesOutputs(t *testing.T) {
+func TestReconcileRunsPreparingBuildAssignedToSelf(t *testing.T) {
 	t.Parallel()
 
 	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
-	macBuild := &buildv1alpha1.MacBuild{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "build-success",
-			Namespace: "default",
-		},
-		Status: buildv1alpha1.MacBuildStatus{
-			Phase:        buildv1alpha1.PhasePreparing,
-			PhaseMessage: stringPtr("Build claimed by worker and preparing workspace."),
-			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
-				{
-					Phase:          buildv1alpha1.PhasePreparing,
-					TransitionTime: metav1.NewTime(fixedNow.Add(-time.Minute)),
-					Message:        stringPtr("Build claimed by worker and preparing workspace."),
-				},
-			},
-			WorkerID:  stringPtr(testWorkerA),
-			StartTime: &metav1.Time{Time: fixedNow.Add(-time.Minute)},
-		},
-	}
+	macBuild := newTestBuild("build-run", buildv1alpha1.PhasePreparing, testWorkerA)
+	macBuild.Status.WorkerID = stringPtr(testWorkerA)
+	macBuild.Status.WorkerArch = stringPtr(testWorkerArch)
+	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
+	macBuild.Status.PhaseHistory = []buildv1alpha1.MacBuildPhaseHistoryEntry{{
+		Phase:          buildv1alpha1.PhasePreparing,
+		TransitionTime: metav1.NewTime(fixedNow.Add(-time.Minute)),
+	}}
 
 	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
-	reconciler.WorkerID = testWorkerA
-	reconciler.WorkerArch = testWorkerArch
 	reconciler.runBuild = func(_ context.Context, _ buildv1alpha1.MacBuild, reportPhase buildPhaseReporter) (*buildResult, error) {
 		if err := reportPhase(buildv1alpha1.PhaseBuilding, "Running build steps on the worker."); err != nil {
 			return nil, err
@@ -301,181 +153,126 @@ func TestReconcilePreparingSuccessInitializesOutputs(t *testing.T) {
 			return nil, err
 		}
 		return &buildResult{
-			CommitHash:          "abc123",
-			PushedArtifactsYaml: "artifacts:\n- name: pd\n",
+			CommitHash:          "deadbeef",
+			PushedArtifactsYaml: "artifacts:\n- name: tidb\n",
 		}, nil
 	}
 
-	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
-	})
-	if err != nil {
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
 		t.Fatalf("reconcile failed: %v", err)
 	}
-	if result != (ctrl.Result{}) {
-		t.Fatalf("expected reconcile to finish without requeue, got %+v", result)
-	}
 
-	var updated buildv1alpha1.MacBuild
-	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(macBuild), &updated); err != nil {
-		t.Fatalf("get updated MacBuild: %v", err)
-	}
+	updated := getTestBuild(t, k8sClient, macBuild)
 	if updated.Status.Phase != buildv1alpha1.PhaseSucceeded {
-		t.Fatalf("expected phase %q, got %q", buildv1alpha1.PhaseSucceeded, updated.Status.Phase)
+		t.Fatalf("expected succeeded phase, got %q (%#v)", updated.Status.Phase, updated.Status.Message)
 	}
-	if updated.Status.CommitHash == nil || *updated.Status.CommitHash != "abc123" {
-		t.Fatalf("expected commit hash abc123, got %#v", updated.Status.CommitHash)
-	}
-	if updated.Status.WorkerArch == nil || *updated.Status.WorkerArch != testWorkerArch {
-		t.Fatalf("expected worker arch %q, got %#v", testWorkerArch, updated.Status.WorkerArch)
+	if updated.Status.CommitHash == nil || *updated.Status.CommitHash != "deadbeef" {
+		t.Fatalf("unexpected commit hash: %#v", updated.Status.CommitHash)
 	}
 	if updated.Status.Outputs == nil || updated.Status.Outputs.PushedArtifactsYaml == nil {
-		t.Fatalf("expected outputs.pushed_artifacts_yaml to be populated, got %#v", updated.Status.Outputs)
+		t.Fatalf("expected pushed artifacts, got %#v", updated.Status.Outputs)
 	}
-	if *updated.Status.Outputs.PushedArtifactsYaml != "artifacts:\n- name: pd\n" {
-		t.Fatalf("unexpected pushed artifacts yaml: %q", *updated.Status.Outputs.PushedArtifactsYaml)
+	phases := make([]string, 0, len(updated.Status.PhaseHistory))
+	for _, entry := range updated.Status.PhaseHistory {
+		phases = append(phases, entry.Phase)
 	}
-	if updated.Status.PhaseMessage == nil || *updated.Status.PhaseMessage != "Build completed successfully." {
-		t.Fatalf("expected success phase message, got %#v", updated.Status.PhaseMessage)
-	}
-	if len(updated.Status.PhaseHistory) != 4 {
-		t.Fatalf("expected four phase history entries, got %#v", updated.Status.PhaseHistory)
-	}
-	if updated.Status.PhaseHistory[1].Phase != buildv1alpha1.PhaseBuilding {
-		t.Fatalf("expected second phase history entry to be Building, got %#v", updated.Status.PhaseHistory[1])
-	}
-	if updated.Status.PhaseHistory[2].Phase != buildv1alpha1.PhasePublishing {
-		t.Fatalf("expected third phase history entry to be Publishing, got %#v", updated.Status.PhaseHistory[2])
-	}
-	if updated.Status.PhaseHistory[3].Phase != buildv1alpha1.PhaseSucceeded {
-		t.Fatalf("expected final phase history entry to be Succeeded, got %#v", updated.Status.PhaseHistory[3])
-	}
-	if updated.Status.CompletionTime == nil || !updated.Status.CompletionTime.Time.Equal(fixedNow) {
-		t.Fatalf("expected completion time %s, got %#v", fixedNow, updated.Status.CompletionTime)
+	for _, want := range []string{
+		buildv1alpha1.PhasePreparing,
+		buildv1alpha1.PhaseBuilding,
+		buildv1alpha1.PhasePublishing,
+		buildv1alpha1.PhaseSucceeded,
+	} {
+		if !containsString(phases, want) {
+			t.Fatalf("phase history %v does not contain %q", phases, want)
+		}
 	}
 }
 
-func TestReconcileRequeuesForeignBuildBeforeTimeout(t *testing.T) {
+func TestReconcileFailsActiveBuildWithoutAssignment(t *testing.T) {
 	t.Parallel()
 
 	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
-	macBuild := &buildv1alpha1.MacBuild{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foreign-build",
-			Namespace: "default",
-		},
-		Status: buildv1alpha1.MacBuildStatus{
-			Phase:        buildv1alpha1.PhasePreparing,
-			PhaseMessage: stringPtr("Build claimed by worker and preparing workspace."),
-			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
-				{
-					Phase:          buildv1alpha1.PhasePreparing,
-					TransitionTime: metav1.NewTime(fixedNow.Add(-10 * time.Minute)),
-					Message:        stringPtr("Build claimed by worker and preparing workspace."),
-				},
-			},
-			WorkerID:  stringPtr(testWorkerB),
-			StartTime: &metav1.Time{Time: fixedNow.Add(-10 * time.Minute)},
-		},
-	}
-
+	macBuild := newTestBuild("build-active-no-assignment", buildv1alpha1.PhaseBuilding, "")
+	macBuild.Status.WorkerID = stringPtr(testWorkerA)
+	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
 	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
-	reconciler.WorkerID = testWorkerA
-	reconciler.WorkerArch = testWorkerArch
-	reconciler.BuildTimeout = time.Hour
-	reconciler.BuildPollInterval = 2 * time.Minute
-	reconciler.runBuild = func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
-		t.Fatal("runBuild should not be called for a foreign build")
-		return nil, nil
-	}
 
-	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
-	})
-	if err != nil {
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
 		t.Fatalf("reconcile failed: %v", err)
 	}
-	if result.RequeueAfter != 2*time.Minute {
-		t.Fatalf("expected requeue after 2m, got %+v", result)
-	}
 
-	var updated buildv1alpha1.MacBuild
-	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(macBuild), &updated); err != nil {
-		t.Fatalf("get updated MacBuild: %v", err)
-	}
-	if updated.Status.Phase != buildv1alpha1.PhasePreparing {
-		t.Fatalf("expected phase to remain %q, got %q", buildv1alpha1.PhasePreparing, updated.Status.Phase)
-	}
-	if len(updated.Status.PhaseHistory) != 1 {
-		t.Fatalf("expected phase history to remain unchanged, got %#v", updated.Status.PhaseHistory)
-	}
-}
-
-func TestReconcileMarksStaleForeignBuildFailed(t *testing.T) {
-	t.Parallel()
-
-	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
-	macBuild := &buildv1alpha1.MacBuild{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "stale-build",
-			Namespace: "default",
-		},
-		Status: buildv1alpha1.MacBuildStatus{
-			Phase:        buildv1alpha1.PhasePreparing,
-			PhaseMessage: stringPtr("Build claimed by worker and preparing workspace."),
-			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
-				{
-					Phase:          buildv1alpha1.PhasePreparing,
-					TransitionTime: metav1.NewTime(fixedNow.Add(-2 * time.Hour)),
-					Message:        stringPtr("Build claimed by worker and preparing workspace."),
-				},
-			},
-			WorkerID:  stringPtr(testWorkerB),
-			StartTime: &metav1.Time{Time: fixedNow.Add(-2 * time.Hour)},
-		},
-	}
-
-	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
-	reconciler.WorkerID = testWorkerA
-	reconciler.WorkerArch = testWorkerArch
-	reconciler.BuildTimeout = time.Hour
-	reconciler.BuildPollInterval = 2 * time.Minute
-	reconciler.runBuild = func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
-		t.Fatal("runBuild should not be called for a stale foreign build")
-		return nil, nil
-	}
-
-	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: macBuild.Name, Namespace: macBuild.Namespace},
-	})
-	if err != nil {
-		t.Fatalf("reconcile failed: %v", err)
-	}
-	if result != (ctrl.Result{}) {
-		t.Fatalf("expected stale build reconcile to finish without requeue, got %+v", result)
-	}
-
-	var updated buildv1alpha1.MacBuild
-	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(macBuild), &updated); err != nil {
-		t.Fatalf("get updated MacBuild: %v", err)
-	}
+	updated := getTestBuild(t, k8sClient, macBuild)
 	if updated.Status.Phase != buildv1alpha1.PhaseFailed {
-		t.Fatalf("expected phase %q, got %q", buildv1alpha1.PhaseFailed, updated.Status.Phase)
+		t.Fatalf("expected failed phase, got %q", updated.Status.Phase)
 	}
-	if updated.Status.Message == nil || !strings.Contains(*updated.Status.Message, `worker "`+testWorkerB+`"`) {
-		t.Fatalf("expected timeout message to mention worker-b, got %#v", updated.Status.Message)
+	if updated.Status.Message == nil || !strings.Contains(*updated.Status.Message, "without an assignment") {
+		t.Fatalf("unexpected message: %#v", updated.Status.Message)
 	}
-	if updated.Status.PhaseMessage == nil || !strings.Contains(*updated.Status.PhaseMessage, `worker "`+testWorkerB+`"`) {
-		t.Fatalf("expected phase message to mention worker-b, got %#v", updated.Status.PhaseMessage)
+}
+
+func TestReconcileFailsActiveBuildWithMismatchedWorkerID(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := newTestBuild("build-mismatched-worker", buildv1alpha1.PhaseBuilding, testWorkerA)
+	macBuild.Status.WorkerID = stringPtr(testWorkerB)
+	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
 	}
-	if len(updated.Status.PhaseHistory) != 2 {
-		t.Fatalf("expected failed build to append phase history, got %#v", updated.Status.PhaseHistory)
+
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Phase != buildv1alpha1.PhaseFailed {
+		t.Fatalf("expected failed phase, got %q", updated.Status.Phase)
 	}
-	if updated.Status.PhaseHistory[1].Phase != buildv1alpha1.PhaseFailed {
-		t.Fatalf("expected final phase history entry to be Failed, got %#v", updated.Status.PhaseHistory[1])
+	if updated.Status.Message == nil || !strings.Contains(*updated.Status.Message, "status.workerID") {
+		t.Fatalf("unexpected message: %#v", updated.Status.Message)
 	}
-	if updated.Status.CompletionTime == nil || !updated.Status.CompletionTime.Time.Equal(fixedNow) {
-		t.Fatalf("expected completion time %s, got %#v", fixedNow, updated.Status.CompletionTime)
+}
+
+func TestReconcileFailsArchMismatch(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := newTestBuild("build-arch-mismatch", buildv1alpha1.PhaseAssigned, testWorkerA)
+	macBuild.Spec.Build.Arch = buildv1alpha1.BuildArchARM64
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Phase != buildv1alpha1.PhaseFailed {
+		t.Fatalf("expected failed phase, got %q", updated.Status.Phase)
+	}
+	if updated.Status.Message == nil || !strings.Contains(*updated.Status.Message, "build arch") {
+		t.Fatalf("unexpected message: %#v", updated.Status.Message)
+	}
+}
+
+func TestReconcileFailsTimedOutBuild(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := newTestBuild("build-timeout", buildv1alpha1.PhaseBuilding, testWorkerA)
+	macBuild.Status.WorkerID = stringPtr(testWorkerA)
+	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-2 * time.Hour)}
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
+	reconciler.BuildTimeout = time.Hour
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Phase != buildv1alpha1.PhaseFailed {
+		t.Fatalf("expected failed phase, got %q", updated.Status.Phase)
+	}
+	if updated.Status.Message == nil || !strings.Contains(*updated.Status.Message, "timed out") {
+		t.Fatalf("unexpected message: %#v", updated.Status.Message)
 	}
 }
 
@@ -484,25 +281,16 @@ func TestReconcilePrefersAPIReaderOverCachedClient(t *testing.T) {
 
 	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 
-	// The informer cache still shows the previous, active phase (stale)...
-	cachedObject := &buildv1alpha1.MacBuild{
-		ObjectMeta: metav1.ObjectMeta{Name: "build-stale-cache", Namespace: "default"},
-		Status: buildv1alpha1.MacBuildStatus{
-			Phase: buildv1alpha1.PhasePublishing,
-			PhaseHistory: []buildv1alpha1.MacBuildPhaseHistoryEntry{
-				{Phase: buildv1alpha1.PhasePublishing, TransitionTime: metav1.NewTime(fixedNow.Add(-time.Minute))},
-			},
-			WorkerID:  stringPtr(testWorkerA),
-			StartTime: &metav1.Time{Time: fixedNow.Add(-time.Minute)},
-		},
-	}
-	// ...while the API server already reports the build as finished.
+	cachedObject := newTestBuild("build-stale-cache", buildv1alpha1.PhaseBuilding, testWorkerA)
+	cachedObject.Status.WorkerID = stringPtr(testWorkerA)
+	cachedObject.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
+
 	liveObject := cachedObject.DeepCopy()
 	liveObject.Status.Phase = buildv1alpha1.PhaseSucceeded
 
 	scheme := runtime.NewScheme()
 	if err := buildv1alpha1.AddToScheme(scheme); err != nil {
-		t.Fatalf("add buildv1alpha1 scheme: %v", err)
+		t.Fatalf("add scheme: %v", err)
 	}
 	cachedClient := fake.NewClientBuilder().
 		WithScheme(scheme).
@@ -528,15 +316,56 @@ func TestReconcilePrefersAPIReaderOverCachedClient(t *testing.T) {
 		},
 	}
 
-	result, err := reconciler.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: cachedObject.Name, Namespace: cachedObject.Namespace},
-	})
+	result, err := reconciler.Reconcile(context.Background(), requestFor(cachedObject))
 	if err != nil {
 		t.Fatalf("reconcile failed: %v", err)
 	}
 	if result != (ctrl.Result{}) {
 		t.Fatalf("expected no requeue when the live phase is terminal, got %+v", result)
 	}
+}
+
+func newTestBuild(name, phase, agent string) *buildv1alpha1.MacBuild {
+	build := &buildv1alpha1.MacBuild{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Spec: buildv1alpha1.MacBuildSpec{
+			Build: buildv1alpha1.BuildSpec{
+				Component: "tidb",
+				Version:   "nightly",
+				Arch:      testWorkerArch,
+			},
+		},
+		Status: buildv1alpha1.MacBuildStatus{Phase: phase},
+	}
+	if agent != "" {
+		build.Status.Assignment = &buildv1alpha1.MacBuildAssignment{
+			AgentName:  agent,
+			AssignedAt: metav1.NewTime(time.Date(2026, 6, 6, 11, 0, 0, 0, time.UTC)),
+		}
+	}
+	return build
+}
+
+func requestFor(build *buildv1alpha1.MacBuild) ctrl.Request {
+	return ctrl.Request{NamespacedName: types.NamespacedName{Name: build.Name, Namespace: build.Namespace}}
+}
+
+func getTestBuild(t *testing.T, k8sClient client.Client, build *buildv1alpha1.MacBuild) *buildv1alpha1.MacBuild {
+	t.Helper()
+	var updated buildv1alpha1.MacBuild
+	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(build), &updated); err != nil {
+		t.Fatalf("get updated MacBuild: %v", err)
+	}
+	return &updated
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func newTestMacBuildReconciler(
@@ -558,8 +387,12 @@ func newTestMacBuildReconciler(
 		Build()
 
 	return &MacBuildReconciler{
-		Client: k8sClient,
-		Scheme: scheme,
+		Client:            k8sClient,
+		Scheme:            scheme,
+		WorkerID:          testWorkerA,
+		WorkerArch:        testWorkerArch,
+		BuildTimeout:      time.Hour,
+		BuildPollInterval: time.Minute,
 		now: func() time.Time {
 			return fixedNow
 		},

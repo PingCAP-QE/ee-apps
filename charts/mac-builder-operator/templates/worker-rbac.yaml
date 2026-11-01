@@ -17,31 +17,42 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ $fullname }}-worker-read
+  name: {{ $fullname }}-worker-macagent
   labels:
     {{- include "mac-builder-operator.labels" . | nindent 4 }}
 rules:
-  # The worker agent's informer watches MacBuilds cluster-wide, so the read
-  # permission must be cluster-scoped.
+  # MacAgent is cluster-scoped, so self-registration and heartbeat updates need
+  # a ClusterRole even though the worker's MacBuild access stays namespaced.
   - apiGroups:
       - tibuild.pingcap.net
     resources:
-      - macbuilds
+      - macagents
     verbs:
       - get
       - list
       - watch
+      - create
+      - update
+      - patch
+  - apiGroups:
+      - tibuild.pingcap.net
+    resources:
+      - macagents/status
+    verbs:
+      - get
+      - update
+      - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ $fullname }}-worker-read
+  name: {{ $fullname }}-worker-macagent
   labels:
     {{- include "mac-builder-operator.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ $fullname }}-worker-read
+  name: {{ $fullname }}-worker-macagent
 subjects:
   - kind: ServiceAccount
     name: {{ $workerSA }}

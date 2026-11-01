@@ -31,25 +31,27 @@ const (
 	testProfile   = "release"
 	testRegistry  = "hub.pingcap.net/devbuild"
 
+	testMacMiniPool       = "mac-mini"
 	testMacBuildNamespace = "mac-builds"
 	testCustomRunNS       = "ee-cd"
 )
 
 const (
-	paramGitURL       = "git-url"
-	paramGitRef       = "git-ref"
-	paramGitRev       = "git-revision"
-	paramRefspec      = "git-refspec"
-	paramGitSecretRef = "git-secret-ref"
-	paramSubmodules   = "submodules"
-	paramComponent    = "component"
-	paramVersion      = "version"
-	paramOS           = "os"
-	paramArch         = "arch"
-	paramProfile      = "profile"
-	paramPush         = "push"
-	paramRegistry     = "registry"
-	paramTTL          = "ttl"
+	paramGitURL         = "git-url"
+	paramGitRef         = "git-ref"
+	paramGitRev         = "git-revision"
+	paramRefspec        = "git-refspec"
+	paramGitSecretRef   = "git-secret-ref"
+	paramSubmodules     = "submodules"
+	paramComponent      = "component"
+	paramVersion        = "version"
+	paramOS             = "os"
+	paramArch           = "arch"
+	paramProfile        = "profile"
+	paramPush           = "push"
+	paramRegistry       = "registry"
+	paramTTL            = "ttl"
+	paramWorkerSelector = "worker-selector"
 )
 
 func newTestMacBuildCustomRun(name string, params map[string]string) *tektonv1beta1.CustomRun {
@@ -500,5 +502,68 @@ func TestReconcilerHelperDefaults(t *testing.T) {
 	}
 	if got := r.currentTime(); !got.Equal(fixed) {
 		t.Fatalf("expected injected time %s, got %s", fixed, got)
+	}
+}
+
+func TestParseWorkerSelector(t *testing.T) {
+	t.Parallel()
+
+	selector, err := parseWorkerSelector(" tibuild.pingcap.net/pool=mac-mini , arch=arm64, empty= ")
+	if err != nil {
+		t.Fatalf("parse worker selector: %v", err)
+	}
+	if selector["tibuild.pingcap.net/pool"] != testMacMiniPool || selector["arch"] != "arm64" {
+		t.Fatalf("unexpected selector: %#v", selector)
+	}
+	if value, ok := selector["empty"]; !ok || value != "" {
+		t.Fatalf("expected empty label value, got %#v", selector)
+	}
+
+	for _, invalid := range []string{
+		"missing-equals",
+		"=value",
+		"bad key=value",
+		"key=bad value",
+		"arch=arm64,arch=amd64",
+	} {
+		if _, err := parseWorkerSelector(invalid); err == nil {
+			t.Fatalf("expected error for %q", invalid)
+		}
+	}
+
+	empty, err := parseWorkerSelector(" , ")
+	if err != nil || empty != nil {
+		t.Fatalf("expected nil selector, got %#v (err=%v)", empty, err)
+	}
+}
+
+func TestBuildMacBuildFromCustomRunWorkerSelector(t *testing.T) {
+	t.Parallel()
+
+	cr := newTestMacBuildCustomRun("cr-selector", map[string]string{
+		paramGitURL:         testGitURL,
+		paramGitRef:         testGitRef,
+		paramComponent:      testComponent,
+		paramWorkerSelector: "tibuild.pingcap.net/pool=mac-mini,arch=arm64",
+	})
+	mb, err := buildMacBuildFromCustomRun(cr, "default", "mb-selector")
+	if err != nil {
+		t.Fatalf("buildMacBuildFromCustomRun failed: %v", err)
+	}
+	if mb.Spec.WorkerSelector["tibuild.pingcap.net/pool"] != testMacMiniPool || mb.Spec.WorkerSelector["arch"] != "arm64" {
+		t.Fatalf("unexpected worker selector: %#v", mb.Spec.WorkerSelector)
+	}
+}
+
+func TestBuildMacBuildFromCustomRunInvalidWorkerSelector(t *testing.T) {
+	t.Parallel()
+
+	cr := newTestMacBuildCustomRun("cr-bad-selector", map[string]string{
+		paramGitURL:         testGitURL,
+		paramComponent:      testComponent,
+		paramWorkerSelector: "not-a-selector",
+	})
+	if _, err := buildMacBuildFromCustomRun(cr, "default", "mb-bad-selector"); err == nil {
+		t.Fatal("expected an error for an invalid worker-selector")
 	}
 }
