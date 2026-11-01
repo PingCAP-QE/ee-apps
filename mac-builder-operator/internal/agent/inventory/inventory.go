@@ -3,6 +3,7 @@ package inventory
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -97,7 +98,7 @@ func (p *Provider) CollectStatic(ctx context.Context) Static {
 
 	static.Hardware.Model = p.sysctlString(ctx, "hw.model")
 	static.Hardware.CPUModel = p.sysctlString(ctx, "machdep.cpu.brand_string")
-	if cores := p.sysctlInt(ctx, "hw.ncpu"); cores > 0 {
+	if cores := p.sysctlInt(ctx, "hw.ncpu"); cores > 0 && cores <= math.MaxInt32 {
 		static.Hardware.CPUCores = int32(cores)
 	}
 	if memory := p.sysctlInt(ctx, "hw.memsize"); memory > 0 {
