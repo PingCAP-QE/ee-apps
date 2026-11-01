@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
@@ -14,28 +18,42 @@ import (
 	"github.com/PingCAP-QE/ee-apps/chatops-lark/pkg/events/handler"
 )
 
+type options struct {
+	configPath  string
+	debug       bool
+	httpAddress string
+}
+
+// parseOptions parses the command line. Bot credentials are read from the
+// configuration file only; there are intentionally no app-id/app-secret flags.
+func parseOptions(args []string) (options, error) {
+	var opts options
+	var flagOutput bytes.Buffer
+	fs := flag.NewFlagSet("chatops-lark", flag.ContinueOnError)
+	fs.SetOutput(&flagOutput)
+	fs.StringVar(&opts.configPath, "config", "config.yaml", "config yaml file")
+	fs.BoolVar(&opts.debug, "debug", false, "debug mode")
+	fs.StringVar(&opts.httpAddress, "http-addr", ":8080", "HTTP listen address for health checks")
+	if err := fs.Parse(args); err != nil {
+		usage := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(flagOutput.String()), err.Error()))
+		if usage != "" {
+			return options{}, fmt.Errorf("%w; %s", err, usage)
+		}
+		return options{}, err
+	}
+	return opts, nil
+}
+
 func main() {
-	var (
-		appID       = flag.String("app-id", "", "app id")
-		appSecret   = flag.String("app-secret", "", "app secret")
-		configPath  = flag.String("config", "config.yaml", "config yaml file")
-		debugMode   = flag.Bool("debug", false, "debug mode")
-		httpAddress = flag.String("http-addr", ":8080", "HTTP listen address for health checks")
-	)
-	flag.Parse()
+	opts, err := parseOptions(os.Args[1:])
+	if err != nil {
+		log.Fatal().Err(err).Msg("Invalid command line options")
+	}
 
 	// Load configuration
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := config.LoadConfig(opts.configPath)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load configuration")
-	}
-
-	// The priority of the CLI options is higher than the configuration file.
-	if *appID != "" {
-		cfg.AppID = *appID
-	}
-	if *appSecret != "" {
-		cfg.AppSecret = *appSecret
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -43,7 +61,7 @@ func main() {
 	}
 
 	// Override debug mode if specified via command line
-	if *debugMode {
+	if opts.debug {
 		cfg.Debug = true
 	}
 
@@ -57,8 +75,8 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("OK"))
 		})
-		log.Info().Msgf("Starting health check server on %s", *httpAddress)
-		if err := http.ListenAndServe(*httpAddress, nil); err != nil {
+		log.Info().Msgf("Starting health check server on %s", opts.httpAddress)
+		if err := http.ListenAndServe(opts.httpAddress, nil); err != nil {
 			log.Fatal().Err(err).Msg("Failed to start health check server")
 		}
 	}()

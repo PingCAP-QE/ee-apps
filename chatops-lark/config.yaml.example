@@ -1,8 +1,9 @@
 # Example configuration file for chatops-lark
 
-# Bot configuration
-app_id: <app_id> # or set it from cli options `--app-id`
-app_secret: <app_secret> # or set it from cli options `--app-secret`
+# Bot configuration. Both values are required and are loaded from this file
+# only; the server has no app-id/app-secret command-line options.
+app_id: <app_id>
+app_secret: <app_secret>
 
 # GitHub App token broker client, shared by every command that calls the GitHub
 # API (/repo-admins, /cloud-image). Remove this block to disable the broker;

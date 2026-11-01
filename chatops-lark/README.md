@@ -6,9 +6,10 @@ You can run it by following steps:
 
 1. Prepare the configuration file `config.yaml`. An example configuration file is provided at `config.yaml.example`:
   ```yaml
-  # Bot configuration
-  app_id: <app_id> # or set it from cli options `--app-id`
-  app_secret: <app_secret> # or set it from cli options `--app-secret`
+  # Bot configuration. Both values are required and are loaded from this file
+  # only; the server has no app-id/app-secret command-line options.
+  app_id: <app_id>
+  app_secret: <app_secret>
 
   # Cherry pick configuration
   cherry_pick_invite:
@@ -40,10 +41,16 @@ You can run it by following steps:
 
 2. Run the lark bot app:
   ```bash
-  go run ./cmd/server [-app-id=<your_app_id>] [-app-secret=<your_app_secret>]
+  go run ./cmd/server [-config=config.yaml] [-debug] [-http-addr=:8080]
   ```
 
 ## Deployment
 
-We are deploying the bot with GitOps using FluxCD, the manifest is in the [`chatops-lark` directory in `ee-ops`](https://github.com/PingCAP-QE/ee-ops/tree/main/apps/prod/chatops-lark).
+We are deploying the bot with GitOps using FluxCD, the manifest is in the [`chatops-lark` directory in `ee-ops`](https://github.com/PingCAP-QE/ee-ops/tree/main/apps/gcp/chatops-lark).
 So if you want to bump the image or update the configuration, you contribute a PR to the repository.
+
+The in-cluster `config.yaml` is rendered by External Secrets Operator from the
+`gcp_chatops_lark_json` Secret Manager entry; `app_id`/`app_secret` are merged
+into that file. The container receives only `-config /etc/chatops-lark/config.yaml`
+and no longer gets `APP_ID`/`APP_SECRET` environment variables or
+`-app-id`/`-app-secret` arguments.
