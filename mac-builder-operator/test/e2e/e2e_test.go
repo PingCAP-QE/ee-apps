@@ -291,7 +291,7 @@ spec:
 
 			By("reporting a fresh heartbeat and Ready condition")
 			now := time.Now().UTC().Format(time.RFC3339)
-			status := fmt.Sprintf(`{"status":{"phase":"Online","arch":"amd64","hostname":"e2e-mac","ip":"127.0.0.1","connectedSince":"%s","lastHeartbeatTime":"%s","runtime":{"diskFreeBytes":107374182400,"diskFreePercent":50},"conditions":[{"type":"Ready","status":"True","reason":"HeartbeatOK","lastTransitionTime":"%s"}]}}`, now, now, now)
+			status := fmt.Sprintf(`{"status":{"phase":"Online","arch":"amd64","hostname":"e2e-mac","ip":"127.0.0.1","connectedSince":"%s","lastHeartbeatTime":"%s","runtime":{"diskFreeBytes":107374182400,"diskFreePercent":50},"conditions":[{"type":"Ready","status":"True","reason":"HeartbeatOK","message":"heartbeat received","lastTransitionTime":"%s"}]}}`, now, now, now)
 			_, err = utils.Run(exec.Command("kubectl", "patch", "macagent", agentName,
 				"--subresource=status", "--type=merge", "-p", status))
 			Expect(err).NotTo(HaveOccurred())
