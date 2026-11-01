@@ -69,3 +69,27 @@ func TestBuildLogRejectsInvalidNames(t *testing.T) {
 		t.Fatal("expected an invalid build name error")
 	}
 }
+
+func TestBuildLogRedactsTokens(t *testing.T) {
+	t.Parallel()
+
+	log, err := NewBuildLog(t.TempDir(), "ee-cd", "macbuild-abc", 1024*1024)
+	if err != nil {
+		t.Fatalf("new log: %v", err)
+	}
+	token := "ghp_" + strings.Repeat("a", 30)
+	log.Phase("Building", "token="+token)
+	if err := log.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	data, err := os.ReadFile(log.Path())
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if strings.Contains(string(data), token) {
+		t.Fatalf("token was written to the log:\n%s", data)
+	}
+	if !strings.Contains(string(data), "[REDACTED]") {
+		t.Fatalf("expected redaction marker:\n%s", data)
+	}
+}

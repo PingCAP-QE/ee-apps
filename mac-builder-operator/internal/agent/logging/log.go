@@ -5,12 +5,19 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/validation"
 )
+
+var sensitiveTokenPattern = regexp.MustCompile(`(?i)(gh[pousr]_[a-z0-9]{20,}|github_pat_[a-z0-9_]{20,})`)
+
+func redact(value string) string {
+	return sensitiveTokenPattern.ReplaceAllString(value, "[REDACTED]")
+}
 
 // DefaultDir returns the per-user build log directory.
 func DefaultDir() (string, error) {
@@ -122,6 +129,7 @@ func (l *Log) writeLineLocked(message string) {
 	if l.file == nil {
 		return
 	}
+	message = redact(message)
 	if l.written >= l.maxBytes {
 		if !l.truncated {
 			l.truncated = true
