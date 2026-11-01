@@ -125,6 +125,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$WORKER_ARCH" in amd64|arm64) ;; *) die "unsupported --worker-arch: $WORKER_ARCH";; esac
+if ! [[ "$MIN_FREE_DISK_BYTES" =~ ^[0-9]+$ ]] || (( 10#$MIN_FREE_DISK_BYTES <= 0 )); then
+  die "MIN_FREE_DISK_BYTES must be a positive integer"
+fi
 
 # ---- 1) Xcode Command Line Tools (detect only) ------------------------------
 if xcode-select -p >/dev/null 2>&1; then
