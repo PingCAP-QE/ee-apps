@@ -28,6 +28,31 @@ example:
   expired; the build returns to `Pending` and is retried up to
   `--max-assignment-attempts`.
 
+## Build logs
+
+```bash
+kubectl macbuild logs <build> -n ee-cd
+kubectl macbuild logs <build> -n ee-cd -f --tail 200
+```
+
+- `404` means the build has no uploaded log (an old build, the log server is
+  disabled, or the agent has not uploaded its first chunk).
+- `403` means the account lacks `get` on `services/proxy`. Use
+  `kubectl port-forward svc/mac-builder-operator-logs 8080:8080 -n ee-cd` and
+  pass `--server http://127.0.0.1:8080`.
+- The agent keeps a local copy under its `--log-dir`; set `--log-upload=false`
+  on clusters without the log server.
+- `kubectl describe macbuild` shows `Status.Logs.Command`, `SizeBytes` and
+  `Complete`.
+
+The log Service is plain HTTP inside the cluster. API server proxy requests are
+authenticated and TLS-protected by the API server, but any pod that can reach
+the ClusterIP can read logs. Restrict the namespace with a NetworkPolicy, size
+the PVC for `logServer.maxStoreBytes`, and avoid writing credentials to build
+output; common GitHub token shapes are redacted, but redaction is best-effort.
+The agent retries finalization three times (`--log-finalize-timeout`, default
+10s per attempt) and keeps the local copy if the service stays unavailable.
+
 ## Offline and reconnect
 
 - 60s without a heartbeat marks the agent `Offline` (`Ready=False`,

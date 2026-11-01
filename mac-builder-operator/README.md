@@ -40,7 +40,9 @@ The worker persists the in-flight build in
 `--state-file`) so a restart can decide whether to rerun or fail the build.
 `--shutdown-grace` (default 10m) lets an active build finish after SIGTERM;
 stale `macbuild-*` workspaces in the temp dir are removed after
-`--workspace-max-age` (default 7d).
+`--workspace-max-age` (default 7d). `--log-finalize-timeout` (default 10s)
+bounds each log finalize attempt; the agent retries three times before leaving
+the log local-only.
 
 ### Scheduling and MacAgent
 
@@ -59,12 +61,41 @@ stale `macbuild-*` workspaces in the temp dir are removed after
   scheduling. A build that starts below `--min-free-disk-bytes` fails with an
   `insufficient disk` message before cloning.
 
+### Build logs
+
+The worker writes a per-build log with phase markers and uploads it in chunks to
+the operator log service. Enable the service with `logServer.enabled=true`; the
+chart creates a ClusterIP Service and a PVC (7-day retention by default). The
+agent's `--log-upload` flag defaults to true.
+
+```bash
+# Build the kubectl plugin (installs as `kubectl-macbuild`).
+cd mac-builder-operator && make build-cli
+kubectl macbuild logs <build-name> -n ee-cd
+kubectl macbuild logs <build-name> -n ee-cd -f --tail 200
+```
+
+The plugin reaches the Service through the Kubernetes API service proxy and
+needs `get` on `services/proxy`. If your account cannot use the proxy, run
+`kubectl port-forward svc/mac-builder-operator-logs 8080:8080 -n ee-cd` and pass
+`--server http://127.0.0.1:8080`. `kubectl describe macbuild` shows the
+`Status.Logs.Command` hint.
+
+The log Service is plain HTTP inside the cluster. Access through the API server
+proxy is authenticated and TLS-protected by the API server, but any workload
+that can reach the ClusterIP directly can read logs. Keep the namespace
+restricted (for example with a NetworkPolicy) and treat build logs as
+non-secret data: common token shapes are redacted, but logs must not contain
+credentials.
+
 ### MacBuild API Notes
 
 - `.spec.build.arch` is optional and defaults to `amd64`.
 - The scheduler sets `.status.phase=Assigned`, `.status.assignment`, and
   `.status.logs.command`; the agent sets `.status.workerID`, `.status.workerArch`,
   `.status.phaseMessage`, and `.status.phaseHistory[]` when it starts the build.
+- `.status.logs` reports whether the uploaded log is available/complete, its
+  size, and the `kubectl macbuild logs` command.
 - `.spec.workerSelector` requires all entries to match the `MacAgent`'s labels.
 - Phase history entries capture the phase name, timestamp, and a short message for
   each transition.

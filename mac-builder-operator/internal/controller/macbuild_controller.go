@@ -32,7 +32,9 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/logging"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/state"
+	"k8s.io/client-go/rest"
 )
 
 // MacBuildReconciler reconciles a MacBuild object
@@ -61,6 +63,12 @@ type MacBuildReconciler struct {
 	// Tracker counts active builds so SIGTERM can wait for them.
 	Tracker *BuildTracker
 
+	// LogDir and LogMaxBytes configure the per-build local log file.
+	LogDir      string
+	LogMaxBytes int64
+	// LogUpload configures the remote log service; nil disables upload.
+	LogUpload *LogUploadConfig
+
 	// APIReader reads directly from the API server (uncached). The reconciler
 	// uses it for the reads that decide whether to (re)run a build, so it never
 	// acts on a stale phase: a reconcile triggered right after a build completes
@@ -77,6 +85,23 @@ type MacBuildReconciler struct {
 type buildResult struct {
 	CommitHash          string
 	PushedArtifactsYaml string
+}
+
+type buildLogInfo struct {
+	Size     int64
+	Complete bool
+}
+
+// LogUploadConfig points the agent at the operator log service.
+type LogUploadConfig struct {
+	Enabled          bool
+	RESTConfig       *rest.Config
+	ServiceNamespace string
+	ServiceName      string
+	ServicePort      int
+	// FinalizeTimeout bounds each finalize attempt (default 10s). The agent
+	// retries three times with backoff before leaving the log local-only.
+	FinalizeTimeout time.Duration
 }
 
 type buildPhaseReporter func(string, string) error
@@ -304,7 +329,7 @@ func (r *MacBuildReconciler) reconcileActive(
 		}
 	}
 
-	result, err := r.runNativeBuild(ctx, macBuild, func(phase string, message string) error {
+	result, logInfo, err := r.runNativeBuild(ctx, macBuild, func(phase string, message string) error {
 		updatedBuild, err := r.updateBuildStatus(ctx, client.ObjectKeyFromObject(&macBuild), func(status *buildv1alpha1.MacBuildStatus, now metav1.Time) {
 			status.SetPhase(phase, message, now)
 			status.WorkerID = &r.WorkerID
@@ -321,6 +346,11 @@ func (r *MacBuildReconciler) reconcileActive(
 		macBuild = *updatedBuild
 		return nil
 	})
+	if logInfo != nil {
+		if logErr := r.patchBuildLogStatus(ctx, &macBuild, logInfo); logErr != nil {
+			logger.Error(logErr, "Failed to update build log status")
+		}
+	}
 
 	if err != nil {
 		logger.Error(err, "Build failed")
@@ -361,7 +391,7 @@ func (r *MacBuildReconciler) runNativeBuild(
 	ctx context.Context,
 	macBuild buildv1alpha1.MacBuild,
 	reportPhase buildPhaseReporter,
-) (*buildResult, error) {
+) (*buildResult, *buildLogInfo, error) {
 	logger := logf.FromContext(ctx)
 
 	if r.Tracker != nil {
@@ -378,19 +408,140 @@ func (r *MacBuildReconciler) runNativeBuild(
 		}()
 	}
 
+	var logSink *logging.Log
+	if r.LogDir != "" {
+		sink, err := logging.NewBuildLog(r.LogDir, macBuild.Namespace, macBuild.Name, r.LogMaxBytes)
+		if err != nil {
+			logger.Error(err, "Failed to create build log; continuing without logs")
+		} else {
+			logSink = sink
+			defer func() { _ = logSink.Close() }()
+		}
+	}
+
+	var uploader *logging.Uploader
+	var cancelUpload context.CancelFunc
+	if logSink != nil && r.LogUpload != nil && r.LogUpload.Enabled {
+		created, err := logging.NewUploader(
+			r.LogUpload.RESTConfig,
+			r.LogUpload.ServiceNamespace,
+			r.LogUpload.ServiceName,
+			r.LogUpload.ServicePort,
+			macBuild.Namespace,
+			macBuild.Name,
+			logSink,
+		)
+		if err != nil {
+			logger.Error(err, "Failed to create log uploader; keeping local log only")
+		} else {
+			uploader = created
+			uploadCtx, cancel := context.WithCancel(ctx)
+			cancelUpload = cancel
+			go func() {
+				_ = uploader.Run(uploadCtx)
+			}()
+		}
+	}
+
 	wrappedReportPhase := func(phase string, message string) error {
+		if logSink != nil {
+			logSink.SetPhase(phase)
+			logSink.Phase(phase, message)
+		}
 		err := reportPhase(phase, message)
 		r.persistBuildState(ctx, macBuild, phase)
 		return err
 	}
 
+	var result *buildResult
+	var err error
 	if r.runBuild != nil {
-		return r.runBuild(ctx, macBuild, wrappedReportPhase)
+		result, err = r.runBuild(ctx, macBuild, wrappedReportPhase)
+	} else {
+		job := newNativeBuildJob(ctx, macBuild, r.ArtifactsScriptSource)
+		job.credentialsReader = r.secretReader()
+		job.reportPhase = wrappedReportPhase
+		job.setLog(logSink)
+		result, err = job.Run()
 	}
-	job := newNativeBuildJob(ctx, macBuild, r.ArtifactsScriptSource)
-	job.credentialsReader = r.secretReader()
-	job.reportPhase = wrappedReportPhase
-	return job.Run()
+
+	if logSink != nil {
+		if closeErr := logSink.Close(); closeErr != nil {
+			logger.Error(closeErr, "Failed to close build log")
+		}
+	}
+	if cancelUpload != nil {
+		cancelUpload()
+	}
+
+	var logInfo *buildLogInfo
+	if logSink != nil {
+		logInfo = &buildLogInfo{Size: logSink.Size()}
+		if uploader != nil {
+			meta, finalizeErr := r.finalizeBuildLog(uploader)
+			if finalizeErr != nil {
+				logger.Error(finalizeErr, "Failed to finalize build log after retries")
+			} else {
+				logInfo.Size = meta.Size
+				logInfo.Complete = meta.Complete
+			}
+		}
+	}
+	return result, logInfo, err
+}
+
+// finalizeBuildLog uploads the remaining chunks and marks the remote log
+// complete. A log service outage must not fail the build, so the caller only
+// logs the final error; each attempt is bounded by FinalizeTimeout.
+func (r *MacBuildReconciler) finalizeBuildLog(uploader *logging.Uploader) (logging.RemoteMeta, error) {
+	timeout := 10 * time.Second
+	if r.LogUpload != nil && r.LogUpload.FinalizeTimeout > 0 {
+		timeout = r.LogUpload.FinalizeTimeout
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		meta, err := uploader.Finalize(ctx)
+		cancel()
+		if err == nil {
+			return meta, nil
+		}
+		lastErr = err
+		if attempt < 3 {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
+	}
+	return logging.RemoteMeta{}, lastErr
+}
+
+func (r *MacBuildReconciler) patchBuildLogStatus(
+	ctx context.Context,
+	build *buildv1alpha1.MacBuild,
+	info *buildLogInfo,
+) error {
+	if info == nil {
+		return nil
+	}
+	now := metav1.NewTime(r.currentTime())
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var latest buildv1alpha1.MacBuild
+		if err := r.reader().Get(ctx, client.ObjectKeyFromObject(build), &latest); err != nil {
+			return err
+		}
+		base := latest.DeepCopy()
+		if latest.Status.Logs == nil {
+			latest.Status.Logs = &buildv1alpha1.MacBuildLogs{}
+		}
+		latest.Status.Logs.Available = info.Complete && info.Size > 0
+		latest.Status.Logs.Complete = info.Complete
+		latest.Status.Logs.SizeBytes = info.Size
+		latest.Status.Logs.UpdatedAt = &now
+		if latest.Status.Logs.Command == "" {
+			latest.Status.Logs.Command = fmt.Sprintf("kubectl macbuild logs -n %s %s", latest.Namespace, latest.Name)
+		}
+		return r.Status().Patch(ctx, &latest, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{}))
+	})
 }
 
 func (r *MacBuildReconciler) persistBuildState(ctx context.Context, macBuild buildv1alpha1.MacBuild, phase string) {

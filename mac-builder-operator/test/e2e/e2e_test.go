@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -261,6 +262,88 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(metricsOutput).To(ContainSubstring("< HTTP/1.1 200 OK"))
 			}
 			Eventually(verifyMetricsAvailable, 2*time.Minute).Should(Succeed())
+		})
+
+		It("assigns a pending MacBuild to a ready MacAgent", func() {
+			const agentName = "e2e-mac-agent"
+			const buildName = "e2e-mac-build"
+
+			agentManifest := fmt.Sprintf(`apiVersion: tibuild.pingcap.net/v1alpha1
+kind: MacAgent
+metadata:
+  name: %s
+spec:
+  capacity: 2
+`, agentName)
+			agentFile, err := os.CreateTemp("", "macagent-*.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.Remove(agentFile.Name()) })
+			_, err = agentFile.WriteString(agentManifest)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(agentFile.Close()).To(Succeed())
+
+			By("creating a MacAgent")
+			_, err = utils.Run(exec.Command("kubectl", "apply", "-f", agentFile.Name()))
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				_, _ = utils.Run(exec.Command("kubectl", "delete", "macagent", agentName, "--ignore-not-found"))
+			})
+
+			By("reporting a fresh heartbeat and Ready condition")
+			now := time.Now().UTC().Format(time.RFC3339)
+			status := fmt.Sprintf(`{"status":{"phase":"Online","arch":"amd64","hostname":"e2e-mac","ip":"127.0.0.1","connectedSince":"%s","lastHeartbeatTime":"%s","runtime":{"diskFreeBytes":107374182400,"diskFreePercent":50},"conditions":[{"type":"Ready","status":"True","reason":"HeartbeatOK","message":"heartbeat received","lastTransitionTime":"%s"}]}}`, now, now, now)
+			_, err = utils.Run(exec.Command("kubectl", "patch", "macagent", agentName,
+				"--subresource=status", "--type=merge", "-p", status))
+			Expect(err).NotTo(HaveOccurred())
+
+			buildManifest := fmt.Sprintf(`apiVersion: tibuild.pingcap.net/v1alpha1
+kind: MacBuild
+metadata:
+  name: %s
+  namespace: default
+spec:
+  source:
+    gitRepository: https://github.com/pingcap/tidb.git
+    gitRef: main
+  build:
+    component: tidb
+    version: nightly
+    arch: amd64
+  artifacts:
+    push: false
+`, buildName)
+			buildFile, err := os.CreateTemp("", "macbuild-*.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() { _ = os.Remove(buildFile.Name()) })
+			_, err = buildFile.WriteString(buildManifest)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(buildFile.Close()).To(Succeed())
+
+			By("creating a pending MacBuild")
+			_, err = utils.Run(exec.Command("kubectl", "apply", "-f", buildFile.Name()))
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(func() {
+				_, _ = utils.Run(exec.Command("kubectl", "delete", "macbuild", buildName, "-n", "default", "--ignore-not-found"))
+			})
+
+			By("waiting for the scheduler to assign it to the ready MacAgent")
+			Eventually(func() string {
+				output, err := utils.Run(exec.Command("kubectl", "get", "macbuild", buildName,
+					"-n", "default", "-o", "jsonpath={.status.phase}"))
+				if err != nil {
+					return ""
+				}
+				return strings.TrimSpace(output)
+			}, 2*time.Minute, 2*time.Second).Should(Equal("Assigned"))
+
+			Eventually(func() string {
+				output, err := utils.Run(exec.Command("kubectl", "get", "macbuild", buildName,
+					"-n", "default", "-o", "jsonpath={.status.assignment.agentName}"))
+				if err != nil {
+					return ""
+				}
+				return strings.TrimSpace(output)
+			}, time.Minute, 2*time.Second).Should(Equal(agentName))
 		})
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks

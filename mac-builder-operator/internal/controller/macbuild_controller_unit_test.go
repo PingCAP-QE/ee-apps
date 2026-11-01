@@ -2,6 +2,11 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/logging"
 )
 
 const (
@@ -504,4 +510,85 @@ func newTestMacBuildReconciler(
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func TestReconcileWritesBuildLog(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := newTestBuild("build-log", buildv1alpha1.PhasePreparing, testWorkerA)
+	macBuild.Status.WorkerID = stringPtr(testWorkerA)
+	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
+	reconciler.LogDir = t.TempDir()
+	reconciler.LogMaxBytes = 1024 * 1024
+	reconciler.runBuild = func(_ context.Context, _ buildv1alpha1.MacBuild, reportPhase buildPhaseReporter) (*buildResult, error) {
+		if err := reportPhase(buildv1alpha1.PhaseBuilding, "captured phase"); err != nil {
+			return nil, err
+		}
+		return &buildResult{CommitHash: "deadbeef"}, nil
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Logs == nil || updated.Status.Logs.SizeBytes == 0 {
+		t.Fatalf("expected log status, got %#v", updated.Status.Logs)
+	}
+	data, err := os.ReadFile(filepath.Join(reconciler.LogDir, "default", "build-log.log"))
+	if err != nil {
+		t.Fatalf("read build log: %v", err)
+	}
+	if !strings.Contains(string(data), "[Building] captured phase") {
+		t.Fatalf("log does not contain the phase marker:\n%s", data)
+	}
+}
+
+func TestFinalizeBuildLogRetries(t *testing.T) {
+	t.Parallel()
+
+	buildLog, err := logging.NewBuildLog(t.TempDir(), "default", "build-log-retry", 1024*1024)
+	if err != nil {
+		t.Fatalf("new log: %v", err)
+	}
+	if _, err := buildLog.CommandWriter().Write([]byte("hello\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := buildLog.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	size := buildLog.Size()
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			_, _ = fmt.Fprintf(w, `{"size":%d}`, size)
+		case http.MethodPost:
+			attempts++
+			if attempts == 1 {
+				http.Error(w, "temporary", http.StatusInternalServerError)
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"size":%d,"complete":true}`, size)
+		default:
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	uploader := &logging.Uploader{
+		Log:    buildLog,
+		Client: server.Client(),
+		URL:    server.URL + "/v1/logs/default/build-log-retry",
+	}
+	reconciler := &MacBuildReconciler{LogUpload: &LogUploadConfig{FinalizeTimeout: time.Second}}
+	meta, err := reconciler.finalizeBuildLog(uploader)
+	if err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+	if !meta.Complete || attempts != 2 {
+		t.Fatalf("unexpected finalize result: meta=%#v attempts=%d", meta, attempts)
+	}
 }
