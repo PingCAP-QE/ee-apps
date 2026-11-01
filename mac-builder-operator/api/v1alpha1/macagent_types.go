@@ -49,6 +49,7 @@ const (
 	MacAgentReasonSchedulable    string = "Schedulable"
 	MacAgentReasonCapacityFull   string = "CapacityFull"
 	MacAgentReasonDiskPressure   string = "DiskPressure"
+	MacAgentReasonDiskUnknown    string = "DiskUnknown"
 	MacAgentReasonSufficientDisk string = "SufficientDisk"
 	MacAgentReasonCordoned       string = "Cordoned"
 	MacAgentReasonDraining       string = "Draining"

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -188,5 +189,38 @@ func TestNextHeartbeatIntervalJitter(t *testing.T) {
 		if got < 80*time.Second || got > 120*time.Second {
 			t.Fatalf("heartbeat interval %s outside ±20%% of 100s", got)
 		}
+	}
+}
+
+func TestMacAgentHeartbeatSetsDiskPressure(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	h := newAgentHeartbeat(fake.NewClientBuilder(), now)
+	h.Inventory = fakeAgentInventory{static: testStatic(), runtime: buildv1alpha1.MacAgentRuntime{DiskFreeBytes: 1}}
+	if err := h.syncOnce(context.Background()); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+
+	var got buildv1alpha1.MacAgent
+	if err := h.Client.Get(context.Background(), types.NamespacedName{Name: "mac-test"}, &got); err != nil {
+		t.Fatalf("get agent: %v", err)
+	}
+	condition := meta.FindStatusCondition(got.Status.Conditions, buildv1alpha1.MacAgentConditionDiskPressure)
+	if condition == nil || condition.Status != metav1.ConditionTrue || condition.Reason != buildv1alpha1.MacAgentReasonDiskPressure {
+		t.Fatalf("unexpected disk pressure condition: %#v", condition)
+	}
+
+	h.Now = func() time.Time { return now.Add(20 * time.Second) }
+	h.Inventory = fakeAgentInventory{static: testStatic(), runtime: buildv1alpha1.MacAgentRuntime{DiskFreeBytes: 100 * 1024 * 1024 * 1024}}
+	if err := h.syncOnce(context.Background()); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+	if err := h.Client.Get(context.Background(), types.NamespacedName{Name: "mac-test"}, &got); err != nil {
+		t.Fatalf("get agent: %v", err)
+	}
+	condition = meta.FindStatusCondition(got.Status.Conditions, buildv1alpha1.MacAgentConditionDiskPressure)
+	if condition == nil || condition.Status != metav1.ConditionFalse || condition.Reason != buildv1alpha1.MacAgentReasonSufficientDisk {
+		t.Fatalf("unexpected recovered disk condition: %#v", condition)
 	}
 }

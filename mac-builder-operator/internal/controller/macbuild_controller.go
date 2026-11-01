@@ -49,6 +49,11 @@ type MacBuildReconciler struct {
 	// whether to rerun, fail, or discard it.
 	StateStore *state.Store
 
+	// DiskFreeBytes reports the current free space before a build starts.
+	DiskFreeBytes func(context.Context) int64
+	// MinFreeDiskBytes is the minimum free space required to start a build.
+	MinFreeDiskBytes int64
+
 	// APIReader reads directly from the API server (uncached). The reconciler
 	// uses it for the reads that decide whether to (re)run a build, so it never
 	// acts on a stale phase: a reconcile triggered right after a build completes
@@ -240,6 +245,17 @@ func (r *MacBuildReconciler) reconcileActive(
 			&macBuild,
 			fmt.Sprintf("build is assigned to %q but status.workerID is %q", r.WorkerID, *macBuild.Status.WorkerID),
 		)
+	}
+
+	if r.DiskFreeBytes != nil && r.MinFreeDiskBytes > 0 {
+		if free := r.DiskFreeBytes(ctx); free > 0 && free < r.MinFreeDiskBytes {
+			return r.failBuild(
+				ctx,
+				logger,
+				&macBuild,
+				fmt.Sprintf("insufficient disk: %s free, need %s", humanDisk(free), humanDisk(r.MinFreeDiskBytes)),
+			)
+		}
 	}
 
 	result, err := r.runNativeBuild(ctx, macBuild, func(phase string, message string) error {

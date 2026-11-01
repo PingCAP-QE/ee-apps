@@ -84,6 +84,7 @@ func main() {
 		assignmentTimeout                                      time.Duration
 	)
 	var maxAssignmentAttempts int
+	var minFreeDiskBytes int64
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
 	var macBuildNamespace string
 	var workerName, legacyWorkerName, workerArch, labelsFlag, agentVersion, stateFile string
@@ -138,6 +139,8 @@ func main() {
 		"Agent version reported in MacAgent status.")
 	flag.StringVar(&stateFile, "state-file", "",
 		"Path to the in-flight build state file (default: the per-user config dir).")
+	flag.Int64Var(&minFreeDiskBytes, "min-free-disk-bytes", 20*1024*1024*1024,
+		"Minimum free disk required before starting a build.")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -203,6 +206,10 @@ func main() {
 		(int32(capacity) < buildv1alpha1.MinMacAgentCapacity ||
 			int32(capacity) > buildv1alpha1.MaxMacAgentCapacity) {
 		setupLog.Info("capacity must be between 1 and 8", "capacity", capacity)
+		os.Exit(1)
+	}
+	if enableAgent && minFreeDiskBytes <= 0 {
+		setupLog.Info("min-free-disk-bytes must be greater than zero")
 		os.Exit(1)
 	}
 	if enableMacAgent && offlineThreshold <= 0 {
@@ -368,6 +375,7 @@ func main() {
 			}
 		}
 		stateStore := state.NewStore(statePath)
+		inventoryProvider := inventory.NewProvider()
 
 		if err := (&controller.MacBuildReconciler{
 			Client:                mgr.GetClient(),
@@ -379,6 +387,10 @@ func main() {
 			BuildPollInterval:     buildPollInterval,
 			ArtifactsScriptSource: artifactsScriptSource,
 			StateStore:            stateStore,
+			MinFreeDiskBytes:      minFreeDiskBytes,
+			DiskFreeBytes: func(ctx context.Context) int64 {
+				return inventoryProvider.CollectRuntime(ctx).DiskFreeBytes
+			},
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "MacBuildAgent")
 			os.Exit(1)
@@ -392,7 +404,7 @@ func main() {
 			Capacity:              int32(capacity),
 			Labels:                labels,
 			Machine:               machine,
-			Inventory:             inventory.NewProvider(),
+			Inventory:             inventoryProvider,
 			HeartbeatInterval:     heartbeatInterval,
 			StaticRefreshInterval: staticRefreshInterval,
 		}); err != nil {

@@ -40,6 +40,14 @@ example:
   message containing the agent, last heartbeat and last phase. The failure is
   not retried automatically; retrigger the build through tibuild-v2/Tekton.
 
+## Disk pressure
+
+When `status.runtime.diskFreeBytes` drops below `spec.minFreeDiskBytes`, the
+agent sets `DiskPressure=True` and the scheduler stops assigning new builds.
+The condition clears automatically when space is freed. A build that reaches
+the worker with insufficient disk fails before cloning with an `insufficient
+disk` message; free space and retrigger the build.
+
 ## Cordon, drain and upgrade
 
 ```bash

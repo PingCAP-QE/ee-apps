@@ -12,6 +12,7 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -165,7 +166,7 @@ func (h *MacAgentHeartbeat) patchStatus(
 	now time.Time,
 ) error {
 	base := agent.DeepCopy()
-	h.applyStatus(&agent.Status, runtime, now)
+	h.applyStatus(&agent.Status, &agent.Spec, runtime, now)
 	if reflect.DeepEqual(base.Status, agent.Status) {
 		return nil
 	}
@@ -177,6 +178,7 @@ func (h *MacAgentHeartbeat) patchStatus(
 
 func (h *MacAgentHeartbeat) applyStatus(
 	status *buildv1alpha1.MacAgentStatus,
+	spec *buildv1alpha1.MacAgentSpec,
 	runtime buildv1alpha1.MacAgentRuntime,
 	now time.Time,
 ) {
@@ -197,6 +199,35 @@ func (h *MacAgentHeartbeat) applyStatus(
 	status.ConnectedSince = &connected
 	heartbeat := metav1.NewTime(now)
 	status.LastHeartbeatTime = &heartbeat
+	h.setDiskPressureCondition(status, spec, runtime, now)
+}
+
+func (h *MacAgentHeartbeat) setDiskPressureCondition(
+	status *buildv1alpha1.MacAgentStatus,
+	spec *buildv1alpha1.MacAgentSpec,
+	runtime buildv1alpha1.MacAgentRuntime,
+	now time.Time,
+) {
+	threshold := spec.MinFreeDiskBytesOrDefault()
+	condition := metav1.Condition{
+		Type:               buildv1alpha1.MacAgentConditionDiskPressure,
+		LastTransitionTime: metav1.NewTime(now),
+	}
+	switch {
+	case runtime.DiskFreeBytes <= 0:
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = buildv1alpha1.MacAgentReasonDiskUnknown
+		condition.Message = "disk usage is not available"
+	case runtime.DiskFreeBytes < threshold:
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = buildv1alpha1.MacAgentReasonDiskPressure
+		condition.Message = fmt.Sprintf("%s free (< %s)", humanDisk(runtime.DiskFreeBytes), humanDisk(threshold))
+	default:
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = buildv1alpha1.MacAgentReasonSufficientDisk
+		condition.Message = fmt.Sprintf("%s free (>= %s)", humanDisk(runtime.DiskFreeBytes), humanDisk(threshold))
+	}
+	meta.SetStatusCondition(&status.Conditions, condition)
 }
 
 func (h *MacAgentHeartbeat) desiredLabels() map[string]string {

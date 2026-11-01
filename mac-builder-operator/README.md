@@ -52,6 +52,9 @@ The worker persists the in-flight build in
   `AgentLost`. Reconnecting within the grace window lets the build continue.
 - `spec.unschedulable=true` cordons an agent; `spec.drain=true` stops new
   assignments and waits for active builds to finish.
+- Low disk space sets the `DiskPressure` condition and removes the agent from
+  scheduling. A build that starts below `--min-free-disk-bytes` fails with an
+  `insufficient disk` message before cloning.
 
 ### MacBuild API Notes
 

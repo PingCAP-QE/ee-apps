@@ -37,6 +37,7 @@ agent:
   labels: ""
   heartbeatInterval: 20s
   staticRefreshInterval: 10m
+  minFreeDiskBytes: 21474836480
   agentVersion: ""
   stateFile: ""
   buildTimeout: 24h

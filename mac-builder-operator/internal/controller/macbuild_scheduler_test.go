@@ -92,6 +92,8 @@ func TestSelectAgentFiltersAndScores(t *testing.T) {
 	archMismatch := schedulerAgent("mac-amd64", buildv1alpha1.BuildArchAMD64)
 	cordoned := schedulerAgent("mac-cordoned", buildv1alpha1.BuildArchARM64)
 	cordoned.Spec.Unschedulable = true
+	drained := schedulerAgent("mac-drained", buildv1alpha1.BuildArchARM64)
+	drained.Spec.Drain = true
 	diskLow := schedulerAgent("mac-disk-low", buildv1alpha1.BuildArchARM64)
 	diskLow.Status.Runtime.DiskFreeBytes = 1
 	selectorMismatch := schedulerAgent("mac-pool", buildv1alpha1.BuildArchARM64)
@@ -106,6 +108,7 @@ func TestSelectAgentFiltersAndScores(t *testing.T) {
 		{agent: full, active: 1},
 		{agent: archMismatch},
 		{agent: cordoned},
+		{agent: drained},
 		{agent: diskLow},
 		{agent: selectorMismatch},
 		{agent: notReady},

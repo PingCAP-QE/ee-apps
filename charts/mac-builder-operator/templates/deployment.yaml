@@ -49,6 +49,7 @@ spec:
             - --capacity={{ .Values.agent.capacity }}
             - --heartbeat-interval={{ .Values.agent.heartbeatInterval }}
             - --static-refresh-interval={{ .Values.agent.staticRefreshInterval }}
+            - --min-free-disk-bytes={{ .Values.agent.minFreeDiskBytes }}
             {{- with .Values.agent.labels }}
             - --labels={{ . }}
             {{- end }}
