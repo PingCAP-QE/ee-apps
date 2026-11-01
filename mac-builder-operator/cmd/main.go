@@ -22,8 +22,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	goruntime "runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -46,6 +48,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/identity"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/inventory"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/state"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/workspace"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/controller"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	// +kubebuilder:scaffold:imports
@@ -81,9 +84,11 @@ func main() {
 	var (
 		buildTimeout, buildPollInterval, customRunPollInterval time.Duration
 		offlineThreshold, macAgentRequeueInterval              time.Duration
-		assignmentTimeout                                      time.Duration
+		assignmentTimeout, shutdownGrace, workspaceMaxAge      time.Duration
+		diskCheckRetryInterval                                 time.Duration
 	)
-	var maxAssignmentAttempts int
+	var maxAssignmentAttempts, diskCheckAttempts int
+	var minFreeDiskBytes int64
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
 	var macBuildNamespace string
 	var workerName, legacyWorkerName, workerArch, labelsFlag, agentVersion, stateFile string
@@ -138,6 +143,16 @@ func main() {
 		"Agent version reported in MacAgent status.")
 	flag.StringVar(&stateFile, "state-file", "",
 		"Path to the in-flight build state file (default: the per-user config dir).")
+	flag.Int64Var(&minFreeDiskBytes, "min-free-disk-bytes", 20*1024*1024*1024,
+		"Minimum free disk required before starting a build.")
+	flag.IntVar(&diskCheckAttempts, "disk-check-attempts", 2,
+		"Number of disk measurements before failing a build.")
+	flag.DurationVar(&diskCheckRetryInterval, "disk-check-retry-interval", 100*time.Millisecond,
+		"Delay between disk measurement attempts.")
+	flag.DurationVar(&shutdownGrace, "shutdown-grace", 10*time.Minute,
+		"How long to wait for active builds after SIGTERM.")
+	flag.DurationVar(&workspaceMaxAge, "workspace-max-age", 7*24*time.Hour,
+		"Remove build workspaces older than this.")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -203,6 +218,26 @@ func main() {
 		(int32(capacity) < buildv1alpha1.MinMacAgentCapacity ||
 			int32(capacity) > buildv1alpha1.MaxMacAgentCapacity) {
 		setupLog.Info("capacity must be between 1 and 8", "capacity", capacity)
+		os.Exit(1)
+	}
+	if enableAgent && minFreeDiskBytes <= 0 {
+		setupLog.Info("min-free-disk-bytes must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && diskCheckAttempts <= 0 {
+		setupLog.Info("disk-check-attempts must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && diskCheckRetryInterval <= 0 {
+		setupLog.Info("disk-check-retry-interval must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && shutdownGrace <= 0 {
+		setupLog.Info("shutdown-grace must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && workspaceMaxAge <= 0 {
+		setupLog.Info("workspace-max-age must be greater than zero")
 		os.Exit(1)
 	}
 	if enableMacAgent && offlineThreshold <= 0 {
@@ -344,6 +379,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	buildTracker := controller.NewBuildTracker()
+
 	if enableAgent {
 		machine, err := (identity.Resolver{
 			Runner:   identity.ExecRunner{},
@@ -368,17 +405,25 @@ func main() {
 			}
 		}
 		stateStore := state.NewStore(statePath)
+		inventoryProvider := inventory.NewProvider()
 
 		if err := (&controller.MacBuildReconciler{
-			Client:                mgr.GetClient(),
-			APIReader:             mgr.GetAPIReader(),
-			Scheme:                mgr.GetScheme(),
-			WorkerID:              workerName,
-			WorkerArch:            workerArch,
-			BuildTimeout:          buildTimeout,
-			BuildPollInterval:     buildPollInterval,
-			ArtifactsScriptSource: artifactsScriptSource,
-			StateStore:            stateStore,
+			Client:                 mgr.GetClient(),
+			APIReader:              mgr.GetAPIReader(),
+			Scheme:                 mgr.GetScheme(),
+			WorkerID:               workerName,
+			WorkerArch:             workerArch,
+			BuildTimeout:           buildTimeout,
+			BuildPollInterval:      buildPollInterval,
+			ArtifactsScriptSource:  artifactsScriptSource,
+			StateStore:             stateStore,
+			MinFreeDiskBytes:       minFreeDiskBytes,
+			DiskCheckAttempts:      diskCheckAttempts,
+			DiskCheckRetryInterval: diskCheckRetryInterval,
+			Tracker:                buildTracker,
+			DiskFreeBytes: func(ctx context.Context) int64 {
+				return inventoryProvider.CollectRuntime(ctx).DiskFreeBytes
+			},
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "MacBuildAgent")
 			os.Exit(1)
@@ -392,11 +437,20 @@ func main() {
 			Capacity:              int32(capacity),
 			Labels:                labels,
 			Machine:               machine,
-			Inventory:             inventory.NewProvider(),
+			Inventory:             inventoryProvider,
 			HeartbeatInterval:     heartbeatInterval,
 			StaticRefreshInterval: staticRefreshInterval,
 		}); err != nil {
 			setupLog.Error(err, "unable to add MacAgent heartbeat")
+			os.Exit(1)
+		}
+		if err := mgr.Add(&workspace.Cleaner{
+			Root:     os.TempDir(),
+			Prefix:   "macbuild-",
+			MaxAge:   workspaceMaxAge,
+			Interval: time.Hour,
+		}); err != nil {
+			setupLog.Error(err, "unable to add workspace cleaner")
 			os.Exit(1)
 		}
 		setupLog.Info("MacBuild Agent controller enabled.", "macAgent", workerName)
@@ -466,8 +520,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stopSignals()
+	managerCtx, cancelManager := context.WithCancel(context.Background())
+	defer cancelManager()
+	go func() {
+		<-signalCtx.Done()
+		setupLog.Info("shutdown signal received; waiting for active builds", "grace", shutdownGrace)
+		if !buildTracker.WaitTimeout(shutdownGrace) {
+			setupLog.Info("shutdown grace elapsed; stopping active builds")
+		}
+		cancelManager()
+	}()
+
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(managerCtx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

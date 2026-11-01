@@ -159,6 +159,7 @@ func (r *MacAgentReconciler) applyStatus(agent *buildv1alpha1.MacAgent, builds [
 	r.setReadyCondition(status, agent, ready, heartbeatAge, now)
 	r.setSchedulableCondition(status, agent, ready, active, capacity)
 	r.setDrainingCondition(status, agent, active)
+	macAgentReady.WithLabelValues(agent.Name).Set(boolToFloat(ready))
 	return ready
 }
 
@@ -353,6 +354,7 @@ func (r *MacAgentReconciler) reconcileBuilds(
 		if err := r.failBuildForAgentLost(ctx, build, agent.Name, message, now); err != nil {
 			return err
 		}
+		macBuildAgentLost.Inc()
 		if r.Recorder != nil {
 			r.Recorder.Event(build, "Warning", "AgentLost", message)
 		}

@@ -38,6 +38,9 @@ build-script source through `--artifacts-repo-revision` plus
 The worker persists the in-flight build in
 `~/Library/Application Support/macbuild-agent/state.json` (override with
 `--state-file`) so a restart can decide whether to rerun or fail the build.
+`--shutdown-grace` (default 10m) lets an active build finish after SIGTERM;
+stale `macbuild-*` workspaces in the temp dir are removed after
+`--workspace-max-age` (default 7d).
 
 ### Scheduling and MacAgent
 
@@ -52,6 +55,9 @@ The worker persists the in-flight build in
   `AgentLost`. Reconnecting within the grace window lets the build continue.
 - `spec.unschedulable=true` cordons an agent; `spec.drain=true` stops new
   assignments and waits for active builds to finish.
+- Low disk space sets the `DiskPressure` condition and removes the agent from
+  scheduling. A build that starts below `--min-free-disk-bytes` fails with an
+  `insufficient disk` message before cloning.
 
 ### MacBuild API Notes
 

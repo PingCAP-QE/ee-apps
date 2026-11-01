@@ -40,6 +40,14 @@ const (
 	MacAgentConditionDraining     string = "Draining"
 )
 
+// MacAgentDiskUnknownBytes marks a disk measurement that could not be
+// collected. A real filesystem can report 0 bytes free (full), so unknown uses
+// a negative sentinel.
+const MacAgentDiskUnknownBytes int64 = -1
+
+// MacAgentDiskFullBytes marks a filesystem with no free space.
+const MacAgentDiskFullBytes int64 = 0
+
 // MacAgent condition reasons.
 const (
 	MacAgentReasonNoHeartbeat    string = "NoHeartbeat"
@@ -49,6 +57,7 @@ const (
 	MacAgentReasonSchedulable    string = "Schedulable"
 	MacAgentReasonCapacityFull   string = "CapacityFull"
 	MacAgentReasonDiskPressure   string = "DiskPressure"
+	MacAgentReasonDiskUnknown    string = "DiskUnknown"
 	MacAgentReasonSufficientDisk string = "SufficientDisk"
 	MacAgentReasonCordoned       string = "Cordoned"
 	MacAgentReasonDraining       string = "Draining"

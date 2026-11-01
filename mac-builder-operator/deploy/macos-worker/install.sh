@@ -30,6 +30,11 @@ AGENT_NAME="${AGENT_NAME:-$WORKER_NAME}"
 AGENT_LABELS="${AGENT_LABELS:-}"
 AGENT_CAPACITY="${AGENT_CAPACITY:-1}"
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-20s}"
+MIN_FREE_DISK_BYTES="${MIN_FREE_DISK_BYTES:-21474836480}"
+DISK_CHECK_ATTEMPTS="${DISK_CHECK_ATTEMPTS:-2}"
+DISK_CHECK_RETRY_INTERVAL="${DISK_CHECK_RETRY_INTERVAL:-100ms}"
+SHUTDOWN_GRACE="${SHUTDOWN_GRACE:-10m}"
+WORKSPACE_MAX_AGE="${WORKSPACE_MAX_AGE:-168h}"
 AGENT_VERSION="${AGENT_VERSION:-$EEAPPS_REF}"
 STATE_FILE="${STATE_FILE:-}"
 WORKER_ARCH="${WORKER_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/')}"
@@ -56,6 +61,11 @@ Usage: install.sh [OPTIONS]
   --labels LIST           comma-separated key=value scheduling labels
   --capacity N            concurrent builds (default: 1)
   --heartbeat-interval D  heartbeat interval (default: 20s)
+  --min-free-disk-bytes N minimum free disk before starting a build (default: 21474836480)
+  --disk-check-attempts N disk measurements before failing a build (default: 2)
+  --disk-check-retry-interval D delay between disk measurements (default: 100ms)
+  --shutdown-grace D      wait for active builds after SIGTERM (default: 10m)
+  --workspace-max-age D   remove build workspaces older than this (default: 168h)
   --agent-version VERSION version reported in MacAgent status (default: --eeapps-ref)
   --state-file PATH       in-flight build state file (default: per-user config dir)
   --namespace NS          namespace where MacBuilds live (default: ee-cd)
@@ -78,6 +88,11 @@ while [[ $# -gt 0 ]]; do
     --labels)         AGENT_LABELS="$2"; shift 2 ;;
     --capacity)       AGENT_CAPACITY="$2"; shift 2 ;;
     --heartbeat-interval) HEARTBEAT_INTERVAL="$2"; shift 2 ;;
+    --min-free-disk-bytes) MIN_FREE_DISK_BYTES="$2"; shift 2 ;;
+    --disk-check-attempts) DISK_CHECK_ATTEMPTS="$2"; shift 2 ;;
+    --disk-check-retry-interval) DISK_CHECK_RETRY_INTERVAL="$2"; shift 2 ;;
+    --shutdown-grace) SHUTDOWN_GRACE="$2"; shift 2 ;;
+    --workspace-max-age) WORKSPACE_MAX_AGE="$2"; shift 2 ;;
     --agent-version)  AGENT_VERSION="$2"; shift 2 ;;
     --state-file)     STATE_FILE="$2"; shift 2 ;;
     --namespace)      MACBUILD_NAMESPACE="$2"; shift 2 ;;
@@ -136,7 +151,12 @@ log "Installed agent: $PREFIX/macbuild-agent"
 
 agent_args=(--enable-agent --enable-gc=false --enable-customrun=false \
   --macbuild-namespace="$MACBUILD_NAMESPACE" --worker-arch="$WORKER_ARCH" \
-  --capacity="$AGENT_CAPACITY" --heartbeat-interval="$HEARTBEAT_INTERVAL")
+  --capacity="$AGENT_CAPACITY" --heartbeat-interval="$HEARTBEAT_INTERVAL" \
+  --min-free-disk-bytes="$MIN_FREE_DISK_BYTES" \
+  --disk-check-attempts="$DISK_CHECK_ATTEMPTS" \
+  --disk-check-retry-interval="$DISK_CHECK_RETRY_INTERVAL" \
+  --shutdown-grace="$SHUTDOWN_GRACE" \
+  --workspace-max-age="$WORKSPACE_MAX_AGE")
 if [[ -n "$AGENT_NAME" ]]; then
   agent_args+=(--agent-name="$AGENT_NAME")
 fi

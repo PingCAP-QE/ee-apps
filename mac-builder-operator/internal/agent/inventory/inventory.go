@@ -114,9 +114,10 @@ func (p *Provider) CollectStatic(ctx context.Context) Static {
 }
 
 // CollectRuntime returns load averages and free disk space. It is best-effort:
-// a failed command leaves its field zero.
+// a failed df leaves DiskFreeBytes at -1 so callers can distinguish "unknown"
+// from a genuinely full disk (0 bytes free).
 func (p *Provider) CollectRuntime(ctx context.Context) buildv1alpha1.MacAgentRuntime {
-	var runtime buildv1alpha1.MacAgentRuntime
+	runtime := buildv1alpha1.MacAgentRuntime{DiskFreeBytes: buildv1alpha1.MacAgentDiskUnknownBytes}
 
 	if out, err := p.run(ctx, "sysctl", "-n", "vm.loadavg"); err == nil {
 		if load1, load5, load15, err := parseLoadAvg(out); err == nil {

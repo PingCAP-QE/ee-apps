@@ -182,6 +182,7 @@ func (r *MacBuildScheduler) setPendingMessage(
 	build *buildv1alpha1.MacBuild,
 	reason string,
 ) error {
+	macBuildAssignments.WithLabelValues("no_candidate").Inc()
 	message := "Waiting for a matching MacAgent: " + reason
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var latest buildv1alpha1.MacBuild
@@ -256,6 +257,7 @@ func (r *MacBuildScheduler) assign(
 	if !assigned {
 		return nil
 	}
+	macBuildAssignments.WithLabelValues("assigned").Inc()
 
 	if err := r.patchAgentLabel(ctx, key, agent.Name); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to label MacBuild with its agent; continuing")
@@ -330,6 +332,12 @@ func (r *MacBuildScheduler) reapAssignment(
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("reap assignment: %w", err)
 	}
+
+	result := "reassigned"
+	if failed {
+		result = "failed"
+	}
+	macBuildAssignments.WithLabelValues(result).Inc()
 
 	if r.Recorder != nil {
 		var latest buildv1alpha1.MacBuild
