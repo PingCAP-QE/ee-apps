@@ -214,10 +214,14 @@ func (h *MacAgentHeartbeat) setDiskPressureCondition(
 		LastTransitionTime: metav1.NewTime(now),
 	}
 	switch {
-	case runtime.DiskFreeBytes <= 0:
+	case runtime.DiskFreeBytes < 0:
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = buildv1alpha1.MacAgentReasonDiskUnknown
 		condition.Message = "disk usage is not available"
+	case runtime.DiskFreeBytes == 0:
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = buildv1alpha1.MacAgentReasonDiskPressure
+		condition.Message = "0 B free (disk full)"
 	case runtime.DiskFreeBytes < threshold:
 		condition.Status = metav1.ConditionTrue
 		condition.Reason = buildv1alpha1.MacAgentReasonDiskPressure
@@ -226,6 +230,12 @@ func (h *MacAgentHeartbeat) setDiskPressureCondition(
 		condition.Status = metav1.ConditionFalse
 		condition.Reason = buildv1alpha1.MacAgentReasonSufficientDisk
 		condition.Message = fmt.Sprintf("%s free (>= %s)", humanDisk(runtime.DiskFreeBytes), humanDisk(threshold))
+	}
+	// Keep the transition time stable while the status and reason are unchanged
+	// so an unchanged heartbeat does not rewrite the condition on every sync.
+	if existing := meta.FindStatusCondition(status.Conditions, buildv1alpha1.MacAgentConditionDiskPressure); existing != nil &&
+		existing.Status == condition.Status && existing.Reason == condition.Reason {
+		condition.LastTransitionTime = existing.LastTransitionTime
 	}
 	meta.SetStatusCondition(&status.Conditions, condition)
 }

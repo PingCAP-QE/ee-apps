@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -125,6 +126,17 @@ func TestSelectAgentFiltersAndScores(t *testing.T) {
 	selected, reason = selectAgent(build, nil)
 	if selected != nil || !strings.Contains(reason, "no MacAgents") {
 		t.Fatalf("expected no-agent reason, got %q", reason)
+	}
+
+	pressured := schedulerAgent("mac-disk-pressure", buildv1alpha1.BuildArchARM64)
+	meta.SetStatusCondition(&pressured.Status.Conditions, metav1.Condition{
+		Type:   buildv1alpha1.MacAgentConditionDiskPressure,
+		Status: metav1.ConditionTrue,
+		Reason: buildv1alpha1.MacAgentReasonDiskPressure,
+	})
+	selected, reason = selectAgent(build, []agentCandidate{{agent: pressured}})
+	if selected != nil || !strings.Contains(reason, "disk") {
+		t.Fatalf("a DiskPressure agent must not be selected, got %v / %q", selected, reason)
 	}
 }
 

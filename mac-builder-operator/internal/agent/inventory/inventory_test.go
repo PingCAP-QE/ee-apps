@@ -117,8 +117,8 @@ func TestCollectStaticBestEffort(t *testing.T) {
 	}
 
 	runtime := provider.CollectRuntime(context.Background())
-	if runtime.Load1 != 0 || runtime.DiskFreeBytes != 0 {
-		t.Fatalf("expected empty runtime, got %#v", runtime)
+	if runtime.Load1 != 0 || runtime.DiskFreeBytes != -1 {
+		t.Fatalf("expected unknown runtime values, got %#v", runtime)
 	}
 }
 

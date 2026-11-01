@@ -48,6 +48,36 @@ The condition clears automatically when space is freed. A build that reaches
 the worker with insufficient disk fails before cloning with an `insufficient
 disk` message; free space and retrigger the build.
 
+`DiskUnknown` means the worker could not read `df`; it also keeps the agent out
+of scheduling. Check the agent logs, then restart the LaunchAgent after fixing
+the command/runner.
+
+Change the threshold per worker or for the whole cluster:
+
+```bash
+# Worker-local override (installer).
+./deploy/macos-worker/install.sh --min-free-disk-bytes 53687091200
+
+# New agents created by the chart.
+helm upgrade mac-builder-operator charts/mac-builder-operator \
+  --set agent.minFreeDiskBytes=53687091200
+```
+
+To recover:
+1. Free space on the worker (`df -h /`, remove stale `macbuild-*` temp dirs).
+2. Wait for the next heartbeat (20s) and confirm
+   `kubectl describe macagent <name>` shows `DiskPressure=False`.
+3. Retrigger the failed MacBuild.
+
+### Metrics
+
+The operator exposes:
+
+- `macbuilder_agent_ready{agent}` — 1 when the agent is ready.
+- `macbuilder_build_assignment_total{result}` — assignment outcomes
+  (`assigned`, `reassigned`, `failed`, `no_candidate`).
+- `macbuilder_build_agent_lost_total` — builds failed after the offline grace.
+
 ## Graceful shutdown
 
 On SIGTERM the agent waits up to `--shutdown-grace` (default 10m) for active

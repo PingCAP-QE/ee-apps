@@ -251,7 +251,19 @@ func (r *MacBuildReconciler) reconcileActive(
 	}
 
 	if r.DiskFreeBytes != nil && r.MinFreeDiskBytes > 0 {
-		if free := r.DiskFreeBytes(ctx); free > 0 && free < r.MinFreeDiskBytes {
+		free := r.DiskFreeBytes(ctx)
+		if free < 0 {
+			logger.Info("Disk metrics unavailable; failing build before start", "worker", r.WorkerID)
+			return r.failBuild(
+				ctx,
+				logger,
+				&macBuild,
+				"disk metrics unavailable: the worker could not read free disk space",
+			)
+		}
+		if free < r.MinFreeDiskBytes {
+			logger.Info("Insufficient disk to start build",
+				"worker", r.WorkerID, "freeBytes", free, "requiredBytes", r.MinFreeDiskBytes)
 			return r.failBuild(
 				ctx,
 				logger,

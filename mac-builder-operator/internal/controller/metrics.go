@@ -7,17 +7,17 @@ import (
 
 var (
 	macAgentReady = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "macagent_ready",
+		Name: "macbuilder_agent_ready",
 		Help: "1 when the MacAgent is ready, 0 otherwise.",
 	}, []string{"agent"})
 
 	macBuildAssignments = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "macbuild_assignment_total",
+		Name: "macbuilder_build_assignment_total",
 		Help: "MacBuild scheduling outcomes.",
 	}, []string{"result"})
 
 	macBuildAgentLost = prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "macbuild_agent_lost_total",
+		Name: "macbuilder_build_agent_lost_total",
 		Help: "Builds failed because their MacAgent stopped reporting.",
 	})
 )

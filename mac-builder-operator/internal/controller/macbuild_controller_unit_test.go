@@ -307,6 +307,37 @@ func TestReconcileFailsInsufficientDisk(t *testing.T) {
 	}
 }
 
+func TestReconcileFailsUnknownDiskMetrics(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := newTestBuild("build-disk-unknown", buildv1alpha1.PhasePreparing, testWorkerA)
+	macBuild.Status.WorkerID = stringPtr(testWorkerA)
+	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
+	reconciler.MinFreeDiskBytes = 20 * 1024 * 1024 * 1024
+	reconciler.DiskFreeBytes = func(context.Context) int64 { return -1 }
+	runCalled := false
+	reconciler.runBuild = func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
+		runCalled = true
+		return &buildResult{}, nil
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Phase != buildv1alpha1.PhaseFailed {
+		t.Fatalf("expected failed phase, got %q", updated.Status.Phase)
+	}
+	if updated.Status.Message == nil || !strings.Contains(*updated.Status.Message, "disk metrics unavailable") {
+		t.Fatalf("unexpected message: %#v", updated.Status.Message)
+	}
+	if runCalled {
+		t.Fatal("runBuild must not be called when disk metrics are unavailable")
+	}
+}
+
 func TestReconcilePrefersAPIReaderOverCachedClient(t *testing.T) {
 	t.Parallel()
 
