@@ -7,6 +7,13 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - get
@@ -29,6 +36,25 @@ rules:
 - apiGroups:
   - tibuild.pingcap.net
   resources:
+  - macagents
+  - macbuilds/status
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tibuild.pingcap.net
+  resources:
+  - macagents/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - tibuild.pingcap.net
+  resources:
   - macbuilds
   verbs:
   - create
@@ -44,13 +70,3 @@ rules:
   - macbuilds/finalizers
   verbs:
   - update
-- apiGroups:
-  - tibuild.pingcap.net
-  resources:
-  - macbuilds/status
-  verbs:
-  - get
-  - list
-  - patch
-  - update
-  - watch

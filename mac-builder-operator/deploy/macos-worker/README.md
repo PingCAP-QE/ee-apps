@@ -1,7 +1,8 @@
 # macOS build worker
 
-Installer for a macOS worker that runs the `mac-builder-operator` build agent
-(the agent claims `MacBuild` objects and builds natively on the mac).
+Installer for a macOS worker that runs the `mac-builder-operator` build agent.
+The agent registers a cluster-scoped `MacAgent`, heartbeats its inventory, and
+executes only the `MacBuild` objects the cluster scheduler assigns to it.
 
 ## Install
 
@@ -25,8 +26,34 @@ from the component's `macos.tools` — not by this installer.
 
 ## Options
 
-Run `install.sh --help`. Common ones: `--kubeconfig`, `--worker-arch`, `--worker-name`,
-`--namespace`, `--service` (LaunchAgent), `--run` (foreground).
+Run `install.sh --help`. Common ones: `--kubeconfig`, `--worker-arch`,
+`--agent-name` (deprecated alias: `--worker-name`), `--labels`,
+`--capacity`, `--heartbeat-interval`, `--namespace`, `--service`
+(LaunchAgent), `--run` (foreground).
+
+## Registration and scheduling
+
+The agent's `MacAgent` name is derived from `IOPlatformUUID` (serial number and
+hostname are fallbacks), so reinstalling or renaming the host does not create a
+duplicate machine object. `--agent-name` overrides the derived name.
+
+`--labels key=value,...` adds scheduling labels such as
+`tibuild.pingcap.net/pool=mac-mini`; `--capacity` sets concurrent builds
+(default 1). `kubectl get macagents` shows each machine's phase, IP, OS,
+architecture, CPU/memory, load, disk and active builds; `kubectl describe
+macagent <name>` shows the full status.
+
+For maintenance, cordon first and wait for active builds to finish:
+
+```bash
+kubectl patch macagent <name> --type=merge -p '{"spec":{"unschedulable":true}}'
+kubectl patch macagent <name> --type=merge -p '{"spec":{"drain":true}}'
+```
+
+The agent persists the in-flight build in
+`~/Library/Application Support/macbuild-agent/state.json` (override with
+`--state-file`). On restart it reruns a build that was in Preparing/Building and
+fails a build that was already Publishing, avoiding a duplicate publish.
 
 ## Private cluster access
 

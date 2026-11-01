@@ -33,6 +33,24 @@ rules:
     verbs:
       - update
   - apiGroups:
+      - tibuild.pingcap.net
+    resources:
+      - macagents
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+  - apiGroups:
+      - tibuild.pingcap.net
+    resources:
+      - macagents/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
       - tekton.dev
     resources:
       - customruns

@@ -25,7 +25,13 @@ EEAPPS_REF="${EEAPPS_REF:-main}"
 ARTIFACTS_REPO="${ARTIFACTS_REPO:-https://github.com/PingCAP-QE/artifacts.git}"
 ARTIFACTS_REF="${ARTIFACTS_REF:-main}"
 PREFIX="${PREFIX:-$HOME/.local/bin}"
-WORKER_NAME="${WORKER_NAME:-$(hostname)}"
+WORKER_NAME="${WORKER_NAME:-}"
+AGENT_NAME="${AGENT_NAME:-$WORKER_NAME}"
+AGENT_LABELS="${AGENT_LABELS:-}"
+AGENT_CAPACITY="${AGENT_CAPACITY:-1}"
+HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-20s}"
+AGENT_VERSION="${AGENT_VERSION:-$EEAPPS_REF}"
+STATE_FILE="${STATE_FILE:-}"
 WORKER_ARCH="${WORKER_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/')}"
 MACBUILD_NAMESPACE="${MACBUILD_NAMESPACE:-ee-cd}"
 KUBECONFIG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
@@ -37,13 +43,21 @@ SERVICE_LABEL="net.pingcap.macbuild-agent"
 log() { printf '%s [install] %s\n' "$(date -u +%H:%M:%SZ)" "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
 
+[[ -n "$WORKER_NAME" && -z "$AGENT_NAME" ]] && AGENT_NAME="$WORKER_NAME"
+
 usage() {
   cat >&2 <<EOF
 Usage: install.sh [OPTIONS]
 
   --kubeconfig PATH       kubeconfig for the cluster (default: \$KUBECONFIG or ~/.kube/config)
-  --worker-name NAME      worker identity (default: hostname)
+  --agent-name NAME       MacAgent name override (default: derived from IOPlatformUUID)
+  --worker-name NAME      Deprecated: use --agent-name
   --worker-arch ARCH      amd64|arm64 (default: host)
+  --labels LIST           comma-separated key=value scheduling labels
+  --capacity N            concurrent builds (default: 1)
+  --heartbeat-interval D  heartbeat interval (default: 20s)
+  --agent-version VERSION version reported in MacAgent status (default: --eeapps-ref)
+  --state-file PATH       in-flight build state file (default: per-user config dir)
   --namespace NS          namespace where MacBuilds live (default: ee-cd)
   --prefix DIR            install prefix for the agent binary (default: ~/.local/bin)
   --eeapps-ref REF        ee-apps ref to build the agent from (default: main)
@@ -58,8 +72,14 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --kubeconfig)     KUBECONFIG_PATH="$2"; shift 2 ;;
-    --worker-name)    WORKER_NAME="$2"; shift 2 ;;
+    --agent-name)     AGENT_NAME="$2"; shift 2 ;;
+    --worker-name)    AGENT_NAME="$2"; log "--worker-name is deprecated; use --agent-name"; shift 2 ;;
     --worker-arch)    WORKER_ARCH="$2"; shift 2 ;;
+    --labels)         AGENT_LABELS="$2"; shift 2 ;;
+    --capacity)       AGENT_CAPACITY="$2"; shift 2 ;;
+    --heartbeat-interval) HEARTBEAT_INTERVAL="$2"; shift 2 ;;
+    --agent-version)  AGENT_VERSION="$2"; shift 2 ;;
+    --state-file)     STATE_FILE="$2"; shift 2 ;;
     --namespace)      MACBUILD_NAMESPACE="$2"; shift 2 ;;
     --prefix)         PREFIX="$2"; shift 2 ;;
     --eeapps-ref)     EEAPPS_REF="$2"; shift 2 ;;
@@ -115,7 +135,20 @@ log "Installed agent: $PREFIX/macbuild-agent"
 [[ -f "$KUBECONFIG_PATH" ]] || log "WARNING: kubeconfig not found at $KUBECONFIG_PATH (the agent will fail to reach the cluster)"
 
 agent_args=(--enable-agent --enable-gc=false --enable-customrun=false \
-  --macbuild-namespace="$MACBUILD_NAMESPACE" --worker-name="$WORKER_NAME" --worker-arch="$WORKER_ARCH")
+  --macbuild-namespace="$MACBUILD_NAMESPACE" --worker-arch="$WORKER_ARCH" \
+  --capacity="$AGENT_CAPACITY" --heartbeat-interval="$HEARTBEAT_INTERVAL")
+if [[ -n "$AGENT_NAME" ]]; then
+  agent_args+=(--agent-name="$AGENT_NAME")
+fi
+if [[ -n "$AGENT_LABELS" ]]; then
+  agent_args+=(--labels="$AGENT_LABELS")
+fi
+if [[ -n "$AGENT_VERSION" ]]; then
+  agent_args+=(--agent-version="$AGENT_VERSION")
+fi
+if [[ -n "$STATE_FILE" ]]; then
+  agent_args+=(--state-file="$STATE_FILE")
+fi
 
 # ---- 5) start --------------------------------------------------------------
 if [[ "$INSTALL_SERVICE" == true ]]; then

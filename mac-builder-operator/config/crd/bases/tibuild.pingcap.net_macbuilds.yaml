@@ -19,6 +19,14 @@ spec:
       jsonPath: .status.phase
       name: Status
       type: string
+    - description: Assigned MacAgent
+      jsonPath: .status.assignment.agentName
+      name: Agent
+      type: string
+    - description: Build architecture
+      jsonPath: .spec.build.arch
+      name: Arch
+      type: string
     - description: Git Ref
       jsonPath: .spec.source.gitRef
       name: GitRef
@@ -139,6 +147,14 @@ spec:
                 x-kubernetes-validations:
                 - message: ttl must be a valid, non-negative duration (e.g. 1h, 90m)
                   rule: duration(self) >= duration('0s')
+              workerSelector:
+                additionalProperties:
+                  type: string
+                description: |-
+                  WorkerSelector selects MacAgent label values that a worker must match to
+                  run this build. All entries must match the MacAgent's metadata labels.
+                maxProperties: 16
+                type: object
             required:
             - artifacts
             - build
@@ -147,6 +163,48 @@ spec:
           status:
             description: MacBuildStatus defines the observed state of MacBuild
             properties:
+              assignment:
+                description: |-
+                  Assignment records the scheduler decision that placed this build on a
+                  MacAgent. It remains set after the build reaches a terminal phase for audit.
+                properties:
+                  agentName:
+                    description: AgentName is the MacAgent name that owns this build.
+                    type: string
+                  agentUID:
+                    description: AgentUID is the UID of the MacAgent at assignment
+                      time.
+                    type: string
+                  assignedAt:
+                    description: AssignedAt is when the scheduler assigned the build.
+                    format: date-time
+                    type: string
+                  attempt:
+                    description: Attempt is the current assignment attempt number.
+                    format: int32
+                    type: integer
+                  leaseDeadline:
+                    description: |-
+                      LeaseDeadline is when the scheduler may reassign a build that has not
+                      started (still Assigned) yet.
+                    format: date-time
+                    type: string
+                  restarts:
+                    description: Restarts is the number of times the agent reran the
+                      build after a restart.
+                    format: int32
+                    type: integer
+                required:
+                - agentName
+                - assignedAt
+                - attempt
+                type: object
+              assignmentAttempts:
+                description: |-
+                  AssignmentAttempts is the total number of scheduling attempts across
+                  reassignments. It survives clearing Assignment while a build returns to Pending.
+                format: int32
+                type: integer
               commitHash:
                 description: The actual Git Commit SHA that was checked out
                 type: string
@@ -155,6 +213,31 @@ spec:
                   GC)
                 format: date-time
                 type: string
+              logs:
+                description: Logs describes the build log available through the log
+                  service.
+                properties:
+                  available:
+                    description: Available is true once at least one log chunk has
+                      been stored.
+                    type: boolean
+                  command:
+                    description: Command is a copy-pasteable command to read the log.
+                    type: string
+                  complete:
+                    description: Complete is true once the agent finalized the log.
+                    type: boolean
+                  sizeBytes:
+                    description: SizeBytes is the number of stored log bytes.
+                    format: int64
+                    type: integer
+                  updatedAt:
+                    description: UpdatedAt is when the log was last updated.
+                    format: date-time
+                    type: string
+                required:
+                - available
+                type: object
               message:
                 description: A detailed error or terminal message about the current
                   status.
@@ -166,10 +249,11 @@ spec:
                     type: string
                 type: object
               phase:
-                description: Current phase of the build (Pending, Preparing, Building,
-                  Publishing, Succeeded, Failed)
+                description: Current phase of the build (Pending, Assigned, Preparing,
+                  Building, Publishing, Succeeded, Failed)
                 enum:
                 - Pending
+                - Assigned
                 - Preparing
                 - Building
                 - Publishing
@@ -189,6 +273,7 @@ spec:
                       description: Phase entered at this point in time.
                       enum:
                       - Pending
+                      - Assigned
                       - Preparing
                       - Building
                       - Publishing

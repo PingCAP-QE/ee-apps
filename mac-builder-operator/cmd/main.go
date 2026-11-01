@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -33,6 +34,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -40,6 +43,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/identity"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/inventory"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/state"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/controller"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	// +kubebuilder:scaffold:imports
@@ -48,6 +54,7 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+	version  = "dev"
 )
 
 func init() {
@@ -70,20 +77,34 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	var enableAgent, enableGC, enableCustomRun bool
-	var buildTimeout, buildPollInterval, customRunPollInterval time.Duration
+	var enableAgent, enableGC, enableCustomRun, enableMacAgent, enableScheduler bool
+	var (
+		buildTimeout, buildPollInterval, customRunPollInterval time.Duration
+		offlineThreshold, macAgentRequeueInterval              time.Duration
+		assignmentTimeout                                      time.Duration
+	)
+	var maxAssignmentAttempts int
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
 	var macBuildNamespace string
-	defaultWorkerName, err := os.Hostname()
-	if err != nil {
-		setupLog.Error(err, "unable to get hostname for default worker name")
-		os.Exit(1)
-	}
-	var workerName, workerArch string
+	var workerName, legacyWorkerName, workerArch, labelsFlag, agentVersion, stateFile string
+	var capacity int
+	var heartbeatInterval, staticRefreshInterval time.Duration
 
 	// Controller-specific flags
 	flag.BoolVar(&enableAgent, "enable-agent", false, "Enable the MacBuild agent reconciler. Runs on the Mac worker.")
 	flag.BoolVar(&enableGC, "enable-gc", true, "Enable the MacBuild GC reconciler. Runs in the cluster.")
+	flag.BoolVar(&enableMacAgent, "enable-macagent", false,
+		"Enable the MacAgent controller (heartbeat readiness, schedulability and summary). Runs in the cluster.")
+	flag.DurationVar(&offlineThreshold, "offline-threshold", 60*time.Second,
+		"How long without a heartbeat before a MacAgent is marked Offline.")
+	flag.DurationVar(&macAgentRequeueInterval, "macagent-requeue-interval", 30*time.Second,
+		"How often the MacAgent controller re-evaluates heartbeat readiness.")
+	flag.BoolVar(&enableScheduler, "enable-scheduler", false,
+		"Enable the MacBuild scheduler (assigns Pending builds to MacAgents). Runs in the cluster.")
+	flag.DurationVar(&assignmentTimeout, "assignment-timeout", 2*time.Minute,
+		"How long an Assigned build may wait for its agent to start before being reassigned.")
+	flag.IntVar(&maxAssignmentAttempts, "max-assignment-attempts", 3,
+		"Maximum assignment attempts before a MacBuild is marked AssignmentFailed.")
 	flag.BoolVar(&enableCustomRun, "enable-customrun", true,
 		"Enable the MacBuild CustomRun reconciler (Tekton custom task backed by MacBuild). Runs in the cluster.")
 	flag.StringVar(&macBuildNamespace, "macbuild-namespace", "default",
@@ -100,10 +121,23 @@ func main() {
 		"Immutable tag or commit to check out from the artifacts repo before generating build scripts.")
 	flag.StringVar(&artifactsRepoCommit, "artifacts-repo-commit", controller.DefaultArtifactsScriptExpectedCommit,
 		"Expected full commit SHA for the pinned artifacts repo revision.")
-	flag.StringVar(&workerName, "worker-name", defaultWorkerName,
-		"Unique worker identity stored in MacBuild status when the agent claims a build.")
+	flag.StringVar(&workerName, "agent-name", "",
+		"MacAgent name override; default is derived from the machine's IOPlatformUUID.")
+	flag.StringVar(&legacyWorkerName, "worker-name", "",
+		"Deprecated: use --agent-name.")
 	flag.StringVar(&workerArch, "worker-arch", goruntime.GOARCH,
 		"CPU architecture this worker can handle. Supported values: amd64, arm64.")
+	flag.StringVar(&labelsFlag, "labels", "",
+		"Comma-separated key=value labels stored on the MacAgent (e.g. tibuild.pingcap.net/pool=mac-mini).")
+	flag.IntVar(&capacity, "capacity", 1, "Maximum concurrent builds this worker accepts.")
+	flag.DurationVar(&heartbeatInterval, "heartbeat-interval", 20*time.Second,
+		"How often the agent reports its MacAgent heartbeat.")
+	flag.DurationVar(&staticRefreshInterval, "static-refresh-interval", 10*time.Minute,
+		"How often the agent refreshes OS/hardware inventory.")
+	flag.StringVar(&agentVersion, "agent-version", version,
+		"Agent version reported in MacAgent status.")
+	flag.StringVar(&stateFile, "state-file", "",
+		"Path to the in-flight build state file (default: the per-user config dir).")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -131,8 +165,22 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	if !enableAgent && !enableGC && !enableCustomRun {
-		setupLog.Info("No controllers enabled. Use --enable-agent, --enable-gc or --enable-customrun to start a controller.")
+	if legacyWorkerName != "" {
+		setupLog.Info("--worker-name is deprecated; use --agent-name", "workerName", legacyWorkerName)
+		if workerName == "" {
+			workerName = legacyWorkerName
+		}
+	}
+	labels, err := parseLabels(labelsFlag)
+	if err != nil {
+		setupLog.Error(err, "invalid --labels")
+		os.Exit(1)
+	}
+
+	if !enableAgent && !enableGC && !enableCustomRun && !enableMacAgent && !enableScheduler {
+		setupLog.Info("No controllers enabled. " +
+			"Use --enable-agent, --enable-gc, --enable-macagent, --enable-scheduler " +
+			"or --enable-customrun to start a controller.")
 		os.Exit(1)
 	}
 	if enableAgent && buildTimeout <= 0 {
@@ -141,6 +189,36 @@ func main() {
 	}
 	if enableAgent && buildPollInterval <= 0 {
 		setupLog.Info("build-poll-interval must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && heartbeatInterval <= 0 {
+		setupLog.Info("heartbeat-interval must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && staticRefreshInterval <= 0 {
+		setupLog.Info("static-refresh-interval must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent &&
+		(int32(capacity) < buildv1alpha1.MinMacAgentCapacity ||
+			int32(capacity) > buildv1alpha1.MaxMacAgentCapacity) {
+		setupLog.Info("capacity must be between 1 and 8", "capacity", capacity)
+		os.Exit(1)
+	}
+	if enableMacAgent && offlineThreshold <= 0 {
+		setupLog.Info("offline-threshold must be greater than zero")
+		os.Exit(1)
+	}
+	if enableMacAgent && macAgentRequeueInterval <= 0 {
+		setupLog.Info("macagent-requeue-interval must be greater than zero")
+		os.Exit(1)
+	}
+	if enableScheduler && assignmentTimeout <= 0 {
+		setupLog.Info("assignment-timeout must be greater than zero")
+		os.Exit(1)
+	}
+	if enableScheduler && maxAssignmentAttempts < 1 {
+		setupLog.Info("max-assignment-attempts must be at least 1")
 		os.Exit(1)
 	}
 	if enableAgent {
@@ -230,6 +308,17 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	cacheOptions := cache.Options{}
+	if enableAgent && macBuildNamespace != "" {
+		// The worker only watches MacBuilds in its build namespace. This keeps
+		// the informer cache and the worker RBAC namespace-scoped.
+		cacheOptions.ByObject = map[client.Object]cache.ByObject{
+			&buildv1alpha1.MacBuild{}: {
+				Namespaces: map[string]cache.Config{macBuildNamespace: {}},
+			},
+		}
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -237,6 +326,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "1e1ceb52.tibuild.pingcap.net",
+		Cache:                  cacheOptions,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
@@ -255,7 +345,30 @@ func main() {
 	}
 
 	if enableAgent {
-		setupLog.Info("Starting manager with worker identity", "workerID", workerName, "workerArch", workerArch)
+		machine, err := (identity.Resolver{
+			Runner:   identity.ExecRunner{},
+			Override: workerName,
+			Hostname: os.Hostname,
+		}).Resolve(context.Background())
+		if err != nil {
+			setupLog.Error(err, "unable to determine stable agent identity")
+			os.Exit(1)
+		}
+		workerName = machine.Name
+		setupLog.Info("Starting manager with worker identity",
+			"workerID", workerName, "workerArch", workerArch,
+			"machineIDSource", machine.Source, "machineID", machine.Value)
+
+		statePath := stateFile
+		if statePath == "" {
+			statePath, err = state.DefaultPath()
+			if err != nil {
+				setupLog.Error(err, "unable to resolve the agent state path")
+				os.Exit(1)
+			}
+		}
+		stateStore := state.NewStore(statePath)
+
 		if err := (&controller.MacBuildReconciler{
 			Client:                mgr.GetClient(),
 			APIReader:             mgr.GetAPIReader(),
@@ -265,11 +378,28 @@ func main() {
 			BuildTimeout:          buildTimeout,
 			BuildPollInterval:     buildPollInterval,
 			ArtifactsScriptSource: artifactsScriptSource,
+			StateStore:            stateStore,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "MacBuildAgent")
 			os.Exit(1)
 		}
-		setupLog.Info("MacBuild Agent controller enabled.")
+		if err := mgr.Add(&controller.MacAgentHeartbeat{
+			Client:                mgr.GetClient(),
+			APIReader:             mgr.GetAPIReader(),
+			AgentName:             workerName,
+			AgentArch:             workerArch,
+			AgentVersion:          agentVersion,
+			Capacity:              int32(capacity),
+			Labels:                labels,
+			Machine:               machine,
+			Inventory:             inventory.NewProvider(),
+			HeartbeatInterval:     heartbeatInterval,
+			StaticRefreshInterval: staticRefreshInterval,
+		}); err != nil {
+			setupLog.Error(err, "unable to add MacAgent heartbeat")
+			os.Exit(1)
+		}
+		setupLog.Info("MacBuild Agent controller enabled.", "macAgent", workerName)
 	}
 
 	if enableGC {
@@ -281,6 +411,35 @@ func main() {
 			os.Exit(1)
 		}
 		setupLog.Info("MacBuild GC controller enabled.")
+	}
+
+	if enableMacAgent {
+		if err := (&controller.MacAgentReconciler{
+			Client:            mgr.GetClient(),
+			Scheme:            mgr.GetScheme(),
+			MacBuildNamespace: macBuildNamespace,
+			OfflineThreshold:  offlineThreshold,
+			RequeueInterval:   macAgentRequeueInterval,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "MacAgent")
+			os.Exit(1)
+		}
+		setupLog.Info("MacAgent controller enabled.", "macBuildNamespace", macBuildNamespace)
+	}
+
+	if enableScheduler {
+		if err := (&controller.MacBuildScheduler{
+			Client:                mgr.GetClient(),
+			APIReader:             mgr.GetAPIReader(),
+			Scheme:                mgr.GetScheme(),
+			MacBuildNamespace:     macBuildNamespace,
+			AssignmentTimeout:     assignmentTimeout,
+			MaxAssignmentAttempts: int32(maxAssignmentAttempts),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "MacBuildScheduler")
+			os.Exit(1)
+		}
+		setupLog.Info("MacBuild scheduler enabled.", "macBuildNamespace", macBuildNamespace)
 	}
 
 	if enableCustomRun {
@@ -314,16 +473,29 @@ func main() {
 	}
 }
 
-func validateAgentIdentity(workerName string, workerArch string) (string, string, error) {
-	normalizedWorkerName := strings.TrimSpace(workerName)
-	if normalizedWorkerName == "" {
-		return "", "", fmt.Errorf("worker-name must not be empty when enable-agent is set")
-	}
-
-	normalizedWorkerArch := buildv1alpha1.NormalizeBuildArch(workerArch)
-	if !buildv1alpha1.IsSupportedBuildArch(normalizedWorkerArch) {
+func validateAgentIdentity(agentName string, agentArch string) (string, string, error) {
+	normalizedAgentName := strings.TrimSpace(agentName)
+	normalizedAgentArch := buildv1alpha1.NormalizeBuildArch(agentArch)
+	if !buildv1alpha1.IsSupportedBuildArch(normalizedAgentArch) {
 		return "", "", fmt.Errorf("worker-arch must be one of amd64 or arm64")
 	}
 
-	return normalizedWorkerName, normalizedWorkerArch, nil
+	return normalizedAgentName, normalizedAgentArch, nil
+}
+
+func parseLabels(value string) (map[string]string, error) {
+	labels := make(map[string]string)
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		key, labelValue, ok := strings.Cut(item, "=")
+		key = strings.TrimSpace(key)
+		if !ok || key == "" {
+			return nil, fmt.Errorf("invalid label %q: expected key=value", item)
+		}
+		labels[key] = strings.TrimSpace(labelValue)
+	}
+	return labels, nil
 }

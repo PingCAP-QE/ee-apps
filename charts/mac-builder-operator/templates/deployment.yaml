@@ -41,10 +41,22 @@ spec:
             {{- if .Values.controller.agent }}
             - --enable-agent
             {{- with .Values.agent.workerName }}
-            - --worker-name={{ . }}
+            - --agent-name={{ . }}
             {{- end }}
             {{- with .Values.agent.workerArch }}
             - --worker-arch={{ . }}
+            {{- end }}
+            - --capacity={{ .Values.agent.capacity }}
+            - --heartbeat-interval={{ .Values.agent.heartbeatInterval }}
+            - --static-refresh-interval={{ .Values.agent.staticRefreshInterval }}
+            {{- with .Values.agent.labels }}
+            - --labels={{ . }}
+            {{- end }}
+            {{- with .Values.agent.agentVersion }}
+            - --agent-version={{ . }}
+            {{- end }}
+            {{- with .Values.agent.stateFile }}
+            - --state-file={{ . }}
             {{- end }}
             - --build-timeout={{ .Values.agent.buildTimeout }}
             - --build-poll-interval={{ .Values.agent.buildPollInterval }}
@@ -52,15 +64,25 @@ spec:
             - --artifacts-repo-revision={{ .Values.artifactsRepo.revision }}
             - --artifacts-repo-commit={{ .Values.artifactsRepo.commit }}
             {{- end }}
+            - --macbuild-namespace={{ include "mac-builder-operator.macBuildNamespace" . }}
             {{- if .Values.controller.gc }}
             - --enable-gc
             {{- end }}
+            {{- if .Values.controller.macAgent }}
+            - --enable-macagent
+            - --offline-threshold={{ .Values.macAgent.offlineThreshold }}
+            - --macagent-requeue-interval={{ .Values.macAgent.requeueInterval }}
+            {{- end }}
+            {{- if .Values.controller.scheduler }}
+            - --enable-scheduler
+            - --assignment-timeout={{ .Values.scheduler.assignmentTimeout }}
+            - --max-assignment-attempts={{ .Values.scheduler.maxAssignmentAttempts }}
+            {{- end }}
             {{- if .Values.controller.customRun }}
             - --enable-customrun
-            - --macbuild-namespace={{ include "mac-builder-operator.macBuildNamespace" . }}
             - --customrun-poll-interval={{ .Values.customRun.pollInterval }}
             {{- end }}
-            {{- if or .Values.controller.gc .Values.controller.customRun }}
+            {{- if and .Values.controller.leaderElection (or .Values.controller.gc .Values.controller.customRun .Values.controller.macAgent .Values.controller.scheduler) }}
             - --leader-elect
             {{- end }}
             - --health-probe-bind-address=:8081
