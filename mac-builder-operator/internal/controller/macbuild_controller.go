@@ -54,6 +54,9 @@ type MacBuildReconciler struct {
 	// MinFreeDiskBytes is the minimum free space required to start a build.
 	MinFreeDiskBytes int64
 
+	// Tracker counts active builds so SIGTERM can wait for them.
+	Tracker *BuildTracker
+
 	// APIReader reads directly from the API server (uncached). The reconciler
 	// uses it for the reads that decide whether to (re)run a build, so it never
 	// acts on a stale phase: a reconcile triggered right after a build completes
@@ -317,6 +320,11 @@ func (r *MacBuildReconciler) runNativeBuild(
 	reportPhase buildPhaseReporter,
 ) (*buildResult, error) {
 	logger := logf.FromContext(ctx)
+
+	if r.Tracker != nil {
+		r.Tracker.Begin()
+		defer r.Tracker.End()
+	}
 
 	if r.StateStore != nil {
 		r.persistBuildState(ctx, macBuild, macBuild.Status.Phase)

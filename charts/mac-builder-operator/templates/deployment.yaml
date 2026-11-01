@@ -50,6 +50,8 @@ spec:
             - --heartbeat-interval={{ .Values.agent.heartbeatInterval }}
             - --static-refresh-interval={{ .Values.agent.staticRefreshInterval }}
             - --min-free-disk-bytes={{ .Values.agent.minFreeDiskBytes }}
+            - --shutdown-grace={{ .Values.agent.shutdownGrace }}
+            - --workspace-max-age={{ .Values.agent.workspaceMaxAge }}
             {{- with .Values.agent.labels }}
             - --labels={{ . }}
             {{- end }}

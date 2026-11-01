@@ -22,8 +22,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	goruntime "runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -46,6 +48,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/identity"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/inventory"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/state"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/workspace"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/controller"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	// +kubebuilder:scaffold:imports
@@ -81,7 +84,7 @@ func main() {
 	var (
 		buildTimeout, buildPollInterval, customRunPollInterval time.Duration
 		offlineThreshold, macAgentRequeueInterval              time.Duration
-		assignmentTimeout                                      time.Duration
+		assignmentTimeout, shutdownGrace, workspaceMaxAge      time.Duration
 	)
 	var maxAssignmentAttempts int
 	var minFreeDiskBytes int64
@@ -141,6 +144,10 @@ func main() {
 		"Path to the in-flight build state file (default: the per-user config dir).")
 	flag.Int64Var(&minFreeDiskBytes, "min-free-disk-bytes", 20*1024*1024*1024,
 		"Minimum free disk required before starting a build.")
+	flag.DurationVar(&shutdownGrace, "shutdown-grace", 10*time.Minute,
+		"How long to wait for active builds after SIGTERM.")
+	flag.DurationVar(&workspaceMaxAge, "workspace-max-age", 7*24*time.Hour,
+		"Remove build workspaces older than this.")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -210,6 +217,14 @@ func main() {
 	}
 	if enableAgent && minFreeDiskBytes <= 0 {
 		setupLog.Info("min-free-disk-bytes must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && shutdownGrace <= 0 {
+		setupLog.Info("shutdown-grace must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && workspaceMaxAge <= 0 {
+		setupLog.Info("workspace-max-age must be greater than zero")
 		os.Exit(1)
 	}
 	if enableMacAgent && offlineThreshold <= 0 {
@@ -351,6 +366,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	buildTracker := controller.NewBuildTracker()
+
 	if enableAgent {
 		machine, err := (identity.Resolver{
 			Runner:   identity.ExecRunner{},
@@ -388,6 +405,7 @@ func main() {
 			ArtifactsScriptSource: artifactsScriptSource,
 			StateStore:            stateStore,
 			MinFreeDiskBytes:      minFreeDiskBytes,
+			Tracker:               buildTracker,
 			DiskFreeBytes: func(ctx context.Context) int64 {
 				return inventoryProvider.CollectRuntime(ctx).DiskFreeBytes
 			},
@@ -409,6 +427,15 @@ func main() {
 			StaticRefreshInterval: staticRefreshInterval,
 		}); err != nil {
 			setupLog.Error(err, "unable to add MacAgent heartbeat")
+			os.Exit(1)
+		}
+		if err := mgr.Add(&workspace.Cleaner{
+			Root:     os.TempDir(),
+			Prefix:   "macbuild-",
+			MaxAge:   workspaceMaxAge,
+			Interval: time.Hour,
+		}); err != nil {
+			setupLog.Error(err, "unable to add workspace cleaner")
 			os.Exit(1)
 		}
 		setupLog.Info("MacBuild Agent controller enabled.", "macAgent", workerName)
@@ -478,8 +505,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	signalCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stopSignals()
+	managerCtx, cancelManager := context.WithCancel(context.Background())
+	defer cancelManager()
+	go func() {
+		<-signalCtx.Done()
+		setupLog.Info("shutdown signal received; waiting for active builds", "grace", shutdownGrace)
+		if !buildTracker.WaitTimeout(shutdownGrace) {
+			setupLog.Info("shutdown grace elapsed; stopping active builds")
+		}
+		cancelManager()
+	}()
+
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(managerCtx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

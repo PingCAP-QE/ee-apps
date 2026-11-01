@@ -48,6 +48,14 @@ The condition clears automatically when space is freed. A build that reaches
 the worker with insufficient disk fails before cloning with an `insufficient
 disk` message; free space and retrigger the build.
 
+## Graceful shutdown
+
+On SIGTERM the agent waits up to `--shutdown-grace` (default 10m) for active
+builds to finish before stopping the manager. If the grace expires, the build is
+interrupted and the persisted state causes a rerun (Preparing/Building) or a
+failure (Publishing) on the next start. Prefer cordon/drain for planned
+maintenance.
+
 ## Cordon, drain and upgrade
 
 ```bash
