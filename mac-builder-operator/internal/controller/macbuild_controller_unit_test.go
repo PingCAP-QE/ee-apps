@@ -316,7 +316,11 @@ func TestReconcileFailsUnknownDiskMetrics(t *testing.T) {
 	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
 	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
 	reconciler.MinFreeDiskBytes = 20 * 1024 * 1024 * 1024
-	reconciler.DiskFreeBytes = func(context.Context) int64 { return -1 }
+	calls := 0
+	reconciler.DiskFreeBytes = func(context.Context) int64 {
+		calls++
+		return buildv1alpha1.MacAgentDiskUnknownBytes
+	}
 	runCalled := false
 	reconciler.runBuild = func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
 		runCalled = true
@@ -335,6 +339,42 @@ func TestReconcileFailsUnknownDiskMetrics(t *testing.T) {
 	}
 	if runCalled {
 		t.Fatal("runBuild must not be called when disk metrics are unavailable")
+	}
+	if calls != 2 {
+		t.Fatalf("expected one disk metrics retry, got %d calls", calls)
+	}
+}
+
+func TestReconcileRetriesUnknownDiskMetrics(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := newTestBuild("build-disk-retry", buildv1alpha1.PhasePreparing, testWorkerA)
+	macBuild.Status.WorkerID = stringPtr(testWorkerA)
+	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
+	reconciler.MinFreeDiskBytes = 20 * 1024 * 1024 * 1024
+	calls := 0
+	reconciler.DiskFreeBytes = func(context.Context) int64 {
+		calls++
+		if calls == 1 {
+			return buildv1alpha1.MacAgentDiskUnknownBytes
+		}
+		return 50 * 1024 * 1024 * 1024
+	}
+	reconciler.runBuild = func(context.Context, buildv1alpha1.MacBuild, buildPhaseReporter) (*buildResult, error) {
+		return &buildResult{CommitHash: "deadbeef"}, nil
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Phase != buildv1alpha1.PhaseSucceeded {
+		t.Fatalf("expected succeeded phase after a metrics retry, got %q", updated.Status.Phase)
+	}
+	if calls != 2 {
+		t.Fatalf("expected two disk measurements, got %d", calls)
 	}
 }
 

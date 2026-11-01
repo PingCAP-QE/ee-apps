@@ -49,8 +49,9 @@ the worker with insufficient disk fails before cloning with an `insufficient
 disk` message; free space and retrigger the build.
 
 `DiskUnknown` means the worker could not read `df`; it also keeps the agent out
-of scheduling. Check the agent logs, then restart the LaunchAgent after fixing
-the command/runner.
+of scheduling. The agent retries the measurement once before failing a build
+with `disk metrics unavailable`. Check the agent logs, then restart the
+LaunchAgent after fixing the command/runner.
 
 Change the threshold per worker or for the whole cluster:
 

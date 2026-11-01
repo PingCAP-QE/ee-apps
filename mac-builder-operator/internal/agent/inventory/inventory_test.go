@@ -6,6 +6,8 @@ import (
 	"net"
 	"strings"
 	"testing"
+
+	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
 )
 
 type fakeRunner struct {
@@ -117,7 +119,7 @@ func TestCollectStaticBestEffort(t *testing.T) {
 	}
 
 	runtime := provider.CollectRuntime(context.Background())
-	if runtime.Load1 != 0 || runtime.DiskFreeBytes != -1 {
+	if runtime.Load1 != 0 || runtime.DiskFreeBytes != buildv1alpha1.MacAgentDiskUnknownBytes {
 		t.Fatalf("expected unknown runtime values, got %#v", runtime)
 	}
 }

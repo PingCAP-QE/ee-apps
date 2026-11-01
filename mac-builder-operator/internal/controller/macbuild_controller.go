@@ -253,6 +253,12 @@ func (r *MacBuildReconciler) reconcileActive(
 	if r.DiskFreeBytes != nil && r.MinFreeDiskBytes > 0 {
 		free := r.DiskFreeBytes(ctx)
 		if free < 0 {
+			// df can fail transiently while a worker is busy; retry once before
+			// failing the build.
+			logger.Info("Disk metrics unavailable; retrying", "worker", r.WorkerID)
+			free = r.DiskFreeBytes(ctx)
+		}
+		if free < 0 {
 			logger.Info("Disk metrics unavailable; failing build before start", "worker", r.WorkerID)
 			return r.failBuild(
 				ctx,
