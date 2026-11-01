@@ -189,3 +189,68 @@ func TestServerFollowStreamsNewBytes(t *testing.T) {
 		t.Fatalf("unexpected second chunk: %q", buf)
 	}
 }
+
+func TestServerMissingLogAndMethodErrors(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestServer(t, 0)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/v1/logs/ee-cd/missing/meta")
+	if err != nil {
+		t.Fatalf("get meta: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for a missing log, got %d", resp.StatusCode)
+	}
+
+	resp, err = http.Post(ts.URL+"/v1/logs/ee-cd/missing/finalize", "application/json", nil)
+	if err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for finalizing a missing log, got %d", resp.StatusCode)
+	}
+
+	resp, err = http.Post(ts.URL+"/v1/logs/ee-cd/macbuild-abc", "text/plain", strings.NewReader("x"))
+	if err != nil {
+		t.Fatalf("post log: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for POST, got %d", resp.StatusCode)
+	}
+
+	_ = putLogChunk(t, ts.URL, "ee-cd", 0, "hello").Body.Close()
+	resp, err = http.Get(ts.URL + "/v1/logs/ee-cd/macbuild-abc?tail=bad")
+	if err != nil {
+		t.Fatalf("get bad tail: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for a bad tail, got %d", resp.StatusCode)
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, ts.URL+"/v1/logs/ee-cd/macbuild-abc", nil)
+	if err != nil {
+		t.Fatalf("delete request: %v", err)
+	}
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("delete log: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204 for delete, got %d", resp.StatusCode)
+	}
+	resp, err = http.Get(ts.URL + "/v1/logs/ee-cd/macbuild-abc")
+	if err != nil {
+		t.Fatalf("get after delete: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got %d", resp.StatusCode)
+	}
+}

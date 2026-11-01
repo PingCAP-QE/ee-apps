@@ -120,3 +120,52 @@ func TestStoreGC(t *testing.T) {
 		t.Fatalf("unfinished log was removed: %v", err)
 	}
 }
+
+func TestStoreReset(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore(t.TempDir())
+	if _, err := store.Append("ee-cd", "macbuild-abc", 0, []byte("hello")); err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if err := store.Reset("ee-cd", "macbuild-abc"); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if _, err := store.Meta("ee-cd", "macbuild-abc"); !os.IsNotExist(err) {
+		t.Fatalf("expected the log to be removed, got %v", err)
+	}
+	if err := store.Reset("ee-cd", "macbuild-abc"); err != nil {
+		t.Fatalf("reset missing log: %v", err)
+	}
+}
+
+func TestStoreGCMaxBytes(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore(t.TempDir())
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	for _, name := range []string{"oldest", "newest"} {
+		if _, err := store.Append("ee-cd", name, 0, []byte("0123456789")); err != nil {
+			t.Fatalf("append %s: %v", name, err)
+		}
+		if _, err := store.Finalize("ee-cd", name); err != nil {
+			t.Fatalf("finalize %s: %v", name, err)
+		}
+	}
+	oldest := filepath.Join(store.Dir(), "ee-cd", "oldest.log")
+	oldTime := now.Add(-time.Hour)
+	if err := os.Chtimes(oldest, oldTime, oldTime); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	removed, err := store.GC(0, 12, now)
+	if err != nil {
+		t.Fatalf("gc: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("expected one log removed by the size cap, got %d", removed)
+	}
+	if _, err := os.Stat(oldest); !os.IsNotExist(err) {
+		t.Fatalf("oldest log still exists: %v", err)
+	}
+}
