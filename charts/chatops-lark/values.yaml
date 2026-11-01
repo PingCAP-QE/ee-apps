@@ -109,7 +109,9 @@ tolerations: []
 affinity: {}
 
 server:
+  # Secret that holds the application configuration.
   secretName: ""
-  appIdSecretKey: app_id
-  appSecretSecretKey: app_secret
-  configFileSecretKey: config
+  # Key in the Secret whose value is mounted as /etc/chatops-lark/config.yaml.
+  # app_id and app_secret are read from that file; they are not passed as
+  # command-line arguments or environment variables.
+  configFileSecretKey: config.yaml
