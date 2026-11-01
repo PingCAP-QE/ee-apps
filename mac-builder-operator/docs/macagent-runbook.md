@@ -28,6 +28,23 @@ example:
   expired; the build returns to `Pending` and is retried up to
   `--max-assignment-attempts`.
 
+## Build logs
+
+```bash
+kubectl macbuild logs <build> -n ee-cd
+kubectl macbuild logs <build> -n ee-cd -f --tail 200
+```
+
+- `404` means the build has no uploaded log (an old build, the log server is
+  disabled, or the agent has not uploaded its first chunk).
+- `403` means the account lacks `get` on `services/proxy`. Use
+  `kubectl port-forward svc/mac-builder-operator-logs 8080:8080 -n ee-cd` and
+  pass `--server http://127.0.0.1:8080`.
+- The agent keeps a local copy under its `--log-dir`; set `--log-upload=false`
+  on clusters without the log server.
+- `kubectl describe macbuild` shows `Status.Logs.Command`, `SizeBytes` and
+  `Complete`.
+
 ## Offline and reconnect
 
 - 60s without a heartbeat marks the agent `Offline` (`Ready=False`,

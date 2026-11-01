@@ -37,6 +37,11 @@ SHUTDOWN_GRACE="${SHUTDOWN_GRACE:-10m}"
 WORKSPACE_MAX_AGE="${WORKSPACE_MAX_AGE:-168h}"
 AGENT_VERSION="${AGENT_VERSION:-$EEAPPS_REF}"
 STATE_FILE="${STATE_FILE:-}"
+LOG_UPLOAD="${LOG_UPLOAD:-true}"
+LOG_SERVICE="${LOG_SERVICE:-mac-builder-operator-logs}"
+LOG_SERVICE_NAMESPACE="${LOG_SERVICE_NAMESPACE:-ee-cd}"
+LOG_SERVICE_PORT="${LOG_SERVICE_PORT:-8080}"
+LOG_MAX_BUILD_BYTES="${LOG_MAX_BUILD_BYTES:-104857600}"
 WORKER_ARCH="${WORKER_ARCH:-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/;s/arm64/arm64/')}"
 MACBUILD_NAMESPACE="${MACBUILD_NAMESPACE:-ee-cd}"
 KUBECONFIG_PATH="${KUBECONFIG:-$HOME/.kube/config}"
@@ -66,6 +71,11 @@ Usage: install.sh [OPTIONS]
   --disk-check-retry-interval D delay between disk measurements (default: 100ms)
   --shutdown-grace D      wait for active builds after SIGTERM (default: 10m)
   --workspace-max-age D   remove build workspaces older than this (default: 168h)
+  --log-upload BOOL       upload build logs (default: true)
+  --log-service NAME      log server Service (default: mac-builder-operator-logs)
+  --log-service-namespace NS log server namespace (default: ee-cd)
+  --log-service-port N    log server Service port (default: 8080)
+  --log-max-build-bytes N max bytes per build log (default: 104857600)
   --agent-version VERSION version reported in MacAgent status (default: --eeapps-ref)
   --state-file PATH       in-flight build state file (default: per-user config dir)
   --namespace NS          namespace where MacBuilds live (default: ee-cd)
@@ -93,6 +103,11 @@ while [[ $# -gt 0 ]]; do
     --disk-check-retry-interval) DISK_CHECK_RETRY_INTERVAL="$2"; shift 2 ;;
     --shutdown-grace) SHUTDOWN_GRACE="$2"; shift 2 ;;
     --workspace-max-age) WORKSPACE_MAX_AGE="$2"; shift 2 ;;
+    --log-upload) LOG_UPLOAD="$2"; shift 2 ;;
+    --log-service) LOG_SERVICE="$2"; shift 2 ;;
+    --log-service-namespace) LOG_SERVICE_NAMESPACE="$2"; shift 2 ;;
+    --log-service-port) LOG_SERVICE_PORT="$2"; shift 2 ;;
+    --log-max-build-bytes) LOG_MAX_BUILD_BYTES="$2"; shift 2 ;;
     --agent-version)  AGENT_VERSION="$2"; shift 2 ;;
     --state-file)     STATE_FILE="$2"; shift 2 ;;
     --namespace)      MACBUILD_NAMESPACE="$2"; shift 2 ;;
@@ -156,7 +171,9 @@ agent_args=(--enable-agent --enable-gc=false --enable-customrun=false \
   --disk-check-attempts="$DISK_CHECK_ATTEMPTS" \
   --disk-check-retry-interval="$DISK_CHECK_RETRY_INTERVAL" \
   --shutdown-grace="$SHUTDOWN_GRACE" \
-  --workspace-max-age="$WORKSPACE_MAX_AGE")
+  --workspace-max-age="$WORKSPACE_MAX_AGE" --log-upload="$LOG_UPLOAD" \
+  --log-service="$LOG_SERVICE" --log-service-namespace="$LOG_SERVICE_NAMESPACE" \
+  --log-service-port="$LOG_SERVICE_PORT" --log-max-build-bytes="$LOG_MAX_BUILD_BYTES")
 if [[ -n "$AGENT_NAME" ]]; then
   agent_args+=(--agent-name="$AGENT_NAME")
 fi

@@ -1,0 +1,18 @@
+{{- if .Values.logServer.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mac-builder-operator.fullname" . }}-logs
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: log-server
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "mac-builder-operator.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.logServer.port }}
+      targetPort: logs
+      protocol: TCP
+{{- end }}

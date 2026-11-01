@@ -28,6 +28,7 @@ import (
 	"time"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/logging"
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -61,6 +62,7 @@ type nativeBuildJob struct {
 	reportPhase  buildPhaseReporter
 	stdoutWriter io.Writer
 	stderrWriter io.Writer
+	log          *logging.Log
 }
 
 // newNativeBuildJob creates a new instance of nativeBuildJob.
@@ -97,6 +99,15 @@ func newNativeBuildJob(
 		stdoutWriter:       os.Stdout,
 		stderrWriter:       os.Stderr,
 	}
+}
+
+func (j *nativeBuildJob) setLog(log *logging.Log) {
+	if log == nil {
+		return
+	}
+	j.log = log
+	j.stdoutWriter = log.CommandWriter()
+	j.stderrWriter = log.CommandWriter()
 }
 
 func (j *nativeBuildJob) Run() (*buildResult, error) {

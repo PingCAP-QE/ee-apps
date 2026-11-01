@@ -47,9 +47,11 @@ import (
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/identity"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/inventory"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/logging"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/state"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/agent/workspace"
 	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/controller"
+	"github.com/PingCAP-QE/ee-apps/mac-builder-operator/internal/logserver"
 	tektonv1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
@@ -80,15 +82,19 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	var enableAgent, enableGC, enableCustomRun, enableMacAgent, enableScheduler bool
+	var enableAgent, enableGC, enableCustomRun, enableMacAgent, enableScheduler, enableLogServer bool
 	var (
 		buildTimeout, buildPollInterval, customRunPollInterval time.Duration
 		offlineThreshold, macAgentRequeueInterval              time.Duration
 		assignmentTimeout, shutdownGrace, workspaceMaxAge      time.Duration
 		diskCheckRetryInterval                                 time.Duration
+		logRetention                                           time.Duration
 	)
 	var maxAssignmentAttempts, diskCheckAttempts int
-	var minFreeDiskBytes int64
+	var minFreeDiskBytes, logMaxBuildBytes, logMaxStoreBytes int64
+	var logDir, logService, logServiceNamespace, logStoreDir string
+	var logServicePort, logServerPort int
+	var logUpload bool
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
 	var macBuildNamespace string
 	var workerName, legacyWorkerName, workerArch, labelsFlag, agentVersion, stateFile string
@@ -153,6 +159,28 @@ func main() {
 		"How long to wait for active builds after SIGTERM.")
 	flag.DurationVar(&workspaceMaxAge, "workspace-max-age", 7*24*time.Hour,
 		"Remove build workspaces older than this.")
+	flag.StringVar(&logDir, "log-dir", "",
+		"Directory for per-build local logs (default: the per-user config dir).")
+	flag.Int64Var(&logMaxBuildBytes, "log-max-build-bytes", 100*1024*1024,
+		"Maximum bytes captured per build log.")
+	flag.BoolVar(&logUpload, "log-upload", true,
+		"Upload build logs to the operator log service.")
+	flag.StringVar(&logService, "log-service", "mac-builder-operator-logs",
+		"Kubernetes Service exposing the log server.")
+	flag.StringVar(&logServiceNamespace, "log-service-namespace", "ee-cd",
+		"Namespace of the log server Service.")
+	flag.IntVar(&logServicePort, "log-service-port", 8080,
+		"Port of the log server Service.")
+	flag.BoolVar(&enableLogServer, "enable-log-server", false,
+		"Serve build logs from this operator process.")
+	flag.StringVar(&logStoreDir, "log-store-dir", "/var/lib/macbuild-logs",
+		"Directory for the log server's local store.")
+	flag.DurationVar(&logRetention, "log-retention", 7*24*time.Hour,
+		"How long to retain completed build logs.")
+	flag.Int64Var(&logMaxStoreBytes, "log-max-store-bytes", 10*1024*1024*1024,
+		"Maximum bytes retained by the log server.")
+	flag.IntVar(&logServerPort, "log-server-port", 8080,
+		"Port the log server listens on.")
 
 	// General flags
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -192,10 +220,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	if !enableAgent && !enableGC && !enableCustomRun && !enableMacAgent && !enableScheduler {
+	if !enableAgent && !enableGC && !enableCustomRun && !enableMacAgent && !enableScheduler && !enableLogServer {
 		setupLog.Info("No controllers enabled. " +
-			"Use --enable-agent, --enable-gc, --enable-macagent, --enable-scheduler " +
-			"or --enable-customrun to start a controller.")
+			"Use --enable-agent, --enable-gc, --enable-macagent, --enable-scheduler, " +
+			"--enable-log-server or --enable-customrun to start a controller.")
 		os.Exit(1)
 	}
 	if enableAgent && buildTimeout <= 0 {
@@ -238,6 +266,18 @@ func main() {
 	}
 	if enableAgent && workspaceMaxAge <= 0 {
 		setupLog.Info("workspace-max-age must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && logMaxBuildBytes <= 0 {
+		setupLog.Info("log-max-build-bytes must be greater than zero")
+		os.Exit(1)
+	}
+	if enableAgent && logUpload && (logService == "" || logServiceNamespace == "" || logServicePort <= 0) {
+		setupLog.Info("log-service, log-service-namespace and log-service-port must be set when log upload is enabled")
+		os.Exit(1)
+	}
+	if enableLogServer && (logStoreDir == "" || logRetention <= 0 || logMaxStoreBytes <= 0 || logServerPort <= 0) {
+		setupLog.Info("log-store-dir, log-retention, log-max-store-bytes and log-server-port must be set for the log server")
 		os.Exit(1)
 	}
 	if enableMacAgent && offlineThreshold <= 0 {
@@ -406,6 +446,13 @@ func main() {
 		}
 		stateStore := state.NewStore(statePath)
 		inventoryProvider := inventory.NewProvider()
+		if logDir == "" {
+			logDir, err = logging.DefaultDir()
+			if err != nil {
+				setupLog.Error(err, "unable to resolve the build log directory")
+				os.Exit(1)
+			}
+		}
 
 		if err := (&controller.MacBuildReconciler{
 			Client:                 mgr.GetClient(),
@@ -421,6 +468,15 @@ func main() {
 			DiskCheckAttempts:      diskCheckAttempts,
 			DiskCheckRetryInterval: diskCheckRetryInterval,
 			Tracker:                buildTracker,
+			LogDir:                 logDir,
+			LogMaxBytes:            logMaxBuildBytes,
+			LogUpload: &controller.LogUploadConfig{
+				Enabled:          logUpload,
+				RESTConfig:       mgr.GetConfig(),
+				ServiceNamespace: logServiceNamespace,
+				ServiceName:      logService,
+				ServicePort:      logServicePort,
+			},
 			DiskFreeBytes: func(ctx context.Context) int64 {
 				return inventoryProvider.CollectRuntime(ctx).DiskFreeBytes
 			},
@@ -507,6 +563,21 @@ func main() {
 			os.Exit(1)
 		}
 		setupLog.Info("MacBuild CustomRun controller enabled.", "macBuildNamespace", macBuildNamespace)
+	}
+
+	if enableLogServer {
+		server := logserver.New(logserver.Config{
+			Addr:          fmt.Sprintf(":%d", logServerPort),
+			Store:         logserver.NewStore(logStoreDir),
+			MaxBuildBytes: logMaxBuildBytes,
+			MaxStoreBytes: logMaxStoreBytes,
+			Retention:     logRetention,
+		})
+		if err := mgr.Add(server); err != nil {
+			setupLog.Error(err, "unable to add the build log server")
+			os.Exit(1)
+		}
+		setupLog.Info("Build log server enabled.", "addr", fmt.Sprintf(":%d", logServerPort), "store", logStoreDir)
 	}
 
 	// +kubebuilder:scaffold:builder

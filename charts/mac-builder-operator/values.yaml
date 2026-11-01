@@ -44,6 +44,11 @@ agent:
   workspaceMaxAge: 168h
   agentVersion: ""
   stateFile: ""
+  logMaxBuildBytes: 104857600
+  logUpload: true
+  logService: mac-builder-operator-logs
+  logServiceNamespace: ee-cd
+  logServicePort: 8080
   buildTimeout: 24h
   buildPollInterval: 5m
 
@@ -54,6 +59,17 @@ macAgent:
 scheduler:
   assignmentTimeout: 2m
   maxAssignmentAttempts: 3
+
+logServer:
+  enabled: false
+  port: 8080
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: ""
+  retention: 168h
+  maxBuildLogBytes: 104857600
+  maxStoreBytes: 10737418240
 
 artifactsRepo:
   url: https://github.com/PingCAP-QE/artifacts.git
@@ -112,6 +128,8 @@ podLabels: {}
 
 podSecurityContext:
   runAsNonRoot: true
+  # Allow the operator's non-root user to write the log PVC.
+  fsGroup: 65532
   seccompProfile:
     type: RuntimeDefault
 

@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -504,4 +506,37 @@ func newTestMacBuildReconciler(
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func TestReconcileWritesBuildLog(t *testing.T) {
+	t.Parallel()
+
+	fixedNow := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	macBuild := newTestBuild("build-log", buildv1alpha1.PhasePreparing, testWorkerA)
+	macBuild.Status.WorkerID = stringPtr(testWorkerA)
+	macBuild.Status.StartTime = &metav1.Time{Time: fixedNow.Add(-time.Minute)}
+	reconciler, k8sClient := newTestMacBuildReconciler(t, fixedNow, macBuild)
+	reconciler.LogDir = t.TempDir()
+	reconciler.LogMaxBytes = 1024 * 1024
+	reconciler.runBuild = func(_ context.Context, _ buildv1alpha1.MacBuild, reportPhase buildPhaseReporter) (*buildResult, error) {
+		if err := reportPhase(buildv1alpha1.PhaseBuilding, "captured phase"); err != nil {
+			return nil, err
+		}
+		return &buildResult{CommitHash: "deadbeef"}, nil
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), requestFor(macBuild)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+	updated := getTestBuild(t, k8sClient, macBuild)
+	if updated.Status.Logs == nil || updated.Status.Logs.SizeBytes == 0 {
+		t.Fatalf("expected log status, got %#v", updated.Status.Logs)
+	}
+	data, err := os.ReadFile(filepath.Join(reconciler.LogDir, "default", "build-log.log"))
+	if err != nil {
+		t.Fatalf("read build log: %v", err)
+	}
+	if !strings.Contains(string(data), "[Building] captured phase") {
+		t.Fatalf("log does not contain the phase marker:\n%s", data)
+	}
 }

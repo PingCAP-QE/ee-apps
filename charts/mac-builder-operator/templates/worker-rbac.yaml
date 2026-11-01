@@ -107,6 +107,15 @@ rules:
       - secrets
     verbs:
       - get
+  # Upload build logs through the API server service proxy. `create` is
+  # required for PUT; the worker Role keeps it namespace-scoped.
+  - apiGroups:
+      - ""
+    resources:
+      - services/proxy
+    verbs:
+      - get
+      - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

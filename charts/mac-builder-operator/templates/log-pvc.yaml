@@ -1,0 +1,18 @@
+{{- if and .Values.logServer.enabled .Values.logServer.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "mac-builder-operator.fullname" . }}-logs
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: log-server
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with .Values.logServer.persistence.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.logServer.persistence.size }}
+{{- end }}
