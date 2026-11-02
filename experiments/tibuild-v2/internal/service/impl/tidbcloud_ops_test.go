@@ -36,24 +36,7 @@ func TestUpdateComponentVersionInCloudconfig(t *testing.T) {
 	}))
 	t.Cleanup(ops.Close)
 
-	tags := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/hotfix/tidbx/tag", r.URL.Path)
-		require.Equal(t, "pingcap/tidb", r.URL.Query().Get("repo"))
-		user, pass, ok := r.BasicAuth()
-		require.True(t, ok)
-		require.Equal(t, "tibuild-user", user)
-		require.Equal(t, "tibuild-pass", pass)
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"author": "alice@example.com",
-			"meta": map[string]any{
-				"ops_req": map[string]any{"release_id": "rel-1", "change_id": "chg-1"},
-			},
-		}))
-	}))
-	t.Cleanup(tags.Close)
-
 	svc := newTidbcloudTestService(t, &OpsConfig{
-		TiBuildV2: TiBuildV2Config{APIBaseURL: tags.URL, User: "tibuild-user", Password: "tibuild-pass"},
 		Stages: map[string]OpsStageConfig{
 			"prod": {
 				APIBaseURL: ops.URL,
@@ -66,6 +49,11 @@ func TestUpdateComponentVersionInCloudconfig(t *testing.T) {
 			},
 		},
 	}, nil)
+	svc.resolveTagMetadata = func(_ context.Context, repo, tag string) (*TagMetadata, error) {
+		require.Equal(t, "pingcap/tidb", repo)
+		require.Equal(t, "v26.3.1-nextgen", tag)
+		return &TagMetadata{Author: "alice@example.com", ReleaseID: "rel-1", ChangeID: "chg-1"}, nil
+	}
 
 	res, err := svc.UpdateComponentVersionInCloudconfig(context.Background(), &tidbcloud.UpdateComponentVersionInCloudconfigPayload{
 		Stage: "prod",
@@ -110,6 +98,11 @@ func TestUpdateComponentVersionInCloudconfigSkipsNonNextgenTag(t *testing.T) {
 			}},
 		},
 	}, nil)
+	svc.resolveTagMetadata = func(_ context.Context, repo, tag string) (*TagMetadata, error) {
+		require.Equal(t, "pingcap/tidb", repo)
+		require.Equal(t, "v26.3.1-nextgen", tag)
+		return &TagMetadata{Author: "alice@example.com", ReleaseID: "rel-1", ChangeID: "chg-1"}, nil
+	}
 
 	res, err := svc.UpdateComponentVersionInCloudconfig(context.Background(), &tidbcloud.UpdateComponentVersionInCloudconfigPayload{
 		Stage: "prod",

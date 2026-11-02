@@ -113,8 +113,8 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(
 				Msg("failed to get tibuild tag metadata")
 		} else if md != nil {
 			author = md.Author
-			releaseID = md.Meta.OpsReq.ReleaseID
-			changeID = md.Meta.OpsReq.ChangeID
+			releaseID = md.ReleaseID
+			changeID = md.ChangeID
 		}
 	}
 
@@ -169,26 +169,13 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(
 }
 
 // getTiBuildTagMetadata resolves the author and ops request ids attached to a
-// tidbx git tag. An unconfigured API returns no metadata instead of failing.
-func (s *tidbcloudsrvc) getTiBuildTagMetadata(ctx context.Context, githubRepo, imageTag string) (*TiBuildTagMetadataResponse, error) {
-	opsCfg := s.opsConfig()
-	if opsCfg == nil || opsCfg.TiBuildV2.APIBaseURL == "" {
+// tidbx git tag. The resolver runs in process against the hotfix service, so
+// there is no second HTTP hop or a second set of credentials.
+func (s *tidbcloudsrvc) getTiBuildTagMetadata(ctx context.Context, githubRepo, imageTag string) (*TagMetadata, error) {
+	if s.resolveTagMetadata == nil {
 		return nil, nil
 	}
-
-	endpoint := strings.TrimSuffix(opsCfg.TiBuildV2.APIBaseURL, "/") + "/hotfix/tidbx/tag?repo=" +
-		url.QueryEscape(githubRepo) + "&tag=" + url.QueryEscape(imageTag)
-
-	headers := map[string]string{}
-	if opsCfg.TiBuildV2.User != "" && opsCfg.TiBuildV2.Password != "" {
-		headers["Authorization"] = basicAuthHeader(opsCfg.TiBuildV2.User, opsCfg.TiBuildV2.Password)
-	}
-
-	var out TiBuildTagMetadataResponse
-	if err := s.getJSON(ctx, endpoint, headers, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
+	return s.resolveTagMetadata(ctx, githubRepo, imageTag)
 }
 
 func opsInstanceURL(stage string, instanceID int) string {

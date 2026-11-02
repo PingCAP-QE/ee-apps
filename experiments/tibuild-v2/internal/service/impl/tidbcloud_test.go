@@ -145,7 +145,7 @@ func TestNewTidbcloudLoadsConfigAndReload(t *testing.T) {
 	writeOps("http://old")
 	cfg := &config.Service{Tidbcloud: config.Tidbcloud{OpsConfigFile: opsPath}}
 	logger := zerolog.Nop()
-	svc := NewTidbcloud(&logger, cfg).(*tidbcloudsrvc)
+	svc := NewTidbcloud(&logger, cfg, nil).(*tidbcloudsrvc)
 	require.Equal(t, "http://old", svc.opsConfig().Stages["prod"].APIBaseURL)
 
 	writeOps("http://new")

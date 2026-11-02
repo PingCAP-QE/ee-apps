@@ -166,7 +166,28 @@ func main() {
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", tidbcloud.ServiceName).Logger()
-			tidbcloudSvc = impl.NewTidbcloud(&logger, cfg.Get())
+			// Tag metadata lives in the hotfix service, in this process: the
+			// integration must not call itself over HTTP.
+			resolveTagMetadata := func(ctx context.Context, repo, tag string) (*impl.TagMetadata, error) {
+				res, err := hotfixSvc.QueryTagOfTidbx(ctx, &hotfix.QueryTagOfTidbxPayload{Repo: repo, Tag: tag})
+				if err != nil {
+					return nil, err
+				}
+				md := &impl.TagMetadata{}
+				if res.Author != nil {
+					md.Author = *res.Author
+				}
+				if res.Meta != nil && res.Meta.OpsReq != nil {
+					if res.Meta.OpsReq.ReleaseID != nil {
+						md.ReleaseID = *res.Meta.OpsReq.ReleaseID
+					}
+					if res.Meta.OpsReq.ChangeID != nil {
+						md.ChangeID = *res.Meta.OpsReq.ChangeID
+					}
+				}
+				return md, nil
+			}
+			tidbcloudSvc = impl.NewTidbcloud(&logger, cfg.Get(), resolveTagMetadata)
 
 			// Register tidbcloud config hot-reload handler.
 			if r, ok := tidbcloudSvc.(reloader); ok {
