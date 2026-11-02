@@ -109,14 +109,24 @@ func (s *Store) Append(namespace, name string, offset int64, data []byte) (int64
 		return size, ErrOffsetConflict
 	}
 	if offset < size {
-		existing := make([]byte, len(data))
-		if _, err := file.ReadAt(existing, offset); err != nil {
+		overlap := size - offset
+		if overlap > int64(len(data)) {
+			overlap = int64(len(data))
+		}
+		existing := make([]byte, overlap)
+		if _, err := file.ReadAt(existing, offset); err != nil && !errors.Is(err, io.EOF) {
 			return size, fmt.Errorf("read existing chunk: %w", err)
 		}
-		if !bytes.Equal(existing, data) {
+		if !bytes.Equal(existing, data[:overlap]) {
 			return size, ErrOffsetConflict
 		}
-		return size, nil
+		// A retry may resend a chunk that grew since the previous upload.
+		// Keep the matching prefix and append only the new suffix.
+		if int64(len(data)) <= size-offset {
+			return size, nil
+		}
+		data = data[overlap:]
+		offset = size
 	}
 
 	if _, err := file.Seek(offset, io.SeekStart); err != nil {
