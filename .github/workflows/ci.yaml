@@ -66,8 +66,6 @@ jobs:
               - 'cloudevents-server/**'
             dl:
               - 'dl/**'
-            publisher:
-              - 'publisher/**'
             chatops:
               - 'chatops-lark/**'
             ee-portal:
@@ -134,14 +132,6 @@ jobs:
       - name: Build image - dl
         if: steps.changes.outputs.dl == 'true'
         working-directory: dl
-        run: |
-          skaffold build \
-            --push=false \
-            --platform ${{ matrix.platform }} \
-            --default-repo ghcr.io/pingcap-qe/ee-apps
-      - name: Build image - publisher
-        if: steps.changes.outputs.publisher == 'true'
-        working-directory: publisher
         run: |
           skaffold build \
             --push=false \

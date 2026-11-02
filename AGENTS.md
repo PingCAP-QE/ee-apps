@@ -10,7 +10,6 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 |-----------|----------|-----------|-------------------|
 | `experiments/tibuild-v2/` | Go | Goa v2 + Ent ORM | `cmd/tibuild/`, `cmd/tibuild-cli/` |
 | `cloudevents-server/` | Go | Gin + Kafka + Ent | `cmd/server/` |
-| `publisher/` | Go | Goa + Kafka + Redis | `cmd/publisher/`, `cmd/worker/`, `cmd/publisher-cli/` |
 | `dl/` | Go | Goa | `cmd/server/`, `cmd/server-cli/` |
 | `chatops-lark/` | Go | Lark WebSocket | `cmd/server/` |
 | `ci-dashboard/` | Python | FastAPI + React | uvicorn + npm |
@@ -24,7 +23,7 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 
 **Always `cd` into the subproject directory first.** There are no root-level build commands.
 
-### Go projects (cloudevents-server, publisher, dl, chatops-lark)
+### Go projects (cloudevents-server, dl, chatops-lark)
 ```bash
 go test ./...
 go build ./...
@@ -52,7 +51,6 @@ ci-dashboard also: `make test-cov` (90% coverage threshold), `make api` (dev ser
 
 | Project | Trigger file | Command | What it generates |
 |---------|-------------|---------|-------------------|
-| `publisher/` | `internal/service/design/design.go` | `go generate ./internal/` | Goa service interfaces + HTTP transport |
 | `dl/` | `design/design.go` | `go generate ./...` | Goa service interfaces |
 | `experiments/tibuild-v2/` | `internal/service/design/design.go` + `internal/database/schema/*.go` | `go generate ./internal/` | Goa + Ent ORM code |
 | `cloudevents-server/` | `ent/schema/*.go` | `go generate ./ent/` | Ent ORM code |
@@ -69,12 +67,12 @@ skaffold build --push=false -f <subproject>/skaffold.yaml
 skaffold build -f <subproject>/skaffold.yaml
 ```
 
-Build methods: Dockerfile (dl, cloudevents-server, ci-dashboard, cost-insight, roster) or Ko (chatops-lark, publisher, tibuild-v2).
+Build methods: Dockerfile (dl, cloudevents-server, ci-dashboard, cost-insight, roster) or Ko (chatops-lark, tibuild-v2).
 
 ## Helm Charts
 
 Located in `charts/`. Published to `oci://ghcr.io/pingcap-qe/ee-apps/charts`.
-Charts: `chatops-lark`, `ci-dashboard`, `cloudevents-server`, `dl`, `publisher`, `publisher-worker`, `tibuild-v2`.
+Charts: `chatops-lark`, `ci-dashboard`, `cloudevents-server`, `dl`, `tibuild-v2`.
 
 ## CI Workflows (`.github/workflows/`)
 
@@ -95,7 +93,7 @@ type(scope): description
 ```
 
 - **Types**: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`
-- **Scope**: subproject name — `tibuild-v2`, `ci-dashboard`, `cost-insight`, `publisher`, `dl`, `chatops-lark`, `cloudevents-server`, `roster`, `charts`
+- **Scope**: subproject name — `tibuild-v2`, `ci-dashboard`, `cost-insight`, `dl`, `chatops-lark`, `cloudevents-server`, `roster`, `charts`
 - **No scope** for cross-cutting changes (e.g. `fix: auto fixes from pre-commit.com hooks`)
 - **Lowercase** description, no trailing period
 - English preferred; Chinese acceptable for clarity
@@ -122,5 +120,5 @@ docs: add AGENTS.md and update README with project overview
 
 ## Key Patterns
 
-- **Goa framework** (publisher, dl, tibuild-v2): Design-first API generation. Edit `design/*.go`, run `go generate`, generated code lands in `gen/` or `service/gen/`.
+- **Goa framework** (dl, tibuild-v2): Design-first API generation. Edit `design/*.go`, run `go generate`, generated code lands in `gen/` or `service/gen/`.
 - **Ent ORM** (cloudevents-server, tibuild-v2): Schema files in `ent/schema/` or `database/schema/`. Run `go generate` after schema changes.

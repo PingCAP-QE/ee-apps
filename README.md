@@ -8,7 +8,6 @@ Internal tooling and services for PingCAP Engineering Effectiveness.
 |-----------|-------------|----------|------|
 | [`experiments/tibuild-v2/`](experiments/tibuild-v2/) | Build orchestration platform (DevBuild, Hotfix, Tekton/Jenkins triggers) — Goa + Ent ORM | Go | [README](experiments/tibuild-v2/README.md) |
 | [`cloudevents-server/`](cloudevents-server/) | CloudEvents router — receives Tekton events, dispatches via Kafka | Go | [README](cloudevents-server/README.md) |
-| [`publisher/`](publisher/) | Artifact publisher — TiUP packages, tarballs, container images | Go | [README](publisher/README.md) |
 | [`dl/`](dl/) | Download server for OCI artifacts and KS3 objects | Go | [README](dl/README.md) |
 | [`chatops-lark/`](chatops-lark/) | Lark (Feishu) ChatOps bot — devbuild, hotfix, cherry-pick commands | Go | [README](chatops-lark/README.md) |
 | [`ci-dashboard/`](ci-dashboard/) | CI metrics dashboard — FastAPI backend, React frontend | Python | [README](ci-dashboard/README.md) |
