@@ -20,6 +20,23 @@ type Service struct {
 	Worker Worker `yaml:"worker,omitempty" json:"worker,omitempty"`
 	// Publish holds the publication planning configuration.
 	Publish Publish `yaml:"publish,omitempty" json:"publish,omitempty"`
+	// Tidbcloud holds the TiDB Cloud ops and TCMS integration configuration.
+	Tidbcloud Tidbcloud `yaml:"tidbcloud,omitempty" json:"tidbcloud,omitempty"`
+}
+
+// Tidbcloud configures the TiDB Cloud ops and TCMS integrations.
+type Tidbcloud struct {
+	// OpsConfigFile points at the ops platform config (stages, API keys and
+	// the component catalogue). The file is mounted from a Secret, so the
+	// keys never appear in this document.
+	OpsConfigFile string `yaml:"ops_config_file,omitempty" json:"ops_config_file,omitempty"`
+	// TestPlatformsConfigFile points at the TCMS config (base URL and token).
+	TestPlatformsConfigFile string `yaml:"testplatforms_config_file,omitempty" json:"testplatforms_config_file,omitempty"`
+}
+
+// Enabled reports whether the tidbcloud integration has any config to load.
+func (t Tidbcloud) Enabled() bool {
+	return t.OpsConfigFile != "" || t.TestPlatformsConfigFile != ""
 }
 
 // IdentityHeaders configures the trusted ingress headers consumed by TiBuild.

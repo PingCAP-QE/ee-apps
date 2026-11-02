@@ -18,6 +18,7 @@ import (
 	devbuildc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/client"
 	hotfixc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/client"
 	publishc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/publish/client"
+	tidbcloudc "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/tidbcloud/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -31,15 +32,17 @@ func UsageCommands() []string {
 		"devbuild (list|capabilities|create|get|update|rerun)",
 		"hotfix (bump-tag-for-tidbx|query-tag-of-tidbx)",
 		"publish (publish-images|get-unit|list-units|retry-unit|delivery-by-rules|request-to-publish|request-to-publish-single|query-publishing-status|reset-rate-limit)",
+		"tidbcloud (update-component-version-in-cloudconfig|add-tidbx-image-tag-in-tcms|request-sync-kernel-image)",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + " " + "artifact sync-image --body '{\n      \"source\": \"Similique expedita.\",\n      \"target\": \"Suscipit nobis.\"\n   }'" + "\n" +
-		os.Args[0] + " " + "devbuild list --page 6563606615849146876 --page-size 8913518521521763272 --hotfix true --sort \"createdAt\" --direction \"asc\" --created-by \"Fugit inventore omnis dolores qui assumenda.\" --scope \"mine\" --status \"ABORTED\" --product \"Numquam placeat consequatur repellendus voluptatibus inventore sed.\" --q \"Possimus qui recusandae.\"" + "\n" +
+	return os.Args[0] + " " + "artifact sync-image --body '{\n      \"source\": \"Quis quis voluptate fugit ab.\",\n      \"target\": \"Animi architecto quae maiores sapiente nihil.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "devbuild list --page 2368176844041435035 --page-size 8833669981050828915 --hotfix true --sort \"updatedAt\" --direction \"asc\" --created-by \"Impedit occaecati.\" --scope \"all\" --status \"PENDING\" --product \"Earum possimus accusamus fugit et dolorum natus.\" --q \"Quidem asperiores neque.\"" + "\n" +
 		os.Args[0] + " " + "hotfix bump-tag-for-tidbx --body '{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'" + "\n" +
-		os.Args[0] + " " + "publish publish-images --body '{\n      \"artifactUrl\": \"Odit rem sunt aliquam facere temporibus rem.\",\n      \"image\": \"Consectetur voluptatum repudiandae ea quasi.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "publish publish-images --body '{\n      \"artifactUrl\": \"At alias quae sint est laborum repellat.\",\n      \"image\": \"Laborum eos soluta ad doloribus aut.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
 		""
 }
 
@@ -138,6 +141,17 @@ func ParseEndpoint(
 		publishQueryPublishingStatusRequestIDFlag = publishQueryPublishingStatusFlags.String("request-id", "REQUIRED", "")
 
 		publishResetRateLimitFlags = flag.NewFlagSet("reset-rate-limit", flag.ExitOnError)
+
+		tidbcloudFlags = flag.NewFlagSet("tidbcloud", flag.ContinueOnError)
+
+		tidbcloudUpdateComponentVersionInCloudconfigFlags    = flag.NewFlagSet("update-component-version-in-cloudconfig", flag.ExitOnError)
+		tidbcloudUpdateComponentVersionInCloudconfigBodyFlag = tidbcloudUpdateComponentVersionInCloudconfigFlags.String("body", "REQUIRED", "")
+
+		tidbcloudAddTidbxImageTagInTcmsFlags    = flag.NewFlagSet("add-tidbx-image-tag-in-tcms", flag.ExitOnError)
+		tidbcloudAddTidbxImageTagInTcmsBodyFlag = tidbcloudAddTidbxImageTagInTcmsFlags.String("body", "REQUIRED", "")
+
+		tidbcloudRequestSyncKernelImageFlags    = flag.NewFlagSet("request-sync-kernel-image", flag.ExitOnError)
+		tidbcloudRequestSyncKernelImageBodyFlag = tidbcloudRequestSyncKernelImageFlags.String("body", "REQUIRED", "")
 	)
 	artifactFlags.Usage = artifactUsage
 	artifactSyncImageFlags.Usage = artifactSyncImageUsage
@@ -167,6 +181,11 @@ func ParseEndpoint(
 	publishQueryPublishingStatusFlags.Usage = publishQueryPublishingStatusUsage
 	publishResetRateLimitFlags.Usage = publishResetRateLimitUsage
 
+	tidbcloudFlags.Usage = tidbcloudUsage
+	tidbcloudUpdateComponentVersionInCloudconfigFlags.Usage = tidbcloudUpdateComponentVersionInCloudconfigUsage
+	tidbcloudAddTidbxImageTagInTcmsFlags.Usage = tidbcloudAddTidbxImageTagInTcmsUsage
+	tidbcloudRequestSyncKernelImageFlags.Usage = tidbcloudRequestSyncKernelImageUsage
+
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
 	}
@@ -190,6 +209,8 @@ func ParseEndpoint(
 			svcf = hotfixFlags
 		case "publish":
 			svcf = publishFlags
+		case "tidbcloud":
+			svcf = tidbcloudFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -278,6 +299,19 @@ func ParseEndpoint(
 
 			case "reset-rate-limit":
 				epf = publishResetRateLimitFlags
+
+			}
+
+		case "tidbcloud":
+			switch epn {
+			case "update-component-version-in-cloudconfig":
+				epf = tidbcloudUpdateComponentVersionInCloudconfigFlags
+
+			case "add-tidbx-image-tag-in-tcms":
+				epf = tidbcloudAddTidbxImageTagInTcmsFlags
+
+			case "request-sync-kernel-image":
+				epf = tidbcloudRequestSyncKernelImageFlags
 
 			}
 
@@ -375,6 +409,19 @@ func ParseEndpoint(
 			case "reset-rate-limit":
 				endpoint = c.ResetRateLimit()
 			}
+		case "tidbcloud":
+			c := tidbcloudc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "update-component-version-in-cloudconfig":
+				endpoint = c.UpdateComponentVersionInCloudconfig()
+				data, err = tidbcloudc.BuildUpdateComponentVersionInCloudconfigPayload(*tidbcloudUpdateComponentVersionInCloudconfigBodyFlag)
+			case "add-tidbx-image-tag-in-tcms":
+				endpoint = c.AddTidbxImageTagInTcms()
+				data, err = tidbcloudc.BuildAddTidbxImageTagInTcmsPayload(*tidbcloudAddTidbxImageTagInTcmsBodyFlag)
+			case "request-sync-kernel-image":
+				endpoint = c.RequestSyncKernelImage()
+				data, err = tidbcloudc.BuildRequestSyncKernelImagePayload(*tidbcloudRequestSyncKernelImageBodyFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -411,7 +458,7 @@ func artifactSyncImageUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact sync-image --body '{\n      \"source\": \"Similique expedita.\",\n      \"target\": \"Suscipit nobis.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact sync-image --body '{\n      \"source\": \"Quis quis voluptate fugit ab.\",\n      \"target\": \"Animi architecto quae maiores sapiente nihil.\"\n   }'")
 }
 
 func artifactGetImageSyncTaskUsage() {
@@ -455,7 +502,7 @@ func artifactListImageSyncTasksUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact list-image-sync-tasks --page 2984219848410707121 --page-size 2415704114880411305 --status \"PENDING\" --sort \"updatedAt\" --direction \"desc\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "artifact list-image-sync-tasks --page 2055269278198069233 --page-size 8227665025986825463 --status \"SUCCEEDED\" --sort \"createdAt\" --direction \"desc\"")
 }
 
 // devbuildUsage displays the usage of the devbuild command and its subcommands.
@@ -506,7 +553,7 @@ func devbuildListUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild list --page 6563606615849146876 --page-size 8913518521521763272 --hotfix true --sort \"createdAt\" --direction \"asc\" --created-by \"Fugit inventore omnis dolores qui assumenda.\" --scope \"mine\" --status \"ABORTED\" --product \"Numquam placeat consequatur repellendus voluptatibus inventore sed.\" --q \"Possimus qui recusandae.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild list --page 2368176844041435035 --page-size 8833669981050828915 --hotfix true --sort \"updatedAt\" --direction \"asc\" --created-by \"Impedit occaecati.\" --scope \"all\" --status \"PENDING\" --product \"Earum possimus accusamus fugit et dolorum natus.\" --q \"Quidem asperiores neque.\"")
 }
 
 func devbuildCapabilitiesUsage() {
@@ -542,7 +589,7 @@ func devbuildCreateUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild create --body '{\n      \"createdBy\": \"dayton@sporer.info\",\n      \"request\": {\n         \"buildEnv\": \"Tenetur aut aspernatur et quo aut.\",\n         \"builderImg\": \"Quisquam reiciendis at et fuga.\",\n         \"edition\": \"failpoint\",\n         \"features\": \"Quam laudantium vitae omnis est ipsa.\",\n         \"gitHash\": \"Id ut.\",\n         \"gitRef\": \"Quidem libero nihil.\",\n         \"githubRepo\": \"Dolorem delectus.\",\n         \"isHotfix\": false,\n         \"isPushGCR\": true,\n         \"pipelineEngine\": \"jenkins\",\n         \"platform\": \"linux/amd64\",\n         \"pluginGitRef\": \"Magni non neque qui autem qui.\",\n         \"product\": \"tiproxy\",\n         \"productBaseImg\": \"Commodi sint inventore sed.\",\n         \"productDockerfile\": \"Quis fugiat eius maxime eum ipsa.\",\n         \"targetImg\": \"Aut ratione eveniet distinctio.\",\n         \"version\": \"Sit tempore blanditiis porro ut fuga.\"\n      }\n   }' --dryrun false")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild create --body '{\n      \"createdBy\": \"monroe@feestschmitt.biz\",\n      \"request\": {\n         \"buildEnv\": \"At earum commodi et velit id molestias.\",\n         \"builderImg\": \"Ut tenetur iste quos ratione.\",\n         \"edition\": \"nextgen\",\n         \"features\": \"Asperiores officiis quasi cumque iste illum a.\",\n         \"gitHash\": \"Enim accusamus corrupti.\",\n         \"gitRef\": \"Consequuntur excepturi qui assumenda tempora maxime.\",\n         \"githubRepo\": \"Voluptates expedita aut voluptas sequi magni.\",\n         \"isHotfix\": false,\n         \"isPushGCR\": false,\n         \"pipelineEngine\": \"jenkins\",\n         \"platform\": \"darwin/arm64\",\n         \"pluginGitRef\": \"Facere et.\",\n         \"product\": \"ticdc\",\n         \"productBaseImg\": \"Numquam tempore molestiae.\",\n         \"productDockerfile\": \"Earum sunt nulla quis officiis.\",\n         \"targetImg\": \"Autem aut est repellat.\",\n         \"version\": \"Numquam velit inventore excepturi quisquam non.\"\n      }\n   }' --dryrun true")
 }
 
 func devbuildGetUsage() {
@@ -582,7 +629,7 @@ func devbuildUpdateUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild update --body '{\n      \"status\": {\n         \"buildReport\": {\n            \"binaries\": [\n               {\n                  \"component\": \"Mollitia rem qui tempore nihil.\",\n                  \"ociFile\": {\n                     \"file\": \"Itaque qui animi fugit vel maxime.\",\n                     \"repo\": \"Distinctio voluptatem.\",\n                     \"tag\": \"Exercitationem adipisci.\"\n                  },\n                  \"platform\": \"Perferendis et exercitationem.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Itaque qui animi fugit vel maxime.\",\n                     \"repo\": \"Distinctio voluptatem.\",\n                     \"tag\": \"Exercitationem adipisci.\"\n                  },\n                  \"sha256URL\": \"http://larkinortiz.biz/myra\",\n                  \"url\": \"http://gottlieb.net/garrick.jakubowski\"\n               },\n               {\n                  \"component\": \"Mollitia rem qui tempore nihil.\",\n                  \"ociFile\": {\n                     \"file\": \"Itaque qui animi fugit vel maxime.\",\n                     \"repo\": \"Distinctio voluptatem.\",\n                     \"tag\": \"Exercitationem adipisci.\"\n                  },\n                  \"platform\": \"Perferendis et exercitationem.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Itaque qui animi fugit vel maxime.\",\n                     \"repo\": \"Distinctio voluptatem.\",\n                     \"tag\": \"Exercitationem adipisci.\"\n                  },\n                  \"sha256URL\": \"http://larkinortiz.biz/myra\",\n                  \"url\": \"http://gottlieb.net/garrick.jakubowski\"\n               },\n               {\n                  \"component\": \"Mollitia rem qui tempore nihil.\",\n                  \"ociFile\": {\n                     \"file\": \"Itaque qui animi fugit vel maxime.\",\n                     \"repo\": \"Distinctio voluptatem.\",\n                     \"tag\": \"Exercitationem adipisci.\"\n                  },\n                  \"platform\": \"Perferendis et exercitationem.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Itaque qui animi fugit vel maxime.\",\n                     \"repo\": \"Distinctio voluptatem.\",\n                     \"tag\": \"Exercitationem adipisci.\"\n                  },\n                  \"sha256URL\": \"http://larkinortiz.biz/myra\",\n                  \"url\": \"http://gottlieb.net/garrick.jakubowski\"\n               }\n            ],\n            \"gitHash\": \"mkp\",\n            \"images\": [\n               {\n                  \"internalURL\": \"Non tenetur blanditiis.\",\n                  \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                  \"url\": \"Quis eum.\"\n               },\n               {\n                  \"internalURL\": \"Non tenetur blanditiis.\",\n                  \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                  \"url\": \"Quis eum.\"\n               },\n               {\n                  \"internalURL\": \"Non tenetur blanditiis.\",\n                  \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                  \"url\": \"Quis eum.\"\n               }\n            ],\n            \"pluginGitHash\": \"byu\",\n            \"printedVersion\": \"Commodi earum delectus deleniti vel reprehenderit.\"\n         },\n         \"errMsg\": \"Sunt necessitatibus est.\",\n         \"pipelineBuildID\": 5767616498965648705,\n         \"pipelineEndAt\": \"2003-10-26T12:50:17Z\",\n         \"pipelineStartAt\": \"1995-05-12T12:11:14Z\",\n         \"pipelineViewURL\": \"http://rauboyle.net/sally_labadie\",\n         \"pipelineViewURLs\": [\n            \"http://parker.name/zella_predovic\",\n            \"http://dooleyluettgen.org/mellie_williamson\",\n            \"http://schmidtyost.name/enos\"\n         ],\n         \"status\": \"FAILURE\",\n         \"tektonStatus\": {\n            \"pipelines\": [\n               {\n                  \"endAt\": \"2003-02-13T21:39:39Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     },\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     },\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     }\n                  ],\n                  \"name\": \"Temporibus dolor non et doloribus occaecati.\",\n                  \"namespace\": \"Magnam rem laudantium possimus.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     }\n                  ],\n                  \"platform\": \"Qui quia molestiae.\",\n                  \"startAt\": \"1970-11-02T08:41:34Z\",\n                  \"status\": \"Failed\",\n                  \"url\": \"http://hoppe.org/clara.ziemann\"\n               },\n               {\n                  \"endAt\": \"2003-02-13T21:39:39Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     },\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     },\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     }\n                  ],\n                  \"name\": \"Temporibus dolor non et doloribus occaecati.\",\n                  \"namespace\": \"Magnam rem laudantium possimus.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     }\n                  ],\n                  \"platform\": \"Qui quia molestiae.\",\n                  \"startAt\": \"1970-11-02T08:41:34Z\",\n                  \"status\": \"Failed\",\n                  \"url\": \"http://hoppe.org/clara.ziemann\"\n               },\n               {\n                  \"endAt\": \"2003-02-13T21:39:39Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     },\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     },\n                     {\n                        \"internalURL\": \"Non tenetur blanditiis.\",\n                        \"platform\": \"Suscipit pariatur suscipit consequatur.\",\n                        \"url\": \"Quis eum.\"\n                     }\n                  ],\n                  \"name\": \"Temporibus dolor non et doloribus occaecati.\",\n                  \"namespace\": \"Magnam rem laudantium possimus.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Voluptatem ipsam repellat beatae consequatur.\",\n                           \"Doloribus non saepe nemo ea et.\",\n                           \"Numquam quis dolorem at et fuga est.\",\n                           \"Magnam dolorem.\"\n                        ],\n                        \"repo\": \"At qui culpa.\",\n                        \"tag\": \"Aut veniam velit ea sit cum et.\"\n                     }\n                  ],\n                  \"platform\": \"Qui quia molestiae.\",\n                  \"startAt\": \"1970-11-02T08:41:34Z\",\n                  \"status\": \"Failed\",\n                  \"url\": \"http://hoppe.org/clara.ziemann\"\n               }\n            ],\n            \"triggersEventIDs\": [\n               \"cdff114a-fd02-4baa-a27c-43d542e72e59\",\n               \"11c48afc-98f0-4650-a362-8cb29a8fb580\"\n            ]\n         }\n      }\n   }' --id 1 --dryrun true")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "devbuild update --body '{\n      \"status\": {\n         \"buildReport\": {\n            \"binaries\": [\n               {\n                  \"component\": \"Iure autem eligendi ipsa doloribus.\",\n                  \"ociFile\": {\n                     \"file\": \"Quibusdam facere.\",\n                     \"repo\": \"Adipisci placeat tempora praesentium ea.\",\n                     \"tag\": \"Voluptas neque fuga quae doloribus aut.\"\n                  },\n                  \"platform\": \"At atque alias.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Quibusdam facere.\",\n                     \"repo\": \"Adipisci placeat tempora praesentium ea.\",\n                     \"tag\": \"Voluptas neque fuga quae doloribus aut.\"\n                  },\n                  \"sha256URL\": \"http://huels.name/jermey\",\n                  \"url\": \"http://champlin.info/lura.rodriguez\"\n               },\n               {\n                  \"component\": \"Iure autem eligendi ipsa doloribus.\",\n                  \"ociFile\": {\n                     \"file\": \"Quibusdam facere.\",\n                     \"repo\": \"Adipisci placeat tempora praesentium ea.\",\n                     \"tag\": \"Voluptas neque fuga quae doloribus aut.\"\n                  },\n                  \"platform\": \"At atque alias.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Quibusdam facere.\",\n                     \"repo\": \"Adipisci placeat tempora praesentium ea.\",\n                     \"tag\": \"Voluptas neque fuga quae doloribus aut.\"\n                  },\n                  \"sha256URL\": \"http://huels.name/jermey\",\n                  \"url\": \"http://champlin.info/lura.rodriguez\"\n               },\n               {\n                  \"component\": \"Iure autem eligendi ipsa doloribus.\",\n                  \"ociFile\": {\n                     \"file\": \"Quibusdam facere.\",\n                     \"repo\": \"Adipisci placeat tempora praesentium ea.\",\n                     \"tag\": \"Voluptas neque fuga quae doloribus aut.\"\n                  },\n                  \"platform\": \"At atque alias.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Quibusdam facere.\",\n                     \"repo\": \"Adipisci placeat tempora praesentium ea.\",\n                     \"tag\": \"Voluptas neque fuga quae doloribus aut.\"\n                  },\n                  \"sha256URL\": \"http://huels.name/jermey\",\n                  \"url\": \"http://champlin.info/lura.rodriguez\"\n               },\n               {\n                  \"component\": \"Iure autem eligendi ipsa doloribus.\",\n                  \"ociFile\": {\n                     \"file\": \"Quibusdam facere.\",\n                     \"repo\": \"Adipisci placeat tempora praesentium ea.\",\n                     \"tag\": \"Voluptas neque fuga quae doloribus aut.\"\n                  },\n                  \"platform\": \"At atque alias.\",\n                  \"sha256OCIFile\": {\n                     \"file\": \"Quibusdam facere.\",\n                     \"repo\": \"Adipisci placeat tempora praesentium ea.\",\n                     \"tag\": \"Voluptas neque fuga quae doloribus aut.\"\n                  },\n                  \"sha256URL\": \"http://huels.name/jermey\",\n                  \"url\": \"http://champlin.info/lura.rodriguez\"\n               }\n            ],\n            \"gitHash\": \"mho\",\n            \"images\": [\n               {\n                  \"internalURL\": \"Numquam at natus.\",\n                  \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                  \"url\": \"Ut maxime.\"\n               },\n               {\n                  \"internalURL\": \"Numquam at natus.\",\n                  \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                  \"url\": \"Ut maxime.\"\n               },\n               {\n                  \"internalURL\": \"Numquam at natus.\",\n                  \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                  \"url\": \"Ut maxime.\"\n               }\n            ],\n            \"pluginGitHash\": \"685\",\n            \"printedVersion\": \"Laborum dolorum quod.\"\n         },\n         \"errMsg\": \"Animi nemo.\",\n         \"pipelineBuildID\": 3830204179581220660,\n         \"pipelineEndAt\": \"2015-01-19T09:08:38Z\",\n         \"pipelineStartAt\": \"2001-03-01T12:52:48Z\",\n         \"pipelineViewURL\": \"http://goodwinfay.org/laverne_fadel\",\n         \"pipelineViewURLs\": [\n            \"http://legrosblock.name/reyna\",\n            \"http://braun.name/kade\"\n         ],\n         \"status\": \"PROCESSING\",\n         \"tektonStatus\": {\n            \"pipelines\": [\n               {\n                  \"endAt\": \"1970-12-24T20:54:15Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Numquam at natus.\",\n                        \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                        \"url\": \"Ut maxime.\"\n                     },\n                     {\n                        \"internalURL\": \"Numquam at natus.\",\n                        \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                        \"url\": \"Ut maxime.\"\n                     }\n                  ],\n                  \"name\": \"Magni deleniti consectetur.\",\n                  \"namespace\": \"Eum rerum facilis et sint et.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     }\n                  ],\n                  \"platform\": \"Voluptatum quis ea totam quisquam.\",\n                  \"startAt\": \"1990-04-20T22:34:54Z\",\n                  \"status\": \"Succeeded\",\n                  \"url\": \"http://harveyhudson.net/elliott_kunde\"\n               },\n               {\n                  \"endAt\": \"1970-12-24T20:54:15Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Numquam at natus.\",\n                        \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                        \"url\": \"Ut maxime.\"\n                     },\n                     {\n                        \"internalURL\": \"Numquam at natus.\",\n                        \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                        \"url\": \"Ut maxime.\"\n                     }\n                  ],\n                  \"name\": \"Magni deleniti consectetur.\",\n                  \"namespace\": \"Eum rerum facilis et sint et.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     }\n                  ],\n                  \"platform\": \"Voluptatum quis ea totam quisquam.\",\n                  \"startAt\": \"1990-04-20T22:34:54Z\",\n                  \"status\": \"Succeeded\",\n                  \"url\": \"http://harveyhudson.net/elliott_kunde\"\n               },\n               {\n                  \"endAt\": \"1970-12-24T20:54:15Z\",\n                  \"images\": [\n                     {\n                        \"internalURL\": \"Numquam at natus.\",\n                        \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                        \"url\": \"Ut maxime.\"\n                     },\n                     {\n                        \"internalURL\": \"Numquam at natus.\",\n                        \"platform\": \"Sapiente non eligendi qui earum ut illum.\",\n                        \"url\": \"Ut maxime.\"\n                     }\n                  ],\n                  \"name\": \"Magni deleniti consectetur.\",\n                  \"namespace\": \"Eum rerum facilis et sint et.\",\n                  \"ociArtifacts\": [\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     },\n                     {\n                        \"files\": [\n                           \"Magni beatae.\",\n                           \"Harum consequatur necessitatibus quia.\",\n                           \"Quos ut nisi sed nihil.\"\n                        ],\n                        \"repo\": \"Ducimus ut fugiat maiores sunt fugiat ut.\",\n                        \"tag\": \"Eaque in.\"\n                     }\n                  ],\n                  \"platform\": \"Voluptatum quis ea totam quisquam.\",\n                  \"startAt\": \"1990-04-20T22:34:54Z\",\n                  \"status\": \"Succeeded\",\n                  \"url\": \"http://harveyhudson.net/elliott_kunde\"\n               }\n            ],\n            \"triggersEventIDs\": [\n               \"8788fd5d-15c5-4cf0-8dc6-0645bc2be4a9\",\n               \"9b2cdc76-23fc-49b3-9fa4-a86e4a2fcdc5\",\n               \"8ead70c4-a7d9-4883-8f71-65ae95dc244f\"\n            ]\n         }\n      }\n   }' --id 1 --dryrun true")
 }
 
 func devbuildRerunUsage() {
@@ -687,7 +734,7 @@ func publishPublishImagesUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish publish-images --body '{\n      \"artifactUrl\": \"Odit rem sunt aliquam facere temporibus rem.\",\n      \"image\": \"Consectetur voluptatum repudiandae ea quasi.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish publish-images --body '{\n      \"artifactUrl\": \"At alias quae sint est laborum repellat.\",\n      \"image\": \"Laborum eos soluta ad doloribus aut.\"\n   }'")
 }
 
 func publishGetUnitUsage() {
@@ -705,7 +752,7 @@ func publishGetUnitUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish get-unit --id \"Corrupti laborum corporis.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish get-unit --id \"Nostrum quibusdam maiores et quibusdam ut.\"")
 }
 
 func publishListUnitsUsage() {
@@ -727,7 +774,7 @@ func publishListUnitsUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish list-units --status \"failed\" --kind \"Facere iure tempore sunt cumque hic.\" --limit 495587018956612056")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish list-units --status \"succeeded\" --kind \"Qui voluptatem architecto veritatis harum sit.\" --limit 2049152400562420357")
 }
 
 func publishRetryUnitUsage() {
@@ -745,7 +792,7 @@ func publishRetryUnitUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish retry-unit --id \"Ducimus ipsam.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish retry-unit --id \"Ut et unde quo perspiciatis est nemo.\"")
 }
 
 func publishDeliveryByRulesUsage() {
@@ -763,7 +810,7 @@ func publishDeliveryByRulesUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish delivery-by-rules --body '{\n      \"artifact_url\": \"Quisquam non ut.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish delivery-by-rules --body '{\n      \"artifact_url\": \"Aspernatur exercitationem est voluptatum.\"\n   }'")
 }
 
 func publishRequestToPublishUsage() {
@@ -781,7 +828,7 @@ func publishRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish --body '{\n      \"artifact_url\": \"Odit quas soluta corporis.\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"Soluta tenetur inventore non quis beatae.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish --body '{\n      \"artifact_url\": \"Perspiciatis mollitia dolor.\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"Quis ut assumenda rerum.\"\n   }'")
 }
 
 func publishRequestToPublishSingleUsage() {
@@ -799,7 +846,7 @@ func publishRequestToPublishSingleUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish-single --body '{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Molestiae atque beatae ut.\"\n         },\n         \"oci\": {\n            \"file\": \"Rerum maxime beatae dicta et voluptatibus beatae.\",\n            \"repo\": \"Nam ex.\",\n            \"tag\": \"Nisi hic voluptas asperiores vitae.\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"Natus labore nemo.\",\n         \"description\": \"Pariatur sit quaerat maxime.\",\n         \"entry_point\": \"Cupiditate itaque exercitationem.\",\n         \"name\": \"Odit sequi earum.\",\n         \"os\": \"Omnis sit aut quo aut facere architecto.\",\n         \"standalone\": false,\n         \"version\": \"Et quae ut dolores velit autem illo.\"\n      },\n      \"tiup_mirror\": \"prod\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish-single --body '{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Quia quis at quae.\"\n         },\n         \"oci\": {\n            \"file\": \"Impedit sint perferendis saepe.\",\n            \"repo\": \"Natus facilis.\",\n            \"tag\": \"Qui illum in quia minus blanditiis saepe.\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"Libero fuga deleniti rerum qui.\",\n         \"description\": \"Autem exercitationem eos voluptatem.\",\n         \"entry_point\": \"Neque possimus odit aut laboriosam ipsa et.\",\n         \"name\": \"Asperiores non qui laboriosam adipisci.\",\n         \"os\": \"Rerum amet dicta.\",\n         \"standalone\": false,\n         \"version\": \"Autem illum quaerat unde voluptatem explicabo natus.\"\n      },\n      \"tiup_mirror\": \"staging\"\n   }'")
 }
 
 func publishQueryPublishingStatusUsage() {
@@ -817,7 +864,7 @@ func publishQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish query-publishing-status --request-id \"Consectetur et aut numquam ut eos.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish query-publishing-status --request-id \"Voluptates provident.\"")
 }
 
 func publishResetRateLimitUsage() {
@@ -834,4 +881,71 @@ func publishResetRateLimitUsage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
 	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish reset-rate-limit")
+}
+
+// tidbcloudUsage displays the usage of the tidbcloud command and its
+// subcommands.
+func tidbcloudUsage() {
+	fmt.Fprintln(os.Stderr, `The tidbcloud service integrates TiBuild with the TiDB Cloud ops platform and TCMS.`)
+	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] tidbcloud COMMAND [flags]\n\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "COMMAND:")
+	fmt.Fprintln(os.Stderr, `    update-component-version-in-cloudconfig: Update the component version in the TiDB Cloud ops config.`)
+	fmt.Fprintln(os.Stderr, `    add-tidbx-image-tag-in-tcms: Record a TiDB-X component image build in TCMS.`)
+	fmt.Fprintln(os.Stderr, `    request-sync-kernel-image: Request to sync kernel images via the ops platform kernel image build callback.`)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Additional help:")
+	fmt.Fprintf(os.Stderr, "    %s tidbcloud COMMAND --help\n", os.Args[0])
+}
+func tidbcloudUpdateComponentVersionInCloudconfigUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] tidbcloud update-component-version-in-cloudconfig", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Update the component version in the TiDB Cloud ops config.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\",\n      \"stage\": \"prod\"\n   }'")
+}
+
+func tidbcloudAddTidbxImageTagInTcmsUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] tidbcloud add-tidbx-image-tag-in-tcms", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Record a TiDB-X component image build in TCMS.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud add-tidbx-image-tag-in-tcms --body '{\n      \"github\": {\n         \"commit_sha\": \"031069dfc0c70e839d996c9e1cf3d34930fc662f\",\n         \"full_repo\": \"pingcap/tidb\",\n         \"ref\": \"refs/heads/master\"\n      },\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\"\n   }'")
+}
+
+func tidbcloudRequestSyncKernelImageUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] tidbcloud request-sync-kernel-image", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Request to sync kernel images via the ops platform kernel image build callback.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud request-sync-kernel-image --body '{\n      \"images\": [\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\"\n      ],\n      \"stage\": \"dev\"\n   }'")
 }
