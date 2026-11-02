@@ -916,3 +916,113 @@ var PublishInternalServerError = Type("PublishInternalServerError", func() {
 	Attribute("message", String)
 	Required("code", "message")
 })
+
+var _ = Service("tidbcloud", func() {
+	Description("The tidbcloud service integrates TiBuild with the TiDB Cloud ops platform and TCMS.")
+	HTTP(func() {
+		Path("/tidbcloud")
+	})
+
+	Method("update-component-version-in-cloudconfig", func() {
+		Description("Update the component version in the TiDB Cloud ops config.")
+		Payload(func() {
+			Attribute("stage", String, "env stage", func() {
+				Example("prod")
+			})
+			Attribute("image", String, "container image with tag", func() {
+				Example("xxx.com/component:v26.3.1-nextgen")
+			})
+			Required("stage", "image")
+		})
+		Result(func() {
+			Attribute("stage", String)
+			Attribute("tickets", ArrayOf(TidbcloudOpsTicket))
+			Required("stage", "tickets")
+		})
+		HTTP(func() {
+			POST("/devops/cloudconfig/versions/component")
+			Response(StatusOK)
+		})
+	})
+
+	Method("add-tidbx-image-tag-in-tcms", func() {
+		Description("Record a TiDB-X component image build in TCMS.")
+		Payload(func() {
+			Attribute("image", String, "container image with tag", func() {
+				Example("xxx.com/component:v26.3.1-nextgen")
+			})
+			Attribute("github", func() { // Read from the image labels when omitted.
+				Description("git informations")
+				Attribute("full_repo", String, "full github repo name", func() {
+					Example("pingcap/tidb")
+				})
+				Attribute("ref", String, "git ref", func() {
+					Example("refs/heads/master")
+				})
+				Attribute("commit_sha", String, "full commit SHA", func() {
+					MinLength(40)
+					MaxLength(40)
+					Example("031069dfc0c70e839d996c9e1cf3d34930fc662f")
+				})
+				Required("full_repo", "commit_sha")
+			})
+			Required("image")
+		})
+		Result(func() {
+			Attribute("repo", String, "github full repo", func() {
+				Meta("struct:tag:json", "repo,omitempty")
+				Example("pingcap/tidb")
+			})
+			Attribute("branch", String, "github branch or tag name", func() {
+				Meta("struct:tag:json", "branch,omitempty")
+				Example("v26.3.1")
+			})
+			Attribute("sha", String, "github commit sha in the repo", func() {
+				Meta("struct:tag:json", "sha,omitempty")
+				Example("031069dfc0c70e839d996c9e1cf3d34930fc662f")
+			})
+			Attribute("imageTag", String, "image tag", func() {
+				Meta("struct:tag:json", "imageTag,omitempty")
+				Example("v26.3.1-nextgen")
+			})
+		})
+		HTTP(func() {
+			POST("/tidbx-component-image-builds")
+			Response(StatusOK)
+		})
+	})
+
+	Method("request-sync-kernel-image", func() {
+		Description("Request to sync kernel images via the ops platform kernel image build callback.")
+		Payload(func() {
+			Attribute("stage", String, "env stage", func() {
+				Enum("dev", "prod")
+				Example("dev")
+			})
+			Attribute("images", ArrayOf(String, func() {
+				Pattern("^[a-zA-Z0-9][a-zA-Z0-9._/-]*:[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+				Example("us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31")
+			}), "the source container images with tag, built from the same repo commit")
+			Required("stage", "images")
+		})
+		Result(String, "request sync result message")
+		HTTP(func() {
+			POST("/sync-kernel-images")
+			Response(StatusOK)
+		})
+	})
+})
+
+var TidbcloudOpsTicket = Type("TidbcloudOpsTicket", func() {
+	Description("Ops ticket details")
+	Attribute("id", String, "ticket ID")
+	Attribute("url", String, func() {
+		Description("ticket visit url")
+		Format(FormatURI)
+	})
+	Attribute("release_id", String, "release window ID")
+	Attribute("change_id", String, "component publish flow ID")
+	Attribute("component", String, "component name")
+	Attribute("component_version", String, "component version derived from image tag")
+	Required("id", "url", "component", "component_version")
+})

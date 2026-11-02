@@ -19,14 +19,16 @@ import (
 	devbuildsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/devbuild/server"
 	hotfixsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/hotfix/server"
 	publishsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/publish/server"
+	tidbcloudsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/tidbcloud/server"
 	publish "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/publish"
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/tidbcloud"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/identity"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifact.Endpoints, devbuildEndpoints *devbuild.Endpoints, hotfixEndpoints *hotfix.Endpoints, publishEndpoints *publish.Endpoints, identityHeaders config.IdentityHeaders, wg *sync.WaitGroup, errc chan error, dbg bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifact.Endpoints, devbuildEndpoints *devbuild.Endpoints, hotfixEndpoints *hotfix.Endpoints, publishEndpoints *publish.Endpoints, tidbcloudEndpoints *tidbcloud.Endpoints, identityHeaders config.IdentityHeaders, wg *sync.WaitGroup, errc chan error, dbg bool) {
 
 	// Provide the transport specific request decoder and response encoder.
 	// The goa http package has built-in support for JSON, XML and gob.
@@ -55,10 +57,11 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 	// the service input and output data structures to HTTP requests and
 	// responses.
 	var (
-		artifactServer *artifactsvr.Server
-		devbuildServer *devbuildsvr.Server
-		hotfixServer   *hotfixsvr.Server
-		publishServer  *publishsvr.Server
+		artifactServer  *artifactsvr.Server
+		devbuildServer  *devbuildsvr.Server
+		hotfixServer    *hotfixsvr.Server
+		publishServer   *publishsvr.Server
+		tidbcloudServer *tidbcloudsvr.Server
 	)
 	{
 		eh := errorHandler(ctx)
@@ -66,6 +69,7 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 		devbuildServer = devbuildsvr.New(devbuildEndpoints, mux, dec, enc, eh, nil)
 		hotfixServer = hotfixsvr.New(hotfixEndpoints, mux, dec, enc, eh, nil)
 		publishServer = publishsvr.New(publishEndpoints, mux, dec, enc, eh, nil)
+		tidbcloudServer = tidbcloudsvr.New(tidbcloudEndpoints, mux, dec, enc, eh, nil)
 	}
 
 	// Configure the mux.
@@ -73,6 +77,7 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 	devbuildsvr.Mount(mux, devbuildServer)
 	hotfixsvr.Mount(mux, hotfixServer)
 	publishsvr.Mount(mux, publishServer)
+	tidbcloudsvr.Mount(mux, tidbcloudServer)
 
 	// ** Mount health check handler **
 	check := health.Handler(health.NewChecker())
@@ -101,6 +106,9 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
 	for _, m := range publishServer.Mounts {
+		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
+	}
+	for _, m := range tidbcloudServer.Mounts {
 		log.Printf(ctx, "HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
 	for _, m := range hotfixServer.Mounts {

@@ -212,3 +212,27 @@ base path, `/api/v2/publish`:
 Unit inspection and retry are **kind-agnostic** and live on the shared
 resource: `GET /publish/units`, `GET /publish/units/{id}` and
 `POST /publish/units/{id}/retry`.
+
+## TiDB Cloud integrations
+
+Three `publisher` endpoints moved over unchanged in behaviour:
+
+| Legacy route | tibuild-v2 route | Upstream |
+| --- | --- | --- |
+| `POST /tidbcloud/devops/cloudconfig/versions/component` | `POST /api/v2/tidbcloud/devops/cloudconfig/versions/component` | ops platform (`x-api-key` per stage) |
+| `POST /tidbcloud/tidbx-component-image-builds` | `POST /api/v2/tidbcloud/tidbx-component-image-builds` | TCMS (bearer token) |
+| `POST /tidbcloud/sync-kernel-images` | `POST /api/v2/tidbcloud/sync-kernel-images` | ops kernel image build callback |
+
+The ops and TCMS configs are mounted from a Secret and referenced by path, so
+the API keys never appear in the main config document:
+
+```yaml
+tidbcloud:
+  ops_config_file: /etc/tidbcloud/ops.yaml
+  testplatforms_config_file: /etc/tidbcloud/testplatforms.yaml
+```
+
+Reloading the configuration file re-reads both; a bad revision keeps the last
+good one. The ops file carries the per-stage base URL, key and the
+`base_image → component` catalogue; the test platforms file carries the TCMS
+base URL and token.

@@ -140,3 +140,9 @@ publish:
   #     tiup-prod:
   #       window: 12h
   #       anchor: "02:00"
+
+# TiDB Cloud ops and TCMS integrations. Both files are mounted from a Secret;
+# the API keys never appear in this document.
+# tidbcloud:
+#   ops_config_file: /etc/tidbcloud/ops.yaml
+#   testplatforms_config_file: /etc/tidbcloud/testplatforms.yaml
