@@ -538,7 +538,11 @@ func (r *MacBuildReconciler) patchBuildLogStatus(
 		latest.Status.Logs.SizeBytes = info.Size
 		latest.Status.Logs.UpdatedAt = &now
 		if latest.Status.Logs.Command == "" {
-			latest.Status.Logs.Command = fmt.Sprintf("kubectl macbuild logs -n %s %s", latest.Namespace, latest.Name)
+			command := fmt.Sprintf("kubectl macbuild logs -n %s", latest.Namespace)
+			if r.LogUpload != nil && r.LogUpload.ServiceNamespace != "" && r.LogUpload.ServiceNamespace != latest.Namespace {
+				command += fmt.Sprintf(" --log-namespace %s", r.LogUpload.ServiceNamespace)
+			}
+			latest.Status.Logs.Command = command + " " + latest.Name
 		}
 		return r.Status().Patch(ctx, &latest, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{}))
 	})
