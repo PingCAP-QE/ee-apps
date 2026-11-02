@@ -66,7 +66,7 @@ func TestServerPutGetMetaFinalize(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if string(body) != "hello world" {
+	if string(body) != testLogHelloWorld {
 		t.Fatalf("unexpected log: %q", body)
 	}
 
@@ -76,7 +76,7 @@ func TestServerPutGetMetaFinalize(t *testing.T) {
 	}
 	body, _ = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if string(body) != "hello world" {
+	if string(body) != testLogHelloWorld {
 		t.Fatalf("unexpected tail: %q", body)
 	}
 
