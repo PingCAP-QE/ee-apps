@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,13 +18,14 @@ import (
 	httpmdlwr "goa.design/goa/v3/http/middleware"
 	"goa.design/goa/v3/middleware"
 
-	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
+	gcs "github.com/PingCAP-QE/ee-apps/dl/gen/gcs"
 	gcssvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/gcs/server"
 	ks3svr "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/server"
 	ocisvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/server"
-	gcs "github.com/PingCAP-QE/ee-apps/dl/gen/gcs"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
+	ocisvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/oci"
+	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
 	pkgoci "github.com/PingCAP-QE/ee-apps/dl/pkg/oci"
 	"oras.land/oras-go/v2/registry/remote"
 )
@@ -187,6 +189,10 @@ func headOCIMiddleware(provider ociRepoProvider, logger *log.Logger) func(http.H
 			repo, err := provider.GetTargetRepo(repository)
 			if err != nil {
 				logger.Printf("HEAD oci-file: getTargetRepo: %v", err)
+				if errors.Is(err, ocisvc.ErrTargetNotAllowed) || errors.Is(err, ocisvc.ErrInvalidRepository) {
+					http.Error(w, "repository is not allowed", http.StatusForbidden)
+					return
+				}
 				http.Error(w, "failed to resolve repository", http.StatusInternalServerError)
 				return
 			}

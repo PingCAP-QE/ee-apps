@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -33,6 +34,10 @@ func main() {
 		ks3CfgPathF = flag.String("ks3-config", "ks3.yaml", "ks3 config yaml file path")
 		ociCfgPathF = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
 		gcsCfgPathF = flag.String("gcs-config", "", "gcs config file path (yaml or json, optional: uses ADC if not set)")
+
+		ociAllowedRegistriesF = flag.String("oci-allowed-registries", "", "comma-separated registry hosts allowed for OCI downloads; empty denies all")
+		gcsAllowedBucketsF    = flag.String("gcs-allowed-buckets", "", "comma-separated GCS buckets allowed for object downloads; empty denies all")
+		gcsAllowedPrefixesF   = flag.String("gcs-allowed-prefixes", "", "optional comma-separated object key prefixes allowed for GCS downloads")
 	)
 	flag.Parse()
 
@@ -51,9 +56,9 @@ func main() {
 		gcsSvc gcs.Service
 	)
 	{
-		ociSvc = ocisvc.New(logger, ociCfgPathF)
+		ociSvc = ocisvc.New(logger, ociCfgPathF, splitCommaList(*ociAllowedRegistriesF))
 		ks3Svc = ks3svc.New(logger, *ks3CfgPathF)
-		gcsSvc = gcssvc.New(logger, *gcsCfgPathF)
+		gcsSvc = gcssvc.New(logger, *gcsCfgPathF, splitCommaList(*gcsAllowedBucketsF), splitCommaList(*gcsAllowedPrefixesF))
 	}
 
 	// Wrap the services in endpoints that can be invoked from other services
@@ -145,4 +150,14 @@ func main() {
 
 	wg.Wait()
 	logger.Println("exited")
+}
+
+func splitCommaList(value string) []string {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
