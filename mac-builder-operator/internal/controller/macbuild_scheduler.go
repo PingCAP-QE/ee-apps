@@ -244,7 +244,6 @@ func (r *MacBuildScheduler) assign(
 		if latest.Status.Logs == nil {
 			latest.Status.Logs = &buildv1alpha1.MacBuildLogs{}
 		}
-		latest.Status.Logs.Command = fmt.Sprintf("kubectl macbuild logs -n %s %s", latest.Namespace, latest.Name)
 
 		if err := r.Status().Patch(ctx, &latest, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{})); err != nil {
 			return err
