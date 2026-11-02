@@ -107,8 +107,9 @@ rules:
       - secrets
     verbs:
       - get
-  # Upload build logs through the API server service proxy. `create` is
-  # required for PUT; the worker Role keeps it namespace-scoped.
+  # Upload build logs through the API server service proxy. PUT maps to
+  # `update` (create alone is not enough); the worker Role keeps it
+  # namespace-scoped.
   - apiGroups:
       - ""
     resources:
@@ -116,6 +117,7 @@ rules:
     verbs:
       - get
       - create
+      - update
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -132,4 +134,41 @@ subjects:
   - kind: ServiceAccount
     name: {{ $workerSA }}
     namespace: {{ $workerNS }}
+{{- if and .Values.logServer.enabled (ne .Release.Namespace $workerNS) }}
+---
+# The log Service lives in the release namespace, so the worker needs
+# services/proxy access there as well as in the MacBuild namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-worker-logs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services/proxy
+    verbs:
+      - get
+      - create
+      - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-worker-logs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "mac-builder-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-worker-logs
+subjects:
+  - kind: ServiceAccount
+    name: {{ $workerSA }}
+    namespace: {{ $workerNS }}
+{{- end }}
 {{- end }}

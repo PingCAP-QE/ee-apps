@@ -75,6 +75,11 @@ kubectl macbuild logs <build-name> -n ee-cd
 kubectl macbuild logs <build-name> -n ee-cd -f --tail 200
 ```
 
+If the log Service runs outside the MacBuild namespace, add
+`--log-namespace <release-namespace>`. The worker installer needs the matching
+`--log-service-namespace <release-namespace>` flag; `status.logs.command`
+includes it when needed.
+
 The plugin reaches the Service through the Kubernetes API service proxy and
 needs `get` on `services/proxy`. If your account cannot use the proxy, run
 `kubectl port-forward svc/mac-builder-operator-logs 8080:8080 -n ee-cd` and pass
