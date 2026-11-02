@@ -6,11 +6,14 @@ metadata:
     {{- include "mac-builder-operator.labels" . | nindent 4 }}
 spec:
   {{- if and .Values.logServer.enabled .Values.logServer.persistence.enabled }}
+  # The log PVC is ReadWriteOnce with one replica, so stop the old pod before
+  # starting the new one. This is equivalent to Recreate but remains a valid
+  # RollingUpdate transition for deployments created with the default strategy.
   strategy:
-    type: Recreate
-    # Explicit null removes the rollingUpdate fields inherited from a previous
-    # RollingUpdate deployment; server-side apply otherwise rejects the update.
-    rollingUpdate: null
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   {{- end }}
   replicas: {{ .Values.replicaCount }}
   selector:
