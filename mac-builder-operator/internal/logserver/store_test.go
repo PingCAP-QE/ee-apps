@@ -176,3 +176,35 @@ func TestStoreGCMaxBytes(t *testing.T) {
 		t.Fatalf("oldest log still exists: %v", err)
 	}
 }
+
+func TestStoreAppendExtendsOverlappingChunk(t *testing.T) {
+	t.Parallel()
+
+	store := NewStore(t.TempDir())
+	if _, err := store.Append("ee-cd", "grow", 0, []byte("hello")); err != nil {
+		t.Fatalf("first append: %v", err)
+	}
+	size, err := store.Append("ee-cd", "grow", 0, []byte("hello world"))
+	if err != nil {
+		t.Fatalf("extend append: %v", err)
+	}
+	if size != int64(len("hello world")) {
+		t.Fatalf("unexpected size after extend: %d", size)
+	}
+	data, err := store.ReadTail("ee-cd", "grow", 0)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	if string(data) != "hello world" {
+		t.Fatalf("unexpected log body: %q", data)
+	}
+
+	// A shorter retry that is fully covered must not truncate the log.
+	size, err = store.Append("ee-cd", "grow", 0, []byte("hello"))
+	if err != nil {
+		t.Fatalf("short retry: %v", err)
+	}
+	if size != int64(len("hello world")) {
+		t.Fatalf("short retry changed size: %d", size)
+	}
+}
