@@ -8,6 +8,9 @@ spec:
   {{- if and .Values.logServer.enabled .Values.logServer.persistence.enabled }}
   strategy:
     type: Recreate
+    # Explicit null removes the rollingUpdate fields inherited from a previous
+    # RollingUpdate deployment; server-side apply otherwise rejects the update.
+    rollingUpdate: null
   {{- end }}
   replicas: {{ .Values.replicaCount }}
   selector:
