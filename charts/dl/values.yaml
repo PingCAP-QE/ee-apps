@@ -17,6 +17,10 @@ fullnameOverride: ""
 server:
   args:
     - "--domain=0.0.0.0:80"
+    # Target allowlists. Empty means deny every OCI/GCS target.
+    # - "--oci-allowed-registries=us-docker.pkg.dev,hub.pingcap.net,hub-zot.pingcap.net"
+    # - "--gcs-allowed-buckets=hotfix-binaries"
+    # - "--gcs-allowed-prefixes=releases/"
   volumeMounts: []
   # - name: config
   #   mountPath: /config

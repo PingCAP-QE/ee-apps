@@ -22,16 +22,18 @@ import (
 
 // ocisrvc implements the OCI service.
 type ocisrvc struct {
-	logger     *log.Logger
-	credential *auth.Credential
-	mu         sync.RWMutex
+	logger            *log.Logger
+	credential        *auth.Credential
+	allowedRegistries []string
+	mu                sync.RWMutex
 }
 
-// New returns the oci service implementation.
-func New(logger *log.Logger, cfgFile *string) oci.Service {
+// New returns the oci service implementation. allowedRegistries is an explicit
+// allowlist of registry hosts; an empty list denies every target.
+func New(logger *log.Logger, cfgFile *string, allowedRegistries []string) oci.Service {
 	var cfg pkgoci.Config
 	if cfgFile == nil {
-		return &ocisrvc{logger: logger, credential: &auth.EmptyCredential}
+		return &ocisrvc{logger: logger, credential: &auth.EmptyCredential, allowedRegistries: allowedRegistries}
 	}
 
 	cfgBytes, err := os.ReadFile(*cfgFile)
@@ -42,10 +44,11 @@ func New(logger *log.Logger, cfgFile *string) oci.Service {
 		logger.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	return &ocisrvc{logger: logger, credential: &auth.Credential{
-		Username: cfg.Username,
-		Password: cfg.Password,
-	}}
+	return &ocisrvc{
+		logger:            logger,
+		credential:        &auth.Credential{Username: cfg.Username, Password: cfg.Password},
+		allowedRegistries: allowedRegistries,
+	}
 }
 
 // ListFiles implements list-files.
@@ -54,12 +57,14 @@ func (s *ocisrvc) ListFiles(ctx context.Context, p *oci.ListFilesPayload) (res [
 
 	repository, err := s.GetTargetRepo(p.Repository)
 	if err != nil {
-		return nil, err
+		s.logger.Printf("oci.list-files: %v", err)
+		return nil, invalidFileError(err)
 	}
 
 	files, err := pkgoci.ListFiles(ctx, repository, p.Tag)
 	if err != nil {
-		return nil, oci.MakeInvalidFilePath(err)
+		s.logger.Printf("oci.list-files: %v", err)
+		return nil, invalidFileError(err)
 	}
 
 	return files, nil
@@ -69,6 +74,18 @@ func (s *ocisrvc) getCredential() *auth.Credential {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.credential
+}
+
+var errArtifactNotFound = errors.New("artifact not found")
+
+// invalidFileError converts upstream registry failures into a generic 4xx
+// service error. Upstream host names, TLS errors, and DNS details stay in the
+// server log only.
+func invalidFileError(err error) error {
+	if IsTargetError(err) {
+		return oci.MakeInvalidFilePath(ErrTargetNotAllowed)
+	}
+	return oci.MakeInvalidFilePath(errArtifactNotFound)
 }
 
 // Reload re-reads the config file and updates the OCI credentials. It is safe
@@ -98,9 +115,13 @@ func (s *ocisrvc) Reload(ctx context.Context, cfgFile string) error {
 
 // GetTargetRepo creates a remote.Repository with auth configured for the given repo string.
 func (s *ocisrvc) GetTargetRepo(repo string) (*remote.Repository, error) {
+	if err := ValidateTargetRepository(repo, s.allowedRegistries); err != nil {
+		return nil, err
+	}
+
 	repository, err := remote.NewRepository(repo)
 	if err != nil {
-		return nil, err
+		return nil, ErrInvalidRepository
 	}
 
 	reg := strings.SplitN(repo, "/", 2)[0]
@@ -119,7 +140,8 @@ func (s *ocisrvc) DownloadFile(ctx context.Context, p *oci.DownloadFilePayload) 
 
 	repository, err := s.GetTargetRepo(p.Repository)
 	if err != nil {
-		return nil, nil, err
+		s.logger.Printf("oci.download-file: %v", err)
+		return nil, nil, invalidFileError(err)
 	}
 
 	targetFile, err := s.resolveFile(ctx, repository, p.Tag, p.File, p.FileRegex)
@@ -127,7 +149,12 @@ func (s *ocisrvc) DownloadFile(ctx context.Context, p *oci.DownloadFilePayload) 
 		return nil, nil, err
 	}
 
-	return s.downloadFile(ctx, repository, p.Tag, targetFile)
+	res, resp, err = s.downloadFile(ctx, repository, p.Tag, targetFile)
+	if err != nil {
+		s.logger.Printf("oci.download-file: %v", err)
+		return nil, nil, invalidFileError(err)
+	}
+	return res, resp, nil
 }
 
 func (s *ocisrvc) downloadFile(ctx context.Context, repo *remote.Repository, tag, file string) (res *oci.DownloadFileResult, resp io.ReadCloser, err error) {
@@ -149,7 +176,8 @@ func (s *ocisrvc) HeadFile(ctx context.Context, p *oci.HeadFilePayload) (*oci.He
 
 	repository, err := s.GetTargetRepo(p.Repository)
 	if err != nil {
-		return nil, err
+		s.logger.Printf("oci.head-file: %v", err)
+		return nil, invalidFileError(err)
 	}
 
 	targetFile, err := s.resolveFile(ctx, repository, p.Tag, p.File, p.FileRegex)
@@ -159,7 +187,8 @@ func (s *ocisrvc) HeadFile(ctx context.Context, p *oci.HeadFilePayload) (*oci.He
 
 	descriptor, err := pkgoci.FetchFileDescriptor(ctx, repository, p.Tag, targetFile)
 	if err != nil {
-		return nil, oci.MakeInvalidFilePath(err)
+		s.logger.Printf("oci.head-file: %v", err)
+		return nil, invalidFileError(err)
 	}
 
 	return &oci.HeadFileResult{
@@ -181,7 +210,8 @@ func (s *ocisrvc) resolveFile(ctx context.Context, repo *remote.Repository, tag 
 
 		files, err := pkgoci.ListFiles(ctx, repo, tag)
 		if err != nil {
-			return "", oci.MakeInvalidFilePath(err)
+			s.logger.Printf("oci.resolve-file: %v", err)
+			return "", invalidFileError(err)
 		}
 
 		for _, f := range files {
@@ -202,11 +232,13 @@ func (s *ocisrvc) DownloadFileSha256(ctx context.Context, p *oci.DownloadFileSha
 
 	repository, err := s.GetTargetRepo(p.Repository)
 	if err != nil {
-		return nil, nil, err
+		s.logger.Printf("oci.download-file-sha256: %v", err)
+		return nil, nil, invalidFileError(err)
 	}
 	value, err := pkgoci.GetFileSHA256(ctx, repository, p.Tag, p.File)
 	if err != nil {
-		return nil, nil, err
+		s.logger.Printf("oci.download-file-sha256: %v", err)
+		return nil, nil, invalidFileError(err)
 	}
 
 	res = &oci.DownloadFileSha256Result{

@@ -15,17 +15,19 @@ import (
 	"google.golang.org/api/option"
 	"gopkg.in/yaml.v3"
 
-	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
 	gcs "github.com/PingCAP-QE/ee-apps/dl/gen/gcs"
+	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
 	pkggcs "github.com/PingCAP-QE/ee-apps/dl/pkg/gcs"
 )
 
 var errGCSNotConfigured = errors.New("GCS is not configured")
 
 type gcssrvc struct {
-	logger *log.Logger
-	client *storage.Client
-	mu     sync.RWMutex
+	logger          *log.Logger
+	client          *storage.Client
+	allowedBuckets  []string
+	allowedPrefixes []string
+	mu              sync.RWMutex
 }
 
 func newClient(ctx context.Context, cfg *pkggcs.Config) (*storage.Client, error) {
@@ -45,14 +47,14 @@ func isJSONFile(filename string) bool {
 	return strings.HasSuffix(filename, ".json")
 }
 
-func New(logger *log.Logger, cfgFile string) gcs.Service {
+func New(logger *log.Logger, cfgFile string, allowedBuckets, allowedPrefixes []string) gcs.Service {
 	var cfg pkggcs.Config
 
 	if cfgFile != "" {
 		cfgBytes, err := os.ReadFile(cfgFile)
 		if err != nil {
 			logger.Printf("Config file %q not found, GCS service unavailable", cfgFile)
-			return &gcssrvc{logger: logger}
+			return &gcssrvc{logger: logger, allowedBuckets: allowedBuckets, allowedPrefixes: allowedPrefixes}
 		}
 
 		if isJSONFile(cfgFile) {
@@ -67,10 +69,15 @@ func New(logger *log.Logger, cfgFile string) gcs.Service {
 	client, err := newClient(context.Background(), &cfg)
 	if err != nil {
 		logger.Printf("Failed to create GCS client: %v", err)
-		return &gcssrvc{logger: logger}
+		return &gcssrvc{logger: logger, allowedBuckets: allowedBuckets, allowedPrefixes: allowedPrefixes}
 	}
 
-	return &gcssrvc{logger: logger, client: client}
+	return &gcssrvc{
+		logger:          logger,
+		client:          client,
+		allowedBuckets:  allowedBuckets,
+		allowedPrefixes: allowedPrefixes,
+	}
 }
 
 func (s *gcssrvc) getClient() (*storage.Client, error) {
@@ -116,6 +123,13 @@ func (s *gcssrvc) Reload(ctx context.Context, cfgFile string) error {
 }
 
 func (s *gcssrvc) DownloadObject(ctx context.Context, p *gcs.DownloadObjectPayload) (res *gcs.DownloadObjectResult, resp io.ReadCloser, err error) {
+	if err := ValidateBucket(p.Bucket, s.allowedBuckets); err != nil {
+		return nil, nil, gcs.MakeInvalidFilePath(err)
+	}
+	if err := ValidateObjectKey(p.Key, s.allowedPrefixes); err != nil {
+		return nil, nil, gcs.MakeInvalidFilePath(err)
+	}
+
 	client, err := s.getClient()
 	if err != nil {
 		return nil, nil, err
@@ -124,12 +138,12 @@ func (s *gcssrvc) DownloadObject(ctx context.Context, p *gcs.DownloadObjectPaylo
 	obj := client.Bucket(p.Bucket).Object(p.Key)
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, gcs.MakeInvalidFilePath(sanitizeGCSError(err))
 	}
 
 	reader, err := obj.NewReader(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, gcs.MakeInvalidFilePath(sanitizeGCSError(err))
 	}
 
 	res = &gcs.DownloadObjectResult{
@@ -146,6 +160,13 @@ func (s *gcssrvc) DownloadObject(ctx context.Context, p *gcs.DownloadObjectPaylo
 
 // HeadObject implements head-object.
 func (s *gcssrvc) HeadObject(ctx context.Context, p *gcs.HeadObjectPayload) (*gcs.HeadObjectResult, error) {
+	if err := ValidateBucket(p.Bucket, s.allowedBuckets); err != nil {
+		return nil, gcs.MakeInvalidFilePath(err)
+	}
+	if err := ValidateObjectKey(p.Key, s.allowedPrefixes); err != nil {
+		return nil, gcs.MakeInvalidFilePath(err)
+	}
+
 	client, err := s.getClient()
 	if err != nil {
 		return nil, err
@@ -154,7 +175,7 @@ func (s *gcssrvc) HeadObject(ctx context.Context, p *gcs.HeadObjectPayload) (*gc
 	obj := client.Bucket(p.Bucket).Object(p.Key)
 	attrs, err := obj.Attrs(ctx)
 	if err != nil {
-		return nil, err
+		return nil, gcs.MakeInvalidFilePath(sanitizeGCSError(err))
 	}
 	res := &gcs.HeadObjectResult{
 		Length: attrs.Size,
