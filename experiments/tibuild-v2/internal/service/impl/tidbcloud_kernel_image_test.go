@@ -22,23 +22,16 @@ func TestRequestSyncKernelImage(t *testing.T) {
 	}))
 	t.Cleanup(ops.Close)
 
-	tags := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "v8.5.4", r.URL.Query().Get("tag"))
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
-			"author": "bob@example.com",
-			"meta": map[string]any{
-				"ops_req": map[string]any{"release_id": "rel-9", "change_id": "chg-9"},
-			},
-		}))
-	}))
-	t.Cleanup(tags.Close)
-
 	svc := newTidbcloudTestService(t, &OpsConfig{
-		TiBuildV2: TiBuildV2Config{APIBaseURL: tags.URL},
 		Stages: map[string]OpsStageConfig{
 			"dev": {APIBaseURL: ops.URL, APIKey: "dev-key"},
 		},
 	}, nil)
+	svc.resolveTagMetadata = func(_ context.Context, repo, tag string) (*TagMetadata, error) {
+		require.Equal(t, "pingcap/tidb", repo)
+		require.Equal(t, "v8.5.4", tag)
+		return &TagMetadata{Author: "bob@example.com", ReleaseID: "rel-9", ChangeID: "chg-9"}, nil
+	}
 	svc.kernelImageMetaReader = func(_ context.Context, image string) kernelImageMeta {
 		return kernelImageMeta{
 			Repo:      "pingcap/tidb",
@@ -95,23 +88,20 @@ func TestRequestSyncKernelImageRejectsMixedCommits(t *testing.T) {
 
 func TestRequestSyncKernelImageSkipsMetadataForDailyTag(t *testing.T) {
 	metadataCalls := 0
-	tags := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		metadataCalls++
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	t.Cleanup(tags.Close)
-
 	ops := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{}`))
 	}))
 	t.Cleanup(ops.Close)
 
 	svc := newTidbcloudTestService(t, &OpsConfig{
-		TiBuildV2: TiBuildV2Config{APIBaseURL: tags.URL},
 		Stages: map[string]OpsStageConfig{
 			"dev": {APIBaseURL: ops.URL},
 		},
 	}, nil)
+	svc.resolveTagMetadata = func(_ context.Context, repo, tag string) (*TagMetadata, error) {
+		metadataCalls++
+		return nil, nil
+	}
 	svc.kernelImageMetaReader = func(_ context.Context, image string) kernelImageMeta {
 		return kernelImageMeta{Repo: "pingcap/tidb", Branch: "main", CommitSHA: "abcdef0123456789abcdef0123456789abcdef01"}
 	}

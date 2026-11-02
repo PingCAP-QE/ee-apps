@@ -171,7 +171,7 @@ func (s *tidbcloudsrvc) resolveKernelImageApplicant(ctx context.Context, repo, s
 	if md == nil {
 		return "", "", ""
 	}
-	return md.Author, md.Meta.OpsReq.ReleaseID, md.Meta.OpsReq.ChangeID
+	return md.Author, md.ReleaseID, md.ChangeID
 }
 
 // readKernelImageMeta reads repo, commit SHA and git ref from the labels:

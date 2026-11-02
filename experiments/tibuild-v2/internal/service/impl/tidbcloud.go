@@ -3,7 +3,6 @@ package impl
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,8 +32,7 @@ import (
 
 // OpsConfig is the ops platform configuration (per stage).
 type OpsConfig struct {
-	Stages    map[string]OpsStageConfig `json:"stages" yaml:"stages"`
-	TiBuildV2 TiBuildV2Config           `json:"tibuild_v2" yaml:"tibuild_v2"`
+	Stages map[string]OpsStageConfig `json:"stages" yaml:"stages"`
 }
 
 // OpsStageConfig is one ops environment.
@@ -49,13 +47,6 @@ type OpsComponent struct {
 	BaseImage   string `json:"base_image" yaml:"base_image"`
 	ClusterType string `json:"cluster_type" yaml:"cluster_type"`
 	GitHubRepo  string `json:"github_repo" yaml:"github_repo"`
-}
-
-// TiBuildV2Config is the TiBuild API used to resolve tag metadata.
-type TiBuildV2Config struct {
-	APIBaseURL string `json:"api_base_url" yaml:"api_base_url"`
-	User       string `json:"user" yaml:"user"`
-	Password   string `json:"password" yaml:"password"`
 }
 
 // OpsUpdateComponentRequest is the body of the ops component update.
@@ -93,16 +84,16 @@ type OpsKernelImageSyncRequestImage struct {
 	SourceTag        string `json:"source_tag"`
 }
 
-// TiBuildTagMetadataResponse is the hotfix tag metadata returned by TiBuild.
-type TiBuildTagMetadataResponse struct {
-	Author string `json:"author"`
-	Meta   struct {
-		OpsReq struct {
-			ReleaseID string `json:"release_id"`
-			ChangeID  string `json:"change_id"`
-		} `json:"ops_req"`
-	} `json:"meta"`
+// TagMetadata is the author and ops request ids attached to a tidbx git tag.
+type TagMetadata struct {
+	Author    string
+	ReleaseID string
+	ChangeID  string
 }
+
+// TagMetadataResolver resolves a tag's metadata. TiBuild queries its own hotfix
+// service in process, so the integration does not call back over HTTP.
+type TagMetadataResolver func(ctx context.Context, repo, tag string) (*TagMetadata, error)
 
 // TestPlatformsConfig is the TCMS configuration.
 type TestPlatformsConfig struct {
@@ -130,14 +121,17 @@ type tidbcloudsrvc struct {
 
 	// kernelImageMetaReader overrides the default OCI label reader (tests).
 	kernelImageMetaReader kernelImageMetaReader
+	// resolveTagMetadata resolves git tag metadata in process; nil skips it.
+	resolveTagMetadata TagMetadataResolver
 }
 
 // NewTidbcloud returns the tidbcloud service implementation.
-func NewTidbcloud(logger *zerolog.Logger, cfg *config.Service) tidbcloud.Service {
+func NewTidbcloud(logger *zerolog.Logger, cfg *config.Service, resolveTagMetadata TagMetadataResolver) tidbcloud.Service {
 	s := &tidbcloudsrvc{
-		logger:     logger,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		readFile:   os.ReadFile,
+		logger:             logger,
+		resolveTagMetadata: resolveTagMetadata,
+		httpClient:         &http.Client{Timeout: 30 * time.Second},
+		readFile:           os.ReadFile,
 		readImageConfig: func(ctx context.Context, image string) ([]byte, error) {
 			return crane.Config(image, crane.WithContext(ctx))
 		},
@@ -240,40 +234,6 @@ func (s *tidbcloudsrvc) postJSON(ctx context.Context, url string, headers map[st
 		return resp.StatusCode, nil, fmt.Errorf("read response: %w", err)
 	}
 	return resp.StatusCode, respBody, nil
-}
-
-// getJSON issues a GET request and decodes a 2xx JSON response into out.
-func (s *tidbcloudsrvc) getJSON(ctx context.Context, url string, headers map[string]string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("http status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("decode response: %w", err)
-	}
-	return nil
-}
-
-func basicAuthHeader(user, password string) string {
-	return "Basic " + base64.StdEncoding.EncodeToString([]byte(user+":"+password))
 }
 
 // parseImageRepoTag splits an image reference into repository and tag. A
