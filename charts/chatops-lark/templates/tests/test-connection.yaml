@@ -11,5 +11,11 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "chatops-lark.fullname" . }}:{{ .Values.service.port }}/healthz']
+      args:
+        - '-q'
+        - '-T'
+        - '10'
+        - '-O'
+        - '-'
+        - 'http://{{ include "chatops-lark.fullname" . }}:{{ .Values.service.port }}/healthz'
   restartPolicy: Never
