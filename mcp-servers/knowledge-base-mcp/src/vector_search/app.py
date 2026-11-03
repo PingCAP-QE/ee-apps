@@ -151,15 +151,14 @@ def upload_documents():
         app.logger.warning("Upload request missing API key info.")
         return jsonify({'success': False, 'message': 'API key information is required'}), 400
 
-    # --- API Key Setup ---
-    app.logger.info(f"Setting environment variable for {api_key_type.upper()}_API_KEY")
-    if api_key_type == 'openai':
-        os.environ['OPENAI_API_KEY'] = api_key
-    elif api_key_type == 'google':
-        os.environ['GOOGLE_API_KEY'] = api_key
-    else:
+    # --- API Key Scope ---
+    # The credential stays request-scoped: it is handed directly to the embeddings
+    # client further down and is never written to os.environ, so concurrent
+    # requests cannot pick up or overwrite each other's keys.
+    if api_key_type not in ('openai', 'google'):
         app.logger.error(f"Invalid API type received: {api_key_type}")
         return jsonify({'success': False, 'message': f'Invalid API type: {api_key_type}'}), 400
+    app.logger.info(f"Using a request-scoped {api_key_type} API key.")
 
     # --- Document Source Handling (Only Upload for now) ---
     app.logger.info("Processing uploaded files.")
@@ -212,7 +211,7 @@ def upload_documents():
     app.logger.info(f"Preparing to embed {len(split_docs)} document chunks.")
     try:
         app.logger.info("Initializing embeddings model...")
-        embeddings = setup_embeddings()  # Relies on env vars set earlier
+        embeddings = setup_embeddings(api_key_type, api_key)
         if not embeddings:
             app.logger.error("Failed to initialize embeddings model (setup_embeddings returned None).")
             err_msg = 'Failed to initialize embeddings model. Check API key and provider.'
@@ -274,19 +273,16 @@ def test_retrieval():
         app.logger.warning("Retrieval test missing API key info.")
         return jsonify({'success': False, 'message': 'API key information is required'}), 400
 
-    # --- API Key Setup ---
-    app.logger.info(f"Setting environment variable for {api_key_type.upper()}_API_KEY for retrieval.")
-    if api_key_type == 'openai':
-        os.environ['OPENAI_API_KEY'] = api_key
-    elif api_key_type == 'google':
-        os.environ['GOOGLE_API_KEY'] = api_key
-    else:
+    # --- API Key Scope ---
+    # Same request-scoped rule as the upload path: no os.environ mutation.
+    if api_key_type not in ('openai', 'google'):
         app.logger.error(f"Invalid API type received for retrieval: {api_key_type}")
         return jsonify({'success': False, 'message': f'Invalid API type: {api_key_type}'}), 400
+    app.logger.info(f"Using a request-scoped {api_key_type} API key for retrieval.")
 
     # --- Embeddings Setup ---
     app.logger.info("Initializing embeddings model for retrieval...")
-    embeddings = setup_embeddings()
+    embeddings = setup_embeddings(api_key_type, api_key)
     if not embeddings:
          app.logger.error("Failed to initialize embeddings model for retrieval.")
          return jsonify({'success': False, 'message': 'Failed to initialize embeddings model'}), 500
@@ -345,29 +341,20 @@ def validate_api_key():
             'message': 'API Key Type and API Key are required for validation.'
         }), 400
 
-    # Store original keys to restore later
-    original_openai_key = os.environ.get('OPENAI_API_KEY')
-    original_google_key = os.environ.get('GOOGLE_API_KEY')
-
     validation_success = False
     validation_message = "Validation failed."
     embeddings = None
 
     try:
-        # Set the key for the requested type
-        if api_key_type == 'openai':
-            os.environ['OPENAI_API_KEY'] = api_key
-            app.logger.info("Validating OpenAI key (initialization)...")
-        elif api_key_type == 'google':
-            os.environ['GOOGLE_API_KEY'] = api_key
-            app.logger.info("Validating Google AI key (initialization)...")
-        else:
+        # Validate in this request's scope only: the key is passed straight to the
+        # embeddings client and is never written to os.environ.
+        if api_key_type not in ('openai', 'google'):
             app.logger.error(f"Unsupported API type for validation: {api_key_type}")
-            # No need to restore keys if we didn't set any
             return jsonify({'success': False, 'message': f"Unsupported API type: {api_key_type}"}), 400
+        app.logger.info(f"Validating {api_key_type} key (initialization)...")
 
         # Attempt to initialize embeddings
-        embeddings = setup_embeddings()
+        embeddings = setup_embeddings(api_key_type, api_key)
 
         if embeddings:
             app.logger.info(f"{api_key_type.capitalize()} initialized. Testing embedding...")
@@ -399,20 +386,6 @@ def validate_api_key():
         if "api_key" in str(e).lower() or "authentication" in str(e).lower():
              msg = f"Auth failed during setup for {api_key_type}. Check Key."
         validation_message = msg
-
-    finally:
-        # Restore original environment variables
-        app.logger.debug("Restoring original API keys in environment...")
-        if original_openai_key:
-            os.environ['OPENAI_API_KEY'] = original_openai_key
-        else:
-            os.environ.pop('OPENAI_API_KEY', None)
-
-        if original_google_key:
-            os.environ['GOOGLE_API_KEY'] = original_google_key
-        else:
-            os.environ.pop('GOOGLE_API_KEY', None)
-        app.logger.debug("Original API keys restored.")
 
     # Log final result and return
     app.logger.info(

@@ -15,40 +15,66 @@ from vector_search.document_loader import load_and_split_markdown_docs
 
 # --- Vectorization and Storage ---
 
-def setup_embeddings() -> Optional[Any]:
+def setup_embeddings(api_key_type: Optional[str] = None, api_key: Optional[str] = None) -> Optional[Any]:
     """
     Set up and initialize the Embedding model
 
+    Args:
+        api_key_type: "google" or "openai". When given, only that provider is
+            initialized and ``api_key`` is used for it.
+        api_key: credential for the selected provider. Request-scoped callers pass
+            it here so that nothing has to be written to (or read back from) the
+            process environment, which keeps concurrent requests from seeing each
+            other's keys.
+
     Returns:
         Initialized Embedding model, or None if failed
-    """
-    # --- Option B: Use Google Embeddings ---
-    # Requires GOOGLE_API_KEY environment variable
-    # Or pass google_api_key="..." during initialization
-    try:
-        google_embeddings = GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-exp-03-07",
-            dimensions=1536
-        )  # Choose appropriate model
-        print("Google Embedding model loaded successfully.")
-        return google_embeddings
-    except Exception as e:
-        print(f"Failed to load Google Embeddings: {e}")
-        print("Please ensure langchain-google-genai is installed and GOOGLE_API_KEY is set.")
 
-    # --- Option A: Use OpenAI Embeddings ---
-    # Requires OPENAI_API_KEY environment variable
-    # Or pass openai_api_key="sk-..." during initialization
-    try:
-        openai_embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small",
-            dimensions=1536
-        )
-        print("OpenAI Embedding model loaded successfully.")
-        return openai_embeddings
-    except Exception as e:
-        print(f"Failed to load OpenAI Embeddings: {e}")
-        print("Please ensure langchain-openai is installed and OPENAI_API_KEY is set.")
+    Raises:
+        ValueError: when ``api_key_type`` is given but is unknown or has no key.
+    """
+    if api_key_type is not None:
+        if api_key_type not in ("google", "openai"):
+            raise ValueError(f"Unsupported API type: {api_key_type}")
+        if not api_key:
+            raise ValueError(f"An API key is required for api_key_type={api_key_type}")
+        providers = [api_key_type]
+    else:
+        # Historical behaviour: try Google first, then OpenAI, using the
+        # credentials already present in the environment.
+        providers = ["google", "openai"]
+
+    for provider in providers:
+        if provider == "google":
+            # --- Option B: Use Google Embeddings ---
+            # Without an explicit key this requires GOOGLE_API_KEY in the environment.
+            try:
+                google_embeddings = GoogleGenerativeAIEmbeddings(
+                    model="models/gemini-embedding-exp-03-07",
+                    dimensions=1536,
+                    **({"google_api_key": api_key} if api_key else {}),
+                )  # Choose appropriate model
+                print("Google Embedding model loaded successfully.")
+                return google_embeddings
+            except Exception as e:
+                print(f"Failed to load Google Embeddings: {e}")
+                if not api_key:
+                    print("Please ensure langchain-google-genai is installed and GOOGLE_API_KEY is set.")
+        else:
+            # --- Option A: Use OpenAI Embeddings ---
+            # Without an explicit key this requires OPENAI_API_KEY in the environment.
+            try:
+                openai_embeddings = OpenAIEmbeddings(
+                    model="text-embedding-3-small",
+                    dimensions=1536,
+                    **({"api_key": api_key} if api_key else {}),
+                )
+                print("OpenAI Embedding model loaded successfully.")
+                return openai_embeddings
+            except Exception as e:
+                print(f"Failed to load OpenAI Embeddings: {e}")
+                if not api_key:
+                    print("Please ensure langchain-openai is installed and OPENAI_API_KEY is set.")
 
     return None
 
