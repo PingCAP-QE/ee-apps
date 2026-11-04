@@ -20,6 +20,16 @@ const (
 	publishClaimBatchSize = 5
 	publishBackoffBase    = 10 * time.Second
 	publishBackoffMax     = 5 * time.Minute
+
+	// publishClaimCandidates bounds the per-poll scan used by priority aging.
+	// The queue is a few hundred rows; a larger bound keeps old nightly steps
+	// visible without turning the claim into a full-table scan.
+	publishClaimCandidates = 500
+	// publishFairnessStep is how much wait time buys one priority point.
+	publishFairnessStep = time.Minute
+	// publishFairnessCap keeps an aged nightly step below release priority:
+	// 10 + 19 = 29 < 30.
+	publishFairnessCap = 19
 )
 
 // imageCopyResult is the outcome recorded on a succeeded step.
@@ -110,11 +120,14 @@ func (s *publishsrvc) consumePublishSteps(ctx context.Context) {
 	}
 }
 
-// claimStep atomically claims the oldest pending step this worker serves.
+// claimStep atomically claims the step with the highest effective priority
+// this worker serves.
 //
-// The candidate is selected first and then updated with a state guard: two
-// workers may select the same row, but only one UPDATE observes state=pending
-// and increments attempts; the loser moves on to the next candidate.
+// Effective priority ages a waiting step by one point per minute, capped so a
+// nightly step never overtakes a release step. The candidate is selected first
+// and then updated with a state guard: two workers may select the same row, but
+// only one UPDATE observes state=pending and increments attempts; the loser
+// moves on to the next candidate.
 func (s *publishsrvc) claimStep(ctx context.Context) (*ent.PublishStep, error) {
 	cfg := s.workerConfig()
 
@@ -126,18 +139,20 @@ func (s *publishsrvc) claimStep(ctx context.Context) (*ent.PublishStep, error) {
 				entpublishstep.AvailableAtIsNil(),
 				entpublishstep.AvailableAtLTE(now),
 			)).
-			Order(ent.Desc(entpublishstep.FieldPriority), entpublishstep.ByCreatedAt(), entpublishstep.ByID())
+			Order(entpublishstep.ByCreatedAt(), entpublishstep.ByID()).
+			Limit(publishClaimCandidates)
 		if !hasWildcardTarget(cfg.Targets) {
 			query = query.Where(entpublishstep.TargetIn(cfg.Targets...))
 		}
 
-		candidate, err := query.First(ctx)
-		if ent.IsNotFound(err) {
-			return nil, nil
-		}
+		candidates, err := query.All(ctx)
 		if err != nil {
 			return nil, err
 		}
+		if len(candidates) == 0 {
+			return nil, nil
+		}
+		candidate := s.pickClaimCandidate(candidates, now)
 
 		token := s.claimToken()
 		update := s.db.PublishStep.Update().
@@ -171,6 +186,35 @@ func (s *publishsrvc) claimStep(ctx context.Context) (*ent.PublishStep, error) {
 		}
 	}
 	return nil, nil
+}
+
+// pickClaimCandidate returns the highest effective priority, oldest first.
+func (s *publishsrvc) pickClaimCandidate(candidates []*ent.PublishStep, now time.Time) *ent.PublishStep {
+	best := candidates[0]
+	bestScore := effectivePriority(best, now)
+	for _, candidate := range candidates[1:] {
+		score := effectivePriority(candidate, now)
+		if score > bestScore ||
+			(score == bestScore && (candidate.CreatedAt.Before(best.CreatedAt) ||
+				(candidate.CreatedAt.Equal(best.CreatedAt) && candidate.ID < best.ID))) {
+			best = candidate
+			bestScore = score
+		}
+	}
+	return best
+}
+
+// effectivePriority ages a step by its queue wait, capped below release.
+func effectivePriority(step *ent.PublishStep, now time.Time) int {
+	waited := now.Sub(step.CreatedAt)
+	if waited < 0 {
+		waited = 0
+	}
+	bonus := int(waited / publishFairnessStep)
+	if bonus > publishFairnessCap {
+		bonus = publishFairnessCap
+	}
+	return step.Priority + bonus
 }
 
 func (s *publishsrvc) claimToken() string {

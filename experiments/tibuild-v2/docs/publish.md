@@ -36,11 +36,15 @@ data, not code.
 
 ### Lane lifecycle
 
-A unit acquires the lane when one of its steps starts executing and releases it
-as soon as the unit reaches a terminal state (`succeeded`, `partial`, `failed`,
-`canceled`); the next unit can then acquire immediately instead of waiting for
-the lease to expire. `retry` needs no special handling: the terminal unit has
-already released the lane, and the re-queued step acquires it again.
+A step acquires the lane when it starts executing and releases it as soon as
+the step finishes (success, failure, timeout, or lost lease). The same unit may
+re-enter its own live lane, so the second step of an ordered prod → staging unit
+starts immediately after the first step succeeds instead of waiting for the
+lease. The unit-terminal release is kept as an idempotent backstop.
+
+The lease (9m = `hard_timeout` 8m + two heartbeats) only matters when a worker
+dies mid-step; the next owner can reclaim it after the lease expires. A step
+that keeps a healthy heartbeat is never preempted.
 
 Finding the lane busy is **not** an execution attempt. The claim increments
 `publish_step.attempts`, the requeue decrements it again, so `max_attempts`
@@ -48,11 +52,11 @@ only counts real execution failures and timeouts. A busy requeue backs off for
 `30s ± 20%` per target, and the wait is exported as `publish_lane_wait_seconds`
 alongside the `publish_lane_busy_total` counter.
 
-Known limitation: a unit with two ordered steps (prod → staging) is executed by
-two different worker deployments, one per target. The lane is held by the unit,
-so the worker that finished prod keeps it until its lease expires (12m) while
-the unit is still running; the staging step then reports the lane busy. Fixing
-that needs a holder hand-off inside one unit, which is tracked separately.
+Nightly steps age by one priority point per minute of queue wait, capped at 19
+points: a p10 nightly step overtakes p20 API work after 10 minutes but never
+overtakes a p30 release. `publish_lane_hold_seconds` and
+`publish_lane_starvation_seconds` expose the hold time and the oldest pending
+wait per target/priority.
 
 ## Targets
 

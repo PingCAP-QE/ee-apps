@@ -18,7 +18,6 @@ import (
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
-	"oras.land/oras-go/v2/content"
 	"oras.land/oras-go/v2/registry/remote"
 	"oras.land/oras-go/v2/registry/remote/auth"
 	"oras.land/oras-go/v2/registry/remote/credentials"
@@ -460,27 +459,42 @@ func downloadOCIFile(ctx context.Context, artifactURL, digest, file string) (str
 		return "", "", fmt.Errorf("artifact %s has no file %q", artifactURL, file)
 	}
 
-	rc, err := content.FetchAll(ctx, repo, *layer)
+	rc, err := repo.Fetch(ctx, *layer)
 	if err != nil {
 		return "", "", fmt.Errorf("fetch %s: %w", file, err)
 	}
+	defer rc.Close()
 
+	return writeTempFromReader(rc, layer.Size)
+}
+
+// writeTempFromReader streams a layer to a temp file while hashing it, so a
+// large package is never buffered in memory. The descriptor size is checked to
+// catch a truncated stream.
+func writeTempFromReader(reader io.Reader, size int64) (string, string, error) {
 	tmp, err := os.CreateTemp("", "tiup-publish-*")
 	if err != nil {
 		return "", "", err
 	}
-	if _, err := tmp.Write(rc); err != nil {
+	path := tmp.Name()
+
+	hash := sha256.New()
+	written, err := io.Copy(io.MultiWriter(tmp, hash), reader)
+	if err != nil {
 		tmp.Close()
-		os.Remove(tmp.Name())
+		os.Remove(path)
 		return "", "", err
+	}
+	if size >= 0 && written != size {
+		tmp.Close()
+		os.Remove(path)
+		return "", "", fmt.Errorf("downloaded %d bytes, expected %d", written, size)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
+		os.Remove(path)
 		return "", "", err
 	}
-
-	sum := sha256.Sum256(rc)
-	return tmp.Name(), hex.EncodeToString(sum[:]), nil
+	return path, hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 // registryAuthClient resolves credentials from the process docker config, then
@@ -519,6 +533,16 @@ func (s *publishsrvc) runTiUPStep(ctx context.Context, step *ent.PublishStep) {
 		Str("unit_id", step.UnitID).
 		Str("target", step.Target).
 		Logger()
+
+	// The lane serializes one mirror operation, not a whole unit: a two-step
+	// ordered unit is executed by two workers, and the second step re-enters the
+	// same unit's lane after this step finishes. Release here so the next step
+	// (or another unit) does not wait for the lease to expire.
+	defer func() {
+		if err := s.lane.Release(ctx, step.UnitID); err != nil {
+			log.Err(err).Msg("failed to release the publish lane after the step")
+		}
+	}()
 
 	result, err := s.executeTiUPStep(ctx, step, step.ClaimedBy)
 	switch {
@@ -619,6 +643,12 @@ func (s *publishsrvc) executeTiUPStep(ctx context.Context, step *ent.PublishStep
 	}
 	if !acquired {
 		return nil, ErrLaneBusy
+	}
+	if s.metrics != nil {
+		started := time.Now()
+		defer func() {
+			s.metrics.recordLaneHold(step.Target, time.Since(started).Seconds())
+		}()
 	}
 
 	runCtx := ctx
