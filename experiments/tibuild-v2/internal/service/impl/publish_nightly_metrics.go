@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -12,18 +13,21 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
+	entpublishstep "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/publishstep"
 )
 
 // nightlyMetrics exposes the desired-state queue to Prometheus. It is merged
 // with the image-sync metrics by compositeWorker, so one /metrics endpoint
 // serves both queues.
 type nightlyMetrics struct {
-	registry  *prometheus.Registry
-	due       *prometheus.CounterVec
-	lag       *prometheus.GaugeVec
-	published *prometheus.CounterVec
-	laneBusy  *prometheus.CounterVec
-	laneWait  *prometheus.GaugeVec
+	registry   *prometheus.Registry
+	due        *prometheus.CounterVec
+	lag        *prometheus.GaugeVec
+	published  *prometheus.CounterVec
+	laneBusy   *prometheus.CounterVec
+	laneWait   *prometheus.GaugeVec
+	laneHold   *prometheus.HistogramVec
+	starvation *prometheus.GaugeVec
 }
 
 func newNightlyMetrics() *nightlyMetrics {
@@ -49,8 +53,17 @@ func newNightlyMetrics() *nightlyMetrics {
 			Name: "publish_lane_wait_seconds",
 			Help: "Seconds spent waiting for the publish lane by the step that last found it busy, per target.",
 		}, []string{"target"}),
+		laneHold: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:    "publish_lane_hold_seconds",
+			Help:    "Seconds a TiUP step held the publish lane, per target.",
+			Buckets: []float64{1, 5, 15, 30, 60, 120, 300, 600, 1200},
+		}, []string{"target"}),
+		starvation: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "publish_lane_starvation_seconds",
+			Help: "Age of the oldest pending step per target and base priority.",
+		}, []string{"priority", "target"}),
 	}
-	m.registry.MustRegister(m.due, m.lag, m.published, m.laneBusy, m.laneWait)
+	m.registry.MustRegister(m.due, m.lag, m.published, m.laneBusy, m.laneWait, m.laneHold, m.starvation)
 	return m
 }
 
@@ -130,6 +143,47 @@ func (m *nightlyMetrics) refresh(ctx context.Context, db *ent.Client, now time.T
 	}
 }
 
+// recordLaneHold observes how long a step held the lane.
+func (m *nightlyMetrics) recordLaneHold(target string, seconds float64) {
+	if seconds < 0 {
+		seconds = 0
+	}
+	m.laneHold.WithLabelValues(target).Observe(seconds)
+}
+
+// refreshStarvation exposes the oldest pending step per target and base
+// priority. A rising nightly (priority 10) value is the signal that aging is
+// not keeping up.
+func (m *nightlyMetrics) refreshStarvation(ctx context.Context, db *ent.Client, now time.Time) {
+	rows, err := db.PublishStep.Query().
+		Where(entpublishstep.State(PublishStepStatePending)).
+		All(ctx)
+	if err != nil {
+		return
+	}
+	oldest := map[string]map[int]time.Duration{}
+	for _, row := range rows {
+		wait := now.Sub(row.CreatedAt)
+		if wait < 0 {
+			wait = 0
+		}
+		byPriority := oldest[row.Target]
+		if byPriority == nil {
+			byPriority = map[int]time.Duration{}
+			oldest[row.Target] = byPriority
+		}
+		if wait > byPriority[row.Priority] {
+			byPriority[row.Priority] = wait
+		}
+	}
+	m.starvation.Reset()
+	for target, byPriority := range oldest {
+		for priority, wait := range byPriority {
+			m.starvation.WithLabelValues(strconv.Itoa(priority), target).Set(wait.Seconds())
+		}
+	}
+}
+
 // nightlyAlertTracker deduplicates the lag alerts a worker sends. The nightly
 // reconciler runs on the TiUP workers; a single replica per target is the
 // current deployment, so process-local dedupe is enough for this track.
@@ -198,6 +252,7 @@ func (s *publishsrvc) refreshNightlyMetricsAndAlerts(ctx context.Context) {
 	}
 	now := s.now()
 	s.metrics.refresh(ctx, s.db, now)
+	s.metrics.refreshStarvation(ctx, s.db, now)
 
 	if s.alerter == nil || s.nightlyAlerts == nil {
 		return

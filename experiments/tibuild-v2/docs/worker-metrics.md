@@ -25,10 +25,14 @@ endpoint:
 | `nightly_publish_total` | `result` | Settled nightly units by result |
 | `publish_lane_busy_total` | `target` | Steps requeued because another unit held the lane |
 | `publish_lane_wait_seconds` | `target` | Wait of the step that last found the lane busy |
+| `publish_lane_hold_seconds` | `target` | Histogram of how long a step held the lane |
+| `publish_lane_starvation_seconds` | `priority`, `target` | Age of the oldest pending step per base priority |
 
 `publish_lane_wait_seconds` is a gauge: each busy event overwrites the previous
 value for its target, so it shows the current wait rather than a lifetime
-maximum.
+maximum. `publish_lane_hold_seconds` is a histogram; its p99 should stay below
+`hard_timeout`. `publish_lane_starvation_seconds` is a gauge per base priority:
+a rising `priority="10"` series means nightly work is not getting its turn.
 
 ## prod2: ServiceMonitor
 

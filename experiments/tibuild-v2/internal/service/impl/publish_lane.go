@@ -64,6 +64,10 @@ func (l *publishLane) ensure(ctx context.Context) error {
 
 // Acquire takes the lane for unitID, unless another unit still holds a live
 // lease. It returns false when the lane is busy; the caller requeues the step.
+//
+// A unit may re-enter its own live lane: a two-step ordered unit is executed by
+// two different workers, and the second step must not wait for the lease of the
+// step that just finished.
 func (l *publishLane) Acquire(ctx context.Context, unitID, holder string, lease time.Duration) (bool, error) {
 	if err := l.ensure(ctx); err != nil {
 		return false, err
@@ -75,6 +79,7 @@ func (l *publishLane) Acquire(ctx context.Context, unitID, holder string, lease 
 			entpublishlane.Lane(l.name),
 			entpublishlane.Or(
 				entpublishlane.UnitID(""),
+				entpublishlane.UnitID(unitID),
 				entpublishlane.LeaseUntilIsNil(),
 				entpublishlane.LeaseUntilLT(now),
 			),

@@ -83,6 +83,29 @@ func TestLaneAcquireExcludesSecondUnit(t *testing.T) {
 	require.Equal(t, "unit-b", row.UnitID)
 }
 
+// A unit may re-enter its own live lane: a two-step ordered unit is executed by
+// two workers and the second step must not wait for the lease.
+func TestLaneSameUnitReenters(t *testing.T) {
+	lane, _ := newLaneTestFixture(t)
+	ctx := context.Background()
+
+	ok, err := lane.Acquire(ctx, "unit-a", "worker-1", 15*time.Minute)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	ok, err = lane.Acquire(ctx, "unit-a", "worker-2", 15*time.Minute)
+	require.NoError(t, err)
+	require.True(t, ok, "the same unit may re-enter its own lane")
+
+	row := laneRow(t, lane)
+	require.Equal(t, "unit-a", row.UnitID)
+	require.Equal(t, "worker-2", row.Holder)
+
+	ok, err = lane.Acquire(ctx, "unit-b", "worker-3", 15*time.Minute)
+	require.NoError(t, err)
+	require.False(t, ok, "another unit still waits")
+}
+
 // An expired lease is reclaimable: that is how a unit survives a dead worker.
 func TestLaneExpiredLeaseIsReclaimable(t *testing.T) {
 	lane, clock := newLaneTestFixture(t)
