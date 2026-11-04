@@ -67,14 +67,15 @@ type publishsrvc struct {
 	desired *desiredStore
 	// metrics and nightlyAlerts expose the desired-state queue and alert on
 	// rows that wait longer than 1.5 windows.
-	metrics       *nightlyMetrics
-	nightlyAlerts *nightlyAlertTracker
-	alerter       AlertNotifier
+	metrics        *nightlyMetrics
+	nightlyAlerts  *nightlyAlertTracker
+	conflictAlerts *conflictAlertTracker
+	alerter        AlertNotifier
 	// tiup publishes packages to a mirror.
 	tiup *tiupCLI
 	// fetchConfig reads an OCI artifact config and its manifest digest. It is
 	// a field so tests can replay a recorded artifact without a registry.
-	fetchConfig func(ctx context.Context, artifactURL string) (map[string]any, string, error)
+	fetchConfig func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error)
 
 	nowFn func() time.Time
 	newID func() string
@@ -119,19 +120,20 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 			rules:    &rulesLoader{path: cfg.Publish.DeliveryConfigPathOrDefault()},
 			resolver: craneImageOps{},
 		},
-		workerCfg:     workerCfg,
-		images:        craneImageOps{},
-		lane:          newPublishLane(db, PublishLaneTiUP),
-		desired:       newDesiredStore(db, cfg.Publish.Nightly),
-		metrics:       newNightlyMetrics(),
-		nightlyAlerts: newNightlyAlertTracker(time.Hour),
-		alerter:       alerter,
-		tiup:          newTiupCLI(cfg.Publish.TiUPBinary),
-		publishCfg:    cfg.Publish,
-		fetchConfig:   fetchTiUPArtifactConfig,
-		nowFn:         time.Now,
-		newID:         newUUID,
-		reloadNotify:  make(chan struct{}, 1),
+		workerCfg:      workerCfg,
+		images:         craneImageOps{},
+		lane:           newPublishLane(db, PublishLaneTiUP),
+		desired:        newDesiredStore(db, cfg.Publish.Nightly),
+		metrics:        newNightlyMetrics(),
+		nightlyAlerts:  newNightlyAlertTracker(time.Hour),
+		conflictAlerts: newConflictAlertTracker(time.Hour),
+		alerter:        alerter,
+		tiup:           newTiupCLI(cfg.Publish.TiUPBinary),
+		publishCfg:     cfg.Publish,
+		fetchConfig:    fetchTiUPArtifactConfig,
+		nowFn:          time.Now,
+		newID:          newUUID,
+		reloadNotify:   make(chan struct{}, 1),
 	}
 }
 

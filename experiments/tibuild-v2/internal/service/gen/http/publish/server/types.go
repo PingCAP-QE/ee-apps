@@ -194,6 +194,17 @@ type DeliveryByRulesBadRequestResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// DeliveryByRulesConflictResponseBody is the type of the "publish" service
+// "deliveryByRules" endpoint HTTP response body for the "Conflict" error.
+type DeliveryByRulesConflictResponseBody struct {
+	Code           int     `form:"code" json:"code" xml:"code"`
+	Message        string  `form:"message" json:"message" xml:"message"`
+	Version        *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
+	ExistingDigest *string `form:"existingDigest,omitempty" json:"existingDigest,omitempty" xml:"existingDigest,omitempty"`
+	NewDigest      *string `form:"newDigest,omitempty" json:"newDigest,omitempty" xml:"newDigest,omitempty"`
+	ExistingUnitID *string `form:"existingUnitId,omitempty" json:"existingUnitId,omitempty" xml:"existingUnitId,omitempty"`
+}
+
 // DeliveryByRulesFaultResponseBody is the type of the "publish" service
 // "deliveryByRules" endpoint HTTP response body for the "fault" error.
 type DeliveryByRulesFaultResponseBody struct {
@@ -210,6 +221,17 @@ type DeliveryByRulesFaultResponseBody struct {
 type RequestToPublishBadRequestResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// RequestToPublishConflictResponseBody is the type of the "publish" service
+// "requestToPublish" endpoint HTTP response body for the "Conflict" error.
+type RequestToPublishConflictResponseBody struct {
+	Code           int     `form:"code" json:"code" xml:"code"`
+	Message        string  `form:"message" json:"message" xml:"message"`
+	Version        *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
+	ExistingDigest *string `form:"existingDigest,omitempty" json:"existingDigest,omitempty" xml:"existingDigest,omitempty"`
+	NewDigest      *string `form:"newDigest,omitempty" json:"newDigest,omitempty" xml:"newDigest,omitempty"`
+	ExistingUnitID *string `form:"existingUnitId,omitempty" json:"existingUnitId,omitempty" xml:"existingUnitId,omitempty"`
 }
 
 // RequestToPublishFaultResponseBody is the type of the "publish" service
@@ -229,6 +251,18 @@ type RequestToPublishFaultResponseBody struct {
 type RequestToPublishSingleBadRequestResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// RequestToPublishSingleConflictResponseBody is the type of the "publish"
+// service "requestToPublishSingle" endpoint HTTP response body for the
+// "Conflict" error.
+type RequestToPublishSingleConflictResponseBody struct {
+	Code           int     `form:"code" json:"code" xml:"code"`
+	Message        string  `form:"message" json:"message" xml:"message"`
+	Version        *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
+	ExistingDigest *string `form:"existingDigest,omitempty" json:"existingDigest,omitempty" xml:"existingDigest,omitempty"`
+	NewDigest      *string `form:"newDigest,omitempty" json:"newDigest,omitempty" xml:"newDigest,omitempty"`
+	ExistingUnitID *string `form:"existingUnitId,omitempty" json:"existingUnitId,omitempty" xml:"existingUnitId,omitempty"`
 }
 
 // RequestToPublishSingleFaultResponseBody is the type of the "publish" service
@@ -559,6 +593,20 @@ func NewDeliveryByRulesBadRequestResponseBody(res *publish.PublishBadRequestErro
 	return body
 }
 
+// NewDeliveryByRulesConflictResponseBody builds the HTTP response body from
+// the result of the "deliveryByRules" endpoint of the "publish" service.
+func NewDeliveryByRulesConflictResponseBody(res *publish.PublishConflictError) *DeliveryByRulesConflictResponseBody {
+	body := &DeliveryByRulesConflictResponseBody{
+		Code:           res.Code,
+		Message:        res.Message,
+		Version:        res.Version,
+		ExistingDigest: res.ExistingDigest,
+		NewDigest:      res.NewDigest,
+		ExistingUnitID: res.ExistingUnitID,
+	}
+	return body
+}
+
 // NewDeliveryByRulesFaultResponseBody builds the HTTP response body from the
 // result of the "deliveryByRules" endpoint of the "publish" service.
 func NewDeliveryByRulesFaultResponseBody(res *publish.TiUPFaultError) *DeliveryByRulesFaultResponseBody {
@@ -597,6 +645,20 @@ func NewRequestToPublishBadRequestResponseBody(res *publish.PublishBadRequestErr
 	body := &RequestToPublishBadRequestResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
+	}
+	return body
+}
+
+// NewRequestToPublishConflictResponseBody builds the HTTP response body from
+// the result of the "requestToPublish" endpoint of the "publish" service.
+func NewRequestToPublishConflictResponseBody(res *publish.PublishConflictError) *RequestToPublishConflictResponseBody {
+	body := &RequestToPublishConflictResponseBody{
+		Code:           res.Code,
+		Message:        res.Message,
+		Version:        res.Version,
+		ExistingDigest: res.ExistingDigest,
+		NewDigest:      res.NewDigest,
+		ExistingUnitID: res.ExistingUnitID,
 	}
 	return body
 }
@@ -640,6 +702,21 @@ func NewRequestToPublishSingleBadRequestResponseBody(res *publish.PublishBadRequ
 	body := &RequestToPublishSingleBadRequestResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
+	}
+	return body
+}
+
+// NewRequestToPublishSingleConflictResponseBody builds the HTTP response body
+// from the result of the "requestToPublishSingle" endpoint of the "publish"
+// service.
+func NewRequestToPublishSingleConflictResponseBody(res *publish.PublishConflictError) *RequestToPublishSingleConflictResponseBody {
+	body := &RequestToPublishSingleConflictResponseBody{
+		Code:           res.Code,
+		Message:        res.Message,
+		Version:        res.Version,
+		ExistingDigest: res.ExistingDigest,
+		NewDigest:      res.NewDigest,
+		ExistingUnitID: res.ExistingUnitID,
 	}
 	return body
 }

@@ -696,6 +696,7 @@ var _ = Service("publish", func() {
 	// name, and Goa derives the name from the type, so sharing a type would
 	// collapse every failure into one status.
 	Error("BadRequest", PublishBadRequestError, "Bad Request")
+	Error("Conflict", PublishConflictError, "Conflict")
 	Error("NotFound", PublishNotFoundError, "Not Found")
 	Error("BadGateway", PublishBadGatewayError, "The artifact registry could not be queried")
 	Error("InternalServerError", PublishInternalServerError, "Internal Server Error")
@@ -788,6 +789,7 @@ var _ = Service("publish", func() {
 			POST("/tiup/delivery-by-rules")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
+			Response("Conflict", StatusConflict)
 			Response("fault", StatusInternalServerError)
 		})
 	})
@@ -811,6 +813,7 @@ var _ = Service("publish", func() {
 			POST("/tiup/publish-request")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
+			Response("Conflict", StatusConflict)
 			Response("fault", StatusInternalServerError)
 		})
 	})
@@ -823,6 +826,7 @@ var _ = Service("publish", func() {
 			POST("/tiup/publish-request-single")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
+			Response("Conflict", StatusConflict)
 			Response("fault", StatusInternalServerError)
 		})
 	})
@@ -896,6 +900,16 @@ var PublishStepState = Type("PublishStepState", String, func() {
 var PublishBadRequestError = Type("PublishBadRequestError", func() {
 	Attribute("code", Int)
 	Attribute("message", String)
+	Required("code", "message")
+})
+
+var PublishConflictError = Type("PublishConflictError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Attribute("version", String)
+	Attribute("existingDigest", String)
+	Attribute("newDigest", String)
+	Attribute("existingUnitId", String)
 	Required("code", "message")
 })
 

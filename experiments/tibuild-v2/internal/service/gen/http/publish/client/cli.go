@@ -129,7 +129,7 @@ func BuildRequestToPublishPayload(publishRequestToPublishBody string) (*publish.
 	{
 		err = json.Unmarshal([]byte(publishRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Perspiciatis mollitia dolor.\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"Quis ut assumenda rerum.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Commodi fugit sed nobis.\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"Ipsam facere omnis repudiandae quia quis.\"\n   }'")
 		}
 		if !(body.TiupMirror == "staging" || body.TiupMirror == "prod") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", body.TiupMirror, []any{"staging", "prod"}))
@@ -155,7 +155,7 @@ func BuildRequestToPublishSinglePayload(publishRequestToPublishSingleBody string
 	{
 		err = json.Unmarshal([]byte(publishRequestToPublishSingleBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Quia quis at quae.\"\n         },\n         \"oci\": {\n            \"file\": \"Impedit sint perferendis saepe.\",\n            \"repo\": \"Natus facilis.\",\n            \"tag\": \"Qui illum in quia minus blanditiis saepe.\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"Libero fuga deleniti rerum qui.\",\n         \"description\": \"Autem exercitationem eos voluptatem.\",\n         \"entry_point\": \"Neque possimus odit aut laboriosam ipsa et.\",\n         \"name\": \"Asperiores non qui laboriosam adipisci.\",\n         \"os\": \"Rerum amet dicta.\",\n         \"standalone\": false,\n         \"version\": \"Autem illum quaerat unde voluptatem explicabo natus.\"\n      },\n      \"tiup_mirror\": \"staging\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Voluptates provident.\"\n         },\n         \"oci\": {\n            \"file\": \"Odio qui officia ut non sint officia.\",\n            \"repo\": \"Ut doloremque.\",\n            \"tag\": \"Dolore voluptatum sunt reprehenderit.\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"Repellendus accusantium quae beatae impedit a.\",\n         \"description\": \"Sit explicabo velit odio repudiandae eveniet asperiores.\",\n         \"entry_point\": \"Impedit dicta labore.\",\n         \"name\": \"Quod non.\",\n         \"os\": \"Nisi debitis voluptas architecto.\",\n         \"standalone\": false,\n         \"version\": \"Soluta ducimus et minima et inventore eaque.\"\n      },\n      \"tiup_mirror\": \"staging\"\n   }'")
 		}
 		if body.From == nil {
 			err = goa.MergeErrors(err, goa.MissingFieldError("from", "body"))

@@ -84,6 +84,15 @@ type PublishBadRequestError struct {
 	Message string
 }
 
+type PublishConflictError struct {
+	Code           int
+	Message        string
+	Version        *string
+	ExistingDigest *string
+	NewDigest      *string
+	ExistingUnitID *string
+}
+
 // PublishImagesPayload is the payload type of the publish service
 // publishImages method.
 type PublishImagesPayload struct {
@@ -259,6 +268,23 @@ func (e *PublishBadRequestError) ErrorName() string {
 // GoaErrorName returns the error name.
 func (e *PublishBadRequestError) GoaErrorName() string {
 	return "BadRequest"
+}
+
+// Error returns an error description.
+func (e *PublishConflictError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *PublishConflictError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *PublishConflictError) GoaErrorName() string {
+	return "Conflict"
 }
 
 // Error returns an error description.

@@ -498,6 +498,7 @@ func EncodeDeliveryByRulesRequest(encoder func(*http.Request) goahttp.Encoder) f
 // response body should be restored after having been read.
 // DecodeDeliveryByRulesResponse may return the following errors:
 //   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "Conflict" (type *publish.PublishConflictError): http.StatusConflict
 //   - "fault" (type *publish.TiUPFaultError): http.StatusInternalServerError
 //   - error: internal error
 func DecodeDeliveryByRulesResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
@@ -539,6 +540,20 @@ func DecodeDeliveryByRulesResponse(decoder func(*http.Response) goahttp.Decoder,
 				return nil, goahttp.ErrValidationError("publish", "deliveryByRules", err)
 			}
 			return nil, NewDeliveryByRulesBadRequest(&body)
+		case http.StatusConflict:
+			var (
+				body DeliveryByRulesConflictResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "deliveryByRules", err)
+			}
+			err = ValidateDeliveryByRulesConflictResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "deliveryByRules", err)
+			}
+			return nil, NewDeliveryByRulesConflict(&body)
 		case http.StatusInternalServerError:
 			var (
 				body DeliveryByRulesFaultResponseBody
@@ -596,6 +611,7 @@ func EncodeRequestToPublishRequest(encoder func(*http.Request) goahttp.Encoder) 
 // response body should be restored after having been read.
 // DecodeRequestToPublishResponse may return the following errors:
 //   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "Conflict" (type *publish.PublishConflictError): http.StatusConflict
 //   - "fault" (type *publish.TiUPFaultError): http.StatusInternalServerError
 //   - error: internal error
 func DecodeRequestToPublishResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
@@ -637,6 +653,20 @@ func DecodeRequestToPublishResponse(decoder func(*http.Response) goahttp.Decoder
 				return nil, goahttp.ErrValidationError("publish", "requestToPublish", err)
 			}
 			return nil, NewRequestToPublishBadRequest(&body)
+		case http.StatusConflict:
+			var (
+				body RequestToPublishConflictResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "requestToPublish", err)
+			}
+			err = ValidateRequestToPublishConflictResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "requestToPublish", err)
+			}
+			return nil, NewRequestToPublishConflict(&body)
 		case http.StatusInternalServerError:
 			var (
 				body RequestToPublishFaultResponseBody
@@ -695,6 +725,7 @@ func EncodeRequestToPublishSingleRequest(encoder func(*http.Request) goahttp.Enc
 // controls whether the response body should be restored after having been read.
 // DecodeRequestToPublishSingleResponse may return the following errors:
 //   - "BadRequest" (type *publish.PublishBadRequestError): http.StatusBadRequest
+//   - "Conflict" (type *publish.PublishConflictError): http.StatusConflict
 //   - "fault" (type *publish.TiUPFaultError): http.StatusInternalServerError
 //   - error: internal error
 func DecodeRequestToPublishSingleResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
@@ -736,6 +767,20 @@ func DecodeRequestToPublishSingleResponse(decoder func(*http.Response) goahttp.D
 				return nil, goahttp.ErrValidationError("publish", "requestToPublishSingle", err)
 			}
 			return nil, NewRequestToPublishSingleBadRequest(&body)
+		case http.StatusConflict:
+			var (
+				body RequestToPublishSingleConflictResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("publish", "requestToPublishSingle", err)
+			}
+			err = ValidateRequestToPublishSingleConflictResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("publish", "requestToPublishSingle", err)
+			}
+			return nil, NewRequestToPublishSingleConflict(&body)
 		case http.StatusInternalServerError:
 			var (
 				body RequestToPublishSingleFaultResponseBody

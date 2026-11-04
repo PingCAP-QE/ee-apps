@@ -190,6 +190,17 @@ type DeliveryByRulesBadRequestResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
+// DeliveryByRulesConflictResponseBody is the type of the "publish" service
+// "deliveryByRules" endpoint HTTP response body for the "Conflict" error.
+type DeliveryByRulesConflictResponseBody struct {
+	Code           *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message        *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+	Version        *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
+	ExistingDigest *string `form:"existingDigest,omitempty" json:"existingDigest,omitempty" xml:"existingDigest,omitempty"`
+	NewDigest      *string `form:"newDigest,omitempty" json:"newDigest,omitempty" xml:"newDigest,omitempty"`
+	ExistingUnitID *string `form:"existingUnitId,omitempty" json:"existingUnitId,omitempty" xml:"existingUnitId,omitempty"`
+}
+
 // DeliveryByRulesFaultResponseBody is the type of the "publish" service
 // "deliveryByRules" endpoint HTTP response body for the "fault" error.
 type DeliveryByRulesFaultResponseBody struct {
@@ -206,6 +217,17 @@ type DeliveryByRulesFaultResponseBody struct {
 type RequestToPublishBadRequestResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// RequestToPublishConflictResponseBody is the type of the "publish" service
+// "requestToPublish" endpoint HTTP response body for the "Conflict" error.
+type RequestToPublishConflictResponseBody struct {
+	Code           *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message        *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+	Version        *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
+	ExistingDigest *string `form:"existingDigest,omitempty" json:"existingDigest,omitempty" xml:"existingDigest,omitempty"`
+	NewDigest      *string `form:"newDigest,omitempty" json:"newDigest,omitempty" xml:"newDigest,omitempty"`
+	ExistingUnitID *string `form:"existingUnitId,omitempty" json:"existingUnitId,omitempty" xml:"existingUnitId,omitempty"`
 }
 
 // RequestToPublishFaultResponseBody is the type of the "publish" service
@@ -225,6 +247,18 @@ type RequestToPublishFaultResponseBody struct {
 type RequestToPublishSingleBadRequestResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// RequestToPublishSingleConflictResponseBody is the type of the "publish"
+// service "requestToPublishSingle" endpoint HTTP response body for the
+// "Conflict" error.
+type RequestToPublishSingleConflictResponseBody struct {
+	Code           *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message        *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+	Version        *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
+	ExistingDigest *string `form:"existingDigest,omitempty" json:"existingDigest,omitempty" xml:"existingDigest,omitempty"`
+	NewDigest      *string `form:"newDigest,omitempty" json:"newDigest,omitempty" xml:"newDigest,omitempty"`
+	ExistingUnitID *string `form:"existingUnitId,omitempty" json:"existingUnitId,omitempty" xml:"existingUnitId,omitempty"`
 }
 
 // RequestToPublishSingleFaultResponseBody is the type of the "publish" service
@@ -619,6 +653,21 @@ func NewDeliveryByRulesBadRequest(body *DeliveryByRulesBadRequestResponseBody) *
 	return v
 }
 
+// NewDeliveryByRulesConflict builds a publish service deliveryByRules endpoint
+// Conflict error.
+func NewDeliveryByRulesConflict(body *DeliveryByRulesConflictResponseBody) *publish.PublishConflictError {
+	v := &publish.PublishConflictError{
+		Code:           *body.Code,
+		Message:        *body.Message,
+		Version:        body.Version,
+		ExistingDigest: body.ExistingDigest,
+		NewDigest:      body.NewDigest,
+		ExistingUnitID: body.ExistingUnitID,
+	}
+
+	return v
+}
+
 // NewDeliveryByRulesFault builds a publish service deliveryByRules endpoint
 // fault error.
 func NewDeliveryByRulesFault(body *DeliveryByRulesFaultResponseBody) *publish.TiUPFaultError {
@@ -660,6 +709,21 @@ func NewRequestToPublishBadRequest(body *RequestToPublishBadRequestResponseBody)
 	return v
 }
 
+// NewRequestToPublishConflict builds a publish service requestToPublish
+// endpoint Conflict error.
+func NewRequestToPublishConflict(body *RequestToPublishConflictResponseBody) *publish.PublishConflictError {
+	v := &publish.PublishConflictError{
+		Code:           *body.Code,
+		Message:        *body.Message,
+		Version:        body.Version,
+		ExistingDigest: body.ExistingDigest,
+		NewDigest:      body.NewDigest,
+		ExistingUnitID: body.ExistingUnitID,
+	}
+
+	return v
+}
+
 // NewRequestToPublishFault builds a publish service requestToPublish endpoint
 // fault error.
 func NewRequestToPublishFault(body *RequestToPublishFaultResponseBody) *publish.TiUPFaultError {
@@ -696,6 +760,21 @@ func NewRequestToPublishSingleBadRequest(body *RequestToPublishSingleBadRequestR
 	v := &publish.PublishBadRequestError{
 		Code:    *body.Code,
 		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewRequestToPublishSingleConflict builds a publish service
+// requestToPublishSingle endpoint Conflict error.
+func NewRequestToPublishSingleConflict(body *RequestToPublishSingleConflictResponseBody) *publish.PublishConflictError {
+	v := &publish.PublishConflictError{
+		Code:           *body.Code,
+		Message:        *body.Message,
+		Version:        body.Version,
+		ExistingDigest: body.ExistingDigest,
+		NewDigest:      body.NewDigest,
+		ExistingUnitID: body.ExistingUnitID,
 	}
 
 	return v
@@ -1009,6 +1088,18 @@ func ValidateDeliveryByRulesBadRequestResponseBody(body *DeliveryByRulesBadReque
 	return
 }
 
+// ValidateDeliveryByRulesConflictResponseBody runs the validations defined on
+// deliveryByRules_Conflict_response_body
+func ValidateDeliveryByRulesConflictResponseBody(body *DeliveryByRulesConflictResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
 // ValidateDeliveryByRulesFaultResponseBody runs the validations defined on
 // deliveryByRules_fault_response_body
 func ValidateDeliveryByRulesFaultResponseBody(body *DeliveryByRulesFaultResponseBody) (err error) {
@@ -1033,6 +1124,18 @@ func ValidateRequestToPublishBadRequestResponseBody(body *RequestToPublishBadReq
 	return
 }
 
+// ValidateRequestToPublishConflictResponseBody runs the validations defined on
+// requestToPublish_Conflict_response_body
+func ValidateRequestToPublishConflictResponseBody(body *RequestToPublishConflictResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
 // ValidateRequestToPublishFaultResponseBody runs the validations defined on
 // requestToPublish_fault_response_body
 func ValidateRequestToPublishFaultResponseBody(body *RequestToPublishFaultResponseBody) (err error) {
@@ -1048,6 +1151,18 @@ func ValidateRequestToPublishFaultResponseBody(body *RequestToPublishFaultRespon
 // ValidateRequestToPublishSingleBadRequestResponseBody runs the validations
 // defined on requestToPublishSingle_BadRequest_response_body
 func ValidateRequestToPublishSingleBadRequestResponseBody(body *RequestToPublishSingleBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateRequestToPublishSingleConflictResponseBody runs the validations
+// defined on requestToPublishSingle_Conflict_response_body
+func ValidateRequestToPublishSingleConflictResponseBody(body *RequestToPublishSingleConflictResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}
