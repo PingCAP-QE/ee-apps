@@ -24,7 +24,9 @@ func TestReloadAppliesNightlySchedule(t *testing.T) {
 
 	enabled := true
 	svc.Reload(&config.Service{
-		Worker: config.Worker{Targets: []string{delivery.TiUPTargetStaging}},
+		// The reconciler is a worker concern: it only runs where TiUP steps can
+		// execute, so the revision declares that kind.
+		Worker: config.Worker{Kinds: []string{PublishKindTiUP}, Targets: []string{delivery.TiUPTargetStaging}},
 		Publish: config.Publish{
 			Nightly: config.NightlyPublish{
 				Enabled: &enabled,
@@ -143,6 +145,9 @@ func TestNightlyReconcilerPicksUpTickIntervalChange(t *testing.T) {
 	initial := nightlyTestConfig(enabled, delivery.TiUPTargetProd)
 	initial.TickInterval = "1h"
 	svc.publishCfg = config.Publish{Nightly: initial}
+	// The reconciler only runs in a worker that can execute TiUP steps, so the
+	// fixture must declare the kind here and in the reloaded revision.
+	svc.workerCfg.Kinds = []string{PublishKindTiUP}
 	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
 	svc.desired = newDesiredStore(svc.db, initial)
 	svc.desired.nowFn = func() time.Time { return *clock }
@@ -159,7 +164,7 @@ func TestNightlyReconcilerPicksUpTickIntervalChange(t *testing.T) {
 	next := initial
 	next.TickInterval = "5ms"
 	svc.Reload(&config.Service{
-		Worker:  config.Worker{Targets: []string{delivery.TiUPTargetProd}},
+		Worker:  config.Worker{Kinds: []string{PublishKindTiUP}, Targets: []string{delivery.TiUPTargetProd}},
 		Publish: config.Publish{Nightly: next},
 	})
 

@@ -315,9 +315,15 @@ func (s *desiredStore) Get(ctx context.Context, key desiredKey) (*ent.PublishDes
 	return row, nil
 }
 
-// nightlyEnabled reports whether this worker should run the reconciler.
+// nightlyEnabled reports whether this worker should run the reconciler. The
+// reconciler creates TiUP units, so only a worker that can execute TiUP steps
+// may drive it: image workers share the same config file and must not create
+// units they cannot run.
 func (s *publishsrvc) nightlyEnabled() bool {
 	if s.desired == nil || !s.publishConfig().Nightly.EnabledValue() {
+		return false
+	}
+	if !containsString(s.workerConfig().Kinds, PublishKindTiUP) {
 		return false
 	}
 	return len(s.nightlyTargets()) > 0
