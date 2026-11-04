@@ -463,6 +463,7 @@ func TestNightlyReconcilerRunsOnItsTick(t *testing.T) {
 	enabled := true
 	svc.publishCfg.Nightly = nightlyTestConfig(enabled, delivery.TiUPTargetProd)
 	svc.publishCfg.Nightly.TickInterval = "5ms"
+	svc.workerCfg.Kinds = []string{PublishKindTiUP}
 	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
 	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly)
 	svc.desired.nowFn = func() time.Time { return *clock }
