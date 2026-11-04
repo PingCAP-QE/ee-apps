@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -14,39 +13,31 @@ import (
 )
 
 const (
-	sseMcpConnectTimeout = 5 * time.Second
-
 	McpClientName    = "ee-chatops-lark"
 	McpClientVersion = "1.0.0"
 )
 
-// newSSEMcpClient creates a new SSE MCP client.
-// connects it and initializes it.
-func newSSEMcpClient(ctx context.Context, baseURL string) (*client.SSEMCPClient, error) {
-	client, err := client.NewSSEMCPClient(baseURL + "/sse")
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create client: %v", err)
-	}
-
-	// Connect
-	if err := client.Start(ctx); err != nil {
+// newStreamHttpMcpClient creates a new HTTP streaming MCP client.
+func newStreamHttpMcpClient(ctx context.Context, baseURL string) (*client.Client, error) {
+	mcpClient, err := client.NewStreamableHttpClient(baseURL)
+	if err := mcpClient.Start(ctx); err != nil {
 		return nil, fmt.Errorf("Failed to start client: %v", err)
 	}
 
-	// Initialize
-	initRequest := mcp.InitializeRequest{}
-	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initRequest.Params.ClientInfo = mcp.Implementation{
-		Name:    McpClientName,
-		Version: McpClientVersion,
+	initRequest := mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    McpClientName,
+				Version: McpClientVersion,
+			},
+		},
 	}
-
-	_, err = client.Initialize(ctx, initRequest)
+	_, err = mcpClient.Initialize(ctx, initRequest)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to initialize: %v", err)
+		return nil, fmt.Errorf("Failed to initialize: %w", err)
 	}
-
-	return client, nil
+	return mcpClient, nil
 }
 
 func processMcpToolCall(ctx context.Context, client client.MCPClient, toolCall openai.ChatCompletionMessageToolCall) ([]openai.ChatCompletionContentPartTextParam, error) {
@@ -103,8 +94,8 @@ func initializeMCPClient(ctx context.Context, name, url string) (client.MCPClien
 	// Create a logger with the provided name and URL
 	logger := log.With().Str("name", name).Str("url", url).Logger()
 
-	// Create a new SSE MCP client
-	c, err := newSSEMcpClient(ctx, url)
+	// Create a new HTTP streaming MCP client
+	c, err := newStreamHttpMcpClient(ctx, url)
 	if err != nil {
 		logger.Err(err).Msg("failed to create mcp client")
 		return nil, nil, err
