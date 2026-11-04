@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -19,12 +20,12 @@ func newTiUPServiceForTest(t *testing.T, cfg config.Publish) *publishsrvc {
 	svc, _ := newFlowTestService(t)
 	svc.publishCfg = cfg
 	cases := loadGoldenCases(t)
-	svc.fetchConfig = func(ctx context.Context, artifactURL string) (map[string]any, string, error) {
+	svc.fetchConfig = func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error) {
 		c, ok := cases[artifactURL]
 		if !ok {
-			return nil, "", errors.New("unexpected artifact " + artifactURL)
+			return nil, "", time.Time{}, errors.New("unexpected artifact " + artifactURL)
 		}
-		return c.ArtifactConfig, "sha256:1111111111111111111111111111111111111111111111111111111111111111", nil
+		return c.ArtifactConfig, "sha256:1111111111111111111111111111111111111111111111111111111111111111", time.Time{}, nil
 	}
 	return svc
 }

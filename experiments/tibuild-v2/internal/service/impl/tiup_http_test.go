@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	goahttp "goa.design/goa/v3/http"
@@ -26,12 +27,12 @@ func newTiUPHTTPTestServer(t *testing.T) (*httptest.Server, *publishsrvc) {
 	svc.planner = &publishPlanner{rules: goldenRulesLoader(t)}
 
 	cases := loadGoldenCases(t)
-	svc.fetchConfig = func(ctx context.Context, artifactURL string) (map[string]any, string, error) {
+	svc.fetchConfig = func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error) {
 		c, ok := cases[artifactURL]
 		if !ok {
-			return nil, "", os.ErrNotExist
+			return nil, "", time.Time{}, os.ErrNotExist
 		}
-		return c.ArtifactConfig, "sha256:1111111111111111111111111111111111111111111111111111111111111111", nil
+		return c.ArtifactConfig, "sha256:1111111111111111111111111111111111111111111111111111111111111111", time.Time{}, nil
 	}
 
 	mux := goahttp.NewMuxer()

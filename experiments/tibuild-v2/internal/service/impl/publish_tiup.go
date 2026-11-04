@@ -95,6 +95,10 @@ type TiUPStepPayload struct {
 	// Digest pins the artifact manifest, so a moved tag cannot change what is
 	// published.
 	Digest string `json:"digest"`
+	// ArtifactCreatedAt is the build time from the OCI manifest annotation
+	// org.opencontainers.image.created. It orders queued units of the same
+	// channel; it is zero for manual/HTTP sources.
+	ArtifactCreatedAt time.Time `json:"artifact_created_at,omitempty"`
 	// Nightly marks the nightly channel: its version is a constant, so a new
 	// build is expected to replace the previous package of the same version.
 	Nightly bool `json:"nightly,omitempty"`
@@ -141,6 +145,9 @@ type tiupCLI struct {
 	// download fetches a file from the OCI artifact and returns its local path
 	// and sha256. Tests replace it with a fixture.
 	download func(ctx context.Context, artifactURL, digest, file string) (string, string, error)
+	// layerDigest returns the sha256 of an artifact file without downloading
+	// it. Tests replace it with a fixture.
+	layerDigest func(ctx context.Context, artifactURL, digest, file string) (string, error)
 }
 
 func newTiupCLI(bin string) *tiupCLI {
@@ -148,9 +155,10 @@ func newTiupCLI(bin string) *tiupCLI {
 		bin = "tiup"
 	}
 	return &tiupCLI{
-		bin:      bin,
-		http:     &http.Client{Timeout: 5 * time.Minute},
-		download: downloadOCIFile,
+		bin:         bin,
+		http:        &http.Client{Timeout: 5 * time.Minute},
+		download:    downloadOCIFile,
+		layerDigest: ociLayerDigest,
 	}
 }
 
@@ -162,18 +170,36 @@ func newTiupCLI(bin string) *tiupCLI {
 //   - remote present, other sha, formal vX.Y.Z → refuse; bump the version
 //   - remote present, other sha, non-formal    → overwrite on purpose
 func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg delivery.TiUPPackage) (map[string]any, error) {
-	localPath, localSHA, err := t.downloadPackage(ctx, payload, pkg.File)
-	if err != nil {
-		return nil, fmt.Errorf("download %s: %w", pkg.File, err)
-	}
-	defer os.Remove(localPath)
-
 	remoteURL := tiupRemotePackageURL(payload.MirrorURL, pkg)
 
 	remoteSHA, exists, err := t.remoteSHA256(ctx, remoteURL)
 	if err != nil {
 		return nil, err
 	}
+
+	// The OCI layer digest is the sha256 of the tarball, so an already
+	// published package can be recognised without downloading it.
+	if exists && payload.SourceType != "http" && payload.ArtifactURL != "" {
+		layerSHA, err := t.layerDigestFor(ctx, payload, pkg.File)
+		if err != nil {
+			return nil, err
+		}
+		if layerSHA != "" { // an empty value means "no precheck available"
+			if layerSHA == remoteSHA {
+				return tiupPackageResult(pkg, remoteURL, layerSHA, remoteSHA, tiupActionSkippedExisting, true), nil
+			}
+			if isFormalTiUPVersion(pkg.Version) {
+				return nil, &tiupOverwriteRefusedError{pkg: pkg, url: remoteURL, remoteSHA: remoteSHA, localSHA: layerSHA}
+			}
+		}
+	}
+
+	localPath, localSHA, err := t.downloadPackage(ctx, payload, pkg.File)
+	if err != nil {
+		return nil, fmt.Errorf("download %s: %w", pkg.File, err)
+	}
+	defer os.Remove(localPath)
+
 	if exists && remoteSHA == localSHA {
 		return tiupPackageResult(pkg, remoteURL, localSHA, remoteSHA, tiupActionSkippedExisting, true), nil
 	}
@@ -210,6 +236,22 @@ func (t *tiupCLI) PublishOne(ctx context.Context, payload TiUPStepPayload, pkg d
 		}
 	}
 	return tiupPackageResult(pkg, remoteURL, localSHA, published, action, false), nil
+}
+
+// layerDigestFor returns the sha256 of the artifact file without downloading
+// it. The legacy HTTP source has no layer descriptor, so it falls back to an
+// empty value (the caller then downloads and compares).
+func (t *tiupCLI) layerDigestFor(ctx context.Context, payload TiUPStepPayload, file string) (string, error) {
+	if payload.SourceType == "http" || payload.ArtifactURL == "" {
+		return "", nil
+	}
+	fn := t.layerDigest
+	if fn == nil {
+		// Test clients that do not stub the layer reader keep the old
+		// download-then-compare behaviour.
+		return "", nil
+	}
+	return fn(ctx, payload.ArtifactURL, payload.Digest, file)
 }
 
 // tiupOverwriteRefusedError is returned when a released vX.Y.Z package differs
@@ -343,6 +385,40 @@ func (t *tiupCLI) remoteSHA256(ctx context.Context, url string) (string, bool, e
 func tiupRemotePackageURL(mirrorURL string, pkg delivery.TiUPPackage) string {
 	return strings.TrimSuffix(mirrorURL, "/") + "/" + path.Base(fmt.Sprintf("%s-%s-%s-%s.tar.gz",
 		pkg.Name, pkg.Version, pkg.OS, pkg.Arch))
+}
+
+// ociLayerDigest returns the sha256 of one file in an OCI artifact without
+// fetching the file itself.
+func ociLayerDigest(ctx context.Context, artifactURL, digest, file string) (string, error) {
+	ref, err := delivery.ParseImageRef(artifactURL)
+	if err != nil {
+		return "", err
+	}
+	repo, err := remote.NewRepository(ref.Repository)
+	if err != nil {
+		return "", err
+	}
+	repo.Client = registryAuthClient(ref.Repository)
+
+	source := digest
+	if source == "" {
+		source = ref.Tag
+	}
+
+	_, manifestBytes, err := oras.FetchBytes(ctx, repo, source, oras.DefaultFetchBytesOptions)
+	if err != nil {
+		return "", fmt.Errorf("fetch manifest %s: %w", source, err)
+	}
+	var manifest ocispec.Manifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return "", fmt.Errorf("decode manifest: %w", err)
+	}
+	for _, layer := range manifest.Layers {
+		if layer.Annotations[ocispec.AnnotationTitle] == file {
+			return layer.Digest.Encoded(), nil
+		}
+	}
+	return "", fmt.Errorf("artifact %s has no file %q", artifactURL, file)
 }
 
 // downloadOCIFile fetches one file of an OCI artifact, using the mounted docker

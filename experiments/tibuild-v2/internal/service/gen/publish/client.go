@@ -45,6 +45,7 @@ func NewClient(publishImages, getUnit, listUnits, retryUnit, deliveryByRules, re
 // PublishImages calls the "publishImages" endpoint of the "publish" service.
 // PublishImages may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
@@ -62,6 +63,7 @@ func (c *Client) PublishImages(ctx context.Context, p *PublishImagesPayload) (re
 // GetUnit calls the "getUnit" endpoint of the "publish" service.
 // GetUnit may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
@@ -79,6 +81,7 @@ func (c *Client) GetUnit(ctx context.Context, p *GetUnitPayload) (res *PublishUn
 // ListUnits calls the "listUnits" endpoint of the "publish" service.
 // ListUnits may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
@@ -96,6 +99,7 @@ func (c *Client) ListUnits(ctx context.Context, p *ListUnitsPayload) (res []*Pub
 // RetryUnit calls the "retryUnit" endpoint of the "publish" service.
 // RetryUnit may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
@@ -114,6 +118,7 @@ func (c *Client) RetryUnit(ctx context.Context, p *RetryUnitPayload) (res *Publi
 // service.
 // DeliveryByRules may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
@@ -132,6 +137,7 @@ func (c *Client) DeliveryByRules(ctx context.Context, p *DeliveryByRulesPayload)
 // service.
 // RequestToPublish may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
@@ -150,6 +156,7 @@ func (c *Client) RequestToPublish(ctx context.Context, p *RequestToPublishPayloa
 // "publish" service.
 // RequestToPublishSingle may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
@@ -168,6 +175,7 @@ func (c *Client) RequestToPublishSingle(ctx context.Context, p *TiUPPublishReque
 // "publish" service.
 // QueryPublishingStatus may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
@@ -185,6 +193,7 @@ func (c *Client) QueryPublishingStatus(ctx context.Context, p *QueryPublishingSt
 // ResetRateLimit calls the "resetRateLimit" endpoint of the "publish" service.
 // ResetRateLimit may return the following errors:
 //   - "BadRequest" (type *PublishBadRequestError): Bad Request
+//   - "Conflict" (type *PublishConflictError): Conflict
 //   - "NotFound" (type *PublishNotFoundError): Not Found
 //   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
 //   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error

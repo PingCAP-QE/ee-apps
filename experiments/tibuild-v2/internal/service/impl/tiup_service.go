@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2"
@@ -39,7 +40,7 @@ func (s *publishsrvc) DeliveryByRules(ctx context.Context, p *publish.DeliveryBy
 		return []string{}, nil
 	}
 
-	artifactConfig, digest, err := s.fetchConfig(ctx, src)
+	artifactConfig, digest, createdAt, err := s.fetchConfig(ctx, src)
 	if err != nil {
 		return nil, publishFault(fmt.Errorf("read artifact config: %w", err))
 	}
@@ -85,14 +86,21 @@ func (s *publishsrvc) DeliveryByRules(ctx context.Context, p *publish.DeliveryBy
 		return []string{}, nil
 	}
 
-	_, steps, err := s.createTiUPUnit(ctx, src, "delivery-by-rules", digest, immediate)
+	_, steps, reused, err := s.supersedeTiUPUnit(ctx, src, "delivery-by-rules", digest, createdAt, immediate)
 	if err != nil {
-		return nil, publishFault(err)
+		return nil, tiupPublishError(err)
 	}
 
 	ids := make([]string, 0, len(steps))
 	for _, step := range steps {
 		ids = append(ids, step.ID)
+	}
+	if reused {
+		s.logger.Info().
+			Str("artifact", src).
+			Int("steps", len(steps)).
+			Msg("tiup publication unit reused")
+		return ids, nil
 	}
 	s.logger.Info().
 		Str("artifact", src).
@@ -117,7 +125,7 @@ func (s *publishsrvc) RequestToPublish(ctx context.Context, p *publish.RequestTo
 		return nil, badRequest(err.Error())
 	}
 
-	artifactConfig, digest, err := s.fetchConfig(ctx, src)
+	artifactConfig, digest, createdAt, err := s.fetchConfig(ctx, src)
 	if err != nil {
 		return nil, publishFault(fmt.Errorf("read artifact config: %w", err))
 	}
@@ -149,9 +157,9 @@ func (s *publishsrvc) RequestToPublish(ctx context.Context, p *publish.RequestTo
 		Packages: packages,
 	}}
 
-	_, steps, err := s.createTiUPUnit(ctx, src, "request-to-publish", digest, plans)
+	_, steps, _, err := s.supersedeTiUPUnit(ctx, src, "request-to-publish", digest, createdAt, plans)
 	if err != nil {
-		return nil, publishFault(err)
+		return nil, tiupPublishError(err)
 	}
 
 	ids := make([]string, 0, len(steps))
@@ -276,7 +284,7 @@ func (s *publishsrvc) ResetRateLimit(context.Context) error {
 
 // createTiUPUnit persists a unit and its per-target steps, seeding the
 // configured dependency edges (prod before staging by default).
-func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requestedBy, digest string, plans []delivery.TiUPPlan) (*ent.PublishUnit, []*ent.PublishStep, error) {
+func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requestedBy, digest string, artifactCreatedAt time.Time, plans []delivery.TiUPPlan) (*ent.PublishUnit, []*ent.PublishStep, error) {
 	mirrors, err := s.mirrorURLs()
 	if err != nil {
 		return nil, nil, err
@@ -316,12 +324,13 @@ func (s *publishsrvc) createTiUPUnit(ctx context.Context, artifactURL, requested
 	steps := make([]*ent.PublishStep, 0, len(plans))
 	for i, plan := range plans {
 		payload := TiUPStepPayload{
-			Mirror:      plan.Mirror,
-			MirrorURL:   mirrors[plan.Mirror],
-			ArtifactURL: artifactURL,
-			Digest:      digest,
-			Nightly:     plan.Nightly,
-			Packages:    plan.Packages,
+			Mirror:            plan.Mirror,
+			MirrorURL:         mirrors[plan.Mirror],
+			ArtifactURL:       artifactURL,
+			Digest:            digest,
+			ArtifactCreatedAt: artifactCreatedAt,
+			Nightly:           plan.Nightly,
+			Packages:          plan.Packages,
 		}
 		raw, err := payloadMap(payload)
 		if err != nil {
@@ -479,35 +488,40 @@ func orderTiUPPlans(plans []delivery.TiUPPlan, dependencies map[string]string) [
 }
 
 // fetchTiUPArtifactConfig reads the OCI artifact config and the manifest digest.
-func fetchTiUPArtifactConfig(ctx context.Context, artifactURL string) (map[string]any, string, error) {
+func fetchTiUPArtifactConfig(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error) {
 	ref, err := delivery.ParseImageRef(artifactURL)
 	if err != nil {
-		return nil, "", err
+		return nil, "", time.Time{}, err
 	}
 	repo, err := remote.NewRepository(ref.Repository)
 	if err != nil {
-		return nil, "", err
+		return nil, "", time.Time{}, err
 	}
 	repo.Client = registryAuthClient(ref.Repository)
 
 	desc, manifestBytes, err := oras.FetchBytes(ctx, repo, ref.Tag, oras.DefaultFetchBytesOptions)
 	if err != nil {
-		return nil, "", fmt.Errorf("fetch manifest %s: %w", artifactURL, err)
+		return nil, "", time.Time{}, fmt.Errorf("fetch manifest %s: %w", artifactURL, err)
 	}
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-		return nil, "", fmt.Errorf("decode manifest: %w", err)
+		return nil, "", time.Time{}, fmt.Errorf("decode manifest: %w", err)
 	}
 
 	configBytes, err := content.FetchAll(ctx, repo, manifest.Config)
 	if err != nil {
-		return nil, "", fmt.Errorf("fetch config: %w", err)
+		return nil, "", time.Time{}, fmt.Errorf("fetch config: %w", err)
 	}
 	var artifactConfig map[string]any
 	if err := json.Unmarshal(configBytes, &artifactConfig); err != nil {
-		return nil, "", fmt.Errorf("decode config: %w", err)
+		return nil, "", time.Time{}, fmt.Errorf("decode config: %w", err)
 	}
-	return artifactConfig, desc.Digest.String(), nil
+
+	// The build time is a manifest annotation, not part of the config blob.
+	// It orders queued units of the same channel; a missing or malformed value
+	// falls back to the unit creation time at the caller.
+	created, _ := time.Parse(time.RFC3339, manifest.Annotations[ocispec.AnnotationCreated])
+	return artifactConfig, desc.Digest.String(), created, nil
 }
 
 // toTiUPUnit converts stored rows into the API type.
