@@ -42,9 +42,11 @@ re-enter its own live lane, so the second step of an ordered prod → staging un
 starts immediately after the first step succeeds instead of waiting for the
 lease. The unit-terminal release is kept as an idempotent backstop.
 
-The lease (9m = `hard_timeout` 8m + two heartbeats) only matters when a worker
-dies mid-step; the next owner can reclaim it after the lease expires. A step
-that keeps a healthy heartbeat is never preempted.
+The lane lease is derived from the worker timings: it is never shorter than the
+step lease and never shorter than `hard_timeout + 2×heartbeat`. With
+`lease: 9m`, `hard_timeout: 7m` and a 30s heartbeat it is 9m. The lease only
+matters when a worker dies mid-step; the next owner can reclaim it after the
+lease expires. A step that keeps a healthy heartbeat is never preempted.
 
 Finding the lane busy is **not** an execution attempt. The claim increments
 `publish_step.attempts`, the requeue decrements it again, so `max_attempts`
@@ -70,9 +72,10 @@ Each worker mounts only its own signing key
 from `publish.tiup_mirrors` and are baked into the step payload, so a worker
 never resolves them at execution time.
 
-Timings for the TiUP kind: `lease: 12m`, `heartbeat: 30s`,
-`hard_timeout: 8m`. The lane lease is derived from these (never shorter than
-the step lease, and at least `hard_timeout + 2×heartbeat`).
+Timings for the TiUP kind: `lease: 9m`, `heartbeat: 30s`,
+`hard_timeout: 7m`. `hard_timeout` must stay below `lease*0.8`, and the lane
+lease derived from these is 9m (never shorter than the step lease, and at least
+`hard_timeout + 2×heartbeat`).
 
 ## Failure handling
 
