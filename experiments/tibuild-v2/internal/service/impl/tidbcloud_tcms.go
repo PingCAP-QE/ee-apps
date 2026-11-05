@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
@@ -14,11 +16,14 @@ import (
 )
 
 const (
-	ociLabelSource   = "org.opencontainers.image.source"
-	ociLabelRevision = "org.opencontainers.image.revision"
-	ociLabelRefName  = "org.opencontainers.image.ref.name"
+	ociLabelSource      = "org.opencontainers.image.source"
+	ociLabelRevision    = "org.opencontainers.image.revision"
+	ociLabelRefName     = "org.opencontainers.image.ref.name"
+	ociLabelCommitTitle = "net.pingcap.tibuild.git-commit-title"
+	ociLabelCommitTime  = "net.pingcap.tibuild.git-commit-time"
 
-	tcmsImageBuildPath = "/tidbx-component-image-builds"
+	tcmsImageBuildPath       = "/tidbx-component-image-builds"
+	tcmsCommitTitleMaxLength = 255
 )
 
 // AddTidbxImageTagInTcms records a TiDB-X component image build in TCMS.
@@ -37,7 +42,8 @@ func (s *tidbcloudsrvc) AddTidbxImageTagInTcms(ctx context.Context, p *tidbcloud
 		return nil, fmt.Errorf("tidbcloud test platforms config is not configured")
 	}
 
-	s.populateGithubFromImage(ctx, p)
+	labels := s.readImageLabels(ctx, p.Image)
+	s.populateGithubFromLabels(p, labels)
 
 	reqBody := &tidbcloud.AddTidbxImageTagInTcmsResult{ImageTag: &imageTag}
 	if p.Github != nil {
@@ -52,6 +58,9 @@ func (s *tidbcloudsrvc) AddTidbxImageTagInTcms(ctx context.Context, p *tidbcloud
 			reqBody.Branch = &branch
 		}
 	}
+	// Commit metadata always comes from the image labels, even when the caller
+	// supplied the git information explicitly.
+	applyCommitMetadata(reqBody, labels)
 
 	headers := map[string]string{}
 	if tpsCfg.TCMS.AuthToken != "" {
@@ -72,35 +81,36 @@ func (s *tidbcloudsrvc) AddTidbxImageTagInTcms(ctx context.Context, p *tidbcloud
 	return reqBody, nil
 }
 
-// populateGithubFromImage fills the git information from the image OCI labels
-// when the caller did not supply it.
-func (s *tidbcloudsrvc) populateGithubFromImage(ctx context.Context, p *tidbcloud.AddTidbxImageTagInTcmsPayload) {
-	if p == nil || p.Github != nil {
-		return
-	}
-
+// readImageLabels reads the OCI labels of image once. A registry or decode
+// failure is logged and yields nil: every label is optional for the callers.
+func (s *tidbcloudsrvc) readImageLabels(ctx context.Context, image string) map[string]string {
 	readConfig := s.readImageConfig
 	if readConfig == nil {
 		readConfig = func(ctx context.Context, image string) ([]byte, error) {
 			return crane.Config(image, crane.WithContext(ctx))
 		}
 	}
-	configBytes, err := readConfig(ctx, p.Image)
+	configBytes, err := readConfig(ctx, image)
 	if err != nil {
-		s.logger.Err(err).Msg("read image config labels failed")
-		return
+		s.logger.Err(err).Str("image", image).Msg("read image config labels failed")
+		return nil
 	}
 
 	var config v1.ConfigFile
 	if err := json.Unmarshal(configBytes, &config); err != nil {
-		s.logger.Err(err).Msg("unmarshal image config failed")
-		return
+		s.logger.Err(err).Str("image", image).Msg("unmarshal image config failed")
+		return nil
 	}
-	if config.Config.Labels == nil {
+	return config.Config.Labels
+}
+
+// populateGithubFromLabels fills the git information from the image OCI labels
+// when the caller did not supply it.
+func (s *tidbcloudsrvc) populateGithubFromLabels(p *tidbcloud.AddTidbxImageTagInTcmsPayload, labels map[string]string) {
+	if p == nil || p.Github != nil {
 		return
 	}
 
-	labels := config.Config.Labels
 	repo := githubRepoFromSource(labels[ociLabelSource])
 	sha := strings.TrimSpace(labels[ociLabelRevision])
 	ref := strings.TrimSpace(labels[ociLabelRefName])
@@ -122,6 +132,29 @@ func (s *tidbcloudsrvc) populateGithubFromImage(ctx context.Context, p *tidbclou
 		Ref:       refPtr,
 		CommitSha: sha,
 	}
+}
+
+// applyCommitMetadata copies the commit message title and commit time from the
+// image labels onto the TCMS request. A missing label leaves the field unset,
+// and an unparsable time drops only that field, so an old image keeps working.
+func applyCommitMetadata(reqBody *tidbcloud.AddTidbxImageTagInTcmsResult, labels map[string]string) {
+	if title := truncateRunes(strings.TrimSpace(labels[ociLabelCommitTitle]), tcmsCommitTitleMaxLength); title != "" {
+		reqBody.CommitTitle = &title
+	}
+	if raw := strings.TrimSpace(labels[ociLabelCommitTime]); raw != "" {
+		if commitTime, err := time.Parse(time.RFC3339, raw); err == nil {
+			formatted := commitTime.Format(time.RFC3339)
+			reqBody.CommitTime = &formatted
+		}
+	}
+}
+
+// truncateRunes limits s to n runes without splitting a multi-byte character.
+func truncateRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n])
 }
 
 // githubRepoFromSource normalizes the org.opencontainers.image.source label to

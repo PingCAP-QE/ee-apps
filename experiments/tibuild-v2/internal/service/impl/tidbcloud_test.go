@@ -176,7 +176,7 @@ func TestReadImageConfigLabels(t *testing.T) {
 	require.Empty(t, meta.GitTag)
 
 	p := &tidbcloud.AddTidbxImageTagInTcmsPayload{Image: "example.com/tidb:v8.5.4"}
-	svc.populateGithubFromImage(context.Background(), p)
+	svc.populateGithubFromLabels(p, svc.readImageLabels(context.Background(), p.Image))
 	require.NotNil(t, p.Github)
 	require.Equal(t, "pingcap/tidb", p.Github.FullRepo)
 	require.Equal(t, sha, p.Github.CommitSha)

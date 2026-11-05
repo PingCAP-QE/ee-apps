@@ -152,6 +152,10 @@ func DecodeAddTidbxImageTagInTcmsResponse(decoder func(*http.Response) goahttp.D
 			if err != nil {
 				return nil, goahttp.ErrDecodingError("tidbcloud", "add-tidbx-image-tag-in-tcms", err)
 			}
+			err = ValidateAddTidbxImageTagInTcmsResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("tidbcloud", "add-tidbx-image-tag-in-tcms", err)
+			}
 			res := NewAddTidbxImageTagInTcmsResultOK(&body)
 			return res, nil
 		default:

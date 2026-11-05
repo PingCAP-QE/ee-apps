@@ -67,6 +67,10 @@ type AddTidbxImageTagInTcmsResult struct {
 	Sha *string `json:"sha,omitempty"`
 	// image tag
 	ImageTag *string `json:"imageTag,omitempty"`
+	// commit message title of the built commit, read from the image labels
+	CommitTitle *string `json:"commitTitle,omitempty"`
+	// commit time of the built commit in RFC 3339, read from the image labels
+	CommitTime *string `json:"commitTime,omitempty"`
 }
 
 // RequestSyncKernelImagePayload is the payload type of the tidbcloud service

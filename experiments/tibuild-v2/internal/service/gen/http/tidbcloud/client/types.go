@@ -9,6 +9,8 @@
 package client
 
 import (
+	"unicode/utf8"
+
 	tidbcloud "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/tidbcloud"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -67,6 +69,10 @@ type AddTidbxImageTagInTcmsResponseBody struct {
 	Sha *string `json:"sha,omitempty"`
 	// image tag
 	ImageTag *string `json:"imageTag,omitempty"`
+	// commit message title of the built commit, read from the image labels
+	CommitTitle *string `json:"commitTitle,omitempty"`
+	// commit time of the built commit in RFC 3339, read from the image labels
+	CommitTime *string `json:"commitTime,omitempty"`
 }
 
 // TidbcloudOpsTicketResponseBody is used to define fields on response body
@@ -162,10 +168,12 @@ func NewUpdateComponentVersionInCloudconfigResultOK(body *UpdateComponentVersion
 // "add-tidbx-image-tag-in-tcms" endpoint result from a HTTP "OK" response.
 func NewAddTidbxImageTagInTcmsResultOK(body *AddTidbxImageTagInTcmsResponseBody) *tidbcloud.AddTidbxImageTagInTcmsResult {
 	v := &tidbcloud.AddTidbxImageTagInTcmsResult{
-		Repo:     body.Repo,
-		Branch:   body.Branch,
-		Sha:      body.Sha,
-		ImageTag: body.ImageTag,
+		Repo:        body.Repo,
+		Branch:      body.Branch,
+		Sha:         body.Sha,
+		ImageTag:    body.ImageTag,
+		CommitTitle: body.CommitTitle,
+		CommitTime:  body.CommitTime,
 	}
 
 	return v
@@ -185,6 +193,17 @@ func ValidateUpdateComponentVersionInCloudconfigResponseBody(body *UpdateCompone
 			if err2 := ValidateTidbcloudOpsTicketResponseBody(e); err2 != nil {
 				err = goa.MergeErrors(err, err2)
 			}
+		}
+	}
+	return
+}
+
+// ValidateAddTidbxImageTagInTcmsResponseBody runs the validations defined on
+// Add-Tidbx-Image-Tag-In-TcmsResponseBody
+func ValidateAddTidbxImageTagInTcmsResponseBody(body *AddTidbxImageTagInTcmsResponseBody) (err error) {
+	if body.CommitTitle != nil {
+		if utf8.RuneCountInString(*body.CommitTitle) > 255 {
+			err = goa.MergeErrors(err, goa.InvalidLengthError("body.commitTitle", *body.CommitTitle, utf8.RuneCountInString(*body.CommitTitle), 255, false))
 		}
 	}
 	return

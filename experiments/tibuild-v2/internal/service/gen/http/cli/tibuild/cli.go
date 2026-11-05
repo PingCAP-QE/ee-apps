@@ -828,7 +828,7 @@ func publishRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish --body '{\n      \"artifact_url\": \"Perspiciatis mollitia dolor.\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"Quis ut assumenda rerum.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish --body '{\n      \"artifact_url\": \"Commodi fugit sed nobis.\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"Ipsam facere omnis repudiandae quia quis.\"\n   }'")
 }
 
 func publishRequestToPublishSingleUsage() {
@@ -846,7 +846,7 @@ func publishRequestToPublishSingleUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish-single --body '{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Quia quis at quae.\"\n         },\n         \"oci\": {\n            \"file\": \"Impedit sint perferendis saepe.\",\n            \"repo\": \"Natus facilis.\",\n            \"tag\": \"Qui illum in quia minus blanditiis saepe.\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"Libero fuga deleniti rerum qui.\",\n         \"description\": \"Autem exercitationem eos voluptatem.\",\n         \"entry_point\": \"Neque possimus odit aut laboriosam ipsa et.\",\n         \"name\": \"Asperiores non qui laboriosam adipisci.\",\n         \"os\": \"Rerum amet dicta.\",\n         \"standalone\": false,\n         \"version\": \"Autem illum quaerat unde voluptatem explicabo natus.\"\n      },\n      \"tiup_mirror\": \"staging\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish-single --body '{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Voluptates provident.\"\n         },\n         \"oci\": {\n            \"file\": \"Odio qui officia ut non sint officia.\",\n            \"repo\": \"Ut doloremque.\",\n            \"tag\": \"Dolore voluptatum sunt reprehenderit.\"\n         },\n         \"type\": \"http\"\n      },\n      \"publish\": {\n         \"arch\": \"Repellendus accusantium quae beatae impedit a.\",\n         \"description\": \"Sit explicabo velit odio repudiandae eveniet asperiores.\",\n         \"entry_point\": \"Impedit dicta labore.\",\n         \"name\": \"Quod non.\",\n         \"os\": \"Nisi debitis voluptas architecto.\",\n         \"standalone\": false,\n         \"version\": \"Soluta ducimus et minima et inventore eaque.\"\n      },\n      \"tiup_mirror\": \"staging\"\n   }'")
 }
 
 func publishQueryPublishingStatusUsage() {
@@ -864,7 +864,7 @@ func publishQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish query-publishing-status --request-id \"Voluptates provident.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish query-publishing-status --request-id \"Consectetur tempora aperiam qui consequuntur est corporis.\"")
 }
 
 func publishResetRateLimitUsage() {
@@ -947,5 +947,5 @@ func tidbcloudRequestSyncKernelImageUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud request-sync-kernel-image --body '{\n      \"images\": [\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\"\n      ],\n      \"stage\": \"dev\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "tidbcloud request-sync-kernel-image --body '{\n      \"images\": [\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\"\n      ],\n      \"stage\": \"dev\"\n   }'")
 }

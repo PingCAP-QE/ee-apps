@@ -29,6 +29,7 @@ func TestAddTidbxImageTagInTcms(t *testing.T) {
 	svc := newTidbcloudTestService(t, nil, &TestPlatformsConfig{
 		TCMS: TCMSConfig{APIBaseURL: srv.URL, AuthToken: "tcms-token"},
 	})
+	stubImageWithoutLabels(t, svc)
 
 	ref := "refs/heads/main"
 	p := &tidbcloud.AddTidbxImageTagInTcmsPayload{Image: "example.com/tidb:v26.3.1"}
@@ -74,6 +75,7 @@ func TestAddTidbxImageTagInTcmsUpstreamError(t *testing.T) {
 	svc := newTidbcloudTestService(t, nil, &TestPlatformsConfig{
 		TCMS: TCMSConfig{APIBaseURL: srv.URL},
 	})
+	stubImageWithoutLabels(t, svc)
 	_, err := svc.AddTidbxImageTagInTcms(context.Background(), &tidbcloud.AddTidbxImageTagInTcmsPayload{
 		Image: "example.com/tidb:v26.3.1",
 	})
@@ -91,6 +93,7 @@ func TestAddTidbxImageTagInTcmsWithoutRef(t *testing.T) {
 	svc := newTidbcloudTestService(t, nil, &TestPlatformsConfig{
 		TCMS: TCMSConfig{APIBaseURL: srv.URL},
 	})
+	stubImageWithoutLabels(t, svc)
 	p := &tidbcloud.AddTidbxImageTagInTcmsPayload{Image: "example.com/tidb:v26.3.1"}
 	p.Github = &struct {
 		FullRepo  string
