@@ -69,6 +69,10 @@ type AddTidbxImageTagInTcmsResponseBody struct {
 	Sha *string `json:"sha,omitempty"`
 	// image tag
 	ImageTag *string `json:"imageTag,omitempty"`
+	// commit message title of the built commit, read from the image labels
+	CommitTitle *string `json:"commitTitle,omitempty"`
+	// commit time of the built commit in RFC 3339, read from the image labels
+	CommitTime *string `json:"commitTime,omitempty"`
 }
 
 // TidbcloudOpsTicketResponseBody is used to define fields on response body
@@ -115,10 +119,12 @@ func NewUpdateComponentVersionInCloudconfigResponseBody(res *tidbcloud.UpdateCom
 // service.
 func NewAddTidbxImageTagInTcmsResponseBody(res *tidbcloud.AddTidbxImageTagInTcmsResult) *AddTidbxImageTagInTcmsResponseBody {
 	body := &AddTidbxImageTagInTcmsResponseBody{
-		Repo:     res.Repo,
-		Branch:   res.Branch,
-		Sha:      res.Sha,
-		ImageTag: res.ImageTag,
+		Repo:        res.Repo,
+		Branch:      res.Branch,
+		Sha:         res.Sha,
+		ImageTag:    res.ImageTag,
+		CommitTitle: res.CommitTitle,
+		CommitTime:  res.CommitTime,
 	}
 	return body
 }

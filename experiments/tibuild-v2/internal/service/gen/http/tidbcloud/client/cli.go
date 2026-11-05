@@ -87,7 +87,7 @@ func BuildRequestSyncKernelImagePayload(tidbcloudRequestSyncKernelImageBody stri
 	{
 		err = json.Unmarshal([]byte(tidbcloudRequestSyncKernelImageBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"images\": [\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\"\n      ],\n      \"stage\": \"dev\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"images\": [\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\",\n         \"us.gcr.io/pingcap-public/tidbx/tikv:v8.5.4-nextgen.202510.31\"\n      ],\n      \"stage\": \"dev\"\n   }'")
 		}
 		if body.Images == nil {
 			err = goa.MergeErrors(err, goa.MissingFieldError("images", "body"))

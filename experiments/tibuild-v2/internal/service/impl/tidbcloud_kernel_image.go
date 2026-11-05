@@ -2,13 +2,10 @@ package impl
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
 
-	"github.com/google/go-containerregistry/pkg/crane"
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"golang.org/x/mod/semver"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/tidbcloud"
@@ -180,28 +177,11 @@ func (s *tidbcloudsrvc) resolveKernelImageApplicant(ctx context.Context, repo, s
 //   - git ref: org.opencontainers.image.ref.name, a tag when it is a valid
 //     semantic version, otherwise a branch
 func (s *tidbcloudsrvc) readKernelImageMeta(ctx context.Context, image string) kernelImageMeta {
-	readConfig := s.readImageConfig
-	if readConfig == nil {
-		readConfig = func(ctx context.Context, image string) ([]byte, error) {
-			return crane.Config(image, crane.WithContext(ctx))
-		}
-	}
-	configBytes, err := readConfig(ctx, image)
-	if err != nil {
-		s.logger.Err(err).Str("image", image).Msg("read image config labels failed")
+	labels := s.readImageLabels(ctx, image)
+	if labels == nil {
 		return kernelImageMeta{}
 	}
 
-	var config v1.ConfigFile
-	if err := json.Unmarshal(configBytes, &config); err != nil {
-		s.logger.Err(err).Str("image", image).Msg("unmarshal image config failed")
-		return kernelImageMeta{}
-	}
-	if config.Config.Labels == nil {
-		return kernelImageMeta{}
-	}
-
-	labels := config.Config.Labels
 	meta := kernelImageMeta{
 		Repo:      githubRepoFromSource(labels[ociLabelSource]),
 		CommitSHA: strings.TrimSpace(labels[ociLabelRevision]),

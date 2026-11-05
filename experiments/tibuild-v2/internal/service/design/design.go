@@ -999,6 +999,15 @@ var _ = Service("tidbcloud", func() {
 				Meta("struct:tag:json", "imageTag,omitempty")
 				Example("v26.3.1-nextgen")
 			})
+			Attribute("commitTitle", String, "commit message title of the built commit, read from the image labels", func() {
+				Meta("struct:tag:json", "commitTitle,omitempty")
+				MaxLength(255)
+				Example("fix: keep the publish lane moving")
+			})
+			Attribute("commitTime", String, "commit time of the built commit in RFC 3339, read from the image labels", func() {
+				Meta("struct:tag:json", "commitTime,omitempty")
+				Example("2026-11-02T10:00:00+08:00")
+			})
 		})
 		HTTP(func() {
 			POST("/tidbx-component-image-builds")

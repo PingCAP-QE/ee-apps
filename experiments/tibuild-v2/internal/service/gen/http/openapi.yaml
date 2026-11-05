@@ -3580,6 +3580,15 @@ definitions:
                 type: string
                 description: github branch or tag name
                 example: v26.3.1
+            commitTime:
+                type: string
+                description: commit time of the built commit in RFC 3339, read from the image labels
+                example: "2026-11-02T10:00:00+08:00"
+            commitTitle:
+                type: string
+                description: commit message title of the built commit, read from the image labels
+                example: 'fix: keep the publish lane moving'
+                maxLength: 255
             imageTag:
                 type: string
                 description: image tag
@@ -3594,6 +3603,8 @@ definitions:
                 example: 031069dfc0c70e839d996c9e1cf3d34930fc662f
         example:
             branch: v26.3.1
+            commitTime: "2026-11-02T10:00:00+08:00"
+            commitTitle: 'fix: keep the publish lane moving'
             imageTag: v26.3.1-nextgen
             repo: pingcap/tidb
             sha: 031069dfc0c70e839d996c9e1cf3d34930fc662f
