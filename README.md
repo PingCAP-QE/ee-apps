@@ -13,10 +13,9 @@ Internal tooling and services for PingCAP Engineering Effectiveness.
 | [`ci-dashboard/`](ci-dashboard/) | CI metrics dashboard — FastAPI backend, React frontend | Python | [README](ci-dashboard/README.md) |
 | [`cost-insight/`](cost-insight/) | Cloud cost collection and attribution (GCP BigQuery, AWS) | Python | [README](cost-insight/README.md) |
 | [`roster/`](roster/) | Team roster sync from Lark for cost attribution | Python | [README](roster/README.md) |
-| [`mcp-servers/`](mcp-servers/) | MCP servers — knowledge base search and PR analysis | Python | — |
 | [`charts/`](charts/) | Helm charts for all deployable services | Helm | — |
 
-Retired subprojects live in [`archive/`](archive/) and are not built or deployed.
+Retired subprojects live in [`archived/`](archived/) and are not built or deployed.
 
 ## Repository Structure
 
