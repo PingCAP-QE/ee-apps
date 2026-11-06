@@ -34,6 +34,14 @@ jenkins:
 
 tekton:
   cloudevent_endpoint: "http://localhost:8000"
+  # Shared secret for authenticating the CloudEvents sent to the Tekton
+  # EventListener. tibuild signs the request body with HMAC-SHA256 and sends the
+  # signature in the GitHub-compatible `X-Hub-Signature-256` header; the
+  # listener's `github` interceptor verifies it with a `secretRef` pointing at
+  # the same value. In Kubernetes this is populated from a Secret created by
+  # ee-ops (Secret Manager key `gcp_tibuild_cloudevent_hmac`); never commit a
+  # real value. Empty sends unsigned events (unchanged legacy behaviour).
+  cloudevent_hmac_secret: ""
   # Server-side Tekton Dashboard API base URL (usually the in-cluster Service).
   # Falls back to view_url when empty.
   api_url: "http://tekton-dashboard.tekton-pipelines.svc:9097"

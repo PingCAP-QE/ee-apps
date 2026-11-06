@@ -52,7 +52,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		return nil
 	}
 
-	client, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(cfg.Tekton.CloudeventEndpoint))
+	client, err := newTektonCloudEventClient(cfg.Tekton.CloudeventEndpoint, cfg.Tekton.CloudeventHmacSecret, logger)
 	if err != nil {
 		logger.Err(err).Msg("failed to create cloud event client")
 		return nil
