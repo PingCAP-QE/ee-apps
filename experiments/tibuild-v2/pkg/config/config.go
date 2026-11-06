@@ -113,6 +113,21 @@ type Publish struct {
 	// that must finish first, the value is the target that waits. The default
 	// keeps the documented policy (staging waits for prod).
 	TiUPDependencies map[string]string `yaml:"tiup_dependencies,omitempty" json:"tiup_dependencies,omitempty"`
+	// HTTPSourceAllowedHosts is the hostname allowlist for an `http` publish
+	// source (the `from.http.url` of a TiUP publish request).
+	//
+	// The publish worker downloads that URL and hands the bytes to
+	// `tiup mirror publish`, and the mirror signing key is mounted in the
+	// worker. An unrestricted URL is therefore both an SSRF primitive (fetch
+	// any cluster-internal or metadata endpoint) and a supply-chain write
+	// (publish arbitrary bytes to the mirror end users install from), so this
+	// policy is fail-closed: an empty list rejects every `http` source.
+	//
+	// Entries are exact hostnames (`objects.githubusercontent.com`); a leading
+	// `*.` also allows subdomains (`*.example.com`). Matching is
+	// case-insensitive and ignores the port. The `oci` source is unaffected —
+	// it already pins a tag or digest.
+	HTTPSourceAllowedHosts []string `yaml:"http_source_allowed_hosts,omitempty" json:"http_source_allowed_hosts,omitempty"`
 	// Nightly switches the listed targets from "publish every push" to
 	// desired-state convergence (accumulate, publish only the newest per
 	// window). It is off by default so a deployment cannot change nightly
