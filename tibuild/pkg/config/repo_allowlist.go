@@ -86,6 +86,9 @@ func (a RepoAllowlist) Allows(repo string) bool {
 // that check, because implicit use of the defaults is then the only thing the
 // request path accepts.
 func (d DevBuild) Validate(productRepoMap map[string]string) error {
+	if _, err := NewBuilderImageAllowlist(d.BuilderImageAllowedRepositories); err != nil {
+		return fmt.Errorf("devbuild.builder_image_allowed_repositories: %w", err)
+	}
 	if len(d.GithubRepoAllowlist) == 0 {
 		return nil
 	}
