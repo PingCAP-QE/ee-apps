@@ -21,6 +21,8 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	// Update product repo and image mirror maps.
 	s.productRepoMap = cfg.ProductRepoMap
 	s.imageMirrorURLMap = cfg.ImageMirrorURLMap
+	// Update the builder image allowlist (empty disables the check).
+	s.builderImageAllowlist = cfg.DevBuild.BuilderImageAllowedRepositories
 
 	// Update Tekton dashboard URLs used for server-side API calls and user-facing links.
 	s.dashboardAPIURL = cfg.Tekton.APIBaseURL()

@@ -20,8 +20,24 @@ type Service struct {
 	Worker Worker `yaml:"worker,omitempty" json:"worker,omitempty"`
 	// Publish holds the publication planning configuration.
 	Publish Publish `yaml:"publish,omitempty" json:"publish,omitempty"`
+	// DevBuild holds the devbuild request policy.
+	DevBuild DevBuild `yaml:"devbuild,omitempty" json:"devbuild,omitempty"`
 	// Tidbcloud holds the TiDB Cloud ops and TCMS integration configuration.
 	Tidbcloud Tidbcloud `yaml:"tidbcloud,omitempty" json:"tidbcloud,omitempty"`
+}
+
+// DevBuild configures the devbuild request policy.
+type DevBuild struct {
+	// BuilderImageAllowedRepositories lists the repository namespaces a caller
+	// may name in a devbuild's builderImg, for example "ghcr.io/pingcap-qe" or
+	// "us-docker.pkg.dev/pingcap-testing-account". Only the repository part is
+	// matched: tags and digests are not restricted. A trailing slash is
+	// optional and matching is case-insensitive.
+	//
+	// Empty (the default) disables the check, which keeps the previous
+	// behaviour: any valid image reference is accepted. Hot-reloadable:
+	// changes take effect without a restart.
+	BuilderImageAllowedRepositories []string `yaml:"builder_image_allowed_repositories,omitempty" json:"builder_image_allowed_repositories,omitempty"`
 }
 
 // Tidbcloud configures the TiDB Cloud ops and TCMS integrations.
