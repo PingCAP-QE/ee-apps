@@ -8,6 +8,7 @@ import (
 	"github.com/distribution/reference"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 // validateBuilderImage validates a caller-supplied builder image.
@@ -29,7 +30,7 @@ import (
 // image and the override through the same param, so they cannot tell the two
 // apart, and a value list there would have to be updated for every image the
 // artifacts config pins.
-func validateBuilderImage(allowedRepositories []string, image string) error {
+func validateBuilderImage(allow config.BuilderImageAllowlist, image string) error {
 	if image == "" {
 		return nil
 	}
@@ -40,30 +41,16 @@ func validateBuilderImage(allowedRepositories []string, image string) error {
 	if err != nil {
 		return badRequest(fmt.Sprintf("builderImg is not a valid image reference: %v", err))
 	}
-	if len(allowedRepositories) == 0 {
+	if allow.Empty() {
 		return nil
 	}
 
 	// The repository without the tag or digest, e.g.
 	// "ghcr.io/pingcap-qe/cd/utils/release".
 	repository := reference.TrimNamed(named).Name()
-	allowed := make([]string, 0, len(allowedRepositories))
-	for _, entry := range allowedRepositories {
-		normalized := normalizeRepositoryPrefix(entry)
-		if normalized == "" {
-			continue
-		}
-		allowed = append(allowed, normalized)
-		if repository == normalized || strings.HasPrefix(repository, normalized+"/") {
-			return nil
-		}
+	if allow.Allows(repository) {
+		return nil
 	}
-	return badRequest(fmt.Sprintf("builderImg repository %q must be one of %s", repository, strings.Join(allowed, ", ")))
-}
-
-// normalizeRepositoryPrefix makes a configured namespace comparable with the
-// repository of a parsed reference: no trailing slash, lower case (repository
-// names are lower case in the image reference grammar).
-func normalizeRepositoryPrefix(entry string) string {
-	return strings.ToLower(strings.TrimSuffix(strings.TrimSpace(entry), "/"))
+	return badRequest(fmt.Sprintf("builderImg repository %q must be one of %s",
+		repository, strings.Join(allow.Entries(), ", ")))
 }

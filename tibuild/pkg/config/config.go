@@ -31,8 +31,11 @@ type DevBuild struct {
 	// BuilderImageAllowedRepositories lists the repository namespaces a caller
 	// may name in a devbuild's builderImg, for example "ghcr.io/pingcap-qe" or
 	// "us-docker.pkg.dev/pingcap-testing-account". Only the repository part is
-	// matched: tags and digests are not restricted. A trailing slash is
-	// optional and matching is case-insensitive.
+	// matched: tags and digests are not restricted.
+	//
+	// Entries are validated when the revision is loaded: they must be
+	// registry-qualified namespaces, without a tag, a digest or a wildcard. A
+	// trailing slash is optional and matching is case-insensitive.
 	//
 	// Empty (the default) disables the check, which keeps the previous
 	// behaviour: any valid image reference is accepted. Hot-reloadable:

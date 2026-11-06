@@ -92,6 +92,27 @@ func TestNewWatcherLoadsInitialSnapshot(t *testing.T) {
 	}
 }
 
+// TestWatcherWarnsOnUnknownConfigKeys keeps the typo visible: the document
+// still loads (a new key must not stop a deployment) but the log names it, so a
+// misspelled security knob cannot switch a policy off unnoticed.
+func TestWatcherWarnsOnUnknownConfigKeys(t *testing.T) {
+	var logs bytes.Buffer
+	logger := zerolog.New(&logs)
+	path := writeTempConfig(t, baseConfig+`
+devbuild:
+  builder_image_allowed_repositorie:
+    - ghcr.io/pingcap-qe
+`)
+	w := newTestWatcher(t, path, WatcherOptions{Logger: &logger})
+
+	if got := w.Generation(); got != 1 {
+		t.Fatalf("generation = %d, want 1: an unknown key must not reject the document", got)
+	}
+	if !strings.Contains(logs.String(), "builder_image_allowed_repositorie") {
+		t.Fatalf("log does not name the unknown key: %s", logs.String())
+	}
+}
+
 func TestNewWatcherFailsOnInvalidInitialConfig(t *testing.T) {
 	path := writeTempConfig(t, `
 publish:
