@@ -38,6 +38,20 @@ type DevBuild struct {
 	// behaviour: any valid image reference is accepted. Hot-reloadable:
 	// changes take effect without a restart.
 	BuilderImageAllowedRepositories []string `yaml:"builder_image_allowed_repositories,omitempty" json:"builder_image_allowed_repositories,omitempty"`
+
+	// GithubRepoAllowlist lists the GitHub repositories an explicit devbuild
+	// `githubRepo` may name. Entries are "<owner>/<repo>" or "<owner>/*";
+	// matching is case-insensitive.
+	//
+	// A non-empty list is fail-closed: an explicit repository that is not
+	// listed is rejected. The list must also cover every value of
+	// product_repo_map, because the product default is used without going
+	// through the lookup.
+	//
+	// Empty (the default) means only an explicit value equal to the product
+	// default repository is accepted; every other explicit repository is
+	// rejected. Hot-reloadable: changes take effect without a restart.
+	GithubRepoAllowlist []string `yaml:"github_repo_allowlist,omitempty" json:"github_repo_allowlist,omitempty"`
 }
 
 // Tidbcloud configures the TiDB Cloud ops and TCMS integrations.
@@ -146,6 +160,9 @@ const DefaultDeliveryConfigPath = "/etc/delivery/delivery.yaml"
 // against the kind's own catalogue there.
 func (s *Service) Validate() error {
 	if err := s.Publish.Nightly.Validate(); err != nil {
+		return err
+	}
+	if err := s.DevBuild.Validate(s.ProductRepoMap); err != nil {
 		return err
 	}
 	return s.Worker.Validate(nil)
