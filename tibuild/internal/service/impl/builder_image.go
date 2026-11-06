@@ -3,7 +3,6 @@ package impl
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/distribution/reference"
 
@@ -45,12 +44,16 @@ func validateBuilderImage(allow config.BuilderImageAllowlist, image string) erro
 		return nil
 	}
 
-	// The repository without the tag or digest, e.g.
-	// "ghcr.io/pingcap-qe/cd/utils/release".
+	// The message must never echo the allowlist: it tells a caller that the
+	// value was rejected, not what would have been accepted. Only the
+	// repository is named, because the tag and digest are not part of the
+	// policy.
 	repository := reference.TrimNamed(named).Name()
 	if allow.Allows(repository) {
 		return nil
 	}
-	return badRequest(fmt.Sprintf("builderImg repository %q must be one of %s",
-		repository, strings.Join(allow.Entries(), ", ")))
+	return &devbuild.DevBuildForbiddenError{
+		Code:    http.StatusForbidden,
+		Message: fmt.Sprintf("builderImg repository %q is not in the devbuild allowlist", repository),
+	}
 }
