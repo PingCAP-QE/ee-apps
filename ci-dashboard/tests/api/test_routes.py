@@ -318,6 +318,23 @@ def test_parse_cost_sources_accepts_lists_and_rejects_malformed_values() -> None
         assert error.value.status_code == 400
 
 
+def test_case_build_scope_uses_cross_repo_time_index() -> None:
+    connection = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+    scope = flaky_queries._case_build_scope_ctes(
+        connection,
+        CommonFilters(
+            repo="pingcap/tidb",
+            branch="master",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 31),
+        ),
+    )
+    assert "FORCE INDEX(idx_ci_l1_builds_start_time_id)" in scope
+    assert "idx_ci_l1_builds_repo_time" not in scope
+    assert "b.repo_full_name = :repo" not in scope
+    assert "= :branch" not in scope
+
+
 def test_cost_team_filter_uses_a_preaggregated_join() -> None:
     connection = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
     filters = CommonFilters(team_include=("TiDB",), team_exclude=("TiKV",))
@@ -461,6 +478,7 @@ def _insert_pr_event(
     target_branch: str,
     event_key: str,
     event_time: str,
+    event_type: str = "pr_snapshot",
 ) -> None:
     with sqlite_engine.begin() as connection:
         connection.execute(
@@ -471,7 +489,7 @@ def _insert_pr_event(
                   comment_body, retest_event, commit_sha, target_branch, head_ref, head_sha,
                   created_at, updated_at
                 ) VALUES (
-                  :repo, :pr_number, :event_key, :event_time, 'pr_snapshot', NULL, NULL,
+                  :repo, :pr_number, :event_key, :event_time, :event_type, NULL, NULL,
                   NULL, 0, NULL, :target_branch, 'feature-x', 'sha', :event_time, :event_time
                 )
                 """
@@ -481,6 +499,7 @@ def _insert_pr_event(
                 "pr_number": pr_number,
                 "event_key": event_key,
                 "event_time": event_time,
+                "event_type": event_type,
                 "target_branch": target_branch,
             },
         )
@@ -1877,16 +1896,18 @@ def test_flaky_case_queries_include_postsubmit_and_snapshotless_builds(
     assert flow.json()["meta"]["case_count_in_scope"] == 1
 
 
+@pytest.mark.parametrize("timeline_event_type", ["committed", "retest_comment", "pr_snapshot"])
 @pytest.mark.parametrize(
     ("target_branch", "base_ref", "snapshot_branch"),
     [("master", "master", "release-8.5"), (None, None, None)],
 )
-def test_flaky_case_queries_do_not_override_or_invent_build_branches(
+def test_flaky_case_queries_use_test_branch_independently_of_trigger_branch(
     sqlite_engine,
     api_client: TestClient,
     target_branch: str | None,
     base_ref: str | None,
     snapshot_branch: str | None,
+    timeline_event_type: str,
 ) -> None:
     build_url = "https://prow.tidb.net/jenkins/job/merged_unit_test/9800/"
     _insert_build(
@@ -1915,6 +1936,43 @@ def test_flaky_case_queries_do_not_override_or_invent_build_branches(
             event_key="pr_snapshot",
             event_time="2026-09-15 09:00:00",
         )
+    # Stale timeline or noncanonical snapshot rows must not fan out the join or replace
+    # the authoritative snapshot (or the unknown build-ref fallback).
+    _insert_pr_event(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        pr_number=9800,
+        target_branch="master",
+        event_key="stale-timeline",
+        event_time="2026-09-14 08:00:00",
+        event_type=timeline_event_type,
+    )
+    # Denominator-only builds separate PR-authoritative, stored-ref, and unknown
+    # trigger scopes; a missing trigger branch must not become tested master.
+    for build_id, stored_branch, stored_base_ref in [
+        (9801, "master", "master"),
+        (9802, "release-8.5", "master"),
+        (9803, None, None),
+        (9804, None, "release-8.5"),
+        (9805, "master", "master"),
+    ]:
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=build_id,
+            source_prow_job_id=f"branch-scope-{build_id}",
+            repo_full_name="pingcap/tidb",
+            target_branch=stored_branch,
+            base_ref=stored_base_ref,
+            job_name="merged_unit_test",
+            state="success",
+            cloud_phase="GCP",
+            is_flaky=0,
+            is_retry_loop=0,
+            failure_category=None,
+            start_time="2026-09-15 10:00:00",
+            pr_number=build_id,
+            normalized_build_url=f"https://prow.tidb.net/jenkins/job/merged_unit_test/{build_id}/",
+        )
     _insert_problem_case_run(
         sqlite_engine,
         repo="pingcap/tidb",
@@ -1942,13 +2000,144 @@ def test_flaky_case_queries_do_not_override_or_invent_build_branches(
     rates = api_client.get("/api/v1/flaky/issue-weekly-rates", params=params)
     assert rates.status_code == 200
     row = next(row for row in rates.json()["rows"] if row["case_name"] == "TestBranchGuard")
-    assert row["cells"] == ["N/A (0/0)"]
+    assert row["cells"] == ["33.33% (1/3)" if snapshot_branch else "50.00% (1/2)"]
     counts = api_client.get("/api/v1/flaky/distinct-case-counts", params=params)
     assert counts.status_code == 200
-    assert counts.json()["rows"] == [{"branch": "master", "values": [0]}]
+    assert counts.json()["rows"] == [{"branch": "master", "values": [1]}]
     flow = api_client.get("/api/v1/flaky/case-flow-v2", params=params)
     assert flow.status_code == 200
-    assert flow.json()["meta"]["case_count_in_scope"] == 0
+    assert flow.json()["meta"]["case_count_in_scope"] == 1
+
+
+@pytest.mark.parametrize(
+    ("trigger_repo", "trigger_branch"),
+    [("tikv/pd", "master"), ("tidbcloud/cloud-storage-engine", "cloud-engine")],
+)
+def test_flaky_case_queries_include_cross_repo_jobs_and_scope_the_denominator(
+    sqlite_engine, api_client: TestClient, trigger_repo: str, trigger_branch: str
+) -> None:
+    job_name = "pull_integration_realcluster_test_next_gen"
+    builds = [
+        (9900, trigger_repo, trigger_branch, "2026-06-30"),
+        (9901, trigger_repo, trigger_branch, "2026-07-21"),
+        (9902, trigger_repo, trigger_branch, "2026-07-22"),
+        # Neither a same-named job in another repo nor another trigger branch
+        # establishes that it runs this testcase's master branch.
+        (9903, "pingcap/tiflash", trigger_branch, "2026-07-21"),
+        (9904, trigger_repo, "unrelated-trigger-branch", "2026-07-21"),
+    ]
+    urls = {}
+    for build_id, repo, branch, day in builds:
+        urls[build_id] = f"https://prow.tidb.net/jenkins/job/{repo}/{job_name}/{build_id}/"
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=build_id,
+            source_prow_job_id=f"cross-repo-{build_id}",
+            repo_full_name=repo,
+            target_branch=branch,
+            base_ref=branch,
+            job_name=job_name,
+            state="failure",
+            cloud_phase="GCP",
+            is_flaky=1,
+            is_retry_loop=0,
+            failure_category="FLAKY_TEST",
+            start_time=f"{day} 09:00:00",
+            pr_number=build_id,
+            normalized_build_url=urls[build_id],
+        )
+        _insert_pr_event(
+            sqlite_engine,
+            repo=repo,
+            pr_number=build_id,
+            target_branch=branch,
+            event_key="pr_snapshot",
+            event_time=f"{day} 08:00:00",
+        )
+    for build_id, day in [(9900, "2026-06-30"), (9901, "2026-07-21")]:
+        _insert_problem_case_run(
+            sqlite_engine,
+            repo="pingcap/tidb",
+            branch="master",
+            case_name="TestCrossRepo",
+            build_url=urls[build_id],
+            flaky=1,
+            report_time=f"{day} 09:10:00",
+        )
+    # A repeated report is not an extra flaky run.
+    _insert_problem_case_run(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        branch="master",
+        case_name="TestCrossRepo",
+        build_url=urls[9901],
+        flaky=1,
+        report_time="2026-07-21 09:10:00",
+    )
+    for repo, branch, case_name in [
+        ("tikv/tikv", "master", "TestOtherRepo"),
+        ("pingcap/tidb", "release-8.5", "TestOtherBranch"),
+    ]:
+        _insert_problem_case_run(
+            sqlite_engine,
+            repo=repo,
+            branch=branch,
+            case_name=case_name,
+            build_url=urls[9901],
+            flaky=1,
+            report_time="2026-07-21 09:10:00",
+        )
+    _insert_flaky_issue(
+        sqlite_engine,
+        repo="pingcap/tidb",
+        issue_number=68192,
+        case_name="TestCrossRepo",
+        issue_branch="master",
+        issue_status="open",
+        issue_created_at="2026-06-01 08:00:00",
+    )
+    params = {
+        "repo": "pingcap/tidb",
+        "branch": "master",
+        "start_date": "2026-07-20",
+        "end_date": "2026-07-26",
+    }
+    for overrides, expected_cell in [
+        ({}, "50.00% (1/2)"),
+        ({"job_name": job_name, "cloud_phase": "GCP"}, "50.00% (1/2)"),
+        ({"job_name": "unrelated-job"}, "N/A (0/0)"),
+        ({"cloud_phase": "TENCENT"}, "N/A (0/0)"),
+    ]:
+        response = api_client.get(
+            "/api/v1/flaky/issue-weekly-rates", params={**params, **overrides}
+        )
+        assert response.status_code == 200
+        row = next(row for row in response.json()["rows"] if row["case_name"] == "TestCrossRepo")
+        assert row["cells"] == [expected_cell]
+        counts = api_client.get(
+            "/api/v1/flaky/distinct-case-counts", params={**params, **overrides}
+        )
+        assert counts.status_code == 200
+        expected_count = int(expected_cell != "N/A (0/0)")
+        assert counts.json()["rows"] == [{"branch": "master", "values": [expected_count]}]
+        flow = api_client.get(
+            "/api/v1/flaky/case-flow-v2", params={**params, **overrides}
+        )
+        assert flow.status_code == 200
+        assert flow.json()["meta"]["case_count_in_scope"] == expected_count
+    broad = api_client.get(
+        "/api/v1/flaky/issue-weekly-rates", params={**params, "start_date": "2026-06-29"}
+    )
+    assert broad.status_code == 200
+    metrics = next(
+        row["metrics"] for row in broad.json()["rows"] if row["case_name"] == "TestCrossRepo"
+    )
+    assert sum(metric["flaky_runs"] for metric in metrics) == 2
+    assert metrics[-1]["cell"] == "50.00% (1/2)"
+    # Build-level analytics remain scoped to the triggering repository.
+    build_trend = api_client.get("/api/v1/flaky/trend", params=params)
+    assert build_trend.status_code == 200
+    assert all(point[1] == 0 for series in build_trend.json()["series"] for point in series["points"])
 
 
 @pytest.mark.parametrize("historical_flaky", [0, 1])

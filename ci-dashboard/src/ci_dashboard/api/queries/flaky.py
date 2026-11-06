@@ -300,18 +300,17 @@ def get_distinct_flaky_case_counts_by_branch(
                   GROUP BY branch, case_name, build_key, cloud_phase, report_time
                 )
                 SELECT
-                  bs.branch,
+                  cr.branch,
                   bs.week_start,
                   COUNT(DISTINCT cr.case_name) AS distinct_flaky_case_count
                 FROM build_scope bs
                 JOIN case_runs cr
                   ON cr.build_match_key = bs.build_match_key
-                 AND cr.branch = bs.branch
                  AND cr.cloud_phase = bs.cloud_phase
                  AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
                 WHERE cr.flaky_flag = 1
-                GROUP BY bs.branch, bs.week_start
-                ORDER BY bs.branch, bs.week_start
+                GROUP BY cr.branch, bs.week_start
+                ORDER BY cr.branch, bs.week_start
                 """
             ),
             _distinct_case_params(filters, effective_repo),
@@ -1029,40 +1028,33 @@ def _case_build_scope_ctes(
     connection: Connection,
     filters: CommonFilters,
 ) -> str:
-    # PR metadata remains authoritative; stored build refs also cover postsubmits
-    # and builds whose PR snapshot has not been synchronized yet.
+    # Test repo/branch filters belong to problem_case_runs, not the triggering PR.
+    # Resolve trigger identity from build-keyed snapshots, never stale timeline rows.
     branch = _CASE_BUILD_BRANCH_EXPR
     job_clause, _ = build_multi_value_clause(
         "b.job_name", filters.job_names, bind_prefix="job_name"
     )
     return f"""
-        target_prs AS (
-          SELECT DISTINCT repo, pr_number, target_branch
-          FROM ci_l1_pr_events
-          WHERE repo = :repo
-            AND pr_number IS NOT NULL
-            AND target_branch IS NOT NULL
-            AND target_branch <> ''
-        ),
         build_scope AS (
           SELECT DISTINCT
-            {branch} AS branch,
+            b.repo_full_name AS trigger_repo,
+            {branch} AS trigger_branch,
             {bucket_expr(connection, "b.start_time", "week")} AS week_start,
             b.start_time,
             NULLIF(b.normalized_build_url, '') AS normalized_build_url,
             {_legacy_tencent_build_key_expr("NULLIF(b.normalized_build_url, '')")} AS build_match_key,
             b.job_name,
             UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) AS cloud_phase
-          FROM {builds_table_expr(connection, filters, alias="b")}
-          LEFT JOIN target_prs p
+          FROM {builds_table_expr(connection, filters.without_repo(), alias="b")}
+          LEFT JOIN ci_l1_pr_events p
             ON p.repo = b.repo_full_name
            AND p.pr_number = b.pr_number
-          WHERE b.repo_full_name = :repo
-            AND {branch} IS NOT NULL
-            AND b.start_time IS NOT NULL
+           AND p.event_key = 'pr_snapshot'
+           AND p.event_type = 'pr_snapshot'
+           AND p.target_branch <> ''
+          WHERE b.start_time IS NOT NULL
             AND NULLIF(b.normalized_build_url, '') IS NOT NULL
             {f"AND {job_clause}" if job_clause else ""}
-            {_optional_clause(filters.branch, f"AND {branch} = :branch")}
             {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
             {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
             {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
@@ -1139,24 +1131,28 @@ def _fetch_issue_weekly_rate_rows(
               SELECT
                 ic.case_name,
                 ic.issue_branch,
+                b.repo_full_name AS trigger_repo,
+                {_CASE_BUILD_BRANCH_EXPR} AS trigger_branch,
                 b.job_name
               FROM issue_cases ic
               JOIN case_job_build_keys cr
                 ON cr.case_name = ic.case_name
                AND cr.branch = ic.issue_branch
               JOIN ci_l1_builds b
-                ON b.repo_full_name = :repo
-               AND b.normalized_build_url = cr.build_lookup_key
+                ON b.normalized_build_url = cr.build_lookup_key
                AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = cr.cloud_phase
                AND {_case_build_time_match_expr(connection, "cr.report_time", "b.start_time")}
-              LEFT JOIN target_prs p
+              LEFT JOIN ci_l1_pr_events p
                 ON p.repo = b.repo_full_name
                AND p.pr_number = b.pr_number
-              WHERE {_CASE_BUILD_BRANCH_EXPR} = ic.issue_branch
+               AND p.event_key = 'pr_snapshot'
+               AND p.event_type = 'pr_snapshot'
+               AND p.target_branch <> ''
+              WHERE 1=1
                 {f"AND {job_clause}" if job_clause else ""}
                 {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
                 {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
-              GROUP BY ic.case_name, ic.issue_branch, b.job_name
+              GROUP BY ic.case_name, ic.issue_branch, b.repo_full_name, trigger_branch, b.job_name
             ),
             case_weekly_flaky AS (
               SELECT
@@ -1170,12 +1166,12 @@ def _fetch_issue_weekly_rate_rows(
                AND cr.branch = ic.issue_branch
               JOIN build_scope bs
                 ON bs.build_match_key = cr.build_match_key
-               AND bs.branch = ic.issue_branch
                AND bs.cloud_phase = cr.cloud_phase
                AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
               GROUP BY ic.case_name, ic.issue_branch, bs.week_start
             ),
-            -- Count job runs across clouds, still subject to build_scope's explicit cloud filter.
+            -- Follow evidenced trigger repo/job/branch scopes across clouds; unrelated
+            -- same-named jobs/branches must not inflate this testcase's estimate.
             case_weekly_denominator AS (
               SELECT
                 cjs.case_name,
@@ -1184,7 +1180,8 @@ def _fetch_issue_weekly_rate_rows(
                 COUNT(DISTINCT bs.normalized_build_url) AS total_runs_est
               FROM case_job_scope cjs
               JOIN build_scope bs
-                ON bs.branch = cjs.issue_branch
+                ON bs.trigger_repo = cjs.trigger_repo
+               AND COALESCE(bs.trigger_branch, '') = COALESCE(cjs.trigger_branch, '')
                AND bs.job_name = cjs.job_name
               GROUP BY cjs.case_name, cjs.issue_branch, bs.week_start
             ),
@@ -1277,17 +1274,16 @@ def _fetch_weekly_flaky_case_presence(
               GROUP BY branch, case_name, build_key, cloud_phase, report_time
             )
             SELECT DISTINCT
-              bs.branch,
+              cr.branch,
               bs.week_start,
               cr.case_name
             FROM build_scope bs
             JOIN case_runs cr
               ON cr.build_match_key = bs.build_match_key
-             AND cr.branch = bs.branch
              AND cr.cloud_phase = bs.cloud_phase
              AND {_case_build_time_match_expr(connection, "cr.report_time", "bs.start_time")}
             WHERE cr.flaky_flag = 1
-            ORDER BY bs.branch, cr.case_name, bs.week_start
+            ORDER BY cr.branch, cr.case_name, bs.week_start
             """
         ),
         _distinct_case_params(filters, effective_repo),

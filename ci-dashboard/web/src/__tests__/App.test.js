@@ -353,6 +353,27 @@ test("flaky case rate sorting puts unknown rates last in either direction", asyn
   }
 });
 
+test("flaky case panels distinguish tested code from triggering builds", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({}) });
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(FlakyPage, { filters: {} }));
+      await Promise.resolve();
+    });
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /by tested repository and branch/);
+    assert.match(rendered, /including cross-repository CI/);
+    assert.match(rendered, /not proof that the testcase did not run/);
+    assert.match(rendered, /follow the build-side repo, branch, job, cloud, and time filters/);
+    assert.doesNotMatch(rendered, /aligned by CI build branch/);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("the flaky-free badge requires known zero evidence in both latest weeks", async () => {
   const originalFetch = globalThis.fetch;
   const weeks = ["2026-06-01", "2026-06-08", "2026-06-15"];
