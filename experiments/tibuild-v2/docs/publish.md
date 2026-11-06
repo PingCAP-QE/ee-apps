@@ -133,6 +133,94 @@ rule/artifact-config anomaly rather than a released package.
 The `standalone` flag of the artifact config is deliberately not forwarded: the
 pre-migration publisher dropped it and this port preserves that behaviour.
 
+## Queue deduplication
+
+Immediate publications are deduplicated **at enqueue**, not when the worker
+starts. Pushes of one mutable tag (branch builds, `pre`/`beta`/`rc`, `rust`,
+`nextgen`) would otherwise queue one unit each and pay the download and the
+lane time again for a version that is about to be replaced.
+
+The unit of deduplication is the **channel**: the sorted set of target steps
+plus the exact package set (`<target>|<name>|<version>|<os>|<arch>`). Two units
+share a channel only when they publish the same files to the same mirrors; a
+unit is never cancelled because one package happens to overlap. Nightly units
+are excluded — their latest-wins schedule lives in `publish_desired` (see
+[Nightly convergence](#nightly-convergence)).
+
+| Situation | Behaviour |
+| --- | --- |
+| same channel, same digest | idempotent: return the queued unit's step ids, create nothing |
+| non-formal, newer artifact | create the new unit, cancel the older idle units |
+| non-formal, older artifact (delayed retry) | ignored: return the queued unit, create nothing |
+| formal `vX.Y.Z`, different digest | `409 Conflict`, nothing created or cancelled |
+| formal `vX.Y.Z`, older artifact | `409 Conflict` stating which artifact is newer |
+
+"Newer" means the artifact build time (`org.opencontainers.image.created` from
+the OCI manifest, carried in the step payload as `artifact_created_at`), not the
+queue time: a delayed retry of an old build must not displace a newer one. Units
+created before the field existed fall back to `publish_unit.created_at`.
+
+### Cancelling a superseded unit
+
+Only **idle** units are cancelled. A unit with a `claimed` or `succeeded` step
+keeps running: it is doing irreversible work, and the new unit publishes after
+it (or is refused by the formal guard above). Cancellation runs in one
+transaction and aborts if a step was claimed in the meantime. It sets
+
+- `publish_unit.state = canceled` with `finished_at`;
+- every `pending` / `blocked` step to `skipped`, with
+  `last_error = superseded by <new unit id>` and `finished_at`;
+- a `publish unit superseded` log line with `superseded_by`.
+
+Nothing is deleted: the cancelled unit stays as an audit record.
+
+### Formal version conflicts
+
+A released `vX.Y.Z` is immutable, so two different digests for the same channel
+cannot be ordered by time. The request fails instead of silently picking the
+newer one:
+
+```json
+{
+  "code": 409,
+  "message": "formal version v8.5.6 conflicts with queued unit <id>: existing digest sha256:…, new digest sha256:…",
+  "version": "v8.5.6",
+  "existingDigest": "sha256:…",
+  "newDigest": "sha256:…",
+  "existingUnitId": "<id>"
+}
+```
+
+The same channel also raises a `[tibuild] formal version conflict` alert through
+the notifier, deduplicated for one hour per channel, so the conflict is not
+visible only to whoever made the HTTP call. Resolve it by deciding which digest
+is the release (bump the version for a legitimate rebuild); retrying the request
+unchanged will fail again.
+
+The execution-time `refusing to overwrite formal version` check stays as the
+last line of defence for anything that reaches a worker.
+
+### Download precheck
+
+Before downloading a package the worker compares the OCI layer digest with the
+remote tarball's sha256. They are the same bytes, so a match returns
+`skipped_existing` without fetching the layer — a 574 MB package that is already
+published costs one HTTP `GET` on the mirror instead of the full transfer. The
+remote file still has to be read once to hash it; true zero-transfer needs a
+checksum sidecar or `HEAD`-with-digest support on the mirror.
+
+### Scope and limits
+
+- Applies to `POST /tiup/delivery-by-rules` and `POST /tiup/publish-request`.
+- `POST /tiup/publish-request-single` is not deduplicated: its digest is a tag,
+  not a content digest, so two requests cannot be proven to carry the same file.
+- Concurrent enqueues are best-effort: two requests arriving together may both
+  create a unit, and the later one cancels the earlier one. The queue converges
+  without a unique index.
+- Rollback is `git revert` of the change. Cancelled units are not restored
+  automatically: re-enqueue the newest artifact for the channel, and use
+  `last_error = superseded by …` to trace which unit replaced which.
+
 ## Nightly convergence
 
 Nightly is a **desired state**, not a queue. With `publish.nightly.enabled`
