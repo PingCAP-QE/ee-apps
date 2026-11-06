@@ -343,6 +343,76 @@ func TestRerunRepoAllowlist(t *testing.T) {
 	}
 }
 
+// TestRerunBuilderImageAllowlist covers the same policy for the builder image:
+// the value is replayed from the record, so a list that has since narrowed
+// must stop reruns that would reuse a now-forbidden image.
+func TestRerunBuilderImageAllowlist(t *testing.T) {
+	tests := []struct {
+		name       string
+		allow      []string
+		builderImg string
+		wantErr    bool
+	}{
+		{
+			name:       "image removed from the list cannot be rerun",
+			allow:      []string{"ghcr.io/pingcap-qe"},
+			builderImg: "evil.example.com/runner:v1",
+			wantErr:    true,
+		},
+		{
+			name:       "image still in the list reruns",
+			allow:      []string{"ghcr.io/pingcap-qe"},
+			builderImg: "ghcr.io/pingcap-qe/cd/utils/release:v1",
+		},
+		{
+			name:  "record without an override keeps using the artifacts image",
+			allow: []string{"ghcr.io/pingcap-qe"},
+		},
+		{
+			name:       "unconfigured list keeps accepting stored images",
+			builderImg: "evil.example.com/runner:v1",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newAllowlistTestEnv(t, []string{"pingcap/pd"}, nil)
+			env.service.builderImageAllowlist = tc.allow
+			create := env.db.DevBuild.Create().
+				SetProduct("pd").
+				SetEdition("").
+				SetVersion("v1.0.0").
+				SetGithubRepo("pingcap/pd").
+				SetGitRef("branch/main").
+				SetGitHash(allowlistTestSHA).
+				SetPlatform("linux/amd64").
+				SetStatus("SUCCESS").
+				SetCreatedBy("tester@example.com").
+				SetCreatedAt(time.Now())
+			if tc.builderImg != "" {
+				create.SetBuilderImg(tc.builderImg)
+			}
+			seed := create.SaveX(context.Background())
+
+			before := env.count(t)
+			record, err := env.service.Rerun(context.Background(), &devbuild.RerunPayload{ID: seed.ID})
+			if tc.wantErr {
+				require.Error(t, err)
+				var badRequest *devbuild.DevBuildBadRequestError
+				require.ErrorAs(t, err, &badRequest)
+				require.Equal(t, http.StatusBadRequest, badRequest.Code)
+				require.Equal(t, before, env.count(t), "a rejected rerun must not store a build")
+				require.Equal(t, 0, env.events(), "a rejected rerun must not send a CloudEvent")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.builderImg, derefString(record.Spec.BuilderImg))
+			require.Equal(t, before+1, env.count(t))
+			require.Equal(t, 1, env.events())
+		})
+	}
+}
+
 // TestReloadPublishesRepoAllowlist covers the hot path: a new revision widens
 // then narrows what requests may name, without recreating the service.
 func TestReloadPublishesRepoAllowlist(t *testing.T) {
