@@ -66,7 +66,7 @@ jobs:
             cloudevents-server:
               - 'cloudevents-server/**'
             tibuild-v2:
-              - 'experiments/tibuild-v2/**'
+              - 'tibuild/**'
             dl:
               - 'dl/**'
             chatops:
@@ -126,7 +126,7 @@ jobs:
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
       - name: Publish image - tibuild-v2
         if: steps.changes.outputs.tibuild-v2 == 'true'
-        working-directory: experiments/tibuild-v2
+        working-directory: tibuild
         run: |
           skaffold build --default-repo ghcr.io/pingcap-qe/ee-apps
       - name: Publish image - dl

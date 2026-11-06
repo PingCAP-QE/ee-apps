@@ -182,4 +182,4 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/PingCAP-QE/ee-apps/github-token-broker/client => ../../github-token-broker/client
+replace github.com/PingCAP-QE/ee-apps/github-token-broker/client => ../github-token-broker/client

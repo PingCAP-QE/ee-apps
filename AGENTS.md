@@ -8,7 +8,7 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 
 | Directory | Language | Framework | Binary Entrypoints |
 |-----------|----------|-----------|-------------------|
-| `experiments/tibuild-v2/` | Go | Goa v2 + Ent ORM | `cmd/tibuild/`, `cmd/tibuild-cli/` |
+| `tibuild/` | Go | Goa v2 + Ent ORM | `cmd/tibuild/`, `cmd/tibuild-cli/` |
 | `cloudevents-server/` | Go | Gin + Kafka + Ent | `cmd/server/` |
 | `dl/` | Go | Goa | `cmd/server/`, `cmd/server-cli/` |
 | `chatops-lark/` | Go | Lark WebSocket | `cmd/server/` |
@@ -28,9 +28,9 @@ go test ./...
 go build ./...
 ```
 
-### experiments/tibuild-v2
+### tibuild
 ```bash
-cd experiments/tibuild-v2
+cd tibuild
 go test -v ./...
 go build ./cmd/tibuild && go build ./cmd/tibuild-cli
 ```
@@ -51,7 +51,7 @@ ci-dashboard also: `make test-cov` (90% coverage threshold), `make api` (dev ser
 | Project | Trigger file | Command | What it generates |
 |---------|-------------|---------|-------------------|
 | `dl/` | `design/design.go` | `go generate ./...` | Goa service interfaces |
-| `experiments/tibuild-v2/` | `internal/service/design/design.go` + `internal/database/schema/*.go` | `go generate ./internal/` | Goa + Ent ORM code |
+| `tibuild/` | `internal/service/design/design.go` + `internal/database/schema/*.go` | `go generate ./internal/` | Goa + Ent ORM code |
 | `cloudevents-server/` | `ent/schema/*.go` | `go generate ./ent/` | Ent ORM code |
 
 ## Container Builds
