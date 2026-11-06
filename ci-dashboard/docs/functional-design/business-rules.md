@@ -143,9 +143,10 @@ The data-layer implementation must support local unit tests without TiDB Cloud b
 ## BR-11: Flaky Case Weekly Metrics
 
 - Case evidence queries include PR and postsubmit CI builds, without requiring a PR event row.
-- Use PR-event branch metadata when available; otherwise use the stored build `target_branch`, then `base_ref`. Do not infer a missing build branch from a problem record.
-- Preserve repository, branch, normalized URL, cloud phase, and the 24-hour report/start-time attribution guards.
-- Discover case-to-job membership from attributable historical problem records through the query end, independently of the selected start date. Explicit job/cloud filters still apply to discovery.
+- Scope testcase evidence by `problem_case_runs.repo` and `problem_case_runs.branch`, regardless of the repository or branch that triggered the CI build. A PD or cloud-storage-engine job running TiDB/master tests belongs to TiDB/master testcase metrics.
+- Preserve normalized URL, cloud phase, and the 24-hour report/start-time attribution guards. Explicit job/cloud filters still apply to the actual CI build. Build-level rates and `has_flaky_case_match` retain their existing trigger-repository semantics.
+- Discover case-to-job membership from attributable historical problem records through the query end, independently of the selected start date. Scope each denominator estimate by the evidenced trigger repository, job, and trigger branch; same-named jobs or unevidenced trigger branches must not inflate it. Follow those scopes across clouds unless an explicit cloud filter is supplied.
+- Resolve trigger branches from the uniquely keyed PR snapshot (`event_key = 'pr_snapshot'` and `event_type = 'pr_snapshot'`) when available, then stored build `target_branch`, then `base_ref`; stale timeline-event branches are not authoritative. Missing trigger branches remain a separate unknown scope; do not substitute the testcase branch. Trigger branch metadata never overrides a reported testcase branch.
 - Count weekly flaky evidence and estimated job builds only inside the selected build-time window.
 - `total_runs_est` is a job-build estimate, not a complete testcase execution ledger: it cannot distinguish fresh executions, cached results, or attempts.
 - When `total_runs_est = 0`, return `flaky_rate_pct = null` and `N/A (0/0)`, not an observed zero percent. Unknown weeks must not qualify as evidence of two flaky-free weeks.
