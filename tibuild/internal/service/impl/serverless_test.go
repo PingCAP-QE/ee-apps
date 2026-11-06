@@ -29,7 +29,8 @@ func TestServerlessCapabilitiesAndValidation(t *testing.T) {
 	for product := range productBuildCapabilities {
 		repos[product] = "tidbcloud/" + product
 	}
-	s := &devbuildsrvc{productRepoMap: repos}
+	s := &devbuildsrvc{}
+	s.policy.Store(&devbuildPolicy{productRepoMap: repos})
 	caps, err := s.Capabilities(context.Background())
 	require.NoError(t, err)
 	for _, product := range caps.Products {
@@ -177,9 +178,13 @@ func TestServerlessCreateResolvesRefsAndRejectsUnresolvableRefs(t *testing.T) {
 	defer server.Close()
 	gh, err := github.NewClient(github.WithHTTPClient(server.Client()), github.WithURLs(new(server.URL+"/"), nil))
 	require.NoError(t, err)
-	s := &devbuildsrvc{dbClient: db, ghClient: gh, productRepoMap: map[string]string{}}
+	s := &devbuildsrvc{dbClient: db, ghClient: gh}
+	repos := map[string]string{}
 	for product := range productBuildCapabilities {
-		s.productRepoMap[product] = "tidbcloud/" + product
+		repos[product] = "tidbcloud/" + product
+	}
+	s.policy.Store(&devbuildPolicy{productRepoMap: repos})
+	for product := range productBuildCapabilities {
 		for _, ref := range []string{"branch/main", "tag/v1.2.3", "pull/42", "commit/" + serverlessTestSHA, serverlessTestSHA} {
 			p := &devbuild.CreatePayload{Request: &devbuild.DevBuildSpec{Product: product, GitRef: ref, Platform: "linux", Version: new("v99.0.0")}}
 			record, refInfo, err := s.newBuildEntity(context.Background(), p)
@@ -201,7 +206,10 @@ func TestServerlessCreateResolvesRefsAndRejectsUnresolvableRefs(t *testing.T) {
 	// so the subtest keeps covering ref resolution for a non-default repository.
 	allow, allowErr := config.NewRepoAllowlist([]string{"custom-owner/custom-name"})
 	require.NoError(t, allowErr)
-	s.repoAllowlist.Store(&allow)
+	s.policy.Store(&devbuildPolicy{
+		repoAllowlist:  allow,
+		productRepoMap: s.currentPolicy().productRepoMap,
+	})
 	p.Request.GithubRepo = new("custom-owner/custom-name")
 	record, _, err := s.newBuildEntity(context.Background(), p)
 	require.NoError(t, err)
