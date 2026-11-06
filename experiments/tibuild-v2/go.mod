@@ -10,6 +10,7 @@ require (
 	github.com/PingCAP-QE/ee-apps/github-token-broker/client v0.0.0-00010101000000-000000000000
 	github.com/bndr/gojenkins v1.1.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
+	github.com/distribution/reference v0.6.0
 	github.com/dlclark/regexp2 v1.12.0
 	github.com/go-co-op/gocron/v2 v2.21.2
 	github.com/go-sql-driver/mysql v1.9.3
@@ -61,7 +62,6 @@ require (
 	github.com/creack/pty v1.1.20 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dimfeld/httppath v0.0.0-20170720192232-ee938bf73598 // indirect
-	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/cli v29.4.3+incompatible // indirect
 	github.com/docker/docker v28.5.1+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.5 // indirect

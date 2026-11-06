@@ -22,6 +22,9 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	if err := validateProductRequest(p.Request); err != nil {
 		return nil, gitRefInfo{}, err
 	}
+	if err := validateBuilderImage(s.builderImageAllowlist, derefString(p.Request.BuilderImg)); err != nil {
+		return nil, gitRefInfo{}, err
+	}
 
 	// NoNeed: guess enterprise plugin ref.
 	// fill for fips

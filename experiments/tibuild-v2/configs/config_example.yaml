@@ -64,6 +64,20 @@ lark:
     - name: "devbuild-team"
       chat_id: "oc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
+# Devbuild request policy. Every key is optional; unset keys keep the legacy
+# behaviour.
+devbuild:
+  # Repository namespaces a caller may name in a devbuild's `builderImg`, for
+  # example:
+  #   - ghcr.io/pingcap-qe
+  #   - hub.pingcap.net/pingcap
+  #   - us-docker.pkg.dev/pingcap-testing-account
+  # Only the repository is matched; tags and digests are not restricted. A
+  # trailing slash is optional and matching is case-insensitive. Empty
+  # disables the check: any valid image reference is accepted.
+  # Hot-reloadable: changes take effect without a restart.
+  builder_image_allowed_repositories: []
+
 # Map product name -> GitHub repo (<org>/<repo>)
 product_repo_map:
   tidb-cse: tidbcloud/tidb-cse

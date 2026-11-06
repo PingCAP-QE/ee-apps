@@ -31,6 +31,7 @@ type devbuildsrvc struct {
 	dbClient               *ent.Client
 	productRepoMap         map[string]string
 	imageMirrorURLMap      map[string]string
+	builderImageAllowlist  []string
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
 	dashboardAPIURL        string
@@ -72,6 +73,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		dbClient:               dbClient,
 		productRepoMap:         cfg.ProductRepoMap,
 		imageMirrorURLMap:      cfg.ImageMirrorURLMap,
+		builderImageAllowlist:  cfg.DevBuild.BuilderImageAllowedRepositories,
 		ghClient:               NewGitHubClientWithConfig(cfg.Github),
 		tektonCloudEventClient: client,
 		dashboardAPIURL:        cfg.Tekton.APIBaseURL(),
