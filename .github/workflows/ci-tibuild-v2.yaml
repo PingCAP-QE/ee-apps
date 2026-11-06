@@ -7,9 +7,9 @@ on:
       - main
     paths:
       - .github/workflows/ci-tibuild-v2.yaml
-      - "experiments/tibuild-v2/**/*.go"
-      - "experiments/tibuild-v2/**/go.mod"
-      - "experiments/tibuild-v2/**/go.sum"
+      - "tibuild/**/*.go"
+      - "tibuild/**/go.mod"
+      - "tibuild/**/go.sum"
       - "github-token-broker/client/**"
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   test-and-build:
-    name: Test and Build experiments/tibuild-v2
+    name: Test and Build tibuild
     runs-on: ubuntu-latest
 
     permissions:
@@ -34,7 +34,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: experiments/tibuild-v2/go.mod
+          go-version-file: tibuild/go.mod
 
       - name: Cache Go modules
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
@@ -47,11 +47,11 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Run tests
-        working-directory: experiments/tibuild-v2
+        working-directory: tibuild
         run: |
           go test -v ./...
       - name: Run builds
-        working-directory: experiments/tibuild-v2
+        working-directory: tibuild
         run: |
           go build ./cmd/tibuild && \
           go build ./cmd/tibuild-cli && \
