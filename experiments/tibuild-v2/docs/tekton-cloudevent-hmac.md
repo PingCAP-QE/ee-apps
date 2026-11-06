@@ -121,4 +121,3 @@ look the same to the client. Before the interceptor is enabled, confirm the
 `X-Hub-Signature-256` header leaves tibuild from its logs/debug tooling; after
 it is enabled, confirm acceptance or rejection in the ee-ops core-interceptor
 logs and by a real devbuild succeeding.
-
