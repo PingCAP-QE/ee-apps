@@ -56,12 +56,12 @@ func TestServerlessStagedDevbuild(t *testing.T) {
 	require.NoError(t, err)
 	s := &devbuildsrvc{
 		logger: &logger, dbClient: serverlessTestDB(t),
-		productRepoMap:         map[string]string{product: "tidbcloud/" + product},
 		ghClient:               gh,
 		tektonCloudEventClient: ce, dashboardAPIURL: dashboard, dashboardViewURL: dashboard,
 		httpClient: &http.Client{Timeout: 30 * time.Second}, reconcilerSince: time.Hour,
 		ociFileDownloadURL: os.Getenv("SERVERLESS_STAGE_DOWNLOAD_URL"),
 	}
+	s.policy.Store(&devbuildPolicy{productRepoMap: map[string]string{product: "tidbcloud/" + product}})
 	mux := goahttp.NewMuxer()
 	server := devbuildsvr.New(devbuild.NewEndpoints(s), mux, goahttp.RequestDecoder, goahttp.ResponseEncoder, nil, nil)
 	devbuildsvr.Mount(mux, server)

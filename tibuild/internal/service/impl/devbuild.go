@@ -29,14 +29,13 @@ import (
 // devbuild service example implementation.
 // The example methods log the requests and return zero values.
 type devbuildsrvc struct {
-	logger                *zerolog.Logger
-	dbClient              *ent.Client
-	productRepoMap        map[string]string
-	imageMirrorURLMap     map[string]string
-	builderImageAllowlist []string
-	// repoAllowlist holds the current devbuild githubRepo policy. It is
-	// replaced as a whole by Reload, so request handlers read it without a lock.
-	repoAllowlist          atomic.Pointer[config.RepoAllowlist]
+	logger   *zerolog.Logger
+	dbClient *ent.Client
+	// policy holds the immutable request-path configuration; Reload replaces
+	// the whole snapshot so handlers read one consistent revision without a
+	// lock.
+	policy atomic.Pointer[devbuildPolicy]
+	// repoMetrics counts githubRepo policy denials by surface.
 	repoMetrics            *devbuildRepoMetrics
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
@@ -77,9 +76,6 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service, registerer prometh
 	srvc := devbuildsrvc{
 		logger:                 logger,
 		dbClient:               dbClient,
-		productRepoMap:         cfg.ProductRepoMap,
-		imageMirrorURLMap:      cfg.ImageMirrorURLMap,
-		builderImageAllowlist:  cfg.DevBuild.BuilderImageAllowedRepositories,
 		ghClient:               NewGitHubClientWithConfig(cfg.Github),
 		tektonCloudEventClient: client,
 		dashboardAPIURL:        cfg.Tekton.APIBaseURL(),
@@ -93,12 +89,11 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service, registerer prometh
 	// applied, so an unbuildable list here means a programmatic construction
 	// (tests or a future caller): deny explicit repositories rather than
 	// silently accepting them.
-	allowlist, err := config.NewRepoAllowlist(cfg.DevBuild.GithubRepoAllowlist)
+	policy, err := newDevbuildPolicy(cfg)
 	if err != nil {
 		logger.Err(err).Msg("invalid devbuild github_repo_allowlist, explicit githubRepo values will be rejected")
-		allowlist = config.RepoAllowlist{}
 	}
-	srvc.repoAllowlist.Store(&allowlist)
+	srvc.policy.Store(policy)
 
 	srvc.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
 	srvc.jenkins.jobName = cfg.Jenkins.JobName
@@ -203,8 +198,9 @@ func (s *devbuildsrvc) List(ctx context.Context, p *devbuild.ListPayload) ([]*de
 // Capabilities lists the products currently configured by the service. Portal
 // defaults are deliberately conservative and do not change legacy API support.
 func (s *devbuildsrvc) Capabilities(context.Context) (*devbuild.DevBuildCapabilities, error) {
-	products := make([]string, 0, len(s.productRepoMap))
-	for product := range s.productRepoMap {
+	policy := s.currentPolicy()
+	products := make([]string, 0, len(policy.productRepoMap))
+	for product := range policy.productRepoMap {
 		products = append(products, product)
 	}
 	sort.Strings(products)
@@ -384,18 +380,20 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "only terminal builds can be rerun"}
 	}
 
-	// A rerun re-enters the build path with the repository stored on the
-	// record, so it needs the same policy: a repository that has since been
-	// removed from the allowlist must not be built again. Legacy rows without a
-	// repository keep using the product default, which is trusted by config.
+	// A rerun re-enters the build path with the repository and builder image
+	// stored on the record, so it needs the same policy: a value that has since
+	// been removed from an allowlist must not be built again. Legacy rows
+	// without a repository keep using the product default, which is trusted by
+	// config.
+	policy := s.currentPolicy()
 	githubRepo := existingBuild.GithubRepo
 	if githubRepo != "" {
-		if err := checkExplicitRepo(githubRepo, s.productRepoMap, existingBuild.Product, s.currentAllowlist()); err != nil {
+		if err := checkExplicitRepo(githubRepo, policy.productRepoMap, existingBuild.Product, policy.repoAllowlist); err != nil {
 			s.recordRepoDenied("rerun", githubRepo, existingBuild.Product, existingBuild.CreatedBy)
 			return nil, err
 		}
 	} else {
-		githubRepo = s.productRepoMap[existingBuild.Product]
+		githubRepo = policy.productRepoMap[existingBuild.Product]
 		if githubRepo == "" {
 			return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "unknown product or githubRepo"}
 		}
@@ -405,7 +403,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 	// same treatment as the repository: an image that has since left the
 	// allowlist, or that predates the policy, must not run again. An empty
 	// value keeps meaning "the artifacts config pins the image".
-	if err := validateBuilderImage(s.builderImageAllowlist, existingBuild.BuilderImg); err != nil {
+	if err := validateBuilderImage(policy.builderImageAllowlist, existingBuild.BuilderImg); err != nil {
 		return nil, err
 	}
 
@@ -537,7 +535,7 @@ func (s *devbuildsrvc) extractDevBuildID(data any, source string) (int, error) {
 }
 
 func (s *devbuildsrvc) getInternalImageURL(img string) *string {
-	for srcPrefix, dstPrefix := range s.imageMirrorURLMap {
+	for srcPrefix, dstPrefix := range s.currentPolicy().imageMirrorURLMap {
 		if strings.HasPrefix(img, srcPrefix) {
 			ret := strings.Replace(img, srcPrefix, dstPrefix, 1)
 			return &ret

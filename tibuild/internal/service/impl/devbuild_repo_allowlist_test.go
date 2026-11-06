@@ -87,12 +87,11 @@ func newAllowlistTestEnv(t *testing.T, allow []string, productRepoMap map[string
 		logger:                 &logger,
 		repoMetrics:            newDevbuildRepoMetrics(prometheus.NewRegistry()),
 		dbClient:               db,
-		productRepoMap:         productRepoMap,
 		ghClient:               ghClient,
 		tektonCloudEventClient: ce,
 		httpClient:             &http.Client{Timeout: 5 * time.Second},
 	}
-	s.repoAllowlist.Store(&allowlist)
+	s.policy.Store(&devbuildPolicy{repoAllowlist: allowlist, productRepoMap: productRepoMap})
 	return &allowlistTestEnv{
 		service: s,
 		db:      db,
@@ -109,6 +108,16 @@ func (e *allowlistTestEnv) count(t *testing.T) int {
 	n, err := e.db.DevBuild.Query().Count(context.Background())
 	require.NoError(t, err)
 	return n
+}
+
+// setBuilderImages publishes a policy revision that keeps the current
+// repository rules and maps but swaps in another builder image list, mirroring
+// what a config reload does.
+func (e *allowlistTestEnv) setBuilderImages(t *testing.T, images []string) {
+	t.Helper()
+	current := *e.service.currentPolicy()
+	current.builderImageAllowlist = images
+	e.service.policy.Store(&current)
 }
 
 func TestCreateRepoAllowlist(t *testing.T) {
@@ -377,7 +386,7 @@ func TestRerunBuilderImageAllowlist(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			env := newAllowlistTestEnv(t, []string{"pingcap/pd"}, nil)
-			env.service.builderImageAllowlist = tc.allow
+			env.setBuilderImages(t, tc.allow)
 			create := env.db.DevBuild.Create().
 				SetProduct("pd").
 				SetEdition("").
@@ -438,7 +447,7 @@ func TestReloadPublishesRepoAllowlist(t *testing.T) {
 	// server so ref resolution stays offline.
 	ghClient := env.service.ghClient
 	env.service.Reload(&config.Service{
-		ProductRepoMap: env.service.productRepoMap,
+		ProductRepoMap: env.service.currentPolicy().productRepoMap,
 		DevBuild: config.DevBuild{
 			GithubRepoAllowlist: []string{"tidbcloud/*"},
 		},
@@ -448,7 +457,7 @@ func TestReloadPublishesRepoAllowlist(t *testing.T) {
 	require.NoError(t, err, "the reloaded list must accept the repository")
 
 	env.service.Reload(&config.Service{
-		ProductRepoMap: env.service.productRepoMap,
+		ProductRepoMap: env.service.currentPolicy().productRepoMap,
 		DevBuild:       config.DevBuild{GithubRepoAllowlist: []string{"pingcap/tidb"}},
 	})
 	env.service.ghClient = ghClient
@@ -456,43 +465,51 @@ func TestReloadPublishesRepoAllowlist(t *testing.T) {
 	require.Error(t, err, "removing the entry must reject the repository again")
 }
 
-// TestRepoAllowlistConcurrentReloadAndRequests is the race-detector cover for
-// the atomic publication: requests read the current list while the watcher
-// replaces it.
-func TestRepoAllowlistConcurrentReloadAndRequests(t *testing.T) {
+// TestReloadPolicySnapshotConcurrentReloadAndRequests is the race-detector
+// cover for the atomic policy publication: Reload swaps the whole snapshot
+// (repository allowlist, builder images, product and mirror maps) while
+// requests read it.
+func TestReloadPolicySnapshotConcurrentReloadAndRequests(t *testing.T) {
 	env := newAllowlistTestEnv(t, []string{"pingcap/tidb"}, nil)
 	s := env.service
 	repo := "tidbcloud/cloud-storage-engine"
 
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			for j := 0; j < 40; j++ {
-				entry := "tidbcloud/*"
-				if (i+j)%2 == 0 {
-					entry = "pingcap/tidb"
-				}
-				allow, err := config.NewRepoAllowlist([]string{entry})
-				if err != nil {
-					t.Errorf("NewRepoAllowlist() error = %v", err)
-					return
-				}
-				s.repoAllowlist.Store(&allow)
-				_ = s.currentAllowlist().Allows(repo)
-				_ = s.currentAllowlist().Empty()
-				_, _ = s.resolveRepoProduct(repo)
+	// One writer, like the config watcher: Reload is not designed to run
+	// concurrently with itself, only with request handlers.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for j := 0; j < 80; j++ {
+			entries := []string{"pingcap/tidb"}
+			if j%2 == 0 {
+				entries = []string{"tidbcloud/*"}
 			}
-		}(i)
+			s.Reload(&config.Service{
+				ProductRepoMap:    map[string]string{"tidb": "pingcap/tidb"},
+				ImageMirrorURLMap: map[string]string{"gcr.io/": "mirror/"},
+				DevBuild: config.DevBuild{
+					GithubRepoAllowlist:             entries,
+					BuilderImageAllowedRepositories: []string{"ghcr.io/pingcap-qe"},
+				},
+			})
+		}
+	}()
+	for i := 0; i < 7; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 80; j++ {
+				policy := s.currentPolicy()
+				_ = policy.repoAllowlist.Allows(repo)
+				_ = policy.repoAllowlist.Empty()
+				_ = policy.productRepoMap["tidb"]
+				_ = policy.imageMirrorURLMap["gcr.io/"]
+				_ = validateBuilderImage(policy.builderImageAllowlist, "ghcr.io/pingcap-qe/cd/utils/release:v1")
+			}
+		}()
 	}
 	wg.Wait()
-}
-
-// resolveRepoProduct is a small read-side probe so the goroutines exercise the
-// same helper the request path uses.
-func (s *devbuildsrvc) resolveRepoProduct(repo string) (string, bool) {
-	return repo, s.currentAllowlist().Allows(repo)
 }
 
 // TestRepoDeniedCounter proves the rejection is observable: one increment per
