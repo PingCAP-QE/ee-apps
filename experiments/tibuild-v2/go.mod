@@ -16,7 +16,7 @@ require (
 	github.com/google/go-containerregistry v0.21.6
 	github.com/google/go-github/v93 v93.0.0
 	github.com/larksuite/oapi-sdk-go/v3 v3.9.7
-	github.com/mattn/go-sqlite3 v1.14.32
+	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/migueleliasweb/go-github-mock v1.5.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/prometheus/client_golang v1.23.2
