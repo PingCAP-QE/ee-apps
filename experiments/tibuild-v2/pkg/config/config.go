@@ -161,6 +161,16 @@ type Jenkins struct {
 
 type Tekton struct {
 	CloudeventEndpoint string `yaml:"cloudevent_endpoint,omitempty" json:"cloudevent_endpoint,omitempty"`
+	// CloudeventHmacSecret is the shared secret used to sign the body of the
+	// CloudEvents sent to the Tekton EventListener (HMAC-SHA256, sent in the
+	// GitHub-compatible `X-Hub-Signature-256` header). The listener's built-in
+	// `github` interceptor verifies it with a `secretRef` pointing at the same
+	// value, so a pod in the cluster cannot forge a devbuild event.
+	//
+	// The value comes from a Kubernetes Secret mounted by ee-ops; never commit
+	// a real secret here. Empty disables signing and keeps the previous
+	// unsigned behaviour (a one-time warning is logged).
+	CloudeventHmacSecret string `yaml:"cloudevent_hmac_secret,omitempty" json:"cloudevent_hmac_secret,omitempty"`
 	// APIURL is the Tekton Dashboard base URL used by server-side API calls
 	// (for example the PipelineRun reconciler). It usually points at an
 	// in-cluster Service and must not require browser/OIDC authentication.

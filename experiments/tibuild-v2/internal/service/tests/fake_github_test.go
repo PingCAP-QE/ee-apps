@@ -156,10 +156,11 @@ func writeGitHubError(w http.ResponseWriter, status int) {
 // cloudEventSink counts CloudEvent deliveries and keeps the last payload so
 // tests can assert on body.after.
 type cloudEventSink struct {
-	mu       sync.Mutex
-	requests int
-	lastBody []byte
-	eventID  string
+	mu         sync.Mutex
+	requests   int
+	lastBody   []byte
+	lastHeader http.Header
+	eventID    string
 }
 
 func (s *cloudEventSink) handle(w http.ResponseWriter, r *http.Request) {
@@ -167,6 +168,7 @@ func (s *cloudEventSink) handle(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.requests++
 	s.lastBody = body
+	s.lastHeader = r.Header.Clone()
 	eventID := s.eventID
 	s.mu.Unlock()
 
@@ -195,6 +197,7 @@ func (s *cloudEventSink) reset() {
 	defer s.mu.Unlock()
 	s.requests = 0
 	s.lastBody = nil
+	s.lastHeader = nil
 }
 
 func (s *cloudEventSink) count() int {
@@ -207,4 +210,11 @@ func (s *cloudEventSink) body() []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]byte(nil), s.lastBody...)
+}
+
+// header returns the headers of the last CloudEvent delivery.
+func (s *cloudEventSink) header() http.Header {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastHeader.Clone()
 }

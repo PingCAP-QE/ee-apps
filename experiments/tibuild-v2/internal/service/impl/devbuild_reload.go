@@ -8,7 +8,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 
 	"github.com/bndr/gojenkins"
-	cloudevents "github.com/cloudevents/sdk-go/v2"
 )
 
 // Reload updates the service configuration at runtime. It is called by the
@@ -38,9 +37,11 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 		}
 	}
 
-	// Recreate cloud events client if endpoint changed.
+	// Recreate cloud events client if endpoint changed. This also re-reads the
+	// HMAC secret, so rotating it in the mounted config takes effect without a
+	// restart.
 	if cfg.Tekton.CloudeventEndpoint != "" {
-		client, err := cloudevents.NewClientHTTP(cloudevents.WithTarget(cfg.Tekton.CloudeventEndpoint))
+		client, err := newTektonCloudEventClient(cfg.Tekton.CloudeventEndpoint, cfg.Tekton.CloudeventHmacSecret, s.logger)
 		if err == nil {
 			s.tektonCloudEventClient = client
 		} else {

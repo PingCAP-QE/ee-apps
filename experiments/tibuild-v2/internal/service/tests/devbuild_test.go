@@ -28,7 +28,7 @@ type testEnv struct {
 	service          devbuild.Service
 }
 
-func setupTestEnv(t *testing.T) *testEnv {
+func setupTestEnv(t *testing.T, configure ...func(*config.Service)) *testEnv {
 	t.Helper()
 
 	// Setup fake cloudevent server
@@ -68,6 +68,12 @@ func setupTestEnv(t *testing.T) *testEnv {
 		ImageMirrorURLMap: map[string]string{
 			"server1.test.net": "server2.test.net/new/",
 		},
+	}
+
+	// Let each test adjust the configuration (e.g. the CloudEvent HMAC secret)
+	// before the service is built.
+	for _, fn := range configure {
+		fn(cfg)
 	}
 
 	logger := zerolog.New(os.Stdout)
