@@ -8,11 +8,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/bndr/gojenkins"
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/go-github/v93/github"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
@@ -27,11 +29,15 @@ import (
 // devbuild service example implementation.
 // The example methods log the requests and return zero values.
 type devbuildsrvc struct {
-	logger                 *zerolog.Logger
-	dbClient               *ent.Client
-	productRepoMap         map[string]string
-	imageMirrorURLMap      map[string]string
-	builderImageAllowlist  []string
+	logger                *zerolog.Logger
+	dbClient              *ent.Client
+	productRepoMap        map[string]string
+	imageMirrorURLMap     map[string]string
+	builderImageAllowlist []string
+	// repoAllowlist holds the current devbuild githubRepo policy. It is
+	// replaced as a whole by Reload, so request handlers read it without a lock.
+	repoAllowlist          atomic.Pointer[config.RepoAllowlist]
+	repoMetrics            *devbuildRepoMetrics
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
 	dashboardAPIURL        string
@@ -46,7 +52,7 @@ type devbuildsrvc struct {
 	}
 }
 
-func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
+func NewDevbuild(logger *zerolog.Logger, cfg *config.Service, registerer prometheus.Registerer) devbuild.Service {
 	dbClient, err := newStoreClient(cfg.Store)
 	if err != nil {
 		logger.Err(err).Msg("failed to create store client")
@@ -81,7 +87,19 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service) devbuild.Service {
 		ociFileDownloadURL:     strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/"),
 		reconcilerSince:        reconcilerSince,
 		httpClient:             &http.Client{Timeout: 30 * time.Second},
+		repoMetrics:            newDevbuildRepoMetrics(registerer),
 	}
+	// The configuration watcher validates the list before any revision is
+	// applied, so an unbuildable list here means a programmatic construction
+	// (tests or a future caller): deny explicit repositories rather than
+	// silently accepting them.
+	allowlist, err := config.NewRepoAllowlist(cfg.DevBuild.GithubRepoAllowlist)
+	if err != nil {
+		logger.Err(err).Msg("invalid devbuild github_repo_allowlist, explicit githubRepo values will be rejected")
+		allowlist = config.RepoAllowlist{}
+	}
+	srvc.repoAllowlist.Store(&allowlist)
+
 	srvc.jenkins.client = gojenkins.CreateJenkins(http.DefaultClient, cfg.Jenkins.URL)
 	srvc.jenkins.jobName = cfg.Jenkins.JobName
 
@@ -234,7 +252,7 @@ func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*
 		// API errors from ref resolution are already specific (400 vs 500) and
 		// must reach the client unchanged.
 		switch err.(type) {
-		case *devbuild.DevBuildBadRequestError, *devbuild.DevBuildInternalServerError:
+		case *devbuild.DevBuildBadRequestError, *devbuild.DevBuildForbiddenError, *devbuild.DevBuildInternalServerError:
 			return nil, err
 		}
 		s.logger.Err(err).Msg("failed to create build")
@@ -366,6 +384,23 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "only terminal builds can be rerun"}
 	}
 
+	// A rerun re-enters the build path with the repository stored on the
+	// record, so it needs the same policy: a repository that has since been
+	// removed from the allowlist must not be built again. Legacy rows without a
+	// repository keep using the product default, which is trusted by config.
+	githubRepo := existingBuild.GithubRepo
+	if githubRepo != "" {
+		if err := checkExplicitRepo(githubRepo, s.productRepoMap, existingBuild.Product, s.currentAllowlist()); err != nil {
+			s.recordRepoDenied("rerun", githubRepo, existingBuild.Product, existingBuild.CreatedBy)
+			return nil, err
+		}
+	} else {
+		githubRepo = s.productRepoMap[existingBuild.Product]
+		if githubRepo == "" {
+			return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "unknown product or githubRepo"}
+		}
+	}
+
 	// Reuse the stored SHA when possible; legacy rows with an empty gitHash are
 	// resolved once here so a rerun never triggers an empty revision.
 	refInfo := gitRefInfoFromRecord(existingBuild)
@@ -382,7 +417,7 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		SetProduct(existingBuild.Product).
 		SetEdition(existingBuild.Edition).
 		SetVersion(existingBuild.Version).
-		SetGithubRepo(existingBuild.GithubRepo).
+		SetGithubRepo(githubRepo).
 		SetGitRef(existingBuild.GitRef).
 		SetGitHash(refInfo.SHA).
 		SetPluginGitRef(existingBuild.PluginGitRef).

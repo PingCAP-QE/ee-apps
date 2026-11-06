@@ -96,7 +96,7 @@ func main() {
 		}
 		{
 			logger := zerolog.New(os.Stderr).With().Timestamp().Str("service", devbuild.ServiceName).Logger()
-			devbuildSvc = impl.NewDevbuild(&logger, cfg.Get())
+			devbuildSvc = impl.NewDevbuild(&logger, cfg.Get(), metricsRegistry)
 			if devbuildSvc == nil {
 				log.Fatalf(ctx, errors.New("failed to initialize devbuild service"), "please check the configuration")
 			}

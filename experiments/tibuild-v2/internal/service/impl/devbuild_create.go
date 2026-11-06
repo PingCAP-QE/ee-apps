@@ -11,6 +11,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 const (
@@ -32,8 +33,11 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 
 	// 1. get the github full repo. Honor an explicit repo from the request,
 	// and fall back to the product default only when it is not provided.
-	githubFullRepo, err := resolveGithubRepo(derefString(p.Request.GithubRepo), s.productRepoMap, p.Request.Product)
+	githubFullRepo, err := resolveGithubRepo(derefString(p.Request.GithubRepo), s.productRepoMap, p.Request.Product, s.currentAllowlist())
 	if err != nil {
+		if isRepoDenied(err) {
+			s.recordRepoDenied("create", derefString(p.Request.GithubRepo), p.Request.Product, derefString(p.CreatedBy))
+		}
 		return nil, gitRefInfo{}, err
 	}
 	if !validGitRef(p.Request.GitRef) {
@@ -114,9 +118,11 @@ func gitRefInfoFromRecord(record *ent.DevBuild) gitRefInfo {
 // resolveGithubRepo returns the repository a build should use. An explicit
 // repo from the request wins; otherwise the product default is used. It
 // returns a bad request error when neither is available or the repo is not in
-// the <owner>/<repo> form.
-func resolveGithubRepo(explicitRepo string, productRepoMap map[string]string, product string) (string, error) {
+// the <owner>/<repo> form, and a forbidden error when an explicit repo is
+// outside the allowlist.
+func resolveGithubRepo(explicitRepo string, productRepoMap map[string]string, product string, allow config.RepoAllowlist) (string, error) {
 	githubFullRepo := explicitRepo
+	explicit := explicitRepo != ""
 	if githubFullRepo == "" {
 		githubFullRepo = productRepoMap[product]
 	}
@@ -125,6 +131,13 @@ func resolveGithubRepo(explicitRepo string, productRepoMap map[string]string, pr
 	}
 	if parts := strings.SplitN(githubFullRepo, "/", 3); len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "githubRepo must be in the form <owner>/<repo>"}
+	}
+	// Only an explicit value is judged: the product default is trusted by the
+	// configuration invariant that requires a non-empty allowlist to cover it.
+	if explicit {
+		if err := checkExplicitRepo(githubFullRepo, productRepoMap, product, allow); err != nil {
+			return "", err
+		}
 	}
 	return githubFullRepo, nil
 }

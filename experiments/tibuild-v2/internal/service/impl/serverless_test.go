@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/google/go-github/v93/github"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/zerolog"
@@ -196,6 +197,11 @@ func TestServerlessCreateResolvesRefsAndRejectsUnresolvableRefs(t *testing.T) {
 	require.ErrorAs(t, err, &bad)
 	require.Contains(t, bad.Message, `branch "missing" not found`)
 	p.Request.GitRef = "branch/main"
+	// An explicit repository outside the allowlist is rejected; allow this one
+	// so the subtest keeps covering ref resolution for a non-default repository.
+	allow, allowErr := config.NewRepoAllowlist([]string{"custom-owner/custom-name"})
+	require.NoError(t, allowErr)
+	s.repoAllowlist.Store(&allow)
 	p.Request.GithubRepo = new("custom-owner/custom-name")
 	record, _, err := s.newBuildEntity(context.Background(), p)
 	require.NoError(t, err)

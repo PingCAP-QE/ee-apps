@@ -31,6 +31,7 @@ A change to any of these takes effect within one poll interval.
 | `lark.channels` | notification recipients |
 | `image_sync.source_regx`, `image_sync.target_regx` | image sync request validation |
 | `github.*`, `jenkins.*`, `tekton.*` (except `reconciler_interval`), `product_repo_map`, `image_mirror_url_map` | devbuild/hotfix behaviour |
+| `devbuild.github_repo_allowlist` | which explicit `githubRepo` values create/dryrun/rerun accept; a change applies to the next request |
 
 `docs/publish.md` and the README describe what each key means; this page only
 says whether it is hot.
