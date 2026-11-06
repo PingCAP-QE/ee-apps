@@ -78,6 +78,20 @@ devbuild:
   # Hot-reloadable: changes take effect without a restart.
   builder_image_allowed_repositories: []
 
+  # GitHub repositories an explicit devbuild `githubRepo` may name. Entries are
+  # "<owner>/<repo>" or "<owner>/*"; matching is case-insensitive.
+  #
+  # A non-empty list is fail-closed and must cover every value of
+  # product_repo_map (the product default is used without the lookup), so add a
+  # product's repository here whenever product_repo_map gains that product.
+  # Empty means only an explicit value equal to the product default is allowed.
+  # Hot-reloadable: changes take effect without a restart.
+  github_repo_allowlist: []
+  # Example:
+  # github_repo_allowlist:
+  #   - pingcap/tidb
+  #   - tidbcloud/*
+
 # Map product name -> GitHub repo (<org>/<repo>)
 product_repo_map:
   tidb-cse: tidbcloud/tidb-cse
