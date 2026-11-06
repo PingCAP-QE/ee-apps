@@ -15,9 +15,8 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 | `ci-dashboard/` | Python | FastAPI + React | uvicorn + npm |
 | `cost-insight/` | Python | BigQuery/GCS | jobs only |
 | `roster/` | Python | Lark API sync | jobs only |
-| `mcp-servers/*/` | Python | MCP protocol | Flask/Next.js |
 
-**Archive convention:** retired subprojects live under `archive/` and are not built, published, or deployed. See [`archive/README.md`](archive/README.md).
+**Archive convention:** retired subprojects live under `archived/` and are not built, published, or deployed. See [`archived/README.md`](archived/README.md).
 
 ## Build & Test Commands
 
