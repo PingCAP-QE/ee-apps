@@ -85,7 +85,7 @@ func newAllowlistTestEnv(t *testing.T, allow []string, productRepoMap map[string
 
 	s := &devbuildsrvc{
 		logger:                 &logger,
-		repoMetrics:            newDevbuildRepoMetrics(prometheus.NewRegistry()),
+		policyMetrics:          newDevbuildPolicyMetrics(prometheus.NewRegistry()),
 		dbClient:               db,
 		ghClient:               ghClient,
 		tektonCloudEventClient: ce,
@@ -409,9 +409,11 @@ func TestRerunBuilderImageAllowlist(t *testing.T) {
 			record, err := env.service.Rerun(context.Background(), &devbuild.RerunPayload{ID: seed.ID})
 			if tc.wantErr {
 				require.Error(t, err)
-				var badRequest *devbuild.DevBuildBadRequestError
-				require.ErrorAs(t, err, &badRequest)
-				require.Equal(t, http.StatusBadRequest, badRequest.Code)
+				var forbidden *devbuild.DevBuildForbiddenError
+				require.ErrorAs(t, err, &forbidden)
+				require.Equal(t, http.StatusForbidden, forbidden.Code)
+				require.NotContains(t, forbidden.Message, "ghcr.io/pingcap-qe",
+					"the rejection must not echo the allowlist")
 				require.Equal(t, before, env.count(t), "a rejected rerun must not store a build")
 				require.Equal(t, 0, env.events(), "a rejected rerun must not send a CloudEvent")
 				return
@@ -516,34 +518,43 @@ func TestReloadPolicySnapshotConcurrentReloadAndRequests(t *testing.T) {
 
 // TestRepoDeniedCounter proves the rejection is observable: one increment per
 // surface, and a nil registry keeps the service silent instead of panicking.
-func TestRepoDeniedCounter(t *testing.T) {
+func TestPolicyDeniedCounters(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	metrics := newDevbuildRepoMetrics(registry)
+	metrics := newDevbuildPolicyMetrics(registry)
 	require.NotNil(t, metrics)
 
 	logger := zerolog.Nop()
-	s := &devbuildsrvc{logger: &logger, repoMetrics: metrics}
+	s := &devbuildsrvc{logger: &logger, policyMetrics: metrics}
 	s.recordRepoDenied("create", "evil/fork", "tidb", "tester@example.com")
 	s.recordRepoDenied("create", "evil/other", "tidb", "tester@example.com")
 	s.recordRepoDenied("rerun", "evil/fork", "tidb", "tester@example.com")
+	s.recordBuilderImageDenied("create", "evil.example.com/runner:v1", "tidb", "tester@example.com")
+	s.recordBuilderImageDenied("rerun", "evil.example.com/runner:v1", "tidb", "tester@example.com")
+	s.recordBuilderImageDenied("rerun", "evil.example.com/runner:v1", "tidb", "tester@example.com")
 
 	families, err := registry.Gather()
 	require.NoError(t, err)
-	require.Len(t, families, 1)
-	require.Equal(t, "devbuild_github_repo_denied_total", families[0].GetName())
-
-	got := map[string]float64{}
-	for _, metric := range families[0].GetMetric() {
-		got[metric.GetLabel()[0].GetValue()] = metric.GetCounter().GetValue()
+	byName := map[string]map[string]float64{}
+	for _, family := range families {
+		counts := map[string]float64{}
+		for _, metric := range family.GetMetric() {
+			counts[metric.GetLabel()[0].GetValue()] = metric.GetCounter().GetValue()
+		}
+		byName[family.GetName()] = counts
 	}
-	require.Equal(t, map[string]float64{"create": 2, "rerun": 1}, got)
+	require.Equal(t, map[string]map[string]float64{
+		"devbuild_github_repo_denied_total":   {"create": 2, "rerun": 1},
+		"devbuild_builder_image_denied_total": {"create": 1, "rerun": 2},
+	}, byName)
 
 	// No registry (metrics endpoint disabled) must be a no-op, not a panic.
-	s.repoMetrics = newDevbuildRepoMetrics(nil)
+	s.policyMetrics = newDevbuildPolicyMetrics(nil)
 	s.recordRepoDenied("create", "evil/fork", "tidb", "tester@example.com")
+	s.recordBuilderImageDenied("create", "evil.example.com/runner:v1", "tidb", "tester@example.com")
 
 	// A logger-less service still counts, which keeps the metric usable in
 	// tests that build a bare service.
-	bare := &devbuildsrvc{repoMetrics: newDevbuildRepoMetrics(prometheus.NewRegistry())}
+	bare := &devbuildsrvc{policyMetrics: newDevbuildPolicyMetrics(prometheus.NewRegistry())}
 	bare.recordRepoDenied("rerun", "evil/fork", "tidb", "")
+	bare.recordBuilderImageDenied("rerun", "evil.example.com/runner:v1", "tidb", "")
 }
