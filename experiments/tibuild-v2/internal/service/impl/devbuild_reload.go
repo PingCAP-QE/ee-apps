@@ -24,6 +24,15 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	// Update the builder image allowlist (empty disables the check).
 	s.builderImageAllowlist = cfg.DevBuild.BuilderImageAllowedRepositories
 
+	// Update the githubRepo allowlist. The watcher validates the revision before
+	// calling Reload, so a bad list here is a construction bug: keep the previous
+	// list rather than widening the policy to "allow everything".
+	if allowlist, err := config.NewRepoAllowlist(cfg.DevBuild.GithubRepoAllowlist); err != nil {
+		s.logger.Err(err).Msg("invalid devbuild github_repo_allowlist on reload, keeping the previous list")
+	} else {
+		s.repoAllowlist.Store(&allowlist)
+	}
+
 	// Update Tekton dashboard URLs used for server-side API calls and user-facing links.
 	s.dashboardAPIURL = cfg.Tekton.APIBaseURL()
 	s.dashboardViewURL = cfg.Tekton.ViewBaseURL()

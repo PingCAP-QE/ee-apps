@@ -77,7 +77,7 @@ func setupTestEnv(t *testing.T, configure ...func(*config.Service)) *testEnv {
 	}
 
 	logger := zerolog.New(os.Stdout)
-	service := impl.NewDevbuild(&logger, cfg)
+	service := impl.NewDevbuild(&logger, cfg, nil)
 	require.NotNil(t, service)
 
 	return &testEnv{
