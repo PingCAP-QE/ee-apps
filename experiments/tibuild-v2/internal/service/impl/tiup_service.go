@@ -207,6 +207,13 @@ func (s *publishsrvc) RequestToPublishSingle(ctx context.Context, p *publish.TiU
 		if p.From.HTTP == nil || p.From.HTTP.URL == nil || *p.From.HTTP.URL == "" {
 			return "", badRequest("from.http.url is required for a http source")
 		}
+		// The worker downloads this URL and feeds the bytes to
+		// `tiup mirror publish`, so a caller-chosen host is both an SSRF
+		// primitive and a supply-chain write. Reject it here, where the request
+		// enters the system, and again when the step executes.
+		if err := validateTiUPHTTPPublishSource(s.publishConfig().HTTPSourceAllowedHosts, *p.From.HTTP.URL); err != nil {
+			return "", badRequest(err.Error())
+		}
 		payload.SourceType = "http"
 		payload.SourceURL = *p.From.HTTP.URL
 	case "oci":

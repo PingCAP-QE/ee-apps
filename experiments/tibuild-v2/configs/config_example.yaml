@@ -155,6 +155,18 @@ publish:
   # delivery.yaml from PingCAP-QE/artifacts, synced into the cluster by Flux.
   # The file is reloaded when it changes, so a rule update needs no restart.
   delivery_config_path: /etc/delivery/delivery.yaml
+  # Hostnames an `http` TiUP publish source (`from.http.url`) may point at.
+  #
+  # The publish worker downloads that URL and hands the bytes to
+  # `tiup mirror publish` with the mirror signing key mounted, so an
+  # unrestricted URL is both an SSRF primitive and a supply-chain write. The
+  # policy is fail-closed: an EMPTY list rejects every `http` source. Exact
+  # hostnames only; a leading `*.` also allows subdomains. Port and case are
+  # ignored. The `oci` source is unaffected (it pins a tag or digest).
+  #
+  # Hot-reloadable: changes take effect without a restart, and are re-checked
+  # when a queued step executes.
+  http_source_allowed_hosts: []
   # Nightly convergence is off by default: every nightly push publishes
   # immediately. Enable it per target (staging first) to accumulate pushes and
   # publish only the newest artifact at each aligned window.

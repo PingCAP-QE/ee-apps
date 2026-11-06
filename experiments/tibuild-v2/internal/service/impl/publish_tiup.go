@@ -298,7 +298,21 @@ func (t *tiupCLI) downloadHTTP(ctx context.Context, url string) (string, string,
 	if err != nil {
 		return "", "", err
 	}
-	resp, err := t.http.Do(req)
+	// The source URL is already vetted against the publish source allowlist when
+	// the request is accepted and again when the step executes. Bounding the
+	// redirect chain keeps that decision from being undone by a redirect: a
+	// source may only bounce a few times, and never into a non-HTTP scheme.
+	client := *t.http
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 {
+			return fmt.Errorf("download %s: stopped after %d redirects", url, len(via))
+		}
+		if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
+			return fmt.Errorf("download %s: redirect to unsupported scheme %q", url, req.URL.Scheme)
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", "", err
 	}
@@ -635,6 +649,14 @@ func (s *publishsrvc) executeTiUPStep(ctx context.Context, step *ent.PublishStep
 	}
 	if payload.MirrorURL == "" {
 		return nil, fmt.Errorf("step %s has no mirror url in its payload", step.ID)
+	}
+	// Re-check the source policy at execution time: the payload is a stored row
+	// and the policy is hot-reloadable, so a request accepted under one
+	// configuration must not be fetched under a stricter one.
+	if payload.SourceType == "http" {
+		if err := validateTiUPHTTPPublishSource(s.publishConfig().HTTPSourceAllowedHosts, payload.SourceURL); err != nil {
+			return nil, fmt.Errorf("step %s: %w", step.ID, err)
+		}
 	}
 
 	acquired, err := s.acquireLane(ctx, step.UnitID, workerID)
