@@ -1106,6 +1106,12 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                  AND (
                    allocation.match_tenant IS NOT NULL
                    OR JSON_LENGTH(allocation.match_tags_json) > 0
+                   OR (
+                     allocation.account_id = summary.account_id
+                     AND allocation.owner_email IS NOT NULL
+                     AND UPPER(JSON_TYPE(allocation.vendor_tags_json)) = 'OBJECT'
+                     AND JSON_LENGTH(allocation.vendor_tags_json) = 0
+                   )
                  )
                  AND (allocation.match_tenant IS NULL OR allocation.match_tenant = summary.org)
                  AND (

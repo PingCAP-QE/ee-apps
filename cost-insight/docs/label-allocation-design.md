@@ -27,6 +27,7 @@ TiDB Cloud 相关 vendor tag，例如 AWS console 的 `shared-pool` 在 CUR/stag
    未命中的成本保持 unattributed，不回退到 author，避免绕过 TCMS 分账边界。
 6. 匹配优先级依次为：JSON tag 条件数量、是否包含 tenant 条件、account 精确匹配、有效期和 id。
    因而资源标签规则优先于 tenant-only 规则，tenant + 资源标签规则优先于相同资源标签的泛化规则。
+   显式账号级 `{}` 默认规则优先级最低，仅承接没有更具体匹配的成本；不会覆盖 AWS split-cost 的原生 owner label。
    若最具体规则的 `icost_project` 为空，则用匹配的 tenant-only 规则补齐 project；其他 `icost_*` 字段仍来自最具体规则。
 7. shared pool 固定成本：billing 行无 author、`cluster` 为空、`shared_pool` 非空；按同一 shared pool 下各
    `(service, project)` logical net_cost 占比分摊。
@@ -66,9 +67,15 @@ CREATE TABLE tcms_cost.resource_allocation (
 
 约束由 tcms 写入侧负责：
 
-- `vendor_tags_json` 至少包含一个用于匹配的条件（`tenant`、`cluster`、`shared_pool` 或 `usedby`），只写有值的 tag。
+- 通常 `vendor_tags_json` 至少包含一个用于匹配的条件（`tenant`、`cluster`、`shared_pool` 或 `usedby`），只写有值的 tag。
+  唯一空条件例外：`account_id` 必须精确指定账号，`icost_owner_email` 必须非 NULL，且原始 `vendor_tags_json` 必须是空 JSON object `{}`，
+  表示该账号的默认 owner/service/project 分配，匹配有标签和无标签、包括已有 author 的成本；`account_id IS NULL` 的 `{}` 不允许跨账号匹配。
+  `icost_owner_email IS NULL` 的 `{}` 规则不生效，也不阻止 author fallback。
+  含 null 条件且规范化后变空的对象、数组和 JSON null 不会被视为账号默认规则。
   缺失 key 表示 wildcard，不要写 JSON null/空字符串来表达 wildcard；
   pool 级记录写 `{"shared_pool":"..."}`，不要写 `{"cluster":null,"shared_pool":"..."}`。
+- `valid_from/valid_to` 按账单 `usage_date` 双端包含匹配；NULL 表示不设对应边界，而不是从记录创建日期生效。
+  新增账号默认规则后，已有历史归因需要按 vendor/account 和批准日期范围重算，不能仅刷新记录创建后的使用日期。
 - 同 `(vendor, account_id, vendor_tags_json)` 的 `valid_from/valid_to` 区间不重叠。
 - 同一 tag 组合不要同时存在 account 精确行和 `account_id IS NULL` 泛化行，避免 cost join 双命中。
 

@@ -105,6 +105,8 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
     def json_unquote(value):
         if value == json_null:
             return None
+        if isinstance(value, str) and value.startswith('"'):
+            return json.loads(value)
         return value
 
     def json_key(path):
@@ -123,16 +125,18 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
         extracted = parsed[key]
         if extracted is None:
             return json_null
-        if isinstance(extracted, (dict, list)):
-            return json.dumps(extracted, sort_keys=True, separators=(",", ":"))
-        return extracted
+        return json.dumps(extracted, sort_keys=True, separators=(",", ":"))
 
     def json_type(value):
         if value is None:
             return None
         if value == json_null:
             return "NULL"
-        return "OBJECT" if isinstance(value, str) and value.startswith("{") else "STRING"
+        parsed = json.loads(value) if isinstance(value, str) else value
+        return {
+            dict: "OBJECT", list: "ARRAY", type(None): "NULL", bool: "BOOLEAN",
+            int: "INTEGER", float: "DOUBLE", str: "STRING",
+        }[type(parsed)]
 
     def json_remove(value, *paths):
         if value is None:
@@ -184,6 +188,28 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
     raw_connection.create_function("JSON_UNQUOTE", 1, json_unquote)
     raw_connection.create_function("SHA2", 2, sha2)
     raw_connection.create_function("SUBSTRING_INDEX", 3, substring_index)
+
+
+@pytest.mark.parametrize("value,expected_type", (
+    (None, None), ('{}', 'OBJECT'), (' {}', 'OBJECT'),
+    ('[]', 'ARRAY'), ('[1]', 'ARRAY'), ('null', 'NULL'),
+    ('123', 'INTEGER'), ('1.25', 'DOUBLE'), ('true', 'BOOLEAN'),
+    ('false', 'BOOLEAN'), ('"label"', 'STRING'),
+))
+def test_sqlite_json_type_matches_mysql(value, expected_type) -> None:
+    engine = _sqlite_engine()
+    try:
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT JSON_TYPE(:value)"), {"value": value},
+            ).scalar_one() == expected_type
+            if value is not None:
+                assert connection.execute(
+                    text("SELECT JSON_TYPE(JSON_EXTRACT(:document, '$.value'))"),
+                    {"document": '{"value":' + value + '}'},
+                ).scalar_one() == expected_type
+    finally:
+        engine.dispose()
 
 
 def test_allocation_tag_match_prefers_underscore_shared_pool() -> None:
@@ -2172,6 +2198,204 @@ def test_summary_insert_variants_do_not_use_tidb_unsupported_on_subqueries(
         assert len(on_clauses) == expected_on_clause_count
         for on_clause in on_clauses:
             assert _SUBQUERY_IN_JOIN_ON.search(on_clause) is None, on_clause.strip()
+
+
+@pytest.fixture
+def account_default_connection():
+    engine = _sqlite_engine()
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("""
+                CREATE TABLE cost_bq_export_summary_daily (
+                  id INTEGER PRIMARY KEY, usage_date TEXT, vendor TEXT, account_id TEXT,
+                  service_name TEXT, sku_name TEXT, usage_type TEXT, cost_driver_key TEXT,
+                  region TEXT, org TEXT, repo TEXT, target_branch TEXT, resource_name TEXT,
+                  vendor_tags_json TEXT, source_schema_version TEXT,
+                  source_allocation_scope TEXT DEFAULT 'direct', namespace TEXT,
+                  workload_name TEXT, workload_type TEXT, author TEXT, owner TEXT,
+                  service TEXT, project TEXT, service_exec_id TEXT, source_row_hash TEXT,
+                  list_cost REAL, effective_cost REAL, credit_amount REAL, net_cost REAL,
+                  currency TEXT DEFAULT 'USD'
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE resource_allocation (
+                  id INTEGER PRIMARY KEY, vendor TEXT, account_id TEXT, vendor_tags_json TEXT,
+                  icost_owner_email TEXT, icost_service TEXT, icost_project TEXT,
+                  icost_service_exec_id TEXT, valid_from TEXT, valid_to TEXT
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE roster_employees (
+                  id INTEGER PRIMARY KEY, email TEXT, github_id TEXT, en_name TEXT,
+                  group_id INTEGER, manager_id INTEGER
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE roster_groups (
+                  id INTEGER PRIMARY KEY, is_active INTEGER, manager_id INTEGER
+                )
+            """))
+            connection.execute(text("""
+                INSERT INTO roster_employees (id, email) VALUES (1, 'tcms@pingcap.cn')
+            """))
+            yield connection
+    finally:
+        engine.dispose()
+
+
+def _preview_account_default(
+    connection, *, vendor="azure", author=None, tags=None, source_schema_version=None, owner=None,
+):
+    connection.execute(text("""
+        INSERT INTO cost_bq_export_summary_daily (
+          id, usage_date, vendor, account_id, org, author, vendor_tags_json,
+          source_schema_version, owner, source_row_hash,
+          list_cost, effective_cost, credit_amount, net_cost
+        ) VALUES (
+          1, '2026-09-01', :vendor, 'account-1', 'tenant-a', :author, :tags,
+          :source_schema_version, :owner, 'summary-1', 12, 10, -2, 8
+        )
+    """), {
+        "vendor": vendor, "author": author, "tags": tags,
+        "source_schema_version": source_schema_version, "owner": owner,
+    })
+    statement, = _summary_insert_statements(
+        source=CostAttributionSource(vendor=vendor, account_id="account-1"),
+        tcms_allocation_table="resource_allocation",
+    )
+    _, separator, select_body = str(statement).partition("\n        SELECT\n")
+    assert separator
+    return connection.execute(text("SELECT\n" + select_body), {
+        "vendor": vendor, "account_id": "account-1",
+        "start_date": "2026-09-01", "end_date": "2026-09-01",
+    }).mappings().one()
+
+
+@pytest.mark.parametrize("vendor", ("aws", "azure"))
+@pytest.mark.parametrize("author,tags", (
+    (None, None), ("alice", None), (None, '{"cluster":"cluster-a"}'),
+    ("alice", '{"cluster":"cluster-a"}'),
+))
+def test_explicit_account_default_assigns_all_cost(account_default_connection, vendor, author, tags):
+    connection = account_default_connection
+    connection.execute(text("""
+        INSERT INTO resource_allocation (
+          id, vendor, account_id, vendor_tags_json, icost_owner_email,
+          icost_service, icost_project
+        ) VALUES (1030863, :vendor, 'account-1', '{}', 'tcms@pingcap.cn',
+                  'TestInfra', 'TestInfra OP Test')
+    """), {"vendor": vendor})
+    row = _preview_account_default(connection, vendor=vendor, author=author, tags=tags)
+    assert (row["owner"], row["service"], row["project"]) == (
+        "tcms@pingcap.cn", "TestInfra", "TestInfra OP Test",
+    )
+    assert row["employee_id"] == 1
+    assert row["attribution_status"] == "matched"
+    assert row["allocate_method"] == "vendor_tag"
+    assert row["author"] == author
+    assert tuple(row[key] for key in ("list_cost", "effective_cost", "credit_amount", "net_cost")) == (
+        12, 10, -2, 8,
+    )
+    assert row["currency"] == "USD" and row["source_rows"] == 1
+
+
+@pytest.mark.parametrize("vendor", ("aws", "azure"))
+@pytest.mark.parametrize("tags", (None, '{"cluster":"cluster-a"}'))
+def test_ownerless_account_default_preserves_author_fallback(
+    account_default_connection, vendor, tags,
+):
+    connection = account_default_connection
+    connection.execute(text("""
+        INSERT INTO resource_allocation (
+          id, vendor, account_id, vendor_tags_json, icost_owner_email,
+          icost_service, icost_project
+        ) VALUES (1, :vendor, 'account-1', '{}', NULL, 'TestInfra', 'default')
+    """), {"vendor": vendor})
+    connection.execute(text("""
+        INSERT INTO roster_employees (id, email, github_id)
+        VALUES (2, 'alice@pingcap.com', 'alice')
+    """))
+    row = _preview_account_default(connection, vendor=vendor, author="alice", tags=tags)
+    assert row["owner"] == "alice@pingcap.com"
+    assert row["employee_id"] == 2
+    assert row["attribution_key"] == "employee:2"
+    assert row["attribution_source"] == "author_github"
+    assert row["attribution_status"] == "matched"
+    assert row["allocate_method"] is None
+    assert row["service"] is None and row["project"] is None
+    assert row["net_cost"] == 8 and row["source_rows"] == 1
+
+
+def test_account_default_preserves_aws_split_cost_native_owner(account_default_connection):
+    connection = account_default_connection
+    connection.execute(text("""
+        INSERT INTO resource_allocation (
+          id, vendor, account_id, vendor_tags_json, icost_owner_email,
+          icost_service, icost_project
+        ) VALUES (1, 'aws', 'account-1', '{}', 'tcms@pingcap.cn', 'TestInfra', 'default')
+    """))
+    row = _preview_account_default(
+        connection, vendor="aws", author="alice",
+        source_schema_version="aws_split_cost_v1", owner="dave@pingcap.com",
+    )
+    assert row["owner"] == "dave@pingcap.com"
+    assert row["allocate_method"] == "direct_label"
+    assert row["attribution_key"] == "owner_email:dave@pingcap.com"
+    assert row["attribution_source"] == "source_label"
+    assert row["net_cost"] == 8 and row["source_rows"] == 1
+
+
+@pytest.mark.parametrize("account,tags,valid_from,valid_to,expected_owner", (
+    (None, '{}', None, None, None),
+    ('another-account', '{}', None, None, None),
+    ('account-1', '{"tenant":null}', None, None, None),
+    ('account-1', '{"cluster":null}', None, None, None),
+    ('account-1', '{"shared_pool":null}', None, None, None),
+    ('account-1', '[]', None, None, None),
+    ('account-1', 'null', None, None, None),
+    ('account-1', '{}', '2026-09-02', None, None),
+    ('account-1', '{}', None, '2026-08-31', None),
+    ('account-1', '{}', '2026-09-01', '2026-09-01', 'tcms@pingcap.cn'),
+))
+def test_account_default_requires_explicit_empty_object_account_and_validity(
+    account_default_connection, account, tags, valid_from, valid_to, expected_owner,
+):
+    connection = account_default_connection
+    connection.execute(text("""
+        INSERT INTO resource_allocation (
+          id, vendor, account_id, vendor_tags_json, icost_owner_email,
+          icost_service, icost_project, valid_from, valid_to
+        ) VALUES (1, 'azure', :account, :tags, 'tcms@pingcap.cn', 'TestInfra',
+                  'TestInfra OP Test', :valid_from, :valid_to)
+    """), {"account": account, "tags": tags, "valid_from": valid_from, "valid_to": valid_to})
+    row = _preview_account_default(connection)
+    assert row["owner"] == expected_owner
+    assert row["project"] == ("TestInfra OP Test" if expected_owner else None)
+    assert tuple(row[key] for key in ("list_cost", "effective_cost", "credit_amount", "net_cost")) == (
+        12, 10, -2, 8,
+    )
+
+
+@pytest.mark.parametrize("specific_tags", (
+    '{"tenant":"tenant-a"}', '{"cluster":"cluster-a"}',
+    '{"tenant":"tenant-a","cluster":"cluster-a"}',
+))
+def test_specific_allocation_beats_newer_account_default(account_default_connection, specific_tags):
+    connection = account_default_connection
+    connection.execute(text("""
+        INSERT INTO resource_allocation (
+          id, vendor, account_id, vendor_tags_json, icost_owner_email,
+          icost_service, icost_project
+        ) VALUES
+          (1030863, 'azure', 'account-1', '{}', 'tcms@pingcap.cn', 'TestInfra', 'default'),
+          (1, 'azure', NULL, :tags, 'specific@pingcap.cn', 'SpecificService', 'specific')
+    """), {"tags": specific_tags})
+    row = _preview_account_default(connection, tags='{"cluster":"cluster-a"}')
+    assert (row["owner"], row["service"], row["project"]) == (
+        "specific@pingcap.cn", "SpecificService", "specific",
+    )
+    assert row["net_cost"] == 8 and row["source_rows"] == 1
 
 
 def test_attribution_carries_currency_and_separates_dimension_hashes() -> None:
