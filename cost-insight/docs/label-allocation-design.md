@@ -68,8 +68,9 @@ CREATE TABLE tcms_cost.resource_allocation (
 约束由 tcms 写入侧负责：
 
 - 通常 `vendor_tags_json` 至少包含一个用于匹配的条件（`tenant`、`cluster`、`shared_pool` 或 `usedby`），只写有值的 tag。
-  唯一空条件例外：`account_id` 必须精确指定账号，且原始 `vendor_tags_json` 必须是空 JSON object `{}`，表示该账号的默认
-  owner/service/project 分配，匹配有标签和无标签、包括已有 author 的成本；`account_id IS NULL` 的 `{}` 不允许跨账号匹配。
+  唯一空条件例外：`account_id` 必须精确指定账号，`icost_owner_email` 必须非 NULL，且原始 `vendor_tags_json` 必须是空 JSON object `{}`，
+  表示该账号的默认 owner/service/project 分配，匹配有标签和无标签、包括已有 author 的成本；`account_id IS NULL` 的 `{}` 不允许跨账号匹配。
+  `icost_owner_email IS NULL` 的 `{}` 规则不生效，也不阻止 author fallback。
   含 null 条件且规范化后变空的对象、数组和 JSON null 不会被视为账号默认规则。
   缺失 key 表示 wildcard，不要写 JSON null/空字符串来表达 wildcard；
   pool 级记录写 `{"shared_pool":"..."}`，不要写 `{"cluster":null,"shared_pool":"..."}`。

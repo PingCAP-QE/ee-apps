@@ -105,6 +105,8 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
     def json_unquote(value):
         if value == json_null:
             return None
+        if isinstance(value, str) and value.startswith('"'):
+            return json.loads(value)
         return value
 
     def json_key(path):
@@ -123,16 +125,18 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
         extracted = parsed[key]
         if extracted is None:
             return json_null
-        if isinstance(extracted, (dict, list)):
-            return json.dumps(extracted, sort_keys=True, separators=(",", ":"))
-        return extracted
+        return json.dumps(extracted, sort_keys=True, separators=(",", ":"))
 
     def json_type(value):
         if value is None:
             return None
         if value == json_null:
             return "NULL"
-        return "OBJECT" if isinstance(value, str) and value.startswith("{") else "STRING"
+        parsed = json.loads(value) if isinstance(value, str) else value
+        return {
+            dict: "OBJECT", list: "ARRAY", type(None): "NULL", bool: "BOOLEAN",
+            int: "INTEGER", float: "DOUBLE", str: "STRING",
+        }[type(parsed)]
 
     def json_remove(value, *paths):
         if value is None:
@@ -184,6 +188,28 @@ def _register_mysqlish_sqlite_functions(connection) -> None:
     raw_connection.create_function("JSON_UNQUOTE", 1, json_unquote)
     raw_connection.create_function("SHA2", 2, sha2)
     raw_connection.create_function("SUBSTRING_INDEX", 3, substring_index)
+
+
+@pytest.mark.parametrize("value,expected_type", (
+    (None, None), ('{}', 'OBJECT'), (' {}', 'OBJECT'),
+    ('[]', 'ARRAY'), ('[1]', 'ARRAY'), ('null', 'NULL'),
+    ('123', 'INTEGER'), ('1.25', 'DOUBLE'), ('true', 'BOOLEAN'),
+    ('false', 'BOOLEAN'), ('"label"', 'STRING'),
+))
+def test_sqlite_json_type_matches_mysql(value, expected_type) -> None:
+    engine = _sqlite_engine()
+    try:
+        with engine.connect() as connection:
+            assert connection.execute(
+                text("SELECT JSON_TYPE(:value)"), {"value": value},
+            ).scalar_one() == expected_type
+            if value is not None:
+                assert connection.execute(
+                    text("SELECT JSON_TYPE(JSON_EXTRACT(:document, '$.value'))"),
+                    {"document": '{"value":' + value + '}'},
+                ).scalar_one() == expected_type
+    finally:
+        engine.dispose()
 
 
 def test_allocation_tag_match_prefers_underscore_shared_pool() -> None:
@@ -2218,16 +2244,22 @@ def account_default_connection():
         engine.dispose()
 
 
-def _preview_account_default(connection, *, vendor="azure", author=None, tags=None):
+def _preview_account_default(
+    connection, *, vendor="azure", author=None, tags=None, source_schema_version=None, owner=None,
+):
     connection.execute(text("""
         INSERT INTO cost_bq_export_summary_daily (
           id, usage_date, vendor, account_id, org, author, vendor_tags_json,
-          source_row_hash, list_cost, effective_cost, credit_amount, net_cost
+          source_schema_version, owner, source_row_hash,
+          list_cost, effective_cost, credit_amount, net_cost
         ) VALUES (
           1, '2026-09-01', :vendor, 'account-1', 'tenant-a', :author, :tags,
-          'summary-1', 12, 10, -2, 8
+          :source_schema_version, :owner, 'summary-1', 12, 10, -2, 8
         )
-    """), {"vendor": vendor, "author": author, "tags": tags})
+    """), {
+        "vendor": vendor, "author": author, "tags": tags,
+        "source_schema_version": source_schema_version, "owner": owner,
+    })
     statement, = _summary_insert_statements(
         source=CostAttributionSource(vendor=vendor, account_id="account-1"),
         tcms_allocation_table="resource_allocation",
@@ -2266,6 +2298,52 @@ def test_explicit_account_default_assigns_all_cost(account_default_connection, v
         12, 10, -2, 8,
     )
     assert row["currency"] == "USD" and row["source_rows"] == 1
+
+
+@pytest.mark.parametrize("vendor", ("aws", "azure"))
+@pytest.mark.parametrize("tags", (None, '{"cluster":"cluster-a"}'))
+def test_ownerless_account_default_preserves_author_fallback(
+    account_default_connection, vendor, tags,
+):
+    connection = account_default_connection
+    connection.execute(text("""
+        INSERT INTO resource_allocation (
+          id, vendor, account_id, vendor_tags_json, icost_owner_email,
+          icost_service, icost_project
+        ) VALUES (1, :vendor, 'account-1', '{}', NULL, 'TestInfra', 'default')
+    """), {"vendor": vendor})
+    connection.execute(text("""
+        INSERT INTO roster_employees (id, email, github_id)
+        VALUES (2, 'alice@pingcap.com', 'alice')
+    """))
+    row = _preview_account_default(connection, vendor=vendor, author="alice", tags=tags)
+    assert row["owner"] == "alice@pingcap.com"
+    assert row["employee_id"] == 2
+    assert row["attribution_key"] == "employee:2"
+    assert row["attribution_source"] == "author_github"
+    assert row["attribution_status"] == "matched"
+    assert row["allocate_method"] is None
+    assert row["service"] is None and row["project"] is None
+    assert row["net_cost"] == 8 and row["source_rows"] == 1
+
+
+def test_account_default_preserves_aws_split_cost_native_owner(account_default_connection):
+    connection = account_default_connection
+    connection.execute(text("""
+        INSERT INTO resource_allocation (
+          id, vendor, account_id, vendor_tags_json, icost_owner_email,
+          icost_service, icost_project
+        ) VALUES (1, 'aws', 'account-1', '{}', 'tcms@pingcap.cn', 'TestInfra', 'default')
+    """))
+    row = _preview_account_default(
+        connection, vendor="aws", author="alice",
+        source_schema_version="aws_split_cost_v1", owner="dave@pingcap.com",
+    )
+    assert row["owner"] == "dave@pingcap.com"
+    assert row["allocate_method"] == "direct_label"
+    assert row["attribution_key"] == "owner_email:dave@pingcap.com"
+    assert row["attribution_source"] == "source_label"
+    assert row["net_cost"] == 8 and row["source_rows"] == 1
 
 
 @pytest.mark.parametrize("account,tags,valid_from,valid_to,expected_owner", (
