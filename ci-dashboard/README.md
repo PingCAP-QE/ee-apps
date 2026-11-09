@@ -222,7 +222,11 @@ allowances; `FRESHNESS_DRY_RUN=true` reads and prints without sending.
 
 See [the design and rollout contract](docs/cost-source-freshness-design.md) for
 bounded query budgets, importer eligibility, explicit dormant-source exceptions,
-and AWS split/F04 scope limitations. The checker does not import or repair data.
+and AWS split/F04 scope limitations. Even when upstream scope is unverified,
+per-account local summary data older than seven UTC days or missing from the
+observation window raises an alert (with a bounded initial grace for explicitly
+dated new sources). This is not a claim that account-wide source dates verify
+the F04 tenant boundary. The checker does not import or repair data.
 
 ## Container Builds
 
