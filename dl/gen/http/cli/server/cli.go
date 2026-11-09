@@ -16,6 +16,7 @@ import (
 	gcsc "github.com/PingCAP-QE/ee-apps/dl/gen/http/gcs/client"
 	ks3c "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/client"
 	ocic "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/client"
+	sharesc "github.com/PingCAP-QE/ee-apps/dl/gen/http/shares/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -28,14 +29,26 @@ func UsageCommands() []string {
 		"oci (list-files|download-file|head-file|download-file-sha256)",
 		"ks3 (download-object|head-object)",
 		"gcs (download-object|head-object)",
+		"shares (create|show|revoke)",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + ` oci list-files --repository "Quam et asperiores." --tag "Deserunt esse et."` + "\n" +
-		os.Args[0] + ` ks3 download-object --bucket "Assumenda et eveniet magni quasi consequatur esse." --key "Qui quas."` + "\n" +
-		os.Args[0] + ` gcs download-object --bucket "Et sit recusandae qui totam dolor." --key "Ut doloremque laborum quis voluptas voluptatum voluptate."` + "\n" +
+	return os.Args[0] + ` oci list-files --repository "Accusantium quas nesciunt eveniet commodi." --tag "Et hic."` + "\n" +
+		os.Args[0] + ` ks3 download-object --bucket "Rerum laborum in." --key "Qui sint nihil tenetur natus."` + "\n" +
+		os.Args[0] + ` gcs download-object --bucket "Eius non excepturi quos." --key "Qui laboriosam fugit rerum quis libero mollitia."` + "\n" +
+		os.Args[0] + ` shares create --body '{
+      "artifact": {
+         "file": "b40",
+         "repository": "i88",
+         "tag": "mqx"
+      },
+      "customer_id": "hr6",
+      "expires_in_seconds": 86400,
+      "max_sessions": 5,
+      "purpose": "customer-delivery"
+   }' --authorization "Ut doloremque laborum quis voluptas voluptatum voluptate."` + "\n" +
 		""
 }
 
@@ -91,6 +104,20 @@ func ParseEndpoint(
 		gcsHeadObjectFlags      = flag.NewFlagSet("head-object", flag.ExitOnError)
 		gcsHeadObjectBucketFlag = gcsHeadObjectFlags.String("bucket", "REQUIRED", "bucket name")
 		gcsHeadObjectKeyFlag    = gcsHeadObjectFlags.String("key", "REQUIRED", "object key")
+
+		sharesFlags = flag.NewFlagSet("shares", flag.ContinueOnError)
+
+		sharesCreateFlags             = flag.NewFlagSet("create", flag.ExitOnError)
+		sharesCreateBodyFlag          = sharesCreateFlags.String("body", "REQUIRED", "")
+		sharesCreateAuthorizationFlag = sharesCreateFlags.String("authorization", "REQUIRED", "")
+
+		sharesShowFlags             = flag.NewFlagSet("show", flag.ExitOnError)
+		sharesShowIDFlag            = sharesShowFlags.String("id", "REQUIRED", "")
+		sharesShowAuthorizationFlag = sharesShowFlags.String("authorization", "REQUIRED", "")
+
+		sharesRevokeFlags             = flag.NewFlagSet("revoke", flag.ExitOnError)
+		sharesRevokeIDFlag            = sharesRevokeFlags.String("id", "REQUIRED", "")
+		sharesRevokeAuthorizationFlag = sharesRevokeFlags.String("authorization", "REQUIRED", "")
 	)
 	ociFlags.Usage = ociUsage
 	ociListFilesFlags.Usage = ociListFilesUsage
@@ -105,6 +132,11 @@ func ParseEndpoint(
 	gcsFlags.Usage = gcsUsage
 	gcsDownloadObjectFlags.Usage = gcsDownloadObjectUsage
 	gcsHeadObjectFlags.Usage = gcsHeadObjectUsage
+
+	sharesFlags.Usage = sharesUsage
+	sharesCreateFlags.Usage = sharesCreateUsage
+	sharesShowFlags.Usage = sharesShowUsage
+	sharesRevokeFlags.Usage = sharesRevokeUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -127,6 +159,8 @@ func ParseEndpoint(
 			svcf = ks3Flags
 		case "gcs":
 			svcf = gcsFlags
+		case "shares":
+			svcf = sharesFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -175,6 +209,19 @@ func ParseEndpoint(
 
 			case "head-object":
 				epf = gcsHeadObjectFlags
+
+			}
+
+		case "shares":
+			switch epn {
+			case "create":
+				epf = sharesCreateFlags
+
+			case "show":
+				epf = sharesShowFlags
+
+			case "revoke":
+				epf = sharesRevokeFlags
 
 			}
 
@@ -234,6 +281,19 @@ func ParseEndpoint(
 				endpoint = c.HeadObject()
 				data, err = gcsc.BuildHeadObjectPayload(*gcsHeadObjectBucketFlag, *gcsHeadObjectKeyFlag)
 			}
+		case "shares":
+			c := sharesc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "create":
+				endpoint = c.Create()
+				data, err = sharesc.BuildCreatePayload(*sharesCreateBodyFlag, *sharesCreateAuthorizationFlag)
+			case "show":
+				endpoint = c.Show()
+				data, err = sharesc.BuildShowPayload(*sharesShowIDFlag, *sharesShowAuthorizationFlag)
+			case "revoke":
+				endpoint = c.Revoke()
+				data, err = sharesc.BuildRevokePayload(*sharesRevokeIDFlag, *sharesRevokeAuthorizationFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -274,7 +334,7 @@ func ociListFilesUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "Quam et asperiores." --tag "Deserunt esse et."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "Accusantium quas nesciunt eveniet commodi." --tag "Et hic."`)
 }
 
 func ociDownloadFileUsage() {
@@ -324,7 +384,7 @@ func ociHeadFileUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci head-file --repository "Sed nihil autem dolor blanditiis accusamus sit." --tag "Neque sunt ut repellendus." --file "Quaerat architecto." --file-regex "m9i.*"`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci head-file --repository "Voluptatem quis accusantium doloremque rem." --tag "Nemo nisi nobis." --file "Voluptates ut nostrum ex fuga." --file-regex "jev.*"`)
 }
 
 func ociDownloadFileSha256Usage() {
@@ -347,7 +407,7 @@ func ociDownloadFileSha256Usage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file-sha256 --repository "Officia suscipit saepe rem." --file "Repudiandae velit." --tag "Aspernatur tenetur minima voluptas nemo."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file-sha256 --repository "Natus soluta nobis libero et magnam est." --file "Velit odio sapiente et." --tag "Et eum inventore deleniti et."`)
 }
 
 // ks3Usage displays the usage of the ks3 command and its subcommands.
@@ -379,7 +439,7 @@ func ks3DownloadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 download-object --bucket "Assumenda et eveniet magni quasi consequatur esse." --key "Qui quas."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 download-object --bucket "Rerum laborum in." --key "Qui sint nihil tenetur natus."`)
 }
 
 func ks3HeadObjectUsage() {
@@ -400,7 +460,7 @@ func ks3HeadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 head-object --bucket "Dolore esse sunt." --key "Ea fugiat corrupti rerum."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `ks3 head-object --bucket "Dicta et dolore amet autem atque quae." --key "Labore non quidem dolorem."`)
 }
 
 // gcsUsage displays the usage of the gcs command and its subcommands.
@@ -432,7 +492,7 @@ func gcsDownloadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs download-object --bucket "Et sit recusandae qui totam dolor." --key "Ut doloremque laborum quis voluptas voluptatum voluptate."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs download-object --bucket "Eius non excepturi quos." --key "Qui laboriosam fugit rerum quis libero mollitia."`)
 }
 
 func gcsHeadObjectUsage() {
@@ -453,5 +513,90 @@ func gcsHeadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs head-object --bucket "Amet natus quia eos autem eos laudantium." --key "Quam et ut soluta sed minima dolores."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs head-object --bucket "At natus." --key "Ut omnis."`)
+}
+
+// sharesUsage displays the usage of the shares command and its subcommands.
+func sharesUsage() {
+	fmt.Fprintln(os.Stderr, `Trusted delivery grant management; mount only in management mode`)
+	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] shares COMMAND [flags]\n\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "COMMAND:")
+	fmt.Fprintln(os.Stderr, `    create: Create implements create.`)
+	fmt.Fprintln(os.Stderr, `    show: Show implements show.`)
+	fmt.Fprintln(os.Stderr, `    revoke: Revoke implements revoke.`)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Additional help:")
+	fmt.Fprintf(os.Stderr, "    %s shares COMMAND --help\n", os.Args[0])
+}
+func sharesCreateUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] shares create", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprint(os.Stderr, " -authorization STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Create implements create.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+	fmt.Fprintln(os.Stderr, `    -authorization STRING: `)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `shares create --body '{
+      "artifact": {
+         "file": "b40",
+         "repository": "i88",
+         "tag": "mqx"
+      },
+      "customer_id": "hr6",
+      "expires_in_seconds": 86400,
+      "max_sessions": 5,
+      "purpose": "customer-delivery"
+   }' --authorization "Ut doloremque laborum quis voluptas voluptatum voluptate."`)
+}
+
+func sharesShowUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] shares show", os.Args[0])
+	fmt.Fprint(os.Stderr, " -id STRING")
+	fmt.Fprint(os.Stderr, " -authorization STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Show implements show.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -id STRING: `)
+	fmt.Fprintln(os.Stderr, `    -authorization STRING: `)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `shares show --id "07feab50-3a56-42c7-9867-7586003cc815" --authorization "Quas dignissimos vero."`)
+}
+
+func sharesRevokeUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] shares revoke", os.Args[0])
+	fmt.Fprint(os.Stderr, " -id STRING")
+	fmt.Fprint(os.Stderr, " -authorization STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Revoke implements revoke.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -id STRING: `)
+	fmt.Fprintln(os.Stderr, `    -authorization STRING: `)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `shares revoke --id "3fd97487-d041-421c-89dc-b935d5c90c0d" --authorization "Maiores vel sit quam."`)
 }

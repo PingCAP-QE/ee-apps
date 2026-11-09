@@ -12,10 +12,12 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	gcs "github.com/PingCAP-QE/ee-apps/dl/gen/gcs"
 	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
+	"github.com/PingCAP-QE/ee-apps/dl/internal/service/delivery"
 	gcssvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/gcs"
 	ks3svc "github.com/PingCAP-QE/ee-apps/dl/internal/service/ks3"
 	ocisvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/oci"
@@ -26,14 +28,21 @@ func main() {
 	// Define command line flags, add any other flag required to configure the
 	// service.
 	var (
-		hostF       = flag.String("host", "localhost", "Server host (valid values: localhost)")
-		domainF     = flag.String("domain", "", "Host domain name (overrides host domain specified in service design)")
-		httpPortF   = flag.String("http-port", "", "HTTP port (overrides host HTTP port specified in service design)")
-		secureF     = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
-		dbgF        = flag.Bool("debug", false, "Log request and response bodies")
-		ks3CfgPathF = flag.String("ks3-config", "ks3.yaml", "ks3 config yaml file path")
-		ociCfgPathF = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
-		gcsCfgPathF = flag.String("gcs-config", "", "gcs config file path (yaml or json, optional: uses ADC if not set)")
+		hostF               = flag.String("host", "localhost", "Server host (valid values: localhost)")
+		domainF             = flag.String("domain", "", "Host domain name (overrides host domain specified in service design)")
+		httpPortF           = flag.String("http-port", "", "HTTP port (overrides host HTTP port specified in service design)")
+		secureF             = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
+		dbgF                = flag.Bool("debug", false, "Log request and response bodies")
+		ks3CfgPathF         = flag.String("ks3-config", "ks3.yaml", "ks3 config yaml file path")
+		ociCfgPathF         = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
+		gcsCfgPathF         = flag.String("gcs-config", "", "gcs config file path (yaml or json, optional: uses ADC if not set)")
+		modeF               = flag.String("server-mode", "internal", "Server surface: internal, management, public, or delivery-migrate")
+		deliveryConfigF     = flag.String("delivery-config", "", "Delivery issuer policies and HTTPS public origin (YAML)")
+		deliveryHealthF     = flag.String("delivery-health-address", ":8001", "Separate private delivery probe listener; never expose through the public route")
+		deliveryConcurrentF = flag.Int("delivery-concurrency", 32, "Maximum concurrent delivery requests per replica")
+		deliveryRPSF        = flag.Float64("delivery-rps", 10, "Maximum delivery requests per second per replica")
+		deliveryBurstF      = flag.Int("delivery-burst", 20, "Delivery request rate burst per replica")
+		deliveryTimeoutF    = flag.Duration("delivery-transfer-timeout", 24*time.Hour, "Maximum duration of an authorized transfer")
 
 		ociAllowedRegistriesF = flag.String("oci-allowed-registries", "", "comma-separated registry hosts allowed for OCI downloads; empty denies all")
 		gcsAllowedBucketsF    = flag.String("gcs-allowed-buckets", "", "comma-separated GCS buckets allowed for object downloads; empty denies all")
@@ -47,6 +56,26 @@ func main() {
 	)
 	{
 		logger = log.New(os.Stderr, "[dl] ", log.Ltime)
+	}
+	if *modeF != "internal" {
+		if *dbgF {
+			logger.Fatal("debug logging is incompatible with delivery modes")
+		}
+		address := "localhost:8000"
+		if *domainF != "" {
+			address = *domainF
+		}
+		if *httpPortF != "" {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				logger.Fatal("invalid delivery listen address")
+			}
+			address = net.JoinHostPort(host, *httpPortF)
+		}
+		if err := runDelivery(*modeF, address, *deliveryHealthF, *deliveryConfigF, ociCfgPathF, splitCommaList(*ociAllowedRegistriesF), delivery.Limits{Concurrent: *deliveryConcurrentF, RequestsPerSecond: *deliveryRPSF, Burst: *deliveryBurstF, TransferTimeout: *deliveryTimeoutF}, logger); err != nil {
+			logger.Fatal(err)
+		}
+		return
 	}
 
 	// Initialize the services.

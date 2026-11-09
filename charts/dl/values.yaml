@@ -15,6 +15,9 @@ nameOverride: ""
 fullnameOverride: ""
 
 server:
+  # Delivery modes read DL_DELIVERY_DATABASE_URL from a Secret via env/envFrom.
+  env: []
+  envFrom: []
   args:
     - "--domain=0.0.0.0:80"
     # Target allowlists. Empty means deny every OCI/GCS target.

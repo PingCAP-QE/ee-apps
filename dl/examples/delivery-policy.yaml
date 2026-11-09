@@ -1,0 +1,15 @@
+# Replace the origin, issuer ID, credential hash and scopes before deployment.
+# Issue a separate random machine credential; never reuse a download token.
+public_url: https://downloads.example.com
+issuers:
+  - id: release-service
+    # SHA-256 of a separately generated, >=256-bit issuer bearer secret.
+    # This placeholder does not authenticate any usable credential.
+    token_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    repositories:
+      - hub.pingcap.net/pingcap/tidb/package
+      # A trailing slash explicitly permits a namespace and its descendants:
+      # - hub.pingcap.net/customer-delivery/
+    # Full tag match; do not grant arbitrary development/latest tags by default.
+    allowed_tags: 'v[0-9]+\.[0-9]+\.[0-9]+_linux_(amd64|arm64)'
+    max_ttl_seconds: 86400

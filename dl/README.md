@@ -5,13 +5,16 @@ It provides download functions for:
 - KS3 bucket objects
 - GCS bucket objects
 
+For opt-in, expiring anonymous OCI file links, see
+[secure delivery setup and rollout](docs/delivery.md). Separate management and
+public-only server modes preserve the default internal download endpoints.
+
 ## How to design
 
 Edit [design/design.go](./design/design.go), then regenerate code:
 
 ```bash
-goa gen github.com/PingCAP-QE/ee-apps/dl/design
-goa example github.com/PingCAP-QE/ee-apps/dl/design
+go generate ./...
 ```
 
 ## How to run locally

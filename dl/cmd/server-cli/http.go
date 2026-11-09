@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"net/http"
 	"time"
 
@@ -10,6 +12,9 @@ import (
 )
 
 func doHTTP(scheme, host string, timeout int, debug bool) (goa.Endpoint, any, error) {
+	if args := flag.Args(); debug && len(args) > 0 && args[0] == "shares" {
+		return nil, nil, errors.New("verbose logging is disabled for share management")
+	}
 	var (
 		doer goahttp.Doer
 	)

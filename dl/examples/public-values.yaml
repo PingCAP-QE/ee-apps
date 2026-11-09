@@ -1,0 +1,47 @@
+# Install as a NEW release; do not replace the OIDC-protected internal dl.
+# Use an image built from this change and pre-create the referenced Secrets.
+server:
+  args:
+    - --server-mode=public
+    - --domain=0.0.0.0:80
+    - --delivery-health-address=:8001
+    - --delivery-config=/etc/delivery/policy.yaml
+    - --oci-config=/etc/oci/oci.yaml
+    - --oci-allowed-registries=hub.pingcap.net
+    - --delivery-concurrency=32
+    - --delivery-rps=10
+    - --delivery-burst=20
+  env:
+    - name: DL_DELIVERY_DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: dl-delivery-database
+          key: url
+  volumeMounts:
+    - name: policy
+      mountPath: /etc/delivery
+      readOnly: true
+    - name: oci
+      mountPath: /etc/oci
+      readOnly: true
+  volumes:
+    - name: policy
+      secret:
+        secretName: dl-delivery-policy
+    - name: oci
+      secret:
+        secretName: dl-oci
+livenessProbe:
+  httpGet:
+    path: /livez
+    port: 8001
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8001
+# Configure a separate public HTTPRoute in ee-ops only after log redaction,
+# OIDC isolation, TLS, edge rate limits and network access have been validated.
+httpRoute:
+  enabled: false
+ingress:
+  enabled: false

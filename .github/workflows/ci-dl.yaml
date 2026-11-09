@@ -1,0 +1,50 @@
+name: Test and Build - dl
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/ci-dl.yaml
+      - dl/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: dl-test-only
+        ports: [5432:5432]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: dl
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: dl/go.mod
+          cache-dependency-path: dl/go.sum
+      - name: Test including PostgreSQL concurrency and revocation
+        env:
+          DL_TEST_POSTGRES_DSN: postgres://postgres:dl-test-only@localhost:5432/postgres?sslmode=disable
+        run: go test -race ./...
+      - name: Build
+        run: go build ./...
+      - name: Check generated APIs
+        run: |
+          go generate ./...
+          git diff --exit-code -- gen

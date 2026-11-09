@@ -1,0 +1,16 @@
+# Overlay on public-values.yaml in a separate INTERNAL management release.
+# Use a separate database role with management privileges (see docs/delivery.md).
+server:
+  args:
+    - --server-mode=management
+    - --domain=0.0.0.0:80
+    - --delivery-health-address=:8001
+    - --delivery-config=/etc/delivery/policy.yaml
+    - --oci-config=/etc/oci/oci.yaml
+    - --oci-allowed-registries=hub.pingcap.net
+  env:
+    - name: DL_DELIVERY_DATABASE_URL
+      valueFrom:
+        secretKeyRef:
+          name: dl-management-database
+          key: url
