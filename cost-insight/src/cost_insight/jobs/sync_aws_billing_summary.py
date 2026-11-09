@@ -5,6 +5,7 @@ import tempfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from itertools import chain
 from typing import Any
 
 from sqlalchemy.engine import Engine
@@ -90,6 +91,17 @@ def run_sync_aws_billing_summary(
     }:
         raise ValueError(f"Unsupported AWS source schema: {resolved_source.schema_version!r}")
     resolved_fetch_rows = fetch_rows or _default_fetch_rows(resolved_source.schema_version)
+    if resolved_source.schema_version == AWS_TIDB_CLOUD_F04_SCHEMA_VERSION and not dry_run:
+        fetcher = resolved_fetch_rows
+
+        def nonempty_f04_rows(**kwargs):
+            rows = iter(fetcher(**kwargs))
+            first = next(rows, None)
+            if first is None:
+                raise ValueError("F04 source returned no rows; refusing success or empty replacement")
+            return chain((first,), rows)
+
+        resolved_fetch_rows = nonempty_f04_rows
     if replace_existing_usage_dates:
         if limit is not None:
             raise ValueError("usage-date replacement cannot be used with limit")

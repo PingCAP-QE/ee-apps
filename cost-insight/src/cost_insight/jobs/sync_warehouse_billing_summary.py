@@ -1,4 +1,4 @@
-"""Bounded warehouse ingestion shared by ordinary AWS and Azure daily jobs."""
+"""Bounded warehouse ingestion for ordinary AWS/Azure and explicitly scoped F04."""
 from __future__ import annotations
 
 import json
@@ -23,12 +23,15 @@ from cost_insight.jobs.refresh_attribution_daily import (
     _validate_tcms_allocation_table,
     run_refresh_cost_attribution_from_summary,
 )
+from cost_insight.jobs.sync_aws_billing_summary import AWS_TIDB_CLOUD_F04_SCHEMA_VERSION
 from cost_insight.jobs.sync_azure_billing_summary import _normalize_summary_row as normalize_azure
 from cost_insight.jobs.sync_gcp_billing_summary import (
     _normalize_summary_row as normalize_aws,
 )
 from cost_insight.jobs.sync_gcp_billing_summary import replace_summary_partition_usage_dates
+from cost_insight.sources.aws_flat_cur_export import _AWS_TIDB_CLOUD_F04_USEDBY as F04_USEDBY
 from cost_insight.sources.warehouse_billing_export import (
+    F04_ACCOUNT_ID,
     WarehouseWindow,
     assert_snapshot,
     fetch_warehouse_window,
@@ -78,13 +81,20 @@ def _date(value) -> date:
     return value if isinstance(value, date) else date.fromisoformat(str(value))
 
 
-def _normalize(window: WarehouseWindow, vendor: str, account: str) -> dict:
+def _normalize(window: WarehouseWindow, vendor: str, account: str, *,
+               f04: bool = False, allow_short_window: bool = False) -> dict:
     normalize = normalize_azure if vendor == "azure" else normalize_aws
     merged: dict[str, dict] = {}
     months = {window.start.replace(day=1), window.end.replace(day=1)}
-    if (window.end - window.start).days != 4:
-        raise ValueError("Warehouse refresh requires a complete five-day window")
+    days = (window.end - window.start).days + 1
+    if not 1 <= days <= 5 or (days != 5 and not allow_short_window):
+        raise ValueError("Warehouse refresh requires a complete five-day window or bounded repair")
     for raw in window.rows:
+        if f04:
+            tags = json.loads(raw.get("vendor_tags_json") or "{}")
+            if (raw.get("author") != F04_USEDBY or not isinstance(tags, dict)
+                    or tags.get("usedby") != F04_USEDBY):
+                raise ValueError("F04 source row is outside the required usedby boundary")
         if ((raw.get("vendor"), raw.get("account_id"), raw.get("currency")) != (vendor, account, "USD")
                 or raw.get("source_schema_version")
                 or raw.get("source_allocation_scope", "direct") != "direct"):
@@ -131,11 +141,17 @@ def _normalize(window: WarehouseWindow, vendor: str, account: str) -> dict:
 def _validate_registry(connection: Connection, vendor: str, account: str, project: str, start=None):
     source = get_cost_source(connection, vendor=vendor, account_id=account)
     profiles = (None, "", "aws_cur_legacy_v1") if vendor == "aws" else (None, "")
-    if (source is None or not source.is_active or source.source_schema_version not in profiles
-            or source.source_table not in (None, "", source_table(vendor, project))):
+    f04 = (vendor == "aws" and account == F04_ACCOUNT_ID and source is not None
+           and source.source_schema_version == AWS_TIDB_CLOUD_F04_SCHEMA_VERSION)
+    expected_table = source_table(vendor, project)
+    if (source is None or not source.is_active
+            or (not f04 and (source.source_schema_version not in profiles
+                            or (vendor == "aws" and account == F04_ACCOUNT_ID)))
+            or source.source_table not in ((expected_table,) if f04 else (None, "", expected_table))):
         raise ValueError(f"Refusing inactive/custom/nonordinary warehouse source: {vendor}/{account}")
     if start and source.source_available_from and source.source_available_from > start:
         raise ValueError(f"Warehouse window predates source availability: {vendor}/{account}")
+    return f04
 
 
 def _table_totals(connection, table, vendor, account, day, *, partition=None, outside=None, version=None):
@@ -167,7 +183,8 @@ def _table_totals(connection, table, vendor, account, day, *, partition=None, ou
 
 def _baseline(connection, plan, vendor, project):
     account, window = plan["account"], plan["window"]
-    _validate_registry(connection, vendor, account, project, window.start)
+    if _validate_registry(connection, vendor, account, project, window.start) != plan.get("f04", False):
+        raise ValueError("Warehouse source profile changed since preflight")
     latest = connection.execute(text(f"""SELECT MAX(usage_date) FROM {SUMMARY}
         WHERE vendor=:vendor AND account_id=:account AND usage_date <= :end"""),
         {"vendor": vendor, "account": account, "end": window.end}).scalar_one()
@@ -256,6 +273,7 @@ def _checkpoint(engine, name, progress, status="running", error=None):
 def run_sync_warehouse_billing_summary(
     engine: Engine, *, client, vendor: str, account_ids: Sequence[str], project: str,
     tcms_allocation_table: str, dry_run: bool = False, today: date | None = None,
+    start_date: date | None = None, end_date: date | None = None,
 ) -> dict:
     """Fetch all accounts first, then replace/attribute/publish one scoped day at a time."""
     source_table(vendor, project)  # Validate the source route before acquiring state.
@@ -265,10 +283,26 @@ def run_sync_warehouse_billing_summary(
     accounts = tuple(sorted(account_ids))
     if not accounts or any(not a or a.strip() != a for a in accounts) or len(set(accounts)) != len(accounts):
         raise ValueError("Explicit, nonempty, unique warehouse account IDs are required")
+    if (start_date is None) != (end_date is None):
+        raise ValueError("start_date and end_date must be set together")
+    resolved_today = today or datetime.now(UTC).date()
+    if type(resolved_today) is not date:
+        raise ValueError("today must be a UTC date")
+    if start_date is not None and (type(start_date) is not date or type(end_date) is not date
+            or not 0 <= (end_date - start_date).days <= 4 or end_date >= resolved_today):
+        raise ValueError("Historical warehouse repair requires 1..5 inclusive days ending before today")
     _validate_tcms_allocation_table(engine, tcms_allocation_table)
-    # Keep the operational worker's keys so a failed/running migration is never bypassed.
-    name = f"sync_{vendor}_warehouse_daily"
+    with engine.connect() as connection:
+        profiles = [_validate_registry(connection, vendor, account, project) for account in accounts]
+    f04 = any(profiles)
+    if f04 and (len(accounts) != 1 or not all(profiles)):
+        raise ValueError("F04 must run separately; cannot mix with ordinary warehouse accounts")
+    if start_date is not None and not f04:
+        raise ValueError("Explicit historical warehouse windows are currently restricted to F04")
+    # Preserve ordinary-worker latches; a failed F04 run must not block other AWS accounts.
+    name = "sync_aws_f04_warehouse_daily" if f04 else f"sync_{vendor}_warehouse_daily"
     progress = {"run_id": str(uuid.uuid4()), "pod_name": os.getenv("POD_NAME"), "vendor": vendor, "project": project,
+                "source_profile": AWS_TIDB_CLOUD_F04_SCHEMA_VERSION if f04 else "ordinary",
                 "accounts": accounts, "windows": [], "completed_account_days": [],
                 "percent": 0, "phase": "preflight", "dry_run": dry_run}
     if not dry_run:
@@ -285,11 +319,18 @@ def run_sync_warehouse_billing_summary(
         plans, snapshots = [], {}
         for account in accounts:
             with engine.connect() as connection:
-                _validate_registry(connection, vendor, account, project)
+                if _validate_registry(connection, vendor, account, project) != f04:
+                    raise ValueError("Warehouse source profile changed since preflight")
+            bounds = {"start_date": start_date, "end_date": end_date} if start_date is not None else {}
             window = fetch_warehouse_window(client, vendor=vendor, account_id=account, project=project,
-                                             today=today or datetime.now(UTC).date(), heartbeat=heartbeat)
+                                             today=resolved_today, heartbeat=heartbeat,
+                                             **({"f04": True} if f04 else {}), **bounds)
+            if start_date is not None and (window.start, window.end) != (start_date, end_date):
+                raise ValueError("Historical warehouse source returned a different date window")
             progress["windows"].append({"account_id": account, "start": str(window.start), "end": str(window.end)})
-            plan = {"account": account, "window": window, "groups": _normalize(window, vendor, account)}
+            plan = {"account": account, "window": window, "f04": f04,
+                    "groups": _normalize(window, vendor, account, f04=f04,
+                                         allow_short_window=start_date is not None)}
             with engine.connect() as connection:
                 _baseline(connection, plan, vendor, project)
             for table, metadata in window.snapshots.items():
@@ -302,6 +343,7 @@ def run_sync_warehouse_billing_summary(
         assert_snapshot(client, snapshots)
         if dry_run:
             return progress
+        total_account_days = sum((p["window"].end - p["window"].start).days + 1 for p in plans)
         progress["phase"] = "write"
         _checkpoint(engine, name, progress)
         for plan in plans:
@@ -310,7 +352,8 @@ def run_sync_warehouse_billing_summary(
                 progress["current_account_day"] = f"{account}/{day}"
                 _checkpoint(engine, name, progress)
                 with engine.connect() as connection:
-                    _validate_registry(connection, vendor, account, project, window.start)
+                    if _validate_registry(connection, vendor, account, project, window.start) != f04:
+                        raise ValueError("Warehouse source profile changed since preflight")
                     _verify_scopes(connection, plan, vendor, day, before=True)
                 for (month, usage_day), rows in sorted(plan["groups"].items()):
                     if usage_day != day:
@@ -330,7 +373,7 @@ def run_sync_warehouse_billing_summary(
                 with engine.connect() as connection:
                     _verify_publication(connection, vendor, account, day)
                 progress["completed_account_days"].append(progress["current_account_day"])
-                progress["percent"] = 100 * len(progress["completed_account_days"]) // (5 * len(plans))
+                progress["percent"] = 100 * len(progress["completed_account_days"]) // total_account_days
                 _checkpoint(engine, name, progress)
         progress["phase"] = "complete"
         _checkpoint(engine, name, progress, "succeeded")
