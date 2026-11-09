@@ -506,7 +506,7 @@ def run_check_data_freshness(settings: Settings) -> Report:
                             name=f"cost_source_diff:{result.vendor}/{result.account_id}",
                             level=result.level,
                             description="Bounded BigQuery availability vs account-scoped imported dates",
-                            threshold_description="eligible source gap ≤1 day; attribution gap 0 days",
+                            threshold_description=result.threshold_description,
                             sql="",
                             db="cost",
                         ),

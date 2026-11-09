@@ -12,6 +12,8 @@ from sqlalchemy.engine import Engine
 
 from ci_dashboard.common.config import CostFreshnessSettings
 
+_LOCAL_USAGE_MAX_AGE_DAYS = 7
+
 
 @dataclass
 class CostSourceResult:
@@ -24,6 +26,7 @@ class CostSourceResult:
     status: str = "query_error"
     detail: str = ""
     scope: str = "account"
+    source_available_from: date | None = None
 
     @property
     def passed(self) -> bool | None:
@@ -37,9 +40,22 @@ class CostSourceResult:
     def level(self) -> str:
         return "LOW" if self.status == "scope_unverified" else "MEDIUM"
 
+    @property
+    def threshold_description(self) -> str:
+        if self.status in {"local_data_stale", "local_data_missing"}:
+            return f"local summary usage age ≤{_LOCAL_USAGE_MAX_AGE_DAYS} days"
+        return "eligible source gap ≤1 day; attribution gap 0 days"
+
     def brief(self) -> str:
         """Actionable alert text, without repeating account IDs or SQL diagnostics."""
         summary, attr = self.summary_latest, self.attribution_latest
+        if self.status == "local_data_stale":
+            return (
+                f"本地账单停在 {summary}，超过 {_LOCAL_USAGE_MAX_AGE_DAYS} 天未更新；"
+                "上游口径未验证，需确认导入/无消费"
+            )
+        if self.status == "local_data_missing":
+            return "观察窗口内无本地汇总数据；上游口径未验证，需确认导入/无消费"
         if self.status == "ingestion_delay" and self.eligible_latest and summary:
             gap = (self.eligible_latest - summary).days
             message = f"导入落后 {gap} 天（允许 1 天，超出 {gap - 1} 天）"
@@ -239,6 +255,16 @@ def _classify(result: CostSourceResult, today: date) -> None:
             result.status = "missing_attribution"
         elif summary is not None and attr is not None and attr != summary:
             result.status = "attribution_delay" if attr < summary else "attribution_ahead"
+        elif summary is None:
+            # Unknown upstream scope must not make an empty local window silent.
+            # Only explicitly dated new sources get a bounded initial grace period.
+            if (attr is None and result.source_available_from is not None
+                    and (today - result.source_available_from).days <= _LOCAL_USAGE_MAX_AGE_DAYS):
+                result.status = "waiting_import_lag"
+            else:
+                result.status = "local_data_missing"
+        elif (today - summary).days > _LOCAL_USAGE_MAX_AGE_DAYS:
+            result.status = "local_data_stale"
         else:
             result.status = "scope_unverified"
     elif source is None:
@@ -299,7 +325,9 @@ def run_cost_source_checks(
             )
             for row in sources:
                 vendor, account = str(row["vendor"]).lower(), str(row["account_id"])
-                result = CostSourceResult(vendor, account)
+                result = CostSourceResult(
+                    vendor, account, source_available_from=_date(row["source_available_from"])
+                )
                 results.append(result)
                 profile = row["source_schema_version"]
                 result.detail = (

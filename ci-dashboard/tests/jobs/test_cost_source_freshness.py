@@ -261,6 +261,94 @@ def test_unknown_nonaws_profile_not_guessed(engine, vendor):
     assert result.status == "scope_unverified"
 
 
+@pytest.mark.parametrize("profile", ["aws_tidb_cloud_f04_v1", "aws_split_cost_v1", "unknown"])
+@pytest.mark.parametrize("today,status", [
+    (date(2026, 11, 2), "scope_unverified"),  # Exactly seven days old is allowed.
+    (date(2026, 11, 3), "local_data_stale"),
+    (date(2026, 11, 8), "local_data_stale"),
+    (date(2026, 11, 9), "local_data_missing"),  # 10/26 leaves the 14-day window.
+])
+def test_unverified_scope_does_not_hide_stalled_or_expired_local_data(engine, profile, today, status):
+    seed(engine, "aws", "f04", "2026-10-26", "2026-10-26", profile=profile)
+    # Another healthy source must not mask this account's stale or missing data.
+    seed(engine, "aws", "healthy", today.isoformat(), today.isoformat())
+    client = FakeClient({"aws": [
+        watermark("f04", raw=today.isoformat(), eligible=today.isoformat()),
+        watermark("healthy", raw=today.isoformat(), eligible=today.isoformat()),
+    ]})
+    results = checks.run_cost_source_checks(engine, SETTINGS, client=client, today=today)
+    by_account = {r.account_id: r for r in results}
+    result = by_account["f04"]
+    assert result.status == status
+    assert result.scope == "accountwide_diagnostic_only"
+    assert result.passed is (None if status == "scope_unverified" else False)
+    assert by_account["healthy"].passed is True
+    assert len(client.calls) == 2  # No additional cloud query for local safeguards.
+    if status != "scope_unverified":
+        assert result.level == "MEDIUM"
+        assert "本地" in result.brief() and "上游口径未验证" in result.brief()
+        assert "导入落后" not in result.brief()
+    if status == "local_data_stale":
+        assert "2026-10-26" in result.brief() and "7 天" in result.brief()
+    elif status == "local_data_missing":
+        assert result.summary_latest is None and result.attribution_latest is None
+        assert "观察窗口内" in result.brief()
+
+
+@pytest.mark.parametrize("summary,attr", [
+    (None, None), (None, "2026-10-27"), ("2026-10-10", "2026-10-10"),
+])
+@pytest.mark.parametrize("upstream_available", [False, True])
+def test_unverified_scope_missing_local_data_alerts_without_upstream_claims(
+    engine, summary, attr, upstream_available,
+):
+    seed(engine, "aws", summary=summary, attr=attr, profile="aws_tidb_cloud_f04_v1")
+    client = FakeClient({"aws": [watermark()] if upstream_available else []})
+    result, = run(engine, client)
+    assert result.status == "local_data_missing" and result.passed is False
+    assert "无本地汇总数据" in result.brief()
+    assert "需确认" in result.brief() and "无消费" in result.brief()
+    assert "源最新" not in result.brief() and "导入落后" not in result.brief()
+
+
+@pytest.mark.parametrize("available_from,expected_status", [
+    ("2026-10-29", "waiting_import_lag"),
+    ("2026-10-28", "waiting_import_lag"),
+    ("2026-10-21", "waiting_import_lag"),  # Inclusive seven-day initial grace.
+    ("2026-10-20", "local_data_missing"),
+    (None, "local_data_missing"),
+])
+def test_new_unverified_source_grace_is_bounded_by_available_from(engine, available_from, expected_status):
+    seed(engine, "aws", summary=None, attr=None, profile="aws_tidb_cloud_f04_v1")
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE cost_sources SET source_available_from=:value"),
+                     {"value": available_from})
+    result, = run(engine, FakeClient({"aws": [watermark()]}))
+    assert result.status == expected_status
+    assert result.passed is (None if expected_status == "waiting_import_lag" else False)
+
+
+def test_new_source_grace_does_not_hide_attribution_without_summary(engine):
+    seed(engine, "aws", summary=None, attr="2026-10-27", profile="aws_tidb_cloud_f04_v1")
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE cost_sources SET source_available_from=:value"), {"value": TODAY})
+    result, = run(engine, FakeClient({"aws": [watermark()]}))
+    assert result.status == "local_data_missing" and result.passed is False
+
+
+@pytest.mark.parametrize("active,excluded", [(False, False), (True, True)])
+def test_stalled_unverified_source_respects_inactive_and_explicit_exclusions(engine, active, excluded):
+    seed(engine, "aws", summary=None, attr=None, profile="aws_tidb_cloud_f04_v1", active=active)
+    results = checks.run_cost_source_checks(
+        engine, replace(SETTINGS, excluded_sources=("aws/a",) if excluded else ()),
+        client=FakeClient(), today=TODAY,
+    )
+    if excluded:
+        assert len(results) == 1 and results[0].status == "excluded" and results[0].passed is None
+    else:
+        assert results[0].status == "registry_empty"  # No per-account check for inactive rows.
+
+
 @pytest.mark.parametrize("unknown_vendor", ["AliCloud", "mystery"])
 def test_skip_excluded_and_unknown_never_create_client(engine, unknown_vendor):
     seed(engine, "tencent")
