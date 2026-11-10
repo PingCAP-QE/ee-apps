@@ -12,7 +12,6 @@ build:
         dependencies:
           paths:
             - "**/*.go"
-            - "**/*.sql"
             - "go.mod"
             - "go.sum"
         flags:
