@@ -141,6 +141,7 @@ def get_flaky_top_jobs(
 ) -> dict[str, Any]:
     effective_limit = min(limit, MAX_RANKING_LIMIT)
     failure_like = failure_like_expr("b")
+    flaky = _flaky_build_expr("b")
 
     with engine.begin() as connection:
         where_clause, params = _build_build_where(filters, table_alias="b")
@@ -152,9 +153,9 @@ def get_flaky_top_jobs(
                   SELECT
                     b.job_name,
                     COUNT(*) AS failure_like_build_count,
-                    SUM(CASE WHEN b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
+                    SUM(CASE WHEN {flaky} THEN 1 ELSE 0 END) AS flaky_build_count,
                     SUM(CASE WHEN b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
-                    SUM(CASE WHEN b.is_flaky = 1 OR b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS noisy_build_count
+                    SUM(CASE WHEN {flaky} OR b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS noisy_build_count
                   FROM {builds_table}
                   WHERE {where_clause}
                     AND {failure_like}
@@ -889,6 +890,7 @@ def _query_bucketed_flaky_metrics(
         where_clause, params = _build_build_where(filters, table_alias="b")
         bucket = bucket_expr(connection, "b.start_time", filters.granularity)
         failure_like = failure_like_expr("b")
+        flaky = _flaky_build_expr("b")
         builds_table = builds_table_expr(connection, filters, alias="b")
         rows = connection.execute(
             text(
@@ -896,9 +898,9 @@ def _query_bucketed_flaky_metrics(
                 SELECT
                   {bucket} AS bucket_start,
                   COUNT(*) AS total_failure_like_count,
-                  SUM(CASE WHEN b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
+                  SUM(CASE WHEN {flaky} THEN 1 ELSE 0 END) AS flaky_build_count,
                   SUM(CASE WHEN b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
-                  SUM(CASE WHEN b.is_flaky = 1 OR b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS noisy_build_count
+                  SUM(CASE WHEN {flaky} OR b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS noisy_build_count
                 FROM {builds_table}
                 WHERE {where_clause}
                   AND {failure_like}
@@ -969,6 +971,7 @@ def _fetch_period_summary(
     params: dict[str, Any],
 ) -> dict[str, Any]:
     failure_like = failure_like_expr("b")
+    flaky = _flaky_build_expr("b")
     distinct_pr_key = _distinct_pr_key_expr(connection, "b")
     row = connection.execute(
         text(
@@ -976,12 +979,12 @@ def _fetch_period_summary(
             SELECT
               COUNT(*) AS total_build_count,
               SUM(CASE WHEN {failure_like} THEN 1 ELSE 0 END) AS failure_like_build_count,
-              SUM(CASE WHEN {failure_like} AND b.is_flaky = 1 THEN 1 ELSE 0 END) AS flaky_build_count,
+              SUM(CASE WHEN {failure_like} AND {flaky} THEN 1 ELSE 0 END) AS flaky_build_count,
               SUM(CASE WHEN {failure_like} AND b.is_retry_loop = 1 THEN 1 ELSE 0 END) AS retry_loop_build_count,
-              SUM(CASE WHEN {failure_like} AND (b.is_flaky = 1 OR b.is_retry_loop = 1) THEN 1 ELSE 0 END) AS noisy_build_count,
+              SUM(CASE WHEN {failure_like} AND ({flaky} OR b.is_retry_loop = 1) THEN 1 ELSE 0 END) AS noisy_build_count,
               COUNT(DISTINCT CASE WHEN b.pr_number IS NOT NULL THEN {distinct_pr_key} END) AS total_pr_count,
               COUNT(DISTINCT CASE
-                WHEN b.pr_number IS NOT NULL AND (b.is_flaky = 1 OR b.is_retry_loop = 1) THEN {distinct_pr_key}
+                WHEN b.pr_number IS NOT NULL AND ({flaky} OR b.is_retry_loop = 1) THEN {distinct_pr_key}
               END) AS affected_pr_count
             FROM {builds_table}
             WHERE {where_clause}
@@ -1569,6 +1572,15 @@ def _issue_overlaps_window(
             return True
         return closed_at >= start_dt
     return True
+
+
+def _flaky_build_expr(table_alias: str) -> str:
+    """Filter inferred flaky builds by the current, human-review-first error category."""
+    return (
+        f"({table_alias}.is_flaky = 1 AND "
+        f"COALESCE({table_alias}.revise_error_l1_category, "
+        f"{table_alias}.error_l1_category, '') <> 'INFRA')"
+    )
 
 
 def _build_build_where(

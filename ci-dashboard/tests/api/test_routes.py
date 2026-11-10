@@ -1571,7 +1571,7 @@ def test_flaky_trend_and_composition(api_client: TestClient) -> None:
     assert trend.status_code == 200
     trend_body = trend.json()
     series = {item["key"]: item for item in trend_body["series"]}
-    assert series["flaky_rate_pct"]["points"] == [["2026-04-10", 50.0], ["2026-04-11", 50.0]]
+    assert series["flaky_rate_pct"]["points"] == [["2026-04-10", 0.0], ["2026-04-11", 50.0]]
     assert series["flaky_rate_pct"]["axis"] == "right"
     assert series["total_failure_like_count"]["points"] == [["2026-04-10", 2], ["2026-04-11", 2]]
     assert series["total_failure_like_count"]["axis"] == "left"
@@ -1590,11 +1590,11 @@ def test_flaky_trend_and_composition(api_client: TestClient) -> None:
     assert composition.status_code == 200
     composition_body = composition.json()
     composition_series = {item["key"]: item for item in composition_body["series"]}
-    assert composition_series["flaky_rate_pct"]["points"] == [["2026-04-10", 50.0], ["2026-04-11", 50.0]]
+    assert composition_series["flaky_rate_pct"]["points"] == [["2026-04-10", 0.0], ["2026-04-11", 50.0]]
     assert composition_series["flaky_rate_pct"]["axis"] == "right"
     assert composition_series["retry_loop_rate_pct"]["points"] == [["2026-04-10", 50.0], ["2026-04-11", 0.0]]
     assert composition_series["retry_loop_rate_pct"]["axis"] == "right"
-    assert composition_series["noisy_rate_pct"]["points"] == [["2026-04-10", 100.0], ["2026-04-11", 50.0]]
+    assert composition_series["noisy_rate_pct"]["points"] == [["2026-04-10", 50.0], ["2026-04-11", 50.0]]
     assert composition_series["noisy_rate_pct"]["axis"] == "right"
     assert composition_series["total_failure_like_count"]["axis"] == "left"
 
@@ -1661,10 +1661,12 @@ def test_flaky_top_jobs_and_period_comparison(api_client: TestClient) -> None:
     )
     assert top_jobs.status_code == 200
     top_jobs_body = top_jobs.json()
-    assert [item["name"] for item in top_jobs_body["items"]] == ["job-a", "job-c"]
+    assert [item["name"] for item in top_jobs_body["items"]] == ["job-c", "job-a"]
     assert top_jobs_body["items"][0]["value"] == 100.0
-    assert top_jobs_body["items"][0]["noisy_build_count"] == 2
+    assert top_jobs_body["items"][0]["noisy_build_count"] == 1
     assert top_jobs_body["items"][0]["noisy_rate_pct"] == 100.0
+    assert top_jobs_body["items"][1]["noisy_build_count"] == 1
+    assert top_jobs_body["items"][1]["noisy_rate_pct"] == 50.0
     assert top_jobs_body["meta"]["limit"] == 2
     assert top_jobs_body["meta"]["value_key"] == "noisy_rate_pct"
 
@@ -1687,14 +1689,14 @@ def test_flaky_top_jobs_and_period_comparison(api_client: TestClient) -> None:
     assert groups["period_a"] == {
         "total_build_count": 3,
         "failure_like_build_count": 2,
-        "flaky_build_count": 1,
+        "flaky_build_count": 0,
         "retry_loop_build_count": 1,
-        "noisy_build_count": 2,
+        "noisy_build_count": 1,
         "total_pr_count": 2,
         "affected_pr_count": 1,
-        "flaky_rate_pct": 50.0,
+        "flaky_rate_pct": 0.0,
         "retry_loop_rate_pct": 50.0,
-        "noisy_rate_pct": 100.0,
+        "noisy_rate_pct": 50.0,
         "affected_pr_rate_pct": 50.0,
     }
     assert groups["period_b"] == {
@@ -1710,6 +1712,124 @@ def test_flaky_top_jobs_and_period_comparison(api_client: TestClient) -> None:
         "noisy_rate_pct": 50.0,
         "affected_pr_rate_pct": 100.0,
     }
+
+
+@pytest.mark.parametrize(
+    ("machine_category", "reviewed_category", "is_flaky", "is_retry_loop", "expected_flaky"),
+    [
+        ("INFRA", None, 1, 0, 0),
+        ("UT", "INFRA", 1, 0, 0),
+        ("INFRA", "UT", 1, 0, 1),
+        ("UT", None, 1, 0, 1),
+        (None, None, 1, 0, 1),
+        (None, "INFRA", 1, 0, 0),
+        ("UT", None, 0, 0, 0),
+        ("INFRA", None, 1, 1, 0),
+        ("INFRA", None, 0, 1, 0),
+    ],
+)
+def test_flaky_metrics_exclude_effective_infra_without_changing_denominators(
+    sqlite_engine,
+    api_client: TestClient,
+    machine_category: str | None,
+    reviewed_category: str | None,
+    is_flaky: int,
+    is_retry_loop: int,
+    expected_flaky: int,
+) -> None:
+    for index, state in enumerate(("failure", "failure", "success"), start=1000):
+        is_subject = index == 1000
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=index,
+            source_prow_job_id=f"infra-exclusion-{index}",
+            repo_full_name="pingcap/tidb",
+            target_branch="master",
+            base_ref="master",
+            job_name="infra-exclusion",
+            state=state,
+            cloud_phase="GCP",
+            is_flaky=is_flaky if is_subject else 0,
+            is_retry_loop=is_retry_loop if is_subject else 0,
+            failure_category="FLAKY_TEST" if is_subject else None,
+            error_l1_category=machine_category if is_subject else "UT",
+            start_time="2026-04-20 10:00:00",
+            pr_number=index,
+        )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text("""
+                UPDATE ci_l1_builds
+                SET revise_error_l1_category = :reviewed_category
+                WHERE source_prow_job_id = 'infra-exclusion-1000'
+            """),
+            {"reviewed_category": reviewed_category},
+        )
+
+    params = {
+        "repo": "pingcap/tidb",
+        "branch": "master",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-26",
+    }
+    expected_noisy = int(bool(expected_flaky or is_retry_loop))
+    for path in ("trend", "composition"):
+        response = api_client.get(f"/api/v1/flaky/{path}", params=params)
+        assert response.status_code == 200
+        series = {item["key"]: item["points"] for item in response.json()["series"]}
+        assert series["flaky_rate_pct"] == [["2026-04-20", expected_flaky * 50.0]]
+        assert series["total_failure_like_count"] == [["2026-04-20", 2]]
+        if path == "composition":
+            assert series["retry_loop_rate_pct"] == [["2026-04-20", is_retry_loop * 50.0]]
+            assert series["noisy_rate_pct"] == [["2026-04-20", expected_noisy * 50.0]]
+
+    top_jobs = api_client.get("/api/v1/flaky/top-jobs", params=params)
+    assert top_jobs.status_code == 200
+    assert top_jobs.json()["items"][0] == {
+        "name": "infra-exclusion",
+        "value": expected_noisy * 50.0,
+        "failure_like_build_count": 2,
+        "flaky_build_count": expected_flaky,
+        "retry_loop_build_count": is_retry_loop,
+        "noisy_build_count": expected_noisy,
+        "noisy_rate_pct": expected_noisy * 50.0,
+    }
+
+    comparison = api_client.get(
+        "/api/v1/flaky/period-comparison",
+        params={
+            "repo": params["repo"],
+            "branch": params["branch"],
+            "period_a_start": params["start_date"],
+            "period_a_end": params["end_date"],
+            "period_b_start": params["start_date"],
+            "period_b_end": params["end_date"],
+        },
+    )
+    assert comparison.status_code == 200
+    for group in comparison.json()["groups"]:
+        values = group["values"]
+        assert values["total_build_count"] == 3
+        assert values["failure_like_build_count"] == 2
+        assert values["flaky_build_count"] == expected_flaky
+        assert values["retry_loop_build_count"] == is_retry_loop
+        assert values["noisy_build_count"] == expected_noisy
+        assert values["total_pr_count"] == 3
+        assert values["affected_pr_count"] == expected_noisy
+        assert values["flaky_rate_pct"] == expected_flaky * 50.0
+
+    page = api_client.get("/api/v1/pages/flaky", params=params)
+    assert page.status_code == 200
+    page_groups = page.json()["period_comparison"]["groups"]
+    assert page_groups[0] == comparison.json()["groups"][0]
+    assert page_groups[1]["values"]["failure_like_build_count"] == 0
+    assert page_groups[1]["values"]["flaky_build_count"] == 0
+    assert page_groups[1]["values"]["flaky_rate_pct"] == 0.0
+    assert page.json()["bucketed_flaky_rate"]["rows"][0]["flaky_rate_pct"] == expected_flaky * 50.0
+    with sqlite_engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT is_flaky FROM ci_l1_builds WHERE source_prow_job_id = 'infra-exclusion-1000'")
+        ).scalar_one() == is_flaky
 
 
 def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: TestClient) -> None:
@@ -2982,7 +3102,7 @@ def test_page_routes(api_client: TestClient) -> None:
         for group in overview_body["period_comparison"]["groups"]
     }
     assert overview_groups["period_a"]["total_build_count"] == 5
-    assert overview_groups["period_a"]["noisy_build_count"] == 3
+    assert overview_groups["period_a"]["noisy_build_count"] == 2
     assert overview_groups["period_b"]["total_build_count"] == 0
 
     ci_status = api_client.get(
@@ -3293,13 +3413,13 @@ def test_page_routes(api_client: TestClient) -> None:
             "key": "flaky_rate_pct",
             "label": "Flaky rate",
             "type": "line",
-            "points": [["2026-04-06", 50.0]],
+            "points": [["2026-04-06", 25.0]],
         }
     ]
     assert flaky_body["bucketed_flaky_rate"]["rows"] == [
         {
             "time": "2026-04-06",
-            "flaky_rate_pct": 50.0,
+            "flaky_rate_pct": 25.0,
             "time_to_time_pct": None,
         }
     ]
