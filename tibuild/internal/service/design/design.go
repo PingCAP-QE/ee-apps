@@ -847,14 +847,6 @@ var _ = Service("publish", func() {
 		})
 	})
 
-	Method("resetRateLimit", func() {
-		Description("Kept for compatibility; the publish domain has no rate limiting.")
-		HTTP(func() {
-			POST("/tiup/reset-rate-limit")
-			Response(StatusOK)
-		})
-	})
-
 })
 
 var PublishUnit = Type("PublishUnit", func() {

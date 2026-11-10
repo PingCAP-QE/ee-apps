@@ -31,8 +31,6 @@ type Service interface {
 	RequestToPublishSingle(context.Context, *TiUPPublishRequest) (res string, err error)
 	// Legacy status lookup; accepts a unit id or a step id.
 	QueryPublishingStatus(context.Context, *QueryPublishingStatusPayload) (res TiUPRequestState, err error)
-	// Kept for compatibility; the publish domain has no rate limiting.
-	ResetRateLimit(context.Context) (err error)
 }
 
 // APIName is the name of the API as defined in the design.
@@ -49,7 +47,7 @@ const ServiceName = "publish"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [9]string{"publishImages", "getUnit", "listUnits", "retryUnit", "deliveryByRules", "requestToPublish", "requestToPublishSingle", "queryPublishingStatus", "resetRateLimit"}
+var MethodNames = [8]string{"publishImages", "getUnit", "listUnits", "retryUnit", "deliveryByRules", "requestToPublish", "requestToPublishSingle", "queryPublishingStatus"}
 
 // DeliveryByRulesPayload is the payload type of the publish service
 // deliveryByRules method.

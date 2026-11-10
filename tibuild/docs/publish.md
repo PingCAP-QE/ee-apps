@@ -248,8 +248,11 @@ prod on the legacy "publish every push" path until the rollout reaches it.
 Deferred pushes create no step, so `POST /tiup/delivery-by-rules` returns an
 empty list when every selected target converges.
 
-`POST /tiup/reset-rate-limit` stays as a compatibility no-op; there is no Redis
-counter to reset.
+`POST /tiup/reset-rate-limit` is gone. It only existed to clear the legacy
+per-package Redis counters, and there is no counter to reset once nightly is a
+desired state: a caller that still sends it gets `404`. Republishing a package
+before its window is a scheduler change on `publish_desired`
+(`UPDATE publish_desired SET next_run_at = NOW(3) …`), not a rate limit reset.
 
 ## Configuration
 
@@ -302,7 +305,10 @@ base path, `/api/v2/publish`:
 | `POST /tiup/publish-request` | one explicit mirror, optional version override |
 | `POST /tiup/publish-request-single` | one package from a tarball URL or an OCI layer |
 | `GET /tiup/publish-request/{id}` | unit or step id → `queued/processing/success/failed/canceled` |
-| `POST /tiup/reset-rate-limit` | no-op: the legacy Redis nightly throttle does not exist here; the convergence work is owned by the nightly track |
+
+`POST /tiup/reset-rate-limit` was removed with the Redis nightly throttle: it
+was a no-op after the publish domain migration, and nightly convergence now
+lives in `publish_desired`.
 
 Unit inspection and retry are **kind-agnostic** and live on the shared
 resource: `GET /publish/units`, `GET /publish/units/{id}` and

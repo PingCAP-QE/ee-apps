@@ -31,7 +31,7 @@ func UsageCommands() []string {
 		"artifact (sync-image|get-image-sync-task|list-image-sync-tasks)",
 		"devbuild (list|capabilities|create|get|update|rerun)",
 		"hotfix (bump-tag-for-tidbx|query-tag-of-tidbx)",
-		"publish (publish-images|get-unit|list-units|retry-unit|delivery-by-rules|request-to-publish|request-to-publish-single|query-publishing-status|reset-rate-limit)",
+		"publish (publish-images|get-unit|list-units|retry-unit|delivery-by-rules|request-to-publish|request-to-publish-single|query-publishing-status)",
 		"tidbcloud (update-component-version-in-cloudconfig|add-tidbx-image-tag-in-tcms|request-sync-kernel-image)",
 	}
 }
@@ -140,8 +140,6 @@ func ParseEndpoint(
 		publishQueryPublishingStatusFlags         = flag.NewFlagSet("query-publishing-status", flag.ExitOnError)
 		publishQueryPublishingStatusRequestIDFlag = publishQueryPublishingStatusFlags.String("request-id", "REQUIRED", "")
 
-		publishResetRateLimitFlags = flag.NewFlagSet("reset-rate-limit", flag.ExitOnError)
-
 		tidbcloudFlags = flag.NewFlagSet("tidbcloud", flag.ContinueOnError)
 
 		tidbcloudUpdateComponentVersionInCloudconfigFlags    = flag.NewFlagSet("update-component-version-in-cloudconfig", flag.ExitOnError)
@@ -179,7 +177,6 @@ func ParseEndpoint(
 	publishRequestToPublishFlags.Usage = publishRequestToPublishUsage
 	publishRequestToPublishSingleFlags.Usage = publishRequestToPublishSingleUsage
 	publishQueryPublishingStatusFlags.Usage = publishQueryPublishingStatusUsage
-	publishResetRateLimitFlags.Usage = publishResetRateLimitUsage
 
 	tidbcloudFlags.Usage = tidbcloudUsage
 	tidbcloudUpdateComponentVersionInCloudconfigFlags.Usage = tidbcloudUpdateComponentVersionInCloudconfigUsage
@@ -297,9 +294,6 @@ func ParseEndpoint(
 			case "query-publishing-status":
 				epf = publishQueryPublishingStatusFlags
 
-			case "reset-rate-limit":
-				epf = publishResetRateLimitFlags
-
 			}
 
 		case "tidbcloud":
@@ -406,8 +400,6 @@ func ParseEndpoint(
 			case "query-publishing-status":
 				endpoint = c.QueryPublishingStatus()
 				data, err = publishc.BuildQueryPublishingStatusPayload(*publishQueryPublishingStatusRequestIDFlag)
-			case "reset-rate-limit":
-				endpoint = c.ResetRateLimit()
 			}
 		case "tidbcloud":
 			c := tidbcloudc.NewClient(scheme, host, doer, enc, dec, restore)
@@ -714,7 +706,6 @@ func publishUsage() {
 	fmt.Fprintln(os.Stderr, `    request-to-publish: Publish an artifact to one explicit mirror.`)
 	fmt.Fprintln(os.Stderr, `    request-to-publish-single: Publish one package from a tarball URL.`)
 	fmt.Fprintln(os.Stderr, `    query-publishing-status: Legacy status lookup; accepts a unit id or a step id.`)
-	fmt.Fprintln(os.Stderr, `    reset-rate-limit: Kept for compatibility; the publish domain has no rate limiting.`)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Additional help:")
 	fmt.Fprintf(os.Stderr, "    %s publish COMMAND --help\n", os.Args[0])
@@ -865,22 +856,6 @@ func publishQueryPublishingStatusUsage() {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
 	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish query-publishing-status --request-id \"Consectetur tempora aperiam qui consequuntur est corporis.\"")
-}
-
-func publishResetRateLimitUsage() {
-	// Header with flags
-	fmt.Fprintf(os.Stderr, "%s [flags] publish reset-rate-limit", os.Args[0])
-	fmt.Fprintln(os.Stderr)
-
-	// Description
-	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, `Kept for compatibility; the publish domain has no rate limiting.`)
-
-	// Flags list
-
-	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish reset-rate-limit")
 }
 
 // tidbcloudUsage displays the usage of the tidbcloud command and its

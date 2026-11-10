@@ -3486,16 +3486,6 @@ paths:
                                 name: Est eum non.
                                 temporary: true
                                 timeout: false
-    /api/v2/publish/tiup/reset-rate-limit:
-        post:
-            tags:
-                - publish
-            summary: resetRateLimit publish
-            description: Kept for compatibility; the publish domain has no rate limiting.
-            operationId: publish#resetRateLimit
-            responses:
-                "200":
-                    description: OK response.
     /api/v2/publish/units:
         get:
             tags:
