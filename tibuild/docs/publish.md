@@ -282,6 +282,10 @@ desired state: a caller that still sends it gets `404`. Republishing a package
 before its window is a scheduler change on `publish_desired`
 (`UPDATE publish_desired SET next_run_at = NOW(3) …`), not a rate limit reset.
 
+Day-two operations — reading the table, forcing a publication, re-arming a
+stale claim, changing the cadence, rolling the feature back, and the lag alert —
+are in [`nightly.md`](./nightly.md).
+
 ## Configuration
 
 ```yaml
