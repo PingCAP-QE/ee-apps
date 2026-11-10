@@ -12,11 +12,11 @@ server:
     - --delivery-rps=10
     - --delivery-burst=20
   env:
-    - name: DL_DELIVERY_DATABASE_URL
+    - name: DL_DELIVERY_DATABASE_DSN
       valueFrom:
         secretKeyRef:
-          name: dl-delivery-database
-          key: url
+          name: dl-delivery-tidb
+          key: dsn
   volumeMounts:
     - name: policy
       mountPath: /etc/delivery

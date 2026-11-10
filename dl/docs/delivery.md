@@ -14,7 +14,7 @@ The existing `prow.tidb.net/dl` route must retain its Google OIDC SecurityPolicy
 | `delivery-migrate` | None; apply schema and exit | None |
 
 Run management and public as separate Deployments/Services. Both use the same
-PostgreSQL primary and policy configuration, but distinct least-privilege DB
+TiDB database and policy configuration, but distinct least-privilege DB
 roles. Each delivery process loads only OCI credentials; KS3/GCS configuration
 is unnecessary. `--delivery-config` is required for both server modes. Startup
 fails if the DB is unavailable or the schema has not been initialized.
@@ -23,7 +23,7 @@ Delivery mode flags:
 
 | Flag / environment | Default | Meaning |
 | --- | --- | --- |
-| `DL_DELIVERY_DATABASE_URL` | Required | PostgreSQL connection URL; supply through a Secret, use `sslmode=verify-full` with appropriate CA configuration in production |
+| `DL_DELIVERY_DATABASE_DSN` | Required | TiDB MySQL-protocol DSN; supply through a Secret, include `parseTime=true&loc=UTC`, and use the approved production TLS mode |
 | `--delivery-config` | Required | YAML issuer policies and public HTTPS origin |
 | `--delivery-health-address` | `:8001` | Private probes and metrics; do not add this port to the public Service/route |
 | `--delivery-concurrency` | `32` | Non-queued in-flight request limit per replica |
@@ -40,13 +40,15 @@ Authorization headers. The CLI also rejects verbose flags for share management.
 Run once with a migration identity, before either new Deployment starts:
 
 ```sh
-# Supply the connection URL securely through the environment, not process args.
+# Supply the TiDB DSN securely through the environment, not process args.
 dl --server-mode=delivery-migrate
 ```
 
 The embedded [schema](../internal/share/schema.sql) creates the grant, issuer
-status and separate audit tables. Migrations use a transaction and advisory lock;
-normal runtime startup does not run DDL. Enroll authorized issuers explicitly:
+status and separate audit tables using TiDB-native data types and `AUTO_RANDOM`
+audit IDs. TiDB DDL is not transactional, so run one migration job to completion
+before starting either server mode. Normal runtime startup does not run DDL.
+Enroll authorized issuers explicitly:
 
 ```sql
 INSERT INTO download_issuers(id, enabled) VALUES ('release-service', true);
@@ -54,17 +56,18 @@ INSERT INTO download_issuers(id, enabled) VALUES ('release-service', true);
 UPDATE download_issuers SET enabled = false WHERE id = 'release-service';
 ```
 
-Grant runtime roles CONNECT/USAGE to the database/schema, then:
+Grant the runtime users access to the delivery database, then:
 
 | Role | Table privileges |
 | --- | --- |
-| Management | SELECT on `download_issuers`; SELECT, INSERT, UPDATE on `download_shares`; INSERT on `download_events`; USAGE on `download_events_id_seq` |
-| Public | SELECT on `download_issuers` and `download_shares`; UPDATE (`sessions_started`) on `download_shares`; INSERT on `download_events`; USAGE on `download_events_id_seq` |
+| Management | SELECT on `download_issuers`; SELECT, INSERT and UPDATE on `download_shares`; INSERT on `download_events` |
+| Public | SELECT on `download_issuers` and `download_shares`; UPDATE of `download_shares.sessions_started`; INSERT on `download_events` |
 
 Neither runtime role should modify issuer status, grant schemas/roles, delete
 audit events or run migrations. Use an operator identity for retention and
 issuer lifecycle. The public role needs UPDATE only for atomic GET reservations,
-including unlimited-session counters. Never connect to a lagging read replica.
+including unlimited-session counters. Both roles must connect to the TiDB primary
+SQL endpoint, not a stale-read or replica endpoint.
 
 Shares and events survive pod restarts. Use database backups and explicit event
 retention/access controls. Events contain grant IDs, fixed phase/outcome labels,
@@ -139,8 +142,10 @@ the owner). Responses and errors set `Cache-Control: no-store`.
 Optional `max_sessions` is a positive 32-bit integer. One session means one
 authorized GET start, including retries and failed/disconnected upstream or
 downstream attempts. Reservations and authorization audit are committed in one
-transaction. HEAD applies the same expiry, issuer, revocation and exhausted-quota
-checks but consumes no session. This is not exactly-once delivery.
+explicit TiDB pessimistic transaction. The grant row is read with `FOR UPDATE`
+before incrementing the counter, so concurrent requests across replicas cannot
+consume the same final session. HEAD applies the same expiry, issuer, revocation
+and exhausted-quota checks but consumes no session. This is not exactly-once delivery.
 
 ## Redemption semantics
 
@@ -180,9 +185,9 @@ Before adding a public route in `ee-ops/apps/gcp/dl`:
 1. Keep the current internal `/dl` HTTPRoute and Google OIDC SecurityPolicy.
    Verify their Accepted/Enforced status and live unauthenticated redirect/deny
    behavior, including existing TiBuild GET/HEAD links.
-2. Provision PostgreSQL, run the migration, enroll the chosen issuer, mount
-   policies and read-only registry credentials, then deploy the new modes without
-   public routing. Confirm schema readiness and private metrics.
+2. Provision or select the shared TiDB database, run the migration, enroll the
+   chosen issuer, mount policies and read-only registry credentials, then deploy
+   the new modes without public routing. Confirm schema readiness and private metrics.
 3. Use a separate TLS hostname/HTTPRoute that matches only `/d/` and targets the
    **public-mode Service**. Set the large-download request timeout to `0s`; apply
    edge rate limits. Never route management, legacy endpoints or the operational
@@ -215,11 +220,11 @@ go generate ./...
 git diff --exit-code -- gen
 ```
 
-Set `DL_TEST_POSTGRES_DSN` to a disposable PostgreSQL URL to enable integration
-tests. They create/drop isolated test schemas and verify quota races across two
+Set `DL_TEST_TIDB_DSN` to a disposable TiDB DSN to enable integration tests.
+They create/drop isolated databases and verify quota races across two
 independent connection pools, HEAD behavior, shared revocation, expiry, disabled
 issuers, ownership, restarts and idempotent migrations. CI runs these tests with
-PostgreSQL 17. HTTP tests cover route isolation, pinned identity, safe errors,
+TiDB v8.5.4. HTTP tests cover route isolation, pinned identity, safe errors,
 headers/logs, stream failures and a synthetic 5 GiB bounded-buffer transfer.
 
 Deferred: resumable Range transfers, global bandwidth/customer quotas, active

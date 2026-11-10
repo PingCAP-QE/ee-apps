@@ -9,8 +9,8 @@ server:
     - --oci-config=/etc/oci/oci.yaml
     - --oci-allowed-registries=hub.pingcap.net
   env:
-    - name: DL_DELIVERY_DATABASE_URL
+    - name: DL_DELIVERY_DATABASE_DSN
       valueFrom:
         secretKeyRef:
-          name: dl-management-database
-          key: url
+          name: dl-management-tidb
+          key: dsn

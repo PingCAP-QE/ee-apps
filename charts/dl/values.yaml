@@ -15,7 +15,7 @@ nameOverride: ""
 fullnameOverride: ""
 
 server:
-  # Delivery modes read DL_DELIVERY_DATABASE_URL from a Secret via env/envFrom.
+  # Delivery modes read DL_DELIVERY_DATABASE_DSN from a Secret via env/envFrom.
   env: []
   envFrom: []
   args:

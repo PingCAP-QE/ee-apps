@@ -3,49 +3,52 @@ package share
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
-	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 )
 
-func testPostgres(t *testing.T) (*Postgres, string) {
+func testTiDB(t *testing.T) (*TiDB, string) {
 	t.Helper()
-	dsn := os.Getenv("DL_TEST_POSTGRES_DSN")
+	dsn := os.Getenv("DL_TEST_TIDB_DSN")
 	if dsn == "" {
-		t.Skip("set DL_TEST_POSTGRES_DSN to a disposable PostgreSQL database")
+		t.Skip("set DL_TEST_TIDB_DSN to a disposable TiDB instance")
 	}
-	ctx := context.Background()
-	admin, err := Open(ctx, dsn)
+	cfg, err := mysql.ParseDSN(dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	schema := "dl_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-	if _, err = admin.DB.ExecContext(ctx, `CREATE SCHEMA `+schema); err != nil {
+	database := "dl_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	adminCfg := cfg.Clone()
+	adminCfg.DBName = ""
+	connector, err := mysql.NewConnector(adminCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := sql.OpenDB(connector)
+	ctx := context.Background()
+	if _, err = admin.ExecContext(ctx, `CREATE DATABASE `+database); err != nil {
+		admin.Close()
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, err := admin.DB.ExecContext(ctx, `DROP SCHEMA `+schema+` CASCADE`)
-		if err != nil {
+		if _, err := admin.ExecContext(ctx, `DROP DATABASE `+database); err != nil {
 			t.Error(err)
 		}
-		admin.DB.Close()
+		admin.Close()
 	})
-	u, err := url.Parse(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	q := u.Query()
-	q.Set("search_path", schema)
-	u.RawQuery = q.Encode()
-	isolated := u.String()
-	s, err := Open(ctx, isolated)
+	testCfg := cfg.Clone()
+	testCfg.DBName = database
+	isolatedDSN := testCfg.FormatDSN()
+	s, err := Open(ctx, isolatedDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,13 +56,13 @@ func testPostgres(t *testing.T) (*Postgres, string) {
 	if err = s.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.DB.ExecContext(ctx, `INSERT INTO download_issuers(id,enabled) VALUES('issuer',true),('other',true)`); err != nil {
+	if _, err = s.DB.ExecContext(ctx, `INSERT INTO download_issuers(id,enabled) VALUES('issuer',TRUE),('other',TRUE)`); err != nil {
 		t.Fatal(err)
 	}
-	return s, isolated
+	return s, isolatedDSN
 }
 
-func testGrant(t *testing.T, s *Postgres, max *int) (*Grant, []byte) {
+func testGrant(t *testing.T, s *TiDB, max *int) (*Grant, []byte) {
 	t.Helper()
 	token := uuid.NewString() + uuid.NewString()
 	h := sha256.Sum256([]byte(token))
@@ -70,8 +73,8 @@ func testGrant(t *testing.T, s *Postgres, max *int) (*Grant, []byte) {
 	return g, h[:]
 }
 
-func TestPostgresQuotaAtomicAcrossReplicas(t *testing.T) {
-	s, dsn := testPostgres(t)
+func TestTiDBQuotaAtomicAcrossReplicas(t *testing.T) {
+	s, dsn := testTiDB(t)
 	replica, err := Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -79,14 +82,14 @@ func TestPostgresQuotaAtomicAcrossReplicas(t *testing.T) {
 	defer replica.DB.Close()
 	max := 1
 	g, hash := testGrant(t, s, &max)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if _, err := replica.Authorize(context.Background(), hash, false); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var allowed atomic.Int64
 	var wg sync.WaitGroup
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -114,15 +117,15 @@ func TestPostgresQuotaAtomicAcrossReplicas(t *testing.T) {
 		t.Fatal("incorrect durable quota")
 	}
 	var count int
-	if err := s.DB.QueryRow(`SELECT count(*) FROM download_events WHERE share_id=$1 AND phase='get' AND outcome='authorized'`, g.ID).Scan(&count); err != nil || count != 1 {
+	if err := s.DB.QueryRow(`SELECT count(*) FROM download_events WHERE share_id=? AND phase='get' AND outcome='authorized'`, g.ID).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("authorization not audited atomically: count=%d err=%v", count, err)
 	}
 }
 
-func TestPostgresRevocationExpiryAndIssuerDisable(t *testing.T) {
+func TestTiDBRevocationExpiryAndIssuerDisable(t *testing.T) {
 	for _, state := range []string{"revoked", "expired", "issuer-disabled"} {
 		t.Run(state, func(t *testing.T) {
-			s, dsn := testPostgres(t)
+			s, dsn := testTiDB(t)
 			g, hash := testGrant(t, s, nil)
 			replica, err := Open(context.Background(), dsn)
 			if err != nil {
@@ -136,9 +139,9 @@ func TestPostgresRevocationExpiryAndIssuerDisable(t *testing.T) {
 			case "revoked":
 				err = s.Revoke(context.Background(), g.ID, "issuer")
 			case "expired":
-				_, err = s.DB.Exec(`UPDATE download_shares SET created_at=now()-interval '2 seconds',expires_at=now()-interval '1 second' WHERE id=$1`, g.ID)
+				_, err = s.DB.Exec(`UPDATE download_shares SET created_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 2 SECOND), expires_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 1 SECOND) WHERE id=?`, g.ID)
 			case "issuer-disabled":
-				_, err = s.DB.Exec(`UPDATE download_issuers SET enabled=false WHERE id='issuer'`)
+				_, err = s.DB.Exec(`UPDATE download_issuers SET enabled=FALSE WHERE id='issuer'`)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -152,8 +155,8 @@ func TestPostgresRevocationExpiryAndIssuerDisable(t *testing.T) {
 	}
 }
 
-func TestPostgresDurabilityOwnershipAndMigration(t *testing.T) {
-	s, dsn := testPostgres(t)
+func TestTiDBDurabilityOwnershipAndMigration(t *testing.T) {
+	s, dsn := testTiDB(t)
 	g, hash := testGrant(t, s, nil)
 	if _, err := s.Get(context.Background(), g.ID, "other"); !errors.Is(err, ErrNotFound) {
 		t.Fatal("cross-issuer read")
@@ -175,7 +178,7 @@ func TestPostgresDurabilityOwnershipAndMigration(t *testing.T) {
 	if _, err := restarted.Authorize(context.Background(), hash, true); err != nil {
 		t.Fatal("grant lost on restart", err)
 	}
-	if _, err := restarted.DB.Exec(`UPDATE download_issuers SET enabled=false WHERE id='issuer'`); err != nil {
+	if _, err := restarted.DB.Exec(`UPDATE download_issuers SET enabled=FALSE WHERE id='issuer'`); err != nil {
 		t.Fatal(err)
 	}
 	g.ID = uuid.NewString()
@@ -184,4 +187,8 @@ func TestPostgresDurabilityOwnershipAndMigration(t *testing.T) {
 		t.Fatal("disabled issuer created grant", err)
 	}
 }
-func sha256Bytes(s string) []byte { h := sha256.Sum256([]byte(s)); return h[:] }
+
+func sha256Bytes(s string) []byte {
+	h := sha256.Sum256([]byte(s))
+	return h[:]
+}

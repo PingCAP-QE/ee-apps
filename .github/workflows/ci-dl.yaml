@@ -17,16 +17,9 @@ jobs:
     permissions:
       contents: read
     services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_PASSWORD: dl-test-only
-        ports: [5432:5432]
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
+      tidb:
+        image: pingcap/tidb:v8.5.4
+        ports: [4000:4000]
     defaults:
       run:
         working-directory: dl
@@ -38,9 +31,18 @@ jobs:
         with:
           go-version-file: dl/go.mod
           cache-dependency-path: dl/go.sum
-      - name: Test including PostgreSQL concurrency and revocation
+      - name: Wait for TiDB
+        run: |
+          for _ in $(seq 1 60); do
+            if (echo > /dev/tcp/127.0.0.1/4000) 2>/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Test including TiDB concurrency and revocation
         env:
-          DL_TEST_POSTGRES_DSN: postgres://postgres:dl-test-only@localhost:5432/postgres?sslmode=disable
+          DL_TEST_TIDB_DSN: root@tcp(127.0.0.1:4000)/test?parseTime=true&loc=UTC
         run: go test -race ./...
       - name: Build
         run: go build ./...

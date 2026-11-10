@@ -27,9 +27,9 @@ func runDelivery(mode, address, healthAddress, configFile string, ociFile *strin
 	defer stop()
 	startup, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	dsn := os.Getenv("DL_DELIVERY_DATABASE_URL")
+	dsn := os.Getenv("DL_DELIVERY_DATABASE_DSN")
 	if dsn == "" {
-		return errors.New("DL_DELIVERY_DATABASE_URL is required")
+		return errors.New("DL_DELIVERY_DATABASE_DSN is required")
 	}
 	store, err := share.Open(startup, dsn)
 	if err != nil {
