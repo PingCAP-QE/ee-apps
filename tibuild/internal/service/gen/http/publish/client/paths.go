@@ -51,8 +51,3 @@ func RequestToPublishSinglePublishPath() string {
 func QueryPublishingStatusPublishPath(requestID string) string {
 	return fmt.Sprintf("/api/v2/publish/tiup/publish-request/%v", requestID)
 }
-
-// ResetRateLimitPublishPath returns the URL path to the publish service resetRateLimit HTTP endpoint.
-func ResetRateLimitPublishPath() string {
-	return "/api/v2/publish/tiup/reset-rate-limit"
-}

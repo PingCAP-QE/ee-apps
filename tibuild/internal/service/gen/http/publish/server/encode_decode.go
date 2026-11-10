@@ -717,15 +717,6 @@ func EncodeQueryPublishingStatusError(encoder func(context.Context, http.Respons
 	}
 }
 
-// EncodeResetRateLimitResponse returns an encoder for responses returned by
-// the publish resetRateLimit endpoint.
-func EncodeResetRateLimitResponse(encoder func(context.Context, http.ResponseWriter) goahttp.Encoder) func(context.Context, http.ResponseWriter, any) error {
-	return func(ctx context.Context, w http.ResponseWriter, v any) error {
-		w.WriteHeader(http.StatusOK)
-		return nil
-	}
-}
-
 // marshalPublishPublishStepToPublishStepResponseBody builds a value of type
 // *PublishStepResponseBody from a value of type *publish.PublishStep.
 func marshalPublishPublishStepToPublishStepResponseBody(v *publish.PublishStep) *PublishStepResponseBody {

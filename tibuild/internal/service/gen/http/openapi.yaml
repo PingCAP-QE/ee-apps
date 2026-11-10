@@ -850,18 +850,6 @@ paths:
                             - message
             schemes:
                 - http
-    /publish/tiup/reset-rate-limit:
-        post:
-            tags:
-                - publish
-            summary: resetRateLimit publish
-            description: Kept for compatibility; the publish domain has no rate limiting.
-            operationId: publish#resetRateLimit
-            responses:
-                "200":
-                    description: OK response.
-            schemes:
-                - http
     /publish/units:
         get:
             tags:

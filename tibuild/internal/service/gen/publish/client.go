@@ -24,11 +24,10 @@ type Client struct {
 	RequestToPublishEndpoint       goa.Endpoint
 	RequestToPublishSingleEndpoint goa.Endpoint
 	QueryPublishingStatusEndpoint  goa.Endpoint
-	ResetRateLimitEndpoint         goa.Endpoint
 }
 
 // NewClient initializes a "publish" service client given the endpoints.
-func NewClient(publishImages, getUnit, listUnits, retryUnit, deliveryByRules, requestToPublish, requestToPublishSingle, queryPublishingStatus, resetRateLimit goa.Endpoint) *Client {
+func NewClient(publishImages, getUnit, listUnits, retryUnit, deliveryByRules, requestToPublish, requestToPublishSingle, queryPublishingStatus goa.Endpoint) *Client {
 	return &Client{
 		PublishImagesEndpoint:          publishImages,
 		GetUnitEndpoint:                getUnit,
@@ -38,7 +37,6 @@ func NewClient(publishImages, getUnit, listUnits, retryUnit, deliveryByRules, re
 		RequestToPublishEndpoint:       requestToPublish,
 		RequestToPublishSingleEndpoint: requestToPublishSingle,
 		QueryPublishingStatusEndpoint:  queryPublishingStatus,
-		ResetRateLimitEndpoint:         resetRateLimit,
 	}
 }
 
@@ -188,18 +186,4 @@ func (c *Client) QueryPublishingStatus(ctx context.Context, p *QueryPublishingSt
 		return
 	}
 	return ires.(TiUPRequestState), nil
-}
-
-// ResetRateLimit calls the "resetRateLimit" endpoint of the "publish" service.
-// ResetRateLimit may return the following errors:
-//   - "BadRequest" (type *PublishBadRequestError): Bad Request
-//   - "Conflict" (type *PublishConflictError): Conflict
-//   - "NotFound" (type *PublishNotFoundError): Not Found
-//   - "BadGateway" (type *PublishBadGatewayError): The artifact registry could not be queried
-//   - "InternalServerError" (type *PublishInternalServerError): Internal Server Error
-//   - "fault" (type *TiUPFaultError): Internal fault
-//   - error: internal error
-func (c *Client) ResetRateLimit(ctx context.Context) (err error) {
-	_, err = c.ResetRateLimitEndpoint(ctx, nil)
-	return
 }
