@@ -37,6 +37,10 @@ def test_llm_accepts_zot_network_category_from_shared_taxonomy() -> None:
     assert classification.l1_category == "INFRA"
     assert classification.l2_subcategory == "ZOT_NETWORK"
     assert "INFRA/ZOT_NETWORK" in ERROR_CLASSIFICATION_GUIDANCE
+    assert 'blob errors use raw `Error: Get "https://HOST/v2/REPO/blobs/sha256:DIGEST": ...`' in ERROR_CLASSIFICATION_GUIDANCE
+    assert "must match the exhaustion marker's host, repository, and digest" in ERROR_CLASSIFICATION_GUIDANCE
+    assert "Concrete integration Go-test evidence" in ERROR_CLASSIFICATION_GUIDANCE
+    assert "takes precedence over historic Zot exhaustion; bare TEST_GROUP wrappers do not" in ERROR_CLASSIFICATION_GUIDANCE
 
 
 def test_openai_compatible_llm_classifier_posts_to_configured_base_url() -> None:

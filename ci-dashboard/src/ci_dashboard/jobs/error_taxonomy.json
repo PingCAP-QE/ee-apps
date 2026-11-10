@@ -585,11 +585,27 @@
       ]
     },
     {
+      "name": "integration_test_output_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "integration",
+        "realcluster",
+        "lightning",
+        "br_"
+      ],
+      "text_patterns": [
+        "--- FAIL:",
+        "^FAIL(?:\\s|$)"
+      ]
+    },
+    {
       "name": "infra_zot_network",
       "l1": "INFRA",
       "l2": "ZOT_NETWORK",
       "text_patterns": [
-        "^[ \\t]*Error: failed to fetch the content of \"(?P<zot_ref>(?P<zot_host>cr(?:-qcloud)?\\.pingcap\\.net)/[^\"\\r\\n]+)\": (?:Get|Head) \"https?://(?P=zot_host)/[^\"\\r\\n]+\": [^\\r\\n]*(?:i/o timeout|connection refused|connection reset by peer|no such host|temporary failure in name resolution|TLS handshake timeout|context deadline exceeded|stream error: [^\\r\\n]*(?:NO_ERROR|INTERNAL_ERROR|PROTOCOL_ERROR|CANCEL))[^\\r\\n]*\\r?\\n(?:[ \\t]*\\r?\\n)*[ \\t]*Error: (?:manifest|blob) fetch of (?P=zot_ref) failed after [1-9][0-9]* attempts[ \\t]*\\r?$"
+        "^[ \\t]*Error: failed to fetch the content of \"(?P<zot_ref>(?P<zot_host>cr(?:-qcloud)?\\.pingcap\\.net)/[^\"\\r\\n]+)\": (?:Get|Head) \"https?://(?P=zot_host)/[^\"\\r\\n]+\": [^\\r\\n]*(?:i/o timeout|connection refused|connection reset by peer|no such host|temporary failure in name resolution|TLS handshake timeout|context deadline exceeded|stream error: [^\\r\\n]*(?:NO_ERROR|INTERNAL_ERROR|PROTOCOL_ERROR|CANCEL))[^\\r\\n]*\\r?\\n(?:[ \\t]*\\r?\\n)*[ \\t]*Error: manifest fetch of (?P=zot_ref) failed after [1-9][0-9]* attempts[ \\t]*\\r?$",
+        "^[ \\t]*Error: (?:Get|Head) \"https?://(?P<zot_blob_host>cr(?:-qcloud)?\\.pingcap\\.net)/v2/(?P<zot_blob_repo>[^\"\\s]+?)/blobs/(?P<zot_blob_digest>sha256:[0-9a-f]{64})\": [^\\r\\n]*(?:i/o timeout|connection refused|connection reset by peer|no such host|temporary failure in name resolution|TLS handshake timeout|context deadline exceeded|stream error: [^\\r\\n]*(?:NO_ERROR|INTERNAL_ERROR|PROTOCOL_ERROR|CANCEL))[^\\r\\n]*\\r?\\n(?:[ \\t]*\\r?\\n)*[ \\t]*Error: blob fetch of (?P=zot_blob_host)/(?P=zot_blob_repo)@(?P=zot_blob_digest) failed after [1-9][0-9]* attempts[ \\t]*\\r?$"
       ]
     },
     {
@@ -919,8 +935,6 @@
         "br_"
       ],
       "text_patterns": [
-        "--- FAIL:",
-        "^FAIL(?:\\s|$)",
         "test failed"
       ]
     }
