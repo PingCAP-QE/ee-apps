@@ -115,10 +115,12 @@ Pilot logic carried into V1:
 - consecutive failures before a pass on the same group may be `is_flaky = 1`
 - repeated retests without resolution may be `is_retry_loop = 1`
 
-Status:
+Build-level rate queries:
 
-- rule is confirmed at design level
-- implementation is deferred to `ci-refresh-build-derived`
+- Keep the stored retry-recovery flags unchanged, but exclude a build from flaky numerators when its effective L1 error category is `INFRA`: `revise_error_l1_category` takes precedence over `error_l1_category`.
+- Missing error categories retain the existing flag-based behavior. INFRA builds remain in the failure-like denominator; neither this denominator nor blind-retry-loop counting changes.
+- Apply the same eligible flaky predicate to period summaries, trends, job rankings, and the flaky component of combined noisy/affected-PR metrics. Read the category at query time so classification updates require no flag recomputation or backfill.
+- This does not introduce a new rule for counting failures without a subsequent same-commit pass, or change testcase evidence and stored V1 `failure_category` classification.
 
 ## BR-09: Watermark-Based Incremental Processing
 

@@ -394,6 +394,18 @@ export default function BuildTrendPage({ filters }) {
   );
 }
 
+// Distinct categorical hues for the top eight groups; Others stays neutral.
+const BUILD_COUNT_COLORS = [
+  "#1f77b4",
+  "#ff7f0e",
+  "#2ca02c",
+  "#d62728",
+  "#9467bd",
+  "#8c564b",
+  "#e377c2",
+  "#bcbd22",
+];
+
 const BUILD_COUNT_DIMENSIONS = [
   { key: "repo", label: "Repo", description: "repo" },
   { key: "branch", label: "Branch", description: "target branch" },
@@ -418,9 +430,14 @@ function BuildCountDimensionTrend({
   emptyMessage,
 }) {
   const items = dimension?.items || [];
+  // Assign before focusing a group so its bars, legend and tooltip keep the same color.
+  const coloredSeries = (dimension?.series || []).map((item, index) => ({
+    ...item,
+    color: item.label === "Others" ? "#7f7f7f" : BUILD_COUNT_COLORS[index],
+  }));
   const series = selectedName
-    ? (dimension?.series || []).filter((item) => item.label === selectedName)
-    : dimension?.series;
+    ? coloredSeries.filter((item) => item.label === selectedName)
+    : coloredSeries;
 
   if (!items.length || !series?.length) {
     return <div className="empty-state">{emptyMessage}</div>;
