@@ -44,10 +44,13 @@ Run once with a migration identity, before either new Deployment starts:
 dl --server-mode=delivery-migrate
 ```
 
-The embedded [schema](../internal/share/schema.sql) creates the grant, issuer
-status and separate audit tables using TiDB-native data types and `AUTO_RANDOM`
-audit IDs. TiDB DDL is not transactional, so run one migration job to completion
-before starting either server mode. Normal runtime startup does not run DDL.
+The [Ent schemas](../internal/database/schema) define the grant, issuer status
+and separate audit tables; migrations and ordinary CRUD also use Ent. The
+session-reservation path keeps a narrow SQL boundary for TiDB's explicit
+`BEGIN PESSIMISTIC` and `SELECT ... FOR UPDATE` semantics. TiDB DDL is not
+transactional, so run one migration job to completion before starting either
+server mode. Normal runtime startup does not run DDL.
+
 Enroll authorized issuers explicitly:
 
 ```sql
@@ -217,14 +220,14 @@ cd dl
 go test -race ./...
 go build ./...
 go generate ./...
-git diff --exit-code -- gen
+git diff --exit-code -- gen internal/database/ent
 ```
 
 Set `DL_TEST_TIDB_DSN` to a disposable TiDB DSN to enable integration tests.
 They create/drop isolated databases and verify quota races across two
 independent connection pools, HEAD behavior, shared revocation, expiry, disabled
 issuers, ownership, restarts and idempotent migrations. CI runs these tests with
-TiDB v8.5.4. HTTP tests cover route isolation, pinned identity, safe errors,
+TiDB v8.5.8. HTTP tests cover route isolation, pinned identity, safe errors,
 headers/logs, stream failures and a synthetic 5 GiB bounded-buffer transfer.
 
 Deferred: resumable Range transfers, global bandwidth/customer quotas, active

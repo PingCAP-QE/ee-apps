@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/PingCAP-QE/ee-apps/dl/internal/database/ent/downloadevent"
 	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 )
@@ -52,11 +53,14 @@ func testTiDB(t *testing.T) (*TiDB, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.DB.Close() })
+	t.Cleanup(func() { _ = s.Close() })
 	if err = s.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.DB.ExecContext(ctx, `INSERT INTO download_issuers(id,enabled) VALUES('issuer',TRUE),('other',TRUE)`); err != nil {
+	if _, err = s.client.DownloadIssuer.CreateBulk(
+		s.client.DownloadIssuer.Create().SetID("issuer").SetEnabled(true),
+		s.client.DownloadIssuer.Create().SetID("other").SetEnabled(true),
+	).Save(ctx); err != nil {
 		t.Fatal(err)
 	}
 	return s, isolatedDSN
@@ -79,7 +83,7 @@ func TestTiDBQuotaAtomicAcrossReplicas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer replica.DB.Close()
+	defer replica.Close()
 	max := 1
 	g, hash := testGrant(t, s, &max)
 	for range 3 {
@@ -117,7 +121,12 @@ func TestTiDBQuotaAtomicAcrossReplicas(t *testing.T) {
 		t.Fatal("incorrect durable quota")
 	}
 	var count int
-	if err := s.DB.QueryRow(`SELECT count(*) FROM download_events WHERE share_id=? AND phase='get' AND outcome='authorized'`, g.ID).Scan(&count); err != nil || count != 1 {
+	count, err = s.client.DownloadEvent.Query().Where(
+		downloadevent.ShareIDEQ(g.ID),
+		downloadevent.PhaseEQ("get"),
+		downloadevent.OutcomeEQ("authorized"),
+	).Count(context.Background())
+	if err != nil || count != 1 {
 		t.Fatalf("authorization not audited atomically: count=%d err=%v", count, err)
 	}
 }
@@ -131,7 +140,7 @@ func TestTiDBRevocationExpiryAndIssuerDisable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer replica.DB.Close()
+			defer replica.Close()
 			if _, err = replica.Authorize(context.Background(), hash, false); err != nil {
 				t.Fatal(err)
 			}
@@ -139,9 +148,9 @@ func TestTiDBRevocationExpiryAndIssuerDisable(t *testing.T) {
 			case "revoked":
 				err = s.Revoke(context.Background(), g.ID, "issuer")
 			case "expired":
-				_, err = s.DB.Exec(`UPDATE download_shares SET created_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 2 SECOND), expires_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 1 SECOND) WHERE id=?`, g.ID)
+				_, err = s.db.Exec(`UPDATE download_shares SET created_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 2 SECOND), expires_at=DATE_SUB(CURRENT_TIMESTAMP(6), INTERVAL 1 SECOND) WHERE id=?`, g.ID)
 			case "issuer-disabled":
-				_, err = s.DB.Exec(`UPDATE download_issuers SET enabled=FALSE WHERE id='issuer'`)
+				_, err = s.client.DownloadIssuer.UpdateOneID("issuer").SetEnabled(false).Save(context.Background())
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -167,18 +176,18 @@ func TestTiDBDurabilityOwnershipAndMigration(t *testing.T) {
 	if err := s.Migrate(context.Background()); err != nil {
 		t.Fatal("migration is not idempotent", err)
 	}
-	if err := s.DB.Close(); err != nil {
+	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
 	restarted, err := Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer restarted.DB.Close()
+	defer restarted.Close()
 	if _, err := restarted.Authorize(context.Background(), hash, true); err != nil {
 		t.Fatal("grant lost on restart", err)
 	}
-	if _, err := restarted.DB.Exec(`UPDATE download_issuers SET enabled=FALSE WHERE id='issuer'`); err != nil {
+	if _, err := restarted.client.DownloadIssuer.UpdateOneID("issuer").SetEnabled(false).Save(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	g.ID = uuid.NewString()

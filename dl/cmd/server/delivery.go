@@ -35,7 +35,7 @@ func runDelivery(mode, address, healthAddress, configFile string, ociFile *strin
 	if err != nil {
 		return err
 	}
-	defer store.DB.Close()
+	defer store.Close()
 	if mode == "delivery-migrate" {
 		if err := store.Migrate(startup); err != nil {
 			return errors.New("delivery schema migration failed")
@@ -47,7 +47,7 @@ func runDelivery(mode, address, healthAddress, configFile string, ociFile *strin
 	if err != nil {
 		return err
 	}
-	if err := store.DB.QueryRowContext(startup, `SELECT EXISTS(SELECT 1 FROM download_issuers)`).Scan(new(bool)); err != nil {
+	if err := store.Ready(startup); err != nil {
 		return errors.New("delivery schema unavailable; apply migrations first")
 	}
 	oci := ocisvc.New(logger, ociFile, allowed)
@@ -79,8 +79,7 @@ func runDelivery(mode, address, healthAddress, configFile string, ociFile *strin
 	probes.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		var ready bool
-		if err := store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM download_issuers)`).Scan(&ready); err != nil {
+		if err := store.Ready(ctx); err != nil {
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
