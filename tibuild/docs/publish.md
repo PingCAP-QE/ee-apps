@@ -331,3 +331,21 @@ Reloading the configuration file re-reads both; a bad revision keeps the last
 good one. The ops file carries the per-stage base URL, key and the
 `base_image → component` catalogue; the test platforms file carries the TCMS
 base URL and token.
+
+### Commit metadata forwarded to TCMS
+
+`POST /api/v2/tidbcloud/tidbx-component-image-builds` also reads two optional
+labels from the image config and forwards them together with
+`repo`/`branch`/`sha`/`imageTag`:
+
+| Label | TCMS field | Rules |
+| --- | --- | --- |
+| `net.pingcap.tibuild.git-commit-title` | `commitTitle` | trimmed, truncated to 255 runes, omitted when empty |
+| `net.pingcap.tibuild.git-commit-time` | `commitTime` | must parse as RFC 3339; otherwise only this field is dropped and a warning is logged |
+
+Both fields are optional end to end. An image built before the labels existed
+(or without them) produces exactly the old request shape, and TCMS keeps the
+values it already stored when a later update omits the fields. The labels
+themselves are written by the QE artifact build scripts — see
+[`PingCAP-QE/artifacts`](https://github.com/PingCAP-QE/artifacts) — so the
+values describe the commit that produced the image, not the caller.
