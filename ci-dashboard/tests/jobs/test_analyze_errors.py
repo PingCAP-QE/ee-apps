@@ -295,6 +295,70 @@ def test_run_analyze_errors_classifies_via_rules(sqlite_engine) -> None:
     assert row["error_l2_subcategory"] == "NETWORK"
 
 
+@pytest.mark.parametrize("force", [False, True])
+@pytest.mark.parametrize("human_reviewed", [False, True])
+@pytest.mark.parametrize("stage", ["manifest", "blob"])
+def test_analyze_errors_classifies_zot_failures_without_overwriting_human_review(
+    sqlite_engine, force: bool, human_reviewed: bool, stage: str,
+) -> None:
+    _insert_build(
+        sqlite_engine,
+        build_id=103,
+        job_name="pull_lightning_integration_test",
+        log_gcs_uri="gcs://ci-dashboard-test/2604/103.log",
+        error_l1_category="IT" if force else None,
+        error_l2_subcategory="TEST_FAILURE" if force else None,
+        revise_error_l1_category="UT" if human_reviewed else None,
+        revise_error_l2_subcategory="TEST_FAILURE" if human_reviewed else None,
+    )
+    repository = "cr-qcloud.pingcap.net/mirrors/hub/tikv/tikv/package"
+    reference = f"{repository}:master_linux_amd64"
+    diagnostic = (
+        f'Error: failed to fetch the content of "{reference}": '
+        'Get "https://cr-qcloud.pingcap.net/v2/mirrors/hub/tikv/tikv/package/'
+        'manifests/master_linux_amd64": dial tcp 10.0.6.5:443: i/o timeout\n'
+    )
+    if stage == "blob":
+        digest = "sha256:" + "0" * 64
+        reference = f"{repository}@{digest}"
+        diagnostic = (
+            'Error: Get "http://cr-qcloud.pingcap.net/v2/mirrors/hub/tikv/tikv/package/'
+            f'blobs/{digest}": dial tcp 127.0.0.1:1: connect: connection refused\n'
+        )
+    reader = _FakeReader({
+        ("ci-dashboard-test", "2604/103.log"): (
+            "Failed in branch Matrix - TEST_GROUP = 'G00'\n"
+            "===== Failed pipeline node log =====\n"
+            + diagnostic + f"Error: {stage} fetch of {reference} failed after 3 attempts\n"
+        ),
+    })
+    classifier = _FakeClassifier(ErrorClassification(
+        l1_category="IT", l2_subcategory="TEST_FAILURE", source="llm:test",
+    ))
+
+    summary = run_analyze_errors(
+        sqlite_engine, _settings(), reader=reader, llm_classifier=classifier, force=force,
+    )
+
+    assert classifier.calls == []
+    with sqlite_engine.connect() as connection:
+        row = connection.execute(
+            text("SELECT * FROM ci_l1_builds WHERE id = 103")
+        ).mappings().one()
+    if human_reviewed:
+        assert reader.calls == []
+        assert summary.builds_classified == 0
+        assert row["revise_error_l1_category"] == "UT"
+        assert row["revise_error_l2_subcategory"] == "TEST_FAILURE"
+        assert row["error_l1_category"] == ("IT" if force else None)
+    else:
+        assert summary.builds_rule_classified == 1
+        assert row["error_l1_category"] == "INFRA"
+        assert row["error_l2_subcategory"] == "ZOT_NETWORK"
+        assert row["revise_error_l1_category"] is None
+        assert row["revise_error_l2_subcategory"] is None
+
+
 def test_run_analyze_errors_scans_partial_machine_classification(sqlite_engine) -> None:
     _insert_build(
         sqlite_engine,

@@ -8,6 +8,7 @@ import pytest
 import ci_dashboard.jobs.llm_classifier as llm_classifier_module
 from ci_dashboard.common.config import LLMSettings
 from ci_dashboard.jobs.error_classification_guidance import ERROR_CLASSIFICATION_GUIDANCE
+from ci_dashboard.jobs.rule_engine import RuleEngine
 from ci_dashboard.jobs.llm_classifier import (
     NoopLLMClassifier,
     OpenAICompatibleLLMClassifier,
@@ -25,6 +26,21 @@ from ci_dashboard.jobs.llm_classifier import (
     _iter_sse_data_payloads,
     build_llm_classifier,
 )
+
+
+def test_llm_accepts_zot_network_category_from_shared_taxonomy() -> None:
+    classification = _validate_classification(
+        {"l1": "INFRA", "l2": "ZOT_NETWORK"},
+        allowed_classifications=RuleEngine.from_file().allowed_classifications,
+        provider_name="test",
+    )
+    assert classification.l1_category == "INFRA"
+    assert classification.l2_subcategory == "ZOT_NETWORK"
+    assert "INFRA/ZOT_NETWORK" in ERROR_CLASSIFICATION_GUIDANCE
+    assert 'blob errors use raw `Error: Get "https://HOST/v2/REPO/blobs/sha256:DIGEST": ...`' in ERROR_CLASSIFICATION_GUIDANCE
+    assert "must match the exhaustion marker's host, repository, and digest" in ERROR_CLASSIFICATION_GUIDANCE
+    assert "Concrete integration Go-test evidence" in ERROR_CLASSIFICATION_GUIDANCE
+    assert "takes precedence over historic Zot exhaustion; bare TEST_GROUP wrappers do not" in ERROR_CLASSIFICATION_GUIDANCE
 
 
 def test_openai_compatible_llm_classifier_posts_to_configured_base_url() -> None:

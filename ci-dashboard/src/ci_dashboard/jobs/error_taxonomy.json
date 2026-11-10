@@ -334,8 +334,7 @@
         "(^|_)pull_dm_integration_test(_next_gen)?($|_)"
       ],
       "text_patterns": [
-        "make: \\*\\*\\* \\[Makefile:[0-9]+: dm_integration_test_in_group\\] Error [0-9]+",
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: dm_integration_test_in_group\\] Error [0-9]+"
       ]
     },
     {
@@ -347,7 +346,6 @@
         "(^|_)pull_cdc_integration_storage_test($|_)"
       ],
       "text_patterns": [
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
         "TEST FAILED: OUTPUT DOES NOT CONTAIN",
         "check data failed [1-9][0-9]*-th time",
         "check diff failed [1-9][0-9]*-th time",
@@ -363,7 +361,6 @@
         "(^|_)pull_cdc_mysql_integration_light($|_)"
       ],
       "text_patterns": [
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
         "TEST FAILED: OUTPUT DOES NOT CONTAIN",
         "TEST FAILED: OUTPUT CONTAINS",
         "check data failed [1-9][0-9]*-th time",
@@ -397,7 +394,6 @@
         "(^|_)pull_cdc_storage_integration_heavy_next_gen($|_)"
       ],
       "text_patterns": [
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
         "check diff failed [1-9][0-9]*-th time",
         "\\[CDC:ErrTableIsNotFounded\\]table is not found",
         "\\[CDC:ErrMaintainerNotFounded\\]maintainer is not found"
@@ -412,7 +408,6 @@
         "(^|_)pull_cdc_storage_integration_light($|_)"
       ],
       "text_patterns": [
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
         "TEST FAILED: OUTPUT DOES NOT CONTAIN",
         "TEST FAILED: OUTPUT CONTAINS",
         "check data failed [1-9][0-9]*-th time",
@@ -506,19 +501,6 @@
       ]
     },
     {
-      "name": "br_integration_test_failure",
-      "l1": "IT",
-      "l2": "TEST_FAILURE",
-      "job_name_patterns": [
-        "(^|/)pull_br_integration_test(_next_gen)?$",
-        "(^|_)pull_br_integration_test(_next_gen)?($|_)"
-      ],
-      "text_patterns": [
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
-        "make: \\*\\*\\* \\[Makefile:[0-9]+: br_integration_test[^\\r\\n]*\\] Error [0-9]+"
-      ]
-    },
-    {
       "name": "lightning_integration_test_failure",
       "l1": "IT",
       "l2": "TEST_FAILURE",
@@ -528,8 +510,7 @@
       ],
       "text_patterns": [
         "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN",
-        "TEST FAILED: OUTPUT DOES NOT CONTAIN",
-        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+        "TEST FAILED: OUTPUT DOES NOT CONTAIN"
       ]
     },
     {
@@ -601,6 +582,75 @@
         "https://revive\\.run/r#",
         "problems \\([0-9]+ errors, [0-9]+ warnings\\)",
         "make: \\*\\*\\* \\[Makefile:[0-9]+: lint\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "integration_test_output_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "integration",
+        "realcluster",
+        "lightning",
+        "br_"
+      ],
+      "text_patterns": [
+        "--- FAIL:",
+        "^FAIL(?:\\s|$)"
+      ]
+    },
+    {
+      "name": "infra_zot_network",
+      "l1": "INFRA",
+      "l2": "ZOT_NETWORK",
+      "text_patterns": [
+        "^[ \\t]*Error: failed to fetch the content of \"(?P<zot_ref>(?P<zot_host>cr(?:-qcloud)?\\.pingcap\\.net)/[^\"\\r\\n]+)\": (?:Get|Head) \"https?://(?P=zot_host)/[^\"\\r\\n]+\": [^\\r\\n]*(?:i/o timeout|connection refused|connection reset by peer|no such host|temporary failure in name resolution|TLS handshake timeout|context deadline exceeded|stream error: [^\\r\\n]*(?:NO_ERROR|INTERNAL_ERROR|PROTOCOL_ERROR|CANCEL))[^\\r\\n]*\\r?\\n(?:[ \\t]*\\r?\\n)*[ \\t]*Error: manifest fetch of (?P=zot_ref) failed after [1-9][0-9]* attempts[ \\t]*\\r?$",
+        "^[ \\t]*Error: (?:Get|Head) \"https?://(?P<zot_blob_host>cr(?:-qcloud)?\\.pingcap\\.net)/v2/(?P<zot_blob_repo>[^\"\\s]+?)/blobs/(?P<zot_blob_digest>sha256:[0-9a-f]{64})\": [^\\r\\n]*(?:i/o timeout|connection refused|connection reset by peer|no such host|temporary failure in name resolution|TLS handshake timeout|context deadline exceeded|stream error: [^\\r\\n]*(?:NO_ERROR|INTERNAL_ERROR|PROTOCOL_ERROR|CANCEL))[^\\r\\n]*\\r?\\n(?:[ \\t]*\\r?\\n)*[ \\t]*Error: blob fetch of (?P=zot_blob_host)/(?P=zot_blob_repo)@(?P=zot_blob_digest) failed after [1-9][0-9]* attempts[ \\t]*\\r?$"
+      ]
+    },
+    {
+      "name": "dm_cdc_integration_matrix_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_dm_integration_test(_next_gen)?$",
+        "(^|_)pull_dm_integration_test(_next_gen)?($|_)",
+        "(^|/)pull_cdc_integration_storage_test$",
+        "(^|_)pull_cdc_integration_storage_test($|_)",
+        "(^|/)pull_cdc_mysql_integration_light$",
+        "(^|_)pull_cdc_mysql_integration_light($|_)",
+        "(^|/)pull_cdc_storage_integration_heavy_next_gen$",
+        "(^|_)pull_cdc_storage_integration_heavy_next_gen($|_)",
+        "(^|/)pull_cdc_storage_integration_light$",
+        "(^|_)pull_cdc_storage_integration_light($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
+      ]
+    },
+    {
+      "name": "br_integration_test_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_br_integration_test(_next_gen)?$",
+        "(^|_)pull_br_integration_test(_next_gen)?($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'",
+        "make: \\*\\*\\* \\[Makefile:[0-9]+: br_integration_test[^\\r\\n]*\\] Error [0-9]+"
+      ]
+    },
+    {
+      "name": "lightning_integration_matrix_failure",
+      "l1": "IT",
+      "l2": "TEST_FAILURE",
+      "job_name_patterns": [
+        "(^|/)pull_lightning_integration_test$",
+        "(^|_)pull_lightning_integration_test($|_)"
+      ],
+      "text_patterns": [
+        "Failed in branch Matrix - TEST_GROUP = '[^']+'"
       ]
     },
     {
@@ -885,8 +935,6 @@
         "br_"
       ],
       "text_patterns": [
-        "--- FAIL:",
-        "^FAIL(?:\\s|$)",
         "test failed"
       ]
     }
