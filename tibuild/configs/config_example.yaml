@@ -33,10 +33,14 @@ identity:
   # injects verified claims. While false a header value is recorded for audit
   # and never becomes a principal, so nobody can pick which colleague to be.
   trusted_headers: false
-  # Principal used when no trusted user is present. It keeps automation working
-  # and is what a build records as createdBy until trusted headers exist.
-  service_identity: "tibuild-v2@pingcap.com"
-  service_name: "tibuild-v2"
+  # Principal assumed for a request that carries no trusted user. Leave it empty
+  # unless you accept that every anonymous request acts as this identity: with a
+  # value here, authorization can no longer tell automation from an untrusted
+  # caller, because both look the same. It is a transitional convenience for a
+  # cluster whose callers are all automation, not a substitute for the Gateway
+  # identity normalizer.
+  service_identity: ""
+  service_name: ""
 
 authorization:
   # off: legacy behaviour; observe: log what would be denied; enforce: deny it.
@@ -45,7 +49,6 @@ authorization:
   # Who may mutate: exact addresses or "*@domain" patterns. Empty allows nobody.
   allow_principals:
     - "*@pingcap.com"
-    - "tibuild-v2@pingcap.com"
 
 jenkins:
   url: "https://<jenkins-url>"

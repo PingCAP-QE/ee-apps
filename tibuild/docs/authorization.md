@@ -21,6 +21,12 @@ Turn `trusted_headers` on only after the Gateway strips client-supplied
 `X-User-*` headers and injects verified claims. That normalizer is a Gateway
 change, not a service change.
 
+`identity.service_identity` is the escape hatch for a cluster whose callers are
+all automation, and it is empty by default. Setting it makes **every** request
+that carries no trusted user act as that identity, so authorization can no
+longer tell automation from an untrusted caller. It is a transitional
+convenience, not a substitute for the normalizer.
+
 ## Authorization
 
 `authorization.mode` has three values:
