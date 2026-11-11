@@ -191,12 +191,12 @@ type nightlyVerifyResult struct {
 func (s *publishsrvc) verifyNightlyRow(ctx context.Context, row *ent.PublishDesired) nightlyVerifyResult {
 	wanted := desiredFileSHA256(row)
 	mirror, url := s.mirrorForTarget(row.Target)
-	if wanted == "" || s.mirrorReader == nil || url == "" {
+	if wanted == "" || s.tiupMirror == nil || url == "" {
 		return nightlyVerifyResult{Row: row, Published: legacyPublished(row), Result: verifyResultFallback}
 	}
 
 	started := time.Now()
-	got, err := s.mirrorReader.publishedSHA256(ctx, url, row.Pkg, row.Os, row.Arch, row.DesiredVersion)
+	got, err := s.tiupMirror.publishedSHA256(ctx, url, row.Pkg, row.Os, row.Arch, row.DesiredVersion)
 	if s.metrics != nil {
 		s.metrics.observeVerify(mirror, time.Since(started))
 	}

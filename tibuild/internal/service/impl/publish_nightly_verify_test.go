@@ -257,7 +257,7 @@ func TestNightlyVerificationComparesFileDigest(t *testing.T) {
 		"linux/amd64": map[string]any{"v9-nightly": mirrorPlatform("aaaa", "/pd-nightly-linux-amd64.tar.gz", false)},
 	})
 	svc, clock := newFlowTestService(t)
-	svc.mirrorReader = newTiupMirrorReader(time.Minute)
+	svc.tiupMirror = newTiupMirrorReader(time.Minute)
 	svc.publishCfg.TiUPMirrors = map[string]string{"prod": mirror.url(), "staging": mirror.url()}
 	enabled := true
 	svc.publishCfg.Nightly = nightlyTestConfig(enabled, delivery.TiUPTargetProd)
@@ -305,7 +305,7 @@ func TestNightlyAlertFiresWhenOnlyTheDigestDiffers(t *testing.T) {
 	svc.nightlyAlerts = newNightlyAlertTracker(time.Hour)
 	notifier := &recordingAlertNotifier{}
 	svc.alerter = notifier
-	svc.mirrorReader = newTiupMirrorReader(time.Minute)
+	svc.tiupMirror = newTiupMirrorReader(time.Minute)
 	svc.publishCfg.TiUPMirrors = map[string]string{"prod": mirror.url(), "staging": mirror.url()}
 	enabled := true
 	svc.publishCfg.Nightly = nightlyTestConfig(enabled, delivery.TiUPTargetProd)
@@ -337,7 +337,7 @@ func TestNightlyVerifyErrorKeepsTheOldJudgement(t *testing.T) {
 	svc.nightlyAlerts = newNightlyAlertTracker(time.Hour)
 	notifier := &recordingAlertNotifier{}
 	svc.alerter = notifier
-	svc.mirrorReader = newTiupMirrorReader(time.Minute)
+	svc.tiupMirror = newTiupMirrorReader(time.Minute)
 	svc.publishCfg.TiUPMirrors = map[string]string{"prod": mirror.url(), "staging": mirror.url()}
 	enabled := true
 	svc.publishCfg.Nightly = nightlyTestConfig(enabled, delivery.TiUPTargetProd)

@@ -67,11 +67,11 @@ func newNightlyMetrics() *nightlyMetrics {
 	}
 	m.verify = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "publish_desired_verify_total",
-		Help: "Nightly desired rows judged against the mirror metadata, by verification result.",
+		Help: "Nightly TiUP desired rows judged against the TiUP mirror metadata, by verification result.",
 	}, []string{"mirror", "result"})
 	m.verifyTime = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "publish_desired_verify_seconds",
-		Help: "Seconds spent reading the mirror metadata for the last verification pass, per mirror.",
+		Help: "Seconds spent reading the TiUP mirror metadata for the last verification pass, per mirror.",
 	}, []string{"mirror"})
 	m.registry.MustRegister(m.due, m.lag, m.published, m.laneBusy, m.laneWait, m.laneHold, m.starvation, m.verify, m.verifyTime)
 	return m
