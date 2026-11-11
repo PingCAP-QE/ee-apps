@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useRef, useState } from "react";
 
 import {
   formatCompact,
@@ -1624,6 +1624,131 @@ export function DistinctCaseCountTable({ weeks, rows, scrollClassName = "" }) {
     </div>
   );
 }
+
+export function TopFlakyCasesTable({ rows = [] }) {
+  const [expandedKeys, setExpandedKeys] = useState(() => new Set());
+  const tableId = useId();
+
+  if (!rows.length) {
+    return <EmptyState message="No reported flaky cases matched the selected filters." />;
+  }
+
+  const toggle = (rowKey) => setExpandedKeys((current) => {
+    const next = new Set(current);
+    if (next.has(rowKey)) {
+      next.delete(rowKey);
+    } else {
+      next.add(rowKey);
+    }
+    return next;
+  });
+
+  return (
+    <div className="table-scroll">
+      <table className="data-table data-table--top-cases" aria-label="Top flaky cases">
+        <colgroup>
+          <col className="top-cases__rank-col" />
+          <col className="top-cases__case-col" />
+          <col className="top-cases__count-col" />
+          <col />
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Case</th>
+            <th scope="col">Affected builds</th>
+            <th scope="col">Linked issues</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => {
+            const rowKey = `${row.repo}:${row.case_name}`;
+            const builds = row.builds || [];
+            const isExpanded = expandedKeys.has(rowKey);
+            const detailId = `${tableId}-builds-${index}`;
+            return (
+              <Fragment key={rowKey}>
+                <tr
+                  className={[
+                    "top-cases__row",
+                    index % 2 === 1 ? "top-cases__row--striped" : "",
+                    isExpanded ? "top-cases__row--expanded" : "",
+                  ].filter(Boolean).join(" ")}
+                  onClick={(event) => {
+                    if (event.target.closest("a, button")) {
+                      return;
+                    }
+                    toggle(rowKey);
+                  }}
+                >
+                  <td>
+                    <button
+                      type="button"
+                      className="top-cases__toggle"
+                      aria-expanded={isExpanded}
+                      aria-controls={detailId}
+                      aria-label={`${isExpanded ? "Hide" : "Show"} builds for #${index + 1} ${row.repo} ${row.case_name}`}
+                      onClick={() => toggle(rowKey)}
+                    >
+                      <span aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
+                      {index + 1}
+                    </button>
+                  </td>
+                  <th scope="row">
+                    {row.case_name}
+                    <span className="top-cases__repo">{row.repo}</span>
+                  </th>
+                  <td><strong className="top-cases__count">{formatNumber(row.affected_build_count)}</strong></td>
+                  <td>
+                    <div className="top-cases__issues">
+                      {row.issues?.length ? row.issues.map((issue) => (
+                        <span className="top-cases__issue" key={issue.issue_number}>
+                          <a href={issue.issue_url} title={issue.issue_title} target="_blank" rel="noreferrer">
+                            #{issue.issue_number}
+                          </a>
+                          <span className={`status-pill status-pill--${String(issue.issue_status).toLowerCase()}`}>
+                            {issue.issue_status}
+                          </span>
+                        </span>
+                      )) : <span>No linked issue</span>}
+                    </div>
+                  </td>
+                </tr>
+                <tr className="top-cases__detail" id={detailId} hidden={!isExpanded}>
+                  <td colSpan={4}>
+                    {builds.length ? (
+                      <>
+                        <p className="top-cases__detail-head">
+                          {builds.length < row.affected_build_count
+                            ? `Latest ${formatNumber(builds.length)} of ${formatNumber(row.affected_build_count)} builds`
+                            : `Latest ${formatNumber(builds.length)} ${builds.length === 1 ? "build" : "builds"}`}
+                          <span>newest first</span>
+                        </p>
+                        <ol className="top-cases__build-list">
+                          {builds.map((build, buildIndex) => (
+                            <li key={`${buildIndex}:${build.build_url}`}>
+                              <a href={build.build_url} title={build.cloud_phase} target="_blank" rel="noreferrer">
+                                {build.build_url}
+                              </a>
+                              <span className="top-cases__build-meta">
+                                {String(build.last_report_time).replace("T", " ").slice(0, 19)}
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
+                      </>
+                    ) : <p className="top-cases__detail-head">No build links available.</p>}
+                  </td>
+                </tr>
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 
 export function IssueWeeklyRateTable({ weeks, rows, scrollClassName = "" }) {
   const [sort, setSort] = useState({ column: null, direction: "desc" });

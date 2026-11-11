@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from typing import Any
+from urllib import parse as urllib_parse
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
@@ -18,8 +19,11 @@ from ci_dashboard.api.queries.base import (
     rate_pct,
     to_number,
 )
+from ci_dashboard.jobs.build_url_matcher import GCP_HOST, TENCENT_HOST
 
 DEFAULT_DISTINCT_CASE_REPO = "pingcap/tidb"
+TOP_CASES_LIMIT = 10
+MAX_CASE_BUILD_LINKS = 10
 UNKNOWN_ISSUE_BRANCH = "__unknown__"
 _CASE_BUILD_BRANCH_EXPR = "COALESCE(p.target_branch, NULLIF(b.target_branch, ''), NULLIF(b.base_ref, ''))"
 
@@ -131,6 +135,183 @@ def get_flaky_bucketed_rate_view(engine: Engine, filters: CommonFilters) -> dict
             "ignores_issue_status": True,
         },
     }
+
+
+def get_flaky_top_cases(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    """Rank reported flaky cases, independently of their tracking issue's branch/state."""
+    conditions = ["pcr.flaky = 1", "pcr.case_name IS NOT NULL", "TRIM(pcr.case_name) <> ''"]
+    params: dict[str, Any] = {}
+    for value, clause, key in (
+        (filters.repo, "pcr.repo = :repo", "repo"),
+        (filters.branch, "pcr.branch = :branch", "branch"),
+        (filters.start_date, "pcr.report_time >= :report_from", "report_from"),
+        (
+            filters.end_date + timedelta(days=1) if filters.end_date else None,
+            "pcr.report_time < :report_to",
+            "report_to",
+        ),
+    ):
+        if value:
+            conditions.append(clause)
+            params[key] = value
+    job_clause, job_params = build_multi_value_clause(
+        "b.job_name", filters.job_names, bind_prefix="case_job"
+    )
+    params.update(job_params)
+    if filters.cloud_phase:
+        params["case_cloud"] = filters.cloud_phase.upper()
+
+    with engine.begin() as connection:
+        job_filter = ""
+        if job_clause:
+            job_filter = f"""AND EXISTS (
+              SELECT 1 FROM ci_l1_builds b
+              WHERE b.normalized_build_url IN (
+                cr.build_match_key,
+                REPLACE(cr.build_match_key, 'https://prow.tidb.net/', 'https://do.pingcap.net/')
+              )
+                AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = cr.cloud_phase
+                AND {_case_build_time_match_expr(connection, "cr.report_time", "b.start_time")}
+                AND {job_clause}
+            )"""
+        rows = connection.execute(
+            text(
+                f"""
+                WITH reported_cases AS (
+                  SELECT pcr.repo, pcr.case_name, pcr.report_time,
+                    {_case_run_identity_columns(connection)}
+                  FROM problem_case_runs pcr
+                  WHERE {" AND ".join(conditions)}
+                ),
+                case_reports AS (
+                  SELECT repo, case_name, report_time, cloud_phase,
+                    {_legacy_tencent_build_key_expr("build_key")} AS build_match_key
+                  FROM reported_cases
+                  WHERE build_key IS NOT NULL AND build_key <> ''
+                    {_optional_clause(filters.cloud_phase or None, "AND cloud_phase = :case_cloud")}
+                ),
+                case_builds AS (
+                  SELECT cr.repo, cr.case_name, cr.build_match_key, cr.cloud_phase,
+                    MAX(cr.report_time) AS last_report_time
+                  FROM case_reports cr
+                  WHERE 1=1
+                    {job_filter}
+                  GROUP BY cr.repo, cr.case_name, cr.build_match_key, cr.cloud_phase
+                ),
+                case_counts AS (
+                  SELECT repo, case_name, COUNT(*) AS affected_build_count
+                  FROM case_builds
+                  GROUP BY repo, case_name
+                ),
+                top_cases AS (
+                  SELECT repo, case_name, affected_build_count
+                  FROM case_counts
+                  ORDER BY affected_build_count DESC, repo ASC, case_name ASC
+                  LIMIT {TOP_CASES_LIMIT}
+                ),
+                ranked_builds AS (
+                  SELECT
+                    cb.repo,
+                    cb.case_name,
+                    cb.build_match_key,
+                    cb.cloud_phase,
+                    cb.last_report_time,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY cb.repo, cb.case_name
+                      ORDER BY cb.last_report_time DESC, cb.build_match_key ASC, cb.cloud_phase ASC
+                    ) AS rn
+                  FROM case_builds cb
+                  JOIN top_cases t
+                    ON t.repo = cb.repo
+                   AND t.case_name = cb.case_name
+                )
+                SELECT
+                  t.repo,
+                  t.case_name,
+                  t.affected_build_count,
+                  rb.build_match_key,
+                  rb.cloud_phase,
+                  rb.last_report_time
+                FROM top_cases t
+                JOIN ranked_builds rb
+                  ON rb.repo = t.repo
+                 AND rb.case_name = t.case_name
+                WHERE rb.rn <= {MAX_CASE_BUILD_LINKS}
+                ORDER BY t.affected_build_count DESC, t.repo ASC, t.case_name ASC,
+                         rb.rn ASC
+                """
+            ),
+            params,
+        ).mappings()
+        cases: list[dict[str, Any]] = []
+        by_case: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in rows:
+            key = (str(row["repo"]), str(row["case_name"]))
+            case = by_case.get(key)
+            if case is None:
+                case = {
+                    "repo": row["repo"],
+                    "case_name": row["case_name"],
+                    "affected_build_count": int(row["affected_build_count"]),
+                    "issues": [],
+                    "builds": [],
+                }
+                by_case[key] = case
+                cases.append(case)
+            # The expansion keeps only the most recently seen builds; the count stays exact.
+            case["builds"].append(
+                {
+                    "build_url": _case_build_link(
+                        str(row["build_match_key"]), str(row["cloud_phase"])
+                    ),
+                    "cloud_phase": row["cloud_phase"],
+                    "last_report_time": str(row["last_report_time"]),
+                }
+            )
+        # Match only the ten ranked cases; issue branch, status and lifetime do not
+        # decide whether a reported release-branch occurrence belongs in the ranking.
+        if cases:
+            issue_params: dict[str, Any] = {}
+            issue_conditions = []
+            for index, row in enumerate(cases):
+                issue_conditions.append(
+                    f"(repo = :issue_repo_{index} AND case_name = :issue_case_{index})"
+                )
+                issue_params[f"issue_repo_{index}"] = row["repo"]
+                issue_params[f"issue_case_{index}"] = row["case_name"]
+            issue_rows = connection.execute(
+                text(f"""
+                    SELECT repo, case_name, issue_number, issue_url, issue_status, issue_title
+                    FROM ci_l1_flaky_issues
+                    WHERE {" OR ".join(issue_conditions)}
+                    ORDER BY CASE WHEN LOWER(issue_status) = 'open' THEN 0 ELSE 1 END,
+                             issue_number DESC
+                """),
+                issue_params,
+            ).mappings()
+            for issue in issue_rows:
+                case = by_case.get((issue["repo"], issue["case_name"]))
+                if case is not None:
+                    case["issues"].append({
+                        "issue_number": int(issue["issue_number"]),
+                        "issue_url": issue["issue_url"],
+                        "issue_status": issue["issue_status"],
+                        "issue_title": issue["issue_title"],
+                    })
+
+    return {
+        "rows": cases,
+        "meta": {**filters.meta(), "limit": TOP_CASES_LIMIT, "time_basis": "report_time",
+                 "ignores_issue_status": True, "ignores_issue_branch": True,
+                 "build_links_per_case": MAX_CASE_BUILD_LINKS},
+    }
+
+
+def _case_build_link(build_match_key: str, cloud_phase: str) -> str:
+    """Point at the build URL on the controller that actually reported the case."""
+    path = urllib_parse.urlparse(build_match_key).path
+    host = GCP_HOST if cloud_phase.upper() == "GCP" else TENCENT_HOST
+    return f"{host}{path if path.startswith('/') else '/' + path}"
 
 
 def get_flaky_top_jobs(
@@ -268,14 +449,7 @@ def get_distinct_flaky_case_counts_by_branch(
                   SELECT
                     pcr.branch,
                     pcr.case_name,
-                    COALESCE(
-                      NULLIF(pcr.normalized_build_key, ''),
-                      {_normalize_case_build_key_expr(connection, "pcr.build_url")}
-                    ) AS build_key,
-                    UPPER(COALESCE(
-                      NULLIF(pcr.cloud_phase, ''),
-                      {_case_cloud_phase_expr("pcr.build_url")}
-                    )) AS cloud_phase,
+                    {_case_run_identity_columns(connection)},
                     pcr.report_time,
                     CASE WHEN pcr.flaky = 1 THEN 1 ELSE 0 END AS flaky_flag
                   FROM problem_case_runs pcr
@@ -1058,7 +1232,7 @@ def _case_build_scope_ctes(
           WHERE b.start_time IS NOT NULL
             AND NULLIF(b.normalized_build_url, '') IS NOT NULL
             {f"AND {job_clause}" if job_clause else ""}
-            {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
+            {_optional_clause(filters.cloud_phase or None, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
             {_optional_clause(filters.start_date, "AND b.start_time >= :start_time_from")}
             {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
         )
@@ -1083,14 +1257,7 @@ def _fetch_issue_weekly_rate_rows(
               SELECT
                 pcr.branch,
                 pcr.case_name,
-                COALESCE(
-                  NULLIF(pcr.normalized_build_key, ''),
-                  {_normalize_case_build_key_expr(connection, "pcr.build_url")}
-                ) AS build_key,
-                UPPER(COALESCE(
-                  NULLIF(pcr.cloud_phase, ''),
-                  {_case_cloud_phase_expr("pcr.build_url")}
-                )) AS cloud_phase,
+                {_case_run_identity_columns(connection)},
                 pcr.report_time,
                 CASE WHEN pcr.flaky = 1 THEN 1 ELSE 0 END AS flaky_flag
               FROM problem_case_runs pcr
@@ -1153,7 +1320,7 @@ def _fetch_issue_weekly_rate_rows(
                AND p.target_branch <> ''
               WHERE 1=1
                 {f"AND {job_clause}" if job_clause else ""}
-                {_optional_clause(filters.cloud_phase, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
+                {_optional_clause(filters.cloud_phase or None, "AND UPPER(COALESCE(NULLIF(b.cloud_phase, ''), 'TENCENT')) = :cloud_phase")}
                 {_optional_clause(filters.end_date, "AND b.start_time < :start_time_to")}
               GROUP BY ic.case_name, ic.issue_branch, b.repo_full_name, trigger_branch, b.job_name
             ),
@@ -1244,14 +1411,7 @@ def _fetch_weekly_flaky_case_presence(
               SELECT
                 pcr.branch,
                 pcr.case_name,
-                COALESCE(
-                  NULLIF(pcr.normalized_build_key, ''),
-                  {_normalize_case_build_key_expr(connection, "pcr.build_url")}
-                ) AS build_key,
-                UPPER(COALESCE(
-                  NULLIF(pcr.cloud_phase, ''),
-                  {_case_cloud_phase_expr("pcr.build_url")}
-                )) AS cloud_phase,
+                {_case_run_identity_columns(connection)},
                 pcr.report_time,
                 CASE WHEN pcr.flaky = 1 THEN 1 ELSE 0 END AS flaky_flag
               FROM problem_case_runs pcr
@@ -1654,6 +1814,19 @@ def _distinct_pr_key_expr(connection: Connection, table_alias: str) -> str:
 
 def _optional_clause(value: object | None, clause: str) -> str:
     return clause if value is not None else ""
+
+
+def _case_run_identity_columns(connection: Connection) -> str:
+    return f"""
+        COALESCE(
+          NULLIF(pcr.normalized_build_key, ''),
+          {_normalize_case_build_key_expr(connection, "pcr.build_url")}
+        ) AS build_key,
+        UPPER(COALESCE(
+          NULLIF(pcr.cloud_phase, ''),
+          {_case_cloud_phase_expr("pcr.build_url")}
+        )) AS cloud_phase
+    """
 
 
 def _normalize_case_build_key_expr(connection: Connection, column_name: str) -> str:

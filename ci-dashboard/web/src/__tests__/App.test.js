@@ -19,6 +19,7 @@ let getDashboardVersion;
 let DashboardLayout;
 let LabeledDonutShareChart;
 let IssueWeeklyRateTable;
+let TopFlakyCasesTable;
 let WeeklyCostPage;
 let server;
 
@@ -35,7 +36,7 @@ before(async () => {
   ({ default: RuntimeInsightsPage } = await server.ssrLoadModule("/src/pages/RuntimeInsightsPage.jsx"));
   ({ default: CostFilterControls } = await server.ssrLoadModule("/src/components/CostFilterControls.jsx"));
   ({ getDashboardVersion, DashboardLayout } = await server.ssrLoadModule("/src/components/layout.jsx"));
-  ({ LabeledDonutShareChart, IssueWeeklyRateTable } = await server.ssrLoadModule("/src/components/charts.jsx"));
+  ({ LabeledDonutShareChart, IssueWeeklyRateTable, TopFlakyCasesTable } = await server.ssrLoadModule("/src/components/charts.jsx"));
   ({ default: WeeklyCostPage } = await server.ssrLoadModule("/src/pages/WeeklyCostPage.jsx"));
 });
 
@@ -205,6 +206,182 @@ test("labeled donut chart expands for crowded account/project labels", () => {
   const chart = renderer.root.findByProps({ role: "img", "aria-label": "Crowded allocations share chart" });
   assert.ok(Number(chart.props.viewBox.split(" ").at(-1)) > 390);
   renderer.unmount();
+});
+
+test("top flaky cases show counts, multiple issue states and unmatched cases", () => {
+  const renderer = TestRenderer.create(React.createElement(TopFlakyCasesTable, { rows: [
+    { repo: "pingcap/tidb", case_name: "TestHot", affected_build_count: 82, issues: [
+      { issue_number: 11, issue_url: "https://github.com/pingcap/tidb/issues/11", issue_status: "open", issue_title: "Flaky TestHot" },
+      { issue_number: 12, issue_url: "https://github.com/pingcap/tidb/issues/12", issue_status: "closed", issue_title: "Old TestHot" },
+    ] },
+    { repo: "tikv/pd", case_name: "TestNoIssue", affected_build_count: 34, issues: [] },
+  ] }));
+  try {
+    const rows = renderer.root.findByType("tbody").findAllByType("tr")
+      .filter((row) => String(row.props.className).startsWith("top-cases__row"));
+    assert.equal(rows.length, 2);
+    assert.match(rows[0].props.className, /top-cases__row/);
+    assert.match(rows[1].props.className, /top-cases__row--striped/);
+    assert.equal(rows[0].findByType("strong").children.join(""), "82");
+    assert.equal(rows[1].findByType("strong").children.join(""), "34");
+    assert.deepEqual(renderer.root.findAllByType("a").map((a) => a.props.href), [
+      "https://github.com/pingcap/tidb/issues/11", "https://github.com/pingcap/tidb/issues/12",
+    ]);
+    assert.equal(renderer.root.findAllByProps({ className: "status-pill status-pill--open" }).length, 1);
+    assert.equal(renderer.root.findAllByProps({ className: "status-pill status-pill--closed" }).length, 1);
+    const rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /No linked issue/);
+    assert.doesNotMatch(rendered, /82%/);
+  } finally {
+    renderer.unmount();
+  }
+});
+
+test("top flaky cases have an explicit empty state", () => {
+  const renderer = TestRenderer.create(React.createElement(TopFlakyCasesTable));
+  try {
+    assert.match(JSON.stringify(renderer.toJSON()), /No reported flaky cases matched/);
+  } finally {
+    renderer.unmount();
+  }
+});
+
+test("top flaky cases expand a row to list the reported build links", async () => {
+  const renderer = TestRenderer.create(React.createElement(TopFlakyCasesTable, { rows: [{
+    repo: "pingcap/tidb", case_name: "TestHot", affected_build_count: 60, issues: [],
+    builds: [
+      { build_url: "https://do.pingcap.net/jenkins/job/unit/1031/", cloud_phase: "TENCENT", last_report_time: "2026-11-10 22:36:36" },
+      { build_url: "https://prow.tidb.net/jenkins/job/unit/1028/", cloud_phase: "GCP", last_report_time: "2026-11-09 10:04:38" },
+    ],
+  }] }));
+  try {
+    const buildLinks = () => renderer.root.findAllByType("a")
+      .filter((a) => String(a.props.href).includes("/jenkins/job/unit/"))
+      .map((a) => [a.children.join(""), a.props.href, a.props.target]);
+    const detailRow = () => renderer.root.findByType("tbody").findAllByType("tr")[1];
+    assert.equal(detailRow().props.hidden, true);
+    const toggle = () => renderer.root.findByProps({ className: "top-cases__toggle" });
+    assert.equal(toggle().props["aria-expanded"], false);
+
+    await act(async () => toggle().props.onClick());
+    assert.equal(toggle().props["aria-expanded"], true);
+    assert.equal(detailRow().props.hidden, false);
+    assert.deepEqual(buildLinks(), [
+      ["https://do.pingcap.net/jenkins/job/unit/1031/", "https://do.pingcap.net/jenkins/job/unit/1031/", "_blank"],
+      ["https://prow.tidb.net/jenkins/job/unit/1028/", "https://prow.tidb.net/jenkins/job/unit/1028/", "_blank"],
+    ]);
+    const detailParagraphs = renderer.root.findAllByType("p")
+      .map((p) => (Array.isArray(p.children) ? p.children.join("") : String(p.children)))
+      .join(" | ");
+    assert.match(detailParagraphs, /Latest 2 of 60 builds/);
+    const meta = renderer.root.findAllByProps({ className: "top-cases__build-meta" })
+      .map((span) => (Array.isArray(span.children) ? span.children.join("") : String(span.children)));
+    assert.deepEqual(meta, ["2026-11-10 22:36:36", "2026-11-09 10:04:38"]);
+
+    await act(async () => toggle().props.onClick());
+    assert.equal(toggle().props["aria-expanded"], false);
+    assert.equal(detailRow().props.hidden, true);
+  } finally {
+    renderer.unmount();
+  }
+});
+
+test("top cases row click toggles detail but link clicks do not", async () => {
+  const renderer = TestRenderer.create(React.createElement(TopFlakyCasesTable, { rows: [{
+    repo: "pingcap/tidb", case_name: "TestHot", affected_build_count: 1, issues: [
+      { issue_number: 11, issue_url: "https://github.com/pingcap/tidb/issues/11", issue_status: "open", issue_title: "Flaky" },
+    ],
+    builds: [{ build_url: "https://do.pingcap.net/jenkins/job/unit/1/", cloud_phase: "TENCENT", last_report_time: "2026-11-10 22:36:36" }],
+  }] }));
+  const dataRow = () => renderer.root.findByType("tbody").findAllByType("tr")[0];
+  const detailRow = () => renderer.root.findByType("tbody").findAllByType("tr")[1];
+  try {
+    assert.equal(detailRow().props.hidden, true);
+    assert.equal(dataRow().findByType("button").props["aria-controls"], detailRow().props.id);
+
+    await act(async () => dataRow().props.onClick({ target: { closest: () => null } }));
+    assert.equal(detailRow().props.hidden, false);
+
+    await act(async () => dataRow().props.onClick({ target: { closest: (selector) => (selector === "a, button" ? {} : null) } }));
+    assert.equal(detailRow().props.hidden, false);
+
+    await act(async () => dataRow().props.onClick({ target: { closest: () => null } }));
+    assert.equal(detailRow().props.hidden, true);
+  } finally {
+    renderer.unmount();
+  }
+});
+
+test("top flaky cases always label the detail as latest builds", async () => {
+  const renderer = TestRenderer.create(React.createElement(TopFlakyCasesTable, { rows: [{
+    repo: "pingcap/tidb", case_name: "TestExactlyTen", affected_build_count: 10, issues: [],
+    builds: Array.from({ length: 10 }, (_, index) => ({
+      build_url: `https://prow.tidb.net/jenkins/job/unit/${index}/`,
+      cloud_phase: "GCP",
+      last_report_time: `2026-11-0${(index % 9) + 1} 10:00:00`,
+    })),
+  }, {
+    repo: "pingcap/tidb", case_name: "TestSingle", affected_build_count: 1, issues: [],
+    builds: [{ build_url: "https://prow.tidb.net/jenkins/job/unit/99/", cloud_phase: "GCP", last_report_time: "2026-11-10 10:00:00" }],
+  }] }));
+  const heads = () => renderer.root.findAllByType("p")
+    .filter((p) => Array.isArray(p.children) && typeof p.children[0] === "string")
+    .map((p) => p.children[0]);
+  try {
+    await act(async () => renderer.root.findAllByProps({ className: "top-cases__toggle" })[0].props.onClick());
+    await act(async () => renderer.root.findAllByProps({ className: "top-cases__toggle" })[1].props.onClick());
+    assert.deepEqual(heads(), ["Latest 10 builds", "Latest 1 build"]);
+  } finally {
+    renderer.unmount();
+  }
+});
+
+test("top cases load independently, follow global filters and sit below Scope switch", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  let renderer;
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url, "http://localhost");
+    requests.push(parsed);
+    if (parsed.pathname === "/api/v1/pages/flaky") {
+      return { ok: false, status: 503, statusText: "Unavailable" };
+    }
+    return { ok: true, json: async () => ({ rows: [{
+      repo: "pingcap/tidb",
+      case_name: parsed.searchParams.get("branch") === "release-8.5" ? "ReleaseCase" : "MasterCase",
+      affected_build_count: 82, issues: [],
+    }] }) };
+  };
+  const filters = {
+    repo: "pingcap/tidb", branch: "release-8.5", start_date: "2026-10-29",
+    end_date: "2026-11-11", issue_status: "closed", job_name: "unit", cloud_phase: "GCP",
+  };
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(FlakyPage, { filters }));
+      await Promise.resolve();
+    });
+    const request = requests.find((r) => r.pathname === "/api/v1/flaky/top-cases");
+    for (const [key, value] of Object.entries(filters)) {
+      assert.equal(request.searchParams.get(key), value);
+    }
+    let rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /503 Unavailable/);
+    assert.match(rendered, /ReleaseCase/);
+    assert.match(rendered, /all repos\/branches when unset/);
+    assert.ok(rendered.indexOf("Scope switch") < rendered.indexOf("Top flaky cases"));
+    assert.ok(rendered.indexOf("Top flaky cases") < rendered.indexOf("Flaky rate trend"));
+    await act(async () => {
+      renderer.update(React.createElement(FlakyPage, { filters: { ...filters, branch: "master" } }));
+      await Promise.resolve();
+    });
+    rendered = JSON.stringify(renderer.toJSON());
+    assert.match(rendered, /MasterCase/);
+    assert.doesNotMatch(rendered, /ReleaseCase/);
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("filtered issue weekly table aggregates selected weeks and sorts each column", async () => {
