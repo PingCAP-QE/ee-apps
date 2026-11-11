@@ -28,6 +28,8 @@ type nightlyMetrics struct {
 	laneWait   *prometheus.GaugeVec
 	laneHold   *prometheus.HistogramVec
 	starvation *prometheus.GaugeVec
+	verify     *prometheus.CounterVec
+	verifyTime *prometheus.GaugeVec
 }
 
 func newNightlyMetrics() *nightlyMetrics {
@@ -63,7 +65,15 @@ func newNightlyMetrics() *nightlyMetrics {
 			Help: "Age of the oldest pending step per target and base priority.",
 		}, []string{"priority", "target"}),
 	}
-	m.registry.MustRegister(m.due, m.lag, m.published, m.laneBusy, m.laneWait, m.laneHold, m.starvation)
+	m.verify = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "publish_desired_verify_total",
+		Help: "Nightly desired rows judged against the mirror metadata, by verification result.",
+	}, []string{"mirror", "result"})
+	m.verifyTime = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "publish_desired_verify_seconds",
+		Help: "Seconds spent reading the mirror metadata for the last verification pass, per mirror.",
+	}, []string{"mirror"})
+	m.registry.MustRegister(m.due, m.lag, m.published, m.laneBusy, m.laneWait, m.laneHold, m.starvation, m.verify, m.verifyTime)
 	return m
 }
 
@@ -102,6 +112,20 @@ func (m *nightlyMetrics) recordPublished(result string) {
 	m.published.WithLabelValues(result).Inc()
 }
 
+// recordVerify counts one verification outcome. The mirror label keeps a
+// staging misconfiguration from hiding behind prod's successes.
+func (m *nightlyMetrics) recordVerify(mirror, result string) {
+	m.verify.WithLabelValues(mirror, result).Inc()
+}
+
+// observeVerify publishes the cost of the last verification pass per mirror.
+func (m *nightlyMetrics) observeVerify(mirror string, took time.Duration) {
+	if took < 0 {
+		took = 0
+	}
+	m.verifyTime.WithLabelValues(mirror).Set(took.Seconds())
+}
+
 func (m *nightlyMetrics) recordLaneBusy(target string) {
 	m.laneBusy.WithLabelValues(target).Inc()
 }
@@ -116,19 +140,16 @@ func (m *nightlyMetrics) recordLaneWait(target string, waited time.Duration) {
 	m.laneWait.WithLabelValues(target).Set(waited.Seconds())
 }
 
-// refresh recomputes the lag gauge from rows whose desired version has not
-// been published yet. A succeeded version is not lagging even if its
-// desired_at is old.
-func (m *nightlyMetrics) refresh(ctx context.Context, db *ent.Client, now time.Time) {
-	rows, err := db.PublishDesired.Query().All(ctx)
-	if err != nil {
-		return
-	}
+// refresh recomputes the lag gauge from the rows the mirror does not have yet.
+// It takes the verification results so the gauge and the alert can never
+// disagree about what "published" means.
+func (m *nightlyMetrics) refresh(results []nightlyVerifyResult, now time.Time) {
 	maxLag := map[string]time.Duration{}
-	for _, row := range rows {
-		if row.LastSucceededVersion != "" && row.LastSucceededVersion == row.DesiredVersion {
+	for _, result := range results {
+		if result.Published {
 			continue
 		}
+		row := result.Row
 		lag := now.Sub(row.DesiredAt)
 		if lag < 0 {
 			lag = 0
@@ -206,7 +227,7 @@ func newNightlyAlertTracker(dedupe time.Duration) *nightlyAlertTracker {
 func (a *nightlyAlertTracker) evaluate(
 	ctx context.Context,
 	notifier AlertNotifier,
-	rows []*ent.PublishDesired,
+	results []nightlyVerifyResult,
 	now time.Time,
 	windowFor func(string) time.Duration,
 	logger *zerolog.Logger,
@@ -217,10 +238,13 @@ func (a *nightlyAlertTracker) evaluate(
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	for _, row := range rows {
-		if row.LastSucceededVersion != "" && row.LastSucceededVersion == row.DesiredVersion {
+	for _, result := range results {
+		// Published is decided against the mirror's own metadata, so a channel
+		// whose version string never changes still reports a stuck publication.
+		if result.Published {
 			continue
 		}
+		row := result.Row
 		window := windowFor(row.Target)
 		lag := now.Sub(row.DesiredAt)
 		if window <= 0 || lag <= window*3/2 {
@@ -230,12 +254,7 @@ func (a *nightlyAlertTracker) evaluate(
 		if last, ok := a.lastSent[key]; ok && now.Sub(last) < a.dedupe {
 			continue
 		}
-		body := fmt.Sprintf(
-			"target=%s package=%s os=%s arch=%s desired=%s lag=%s window=%s",
-			row.Target, row.Pkg, row.Os, row.Arch, row.DesiredVersion,
-			lag.Round(time.Minute), window,
-		)
-		if err := notifier.SendAlert(ctx, "[tibuild] nightly publish lag", body); err != nil {
+		if err := notifier.SendAlert(ctx, "[tibuild] nightly publish lag", nightlyLagBody(result, lag, window)); err != nil {
 			logger.Err(err).Str("key", key).Msg("failed to send the nightly lag alert")
 			continue
 		}
@@ -243,26 +262,69 @@ func (a *nightlyAlertTracker) evaluate(
 	}
 }
 
+// nightlyLagBody renders the alert. It names both digests, because the version
+// string alone cannot tell two nightly builds apart, and the next scheduled
+// attempt plus the last error, because "queued behind the lane" and "the mirror
+// refused us" need different reactions.
+func nightlyLagBody(result nightlyVerifyResult, lag, window time.Duration) string {
+	row := result.Row
+	body := fmt.Sprintf(
+		"target=%s package=%s os=%s arch=%s\ndesired=%s sha256=%s\nmirror=%s\nlag=%s window=%s next_run_at=%s",
+		row.Target, row.Pkg, row.Os, row.Arch,
+		row.DesiredVersion, shortSHA256(desiredFileSHA256(row)),
+		shortMirror(result), lag.Round(time.Minute), window,
+		row.NextRunAt.UTC().Format(time.RFC3339),
+	)
+	if row.LastError != "" {
+		body += "\nlast_error=" + truncateErrorMessage(row.LastError)
+	}
+	return body
+}
+
+// shortMirror names what the mirror holds: the published digest when it differs,
+// or the fact that the entry is missing.
+func shortMirror(result nightlyVerifyResult) string {
+	if result.Result == verifyResultAbsent {
+		return "absent"
+	}
+	if result.MirrorSHA == "" {
+		return result.Result
+	}
+	return shortSHA256(result.MirrorSHA)
+}
+
+func shortSHA256(sha string) string {
+	if sha == "" {
+		return "unknown"
+	}
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
+}
+
 // refreshNightlyMetricsAndAlerts is called by the nightly tick. It keeps the
 // lag gauge current and, when Lark is configured, alerts on rows that have
 // been waiting for more than 1.5 windows.
 func (s *publishsrvc) refreshNightlyMetricsAndAlerts(ctx context.Context) {
-	if s.metrics == nil {
-		return
-	}
 	now := s.now()
-	s.metrics.refresh(ctx, s.db, now)
-	s.metrics.refreshStarvation(ctx, s.db, now)
-
-	if s.alerter == nil || s.nightlyAlerts == nil {
-		return
-	}
 	rows, err := s.db.PublishDesired.Query().All(ctx)
 	if err != nil {
 		s.logger.Err(err).Msg("failed to scan nightly rows for lag alerts")
 		return
 	}
-	s.nightlyAlerts.evaluate(ctx, s.alerter, rows, now, func(target string) time.Duration {
+	// One verification pass feeds both the gauge and the alert, so they can
+	// never disagree about what "published" means.
+	results := s.verifyNightlyRows(ctx, rows)
+
+	if s.metrics != nil {
+		s.metrics.refresh(results, now)
+		s.metrics.refreshStarvation(ctx, s.db, now)
+	}
+	if s.alerter == nil || s.nightlyAlerts == nil {
+		return
+	}
+	s.nightlyAlerts.evaluate(ctx, s.alerter, results, now, func(target string) time.Duration {
 		return s.publishConfig().Nightly.WindowFor(target).WindowDuration()
 	}, s.logger)
 }
