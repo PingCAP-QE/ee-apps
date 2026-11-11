@@ -46,3 +46,17 @@ than opens.
 
 Rollout: deploy with `observe`, check the `authorization would deny` log lines
 for a full publish/rerun cycle, then set `enforce`.
+## Build ownership
+
+`devbuild.update` and `devbuild.rerun` rewrite state the reconciler then acts
+on, so they carry an object-level check on top of the action check:
+
+- a principal that represents automation (the service identity) may act on any
+  build — that is how CI reruns one;
+- a person may act only on a build recorded under their own address;
+- without a principal the answer follows `authorization.mode`.
+
+`devbuild.create` prefers the authenticated person over the `createdBy` in the
+payload and logs when they disagree. Automation carries no person, so it keeps
+the `createdBy` it supplied (the requester recorded by CI); that value is
+display-only and is never used for an authorization decision.
