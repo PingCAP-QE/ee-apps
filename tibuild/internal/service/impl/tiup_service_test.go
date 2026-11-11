@@ -20,12 +20,16 @@ func newTiUPServiceForTest(t *testing.T, cfg config.Publish) *publishsrvc {
 	svc, _ := newFlowTestService(t)
 	svc.publishCfg = cfg
 	cases := loadGoldenCases(t)
-	svc.fetchConfig = func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error) {
+	svc.fetchConfig = func(ctx context.Context, artifactURL string) (tiupArtifact, error) {
 		c, ok := cases[artifactURL]
 		if !ok {
-			return nil, "", time.Time{}, errors.New("unexpected artifact " + artifactURL)
+			return tiupArtifact{}, errors.New("unexpected artifact " + artifactURL)
 		}
-		return c.ArtifactConfig, "sha256:1111111111111111111111111111111111111111111111111111111111111111", time.Time{}, nil
+		return tiupArtifact{
+			Config:    c.ArtifactConfig,
+			Digest:    "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			CreatedAt: time.Time{},
+		}, nil
 	}
 	return svc
 }

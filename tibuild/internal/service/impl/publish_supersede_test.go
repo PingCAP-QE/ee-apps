@@ -23,18 +23,26 @@ type supersedeArtifact struct {
 	config  map[string]any
 	digest  string
 	created time.Time
+	// files maps an artifact file name to its layer sha256, when a test needs
+	// the nightly verification identity.
+	files map[string]string
 }
 
 func newSupersedeService(t *testing.T, artifacts map[string]*supersedeArtifact) (*publishsrvc, *time.Time) {
 	t.Helper()
 	svc, clock := newFlowTestService(t)
 	svc.planner = &publishPlanner{rules: goldenRulesLoader(t)}
-	svc.fetchConfig = func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error) {
+	svc.fetchConfig = func(ctx context.Context, artifactURL string) (tiupArtifact, error) {
 		artifact, ok := artifacts[artifactURL]
 		if !ok {
-			return nil, "", time.Time{}, errors.New("unexpected artifact " + artifactURL)
+			return tiupArtifact{}, errors.New("unexpected artifact " + artifactURL)
 		}
-		return artifact.config, artifact.digest, artifact.created, nil
+		return tiupArtifact{
+			Config:     artifact.config,
+			Digest:     artifact.digest,
+			CreatedAt:  artifact.created,
+			FileSHA256: artifact.files,
+		}, nil
 	}
 	return svc, clock
 }

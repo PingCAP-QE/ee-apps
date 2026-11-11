@@ -27,12 +27,16 @@ func newTiUPHTTPTestServer(t *testing.T) (*httptest.Server, *publishsrvc) {
 	svc.planner = &publishPlanner{rules: goldenRulesLoader(t)}
 
 	cases := loadGoldenCases(t)
-	svc.fetchConfig = func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error) {
+	svc.fetchConfig = func(ctx context.Context, artifactURL string) (tiupArtifact, error) {
 		c, ok := cases[artifactURL]
 		if !ok {
-			return nil, "", time.Time{}, os.ErrNotExist
+			return tiupArtifact{}, os.ErrNotExist
 		}
-		return c.ArtifactConfig, "sha256:1111111111111111111111111111111111111111111111111111111111111111", time.Time{}, nil
+		return tiupArtifact{
+			Config:    c.ArtifactConfig,
+			Digest:    "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			CreatedAt: time.Time{},
+		}, nil
 	}
 
 	mux := goahttp.NewMuxer()

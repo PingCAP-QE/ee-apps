@@ -339,7 +339,7 @@ func (s *publishsrvc) nightlyTargets() []string {
 
 // enqueueNightlyPlans records the newest artifact for every nightly plan. It
 // creates no unit: the window-aligned tick does that later.
-func (s *publishsrvc) enqueueNightlyPlans(ctx context.Context, artifactURL, digest string, plans []delivery.TiUPPlan) error {
+func (s *publishsrvc) enqueueNightlyPlans(ctx context.Context, artifactURL, digest string, fileSHA256 map[string]string, plans []delivery.TiUPPlan) error {
 	mirrors, err := s.mirrorURLs()
 	if err != nil {
 		return err
@@ -356,6 +356,7 @@ func (s *publishsrvc) enqueueNightlyPlans(ctx context.Context, artifactURL, dige
 				MirrorURL:      mirrors[plan.Mirror],
 				ArtifactURL:    artifactURL,
 				Digest:         digest,
+				FileDigest:     fileSHA256[pkg.File],
 				Nightly:        true,
 				NightlyVersion: plan.Version,
 				Packages:       []delivery.TiUPPackage{pkg},
