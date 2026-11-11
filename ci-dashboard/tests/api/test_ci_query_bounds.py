@@ -25,6 +25,7 @@ CI_PATHS = [
     "/api/v1/flaky/case-flow-v2",
     "/api/v1/flaky/issue-weekly-rates",
     "/api/v1/flaky/top-jobs",
+    "/api/v1/flaky/top-cases",
     "/api/v1/pages/overview",
     "/api/v1/pages/ci-status",
     "/api/v1/pages/flaky",
@@ -119,6 +120,17 @@ def test_ci_list_budget_rejects_before_sql(path, bounded_client, sql_statements)
             response = bounded_client.get(path, params={**RANGE, field: value})
             assert response.status_code == 422, (path, field, response.text)
     assert sql_statements == []
+
+
+@pytest.mark.parametrize("path", [
+    "/api/v1/flaky/top-cases", "/api/v1/flaky/distinct-case-counts",
+    "/api/v1/flaky/case-flow-v2", "/api/v1/flaky/issue-weekly-rates",
+])
+def test_flaky_case_queries_treat_empty_cloud_phase_as_unset(path, bounded_client):
+    unfiltered = bounded_client.get(path, params=RANGE)
+    empty_cloud = bounded_client.get(path, params={**RANGE, "cloud_phase": ""})
+    assert unfiltered.status_code == empty_cloud.status_code == 200
+    assert empty_cloud.json()["rows"] == unfiltered.json()["rows"]
 
 
 def test_ci_undated_requests_default_to_thirty_utc_days(bounded_client, monkeypatch):

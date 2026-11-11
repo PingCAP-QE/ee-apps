@@ -153,3 +153,32 @@ The data-layer implementation must support local unit tests without TiDB Cloud b
 - `total_runs_est` is a job-build estimate, not a complete testcase execution ledger: it cannot distinguish fresh executions, cached results, or attempts.
 - When `total_runs_est = 0`, return `flaky_rate_pct = null` and `N/A (0/0)`, not an observed zero percent. Unknown weeks must not qualify as evidence of two flaky-free weeks.
 - Preserve the issue table's existing `ignores_branch=true` contract; match each row's metrics to its own issue branch.
+
+## BR-12: Top Flaky Cases by Reported Build Count
+
+- The Top 10 table is independent of the Issue-tracked weekly table and loads via
+  `/api/v1/flaky/top-cases`. It follows the common date-window and filter validation.
+- Select `problem_case_runs.flaky = 1` using the tested `repo` and `branch`, and
+  `report_time` in the selected inclusive UTC date range. Unlike the weekly
+  evidence charts, this ranking does not move reports into their build-start window.
+- Rank `(repo, case_name)` by distinct reported build identity, deduplicating repeated
+  reports and suites in the same build. Normalize URL aliases and legacy Tencent
+  keys; retain cloud/controller identity so equal paths in different clouds stay
+  separate. Ignore records without a case name or a usable build key.
+- Unselected repo/branch means all repos/branches; never combine same-named cases
+  from different repos. Return at most ten rows with stable repo/case tie-breaking.
+- Job selection requires an attributable running build, matching normalized URL,
+  cloud and the existing 24-hour report/start-time guard. Its trigger repo/branch
+  need not equal the tested repo/branch. Without a job filter, source reports do not
+  require an L1 build row. Cloud selection follows the report's build controller.
+- “Affected builds” means builds where this flaky case was reported, including builds
+  that ultimately recover to success. It is neither a final-build-state count nor a rate.
+  Each row returns at most the 10 most recent distinct reported builds, newest report
+  first, on the controller that reported the case; truncation never changes the count.
+- Match tracked Issues by repo and case name only. Include open and closed Issues
+  regardless of their creation branch or lifetime; do not discard evidence because
+  a master Issue is closed. Retain multiple associations and unmatched cases.
+- Associations are testcase-level matches, not confirmation of the same root cause;
+  “No linked issue” does not establish that GitHub has no relevant Issue.
+- Issue-status and bucket-granularity filters do not change this table. Existing
+  Issue-tracked and build-scoped panels retain their separate contracts.

@@ -27,6 +27,7 @@ Current scope in this scaffold:
   - `/api/v1/flaky/distinct-case-counts`
   - `/api/v1/flaky/issue-weekly-rates`
   - `/api/v1/flaky/top-jobs`
+  - `/api/v1/flaky/top-cases`
   - `/api/v1/flaky/period-comparison`
   - `/api/v1/failures/*`
 - first React dashboard shell under `web/`, including:
@@ -98,6 +99,21 @@ Notes:
   job lists, and shared Cost filter parsing; Cost date-window rules are unchanged.
   Oversized filters return HTTP 422 before splitting, SQL bind expansion or DB
   reads. Background jobs and direct query helpers retain their existing behavior.
+- before deploying the Top 10 flaky case endpoint, apply
+  `sql/033_add_flaky_report_time_index.sql` to the serving database. Its narrow
+  `(flaky, report_time)` index supports report-time range scans even with all repos
+  or all branches selected; verify those scopes with `EXPLAIN` after applying it.
+- the Flaky tab's Top 10 case table ranks distinct builds affected by a flaky case
+  (`problem_case_runs.flaky = 1`) in the selected UTC report-time window. Repo and
+  branch refer to the tested code, not the triggering build or the tracking Issue.
+  Job filters use attributable CI builds; cloud filters follow the reported build
+  controller. A build may eventually pass after retry: “Affected builds” counts
+  builds where the case was reported, not final failed build states, and is not a
+  flaky rate. Expanding a row lists at most the 10 most recent build URLs, on the
+  controller that reported them. Associations use tracked Issues
+  with the same repo and case name, regardless of Issue branch, status, or lifetime;
+  they do not confirm the same failure cause. Cases without a matching Issue remain
+  visible. Issue status and bucket granularity do not change this ranking.
 - the Cost and CI details insight tabs are always available
 - the Cost tab prioritizes its top spend/breakdown requests: share and trend
   charts have independent loading/error states, and Engineering Group shares
