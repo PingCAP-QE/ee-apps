@@ -231,6 +231,8 @@ test("top flaky cases show counts, multiple issue states and unmatched cases", (
     assert.equal(renderer.root.findAllByProps({ className: "status-pill status-pill--closed" }).length, 1);
     const rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /No linked issue/);
+    assert.match(rendered, /Detected in Builds/);
+    assert.doesNotMatch(rendered, /Affected builds|newest first/);
     assert.doesNotMatch(rendered, /82%/);
   } finally {
     renderer.unmount();

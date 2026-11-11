@@ -1656,7 +1656,7 @@ export function TopFlakyCasesTable({ rows = [] }) {
           <tr>
             <th scope="col">#</th>
             <th scope="col">Case</th>
-            <th scope="col">Affected builds</th>
+            <th scope="col">Detected in Builds</th>
             <th scope="col">Linked issues</th>
           </tr>
         </thead>
@@ -1722,7 +1722,6 @@ export function TopFlakyCasesTable({ rows = [] }) {
                           {builds.length < row.affected_build_count
                             ? `Latest ${formatNumber(builds.length)} of ${formatNumber(row.affected_build_count)} builds`
                             : `Latest ${formatNumber(builds.length)} ${builds.length === 1 ? "build" : "builds"}`}
-                          <span>newest first</span>
                         </p>
                         <ol className="top-cases__build-list">
                           {builds.map((build, buildIndex) => (
