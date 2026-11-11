@@ -73,6 +73,9 @@ type publishsrvc struct {
 	alerter        AlertNotifier
 	// tiup publishes packages to a mirror.
 	tiup *tiupCLI
+	// tiupMirror reads a TiUP mirror's own metadata to verify that a nightly
+	// package really is published there. It is not a registry client.
+	tiupMirror *tiupMirrorReader
 	// fetchConfig reads an OCI artifact: its config, its manifest digest, the
 	// build time and the sha256 of every file it carries. It is a field so
 	// tests can replay a recorded artifact without a registry.
@@ -130,6 +133,7 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 		conflictAlerts: newConflictAlertTracker(time.Hour),
 		alerter:        alerter,
 		tiup:           newTiupCLI(cfg.Publish.TiUPBinary),
+		tiupMirror:   newTiupMirrorReader(nightlyVerifyCacheTTL),
 		publishCfg:     cfg.Publish,
 		fetchConfig:    fetchTiUPArtifactConfig,
 		nowFn:          time.Now,

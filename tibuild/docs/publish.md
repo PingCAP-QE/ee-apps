@@ -9,6 +9,24 @@ publication is publishing, so it shares the service, the error types and the
 `publishsrvc` implementation with the image planner rather than living in a
 parallel service.
 
+## Vocabulary
+
+`publish` names the **domain**, not TiUP: a unit carries a `kind`, either `tiup`
+(packages to a TiUP mirror) or `image_copy` (one image digest to registries).
+The names below are TiUP-specific even where the prefix does not say so:
+
+| Name | Scope |
+| --- | --- |
+| `publish_desired` (table, `desiredStore`) | nightly **TiUP** desired state: one row per `(target, pkg, os, arch)` |
+| `publish_desired_*` metrics | row-level facts of that table, hence nightly-TiUP only |
+| `publish.nightly` (config) | the nightly **TiUP** schedule: window, anchor, jitter |
+| `publish.tiup_mirrors`, `publish.tiup_dependencies` | TiUP mirror URLs and the order of their steps |
+| `publish_lane` / `publish_lane_*` | the serial lane; one row per kind, so `tiup` and `image_copy` never block each other |
+| "mirror" | a **TiUP** mirror (`tiup.pingcap.net:8987/8988`). An OCI registry is always called a registry |
+
+A `publish_unit` of kind `image_copy` never touches `publish_desired`; that table
+exists only because nightly packages converge per channel.
+
 ## Model
 
 | Table | Meaning |
