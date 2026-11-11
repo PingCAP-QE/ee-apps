@@ -40,10 +40,11 @@ func (s *publishsrvc) DeliveryByRules(ctx context.Context, p *publish.DeliveryBy
 		return []string{}, nil
 	}
 
-	artifactConfig, digest, createdAt, err := s.fetchConfig(ctx, src)
+	artifact, err := s.fetchConfig(ctx, src)
 	if err != nil {
 		return nil, publishFault(fmt.Errorf("read artifact config: %w", err))
 	}
+	artifactConfig, digest, createdAt := artifact.Config, artifact.Digest, artifact.CreatedAt
 
 	plans, err := rules.PlanTiUP(src, artifactConfig)
 	if err != nil {
@@ -73,7 +74,7 @@ func (s *publishsrvc) DeliveryByRules(ctx context.Context, p *publish.DeliveryBy
 	}
 
 	if len(deferred) > 0 {
-		if err := s.enqueueNightlyPlans(ctx, src, digest, deferred); err != nil {
+		if err := s.enqueueNightlyPlans(ctx, src, digest, artifact.FileSHA256, deferred); err != nil {
 			return nil, publishFault(err)
 		}
 		s.logger.Info().
@@ -125,10 +126,11 @@ func (s *publishsrvc) RequestToPublish(ctx context.Context, p *publish.RequestTo
 		return nil, badRequest(err.Error())
 	}
 
-	artifactConfig, digest, createdAt, err := s.fetchConfig(ctx, src)
+	artifact, err := s.fetchConfig(ctx, src)
 	if err != nil {
 		return nil, publishFault(fmt.Errorf("read artifact config: %w", err))
 	}
+	artifactConfig, digest, createdAt := artifact.Config, artifact.Digest, artifact.CreatedAt
 
 	packages, err := delivery.TiUPPackages(artifactConfig, tagOf(src))
 	if err != nil {
@@ -481,40 +483,81 @@ func orderTiUPPlans(plans []delivery.TiUPPlan, dependencies map[string]string) [
 }
 
 // fetchTiUPArtifactConfig reads the OCI artifact config and the manifest digest.
-func fetchTiUPArtifactConfig(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error) {
+func fetchTiUPArtifactConfig(ctx context.Context, artifactURL string) (tiupArtifact, error) {
 	ref, err := delivery.ParseImageRef(artifactURL)
 	if err != nil {
-		return nil, "", time.Time{}, err
+		return tiupArtifact{}, err
 	}
 	repo, err := remote.NewRepository(ref.Repository)
 	if err != nil {
-		return nil, "", time.Time{}, err
+		return tiupArtifact{}, err
 	}
 	repo.Client = registryAuthClient(ref.Repository)
 
 	desc, manifestBytes, err := oras.FetchBytes(ctx, repo, ref.Tag, oras.DefaultFetchBytesOptions)
 	if err != nil {
-		return nil, "", time.Time{}, fmt.Errorf("fetch manifest %s: %w", artifactURL, err)
+		return tiupArtifact{}, fmt.Errorf("fetch manifest %s: %w", artifactURL, err)
 	}
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
-		return nil, "", time.Time{}, fmt.Errorf("decode manifest: %w", err)
+		return tiupArtifact{}, fmt.Errorf("decode manifest: %w", err)
 	}
 
 	configBytes, err := content.FetchAll(ctx, repo, manifest.Config)
 	if err != nil {
-		return nil, "", time.Time{}, fmt.Errorf("fetch config: %w", err)
+		return tiupArtifact{}, fmt.Errorf("fetch config: %w", err)
 	}
 	var artifactConfig map[string]any
 	if err := json.Unmarshal(configBytes, &artifactConfig); err != nil {
-		return nil, "", time.Time{}, fmt.Errorf("decode config: %w", err)
+		return tiupArtifact{}, fmt.Errorf("decode config: %w", err)
 	}
 
 	// The build time is a manifest annotation, not part of the config blob.
 	// It orders queued units of the same channel; a missing or malformed value
 	// falls back to the unit creation time at the caller.
 	created, _ := time.Parse(time.RFC3339, manifest.Annotations[ocispec.AnnotationCreated])
-	return artifactConfig, desc.Digest.String(), created, nil
+	return tiupArtifact{
+		Config:     artifactConfig,
+		Digest:     desc.Digest.String(),
+		CreatedAt:  created,
+		FileSHA256: layerSHA256(manifest),
+	}, nil
+}
+
+// tiupArtifact is what the planner needs from one OCI artifact.
+type tiupArtifact struct {
+	// Config is the artifact config document, the input of the delivery rules.
+	Config map[string]any
+	// Digest pins the manifest, so a moved tag cannot change what is published.
+	Digest string
+	// CreatedAt is the build time from the org.opencontainers.image.created
+	// annotation; zero for sources that carry none.
+	CreatedAt time.Time
+	// FileSHA256 maps an OCI layer title (file name inside the artifact) to the
+	// sha256 of that file. The mirror records exactly this value for the
+	// published tarball, which is why it identifies a nightly build while the
+	// version string does not.
+	FileSHA256 map[string]string
+}
+
+// layerSHA256 indexes the artifact's files by their OCI layer title. A layer
+// without a title cannot be matched to a package file and is skipped.
+func layerSHA256(manifest ocispec.Manifest) map[string]string {
+	if len(manifest.Layers) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(manifest.Layers))
+	for _, layer := range manifest.Layers {
+		title := layer.Annotations[ocispec.AnnotationTitle]
+		if title == "" {
+			continue
+		}
+		out[title] = layer.Digest.Encoded()
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // toTiUPUnit converts stored rows into the API type.

@@ -73,9 +73,10 @@ type publishsrvc struct {
 	alerter        AlertNotifier
 	// tiup publishes packages to a mirror.
 	tiup *tiupCLI
-	// fetchConfig reads an OCI artifact config and its manifest digest. It is
-	// a field so tests can replay a recorded artifact without a registry.
-	fetchConfig func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error)
+	// fetchConfig reads an OCI artifact: its config, its manifest digest, the
+	// build time and the sha256 of every file it carries. It is a field so
+	// tests can replay a recorded artifact without a registry.
+	fetchConfig func(ctx context.Context, artifactURL string) (tiupArtifact, error)
 
 	nowFn func() time.Time
 	newID func() string

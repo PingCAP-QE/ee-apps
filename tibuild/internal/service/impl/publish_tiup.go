@@ -94,6 +94,12 @@ type TiUPStepPayload struct {
 	// Digest pins the artifact manifest, so a moved tag cannot change what is
 	// published.
 	Digest string `json:"digest"`
+	// FileDigest is the sha256 of this package's own file (the OCI layer the
+	// mirror stores as the tarball). The mirror records the same value in its
+	// component manifest, so it is the identity used to verify that a nightly
+	// build actually reached the mirror; the nightly version string cannot do
+	// that because it is constant per channel.
+	FileDigest string `json:"file_digest,omitempty"`
 	// ArtifactCreatedAt is the build time from the OCI manifest annotation
 	// org.opencontainers.image.created. It orders queued units of the same
 	// channel; it is zero for manual/HTTP sources.
