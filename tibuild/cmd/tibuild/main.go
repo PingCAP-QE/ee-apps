@@ -299,7 +299,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, publishEndpoints, tidbcloudEndpoints, cfg.Get().IdentityHeaders, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, publishEndpoints, tidbcloudEndpoints, cfg.Get().IdentityHeaders, cfg.Get().Identity, cfg.Get().Authorization, &wg, errc, *dbgF)
 		}
 
 	case "product":
@@ -324,7 +324,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, publishEndpoints, tidbcloudEndpoints, cfg.Get().IdentityHeaders, &wg, errc, *dbgF)
+			handleHTTPServer(ctx, u, artifactEndpoints, devbuildEndpoints, hotfixEndpoints, publishEndpoints, tidbcloudEndpoints, cfg.Get().IdentityHeaders, cfg.Get().Identity, cfg.Get().Authorization, &wg, errc, *dbgF)
 		}
 
 	default:
