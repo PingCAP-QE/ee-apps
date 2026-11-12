@@ -65,6 +65,7 @@ func guardTarget(ctx context.Context, source, target string) (targetState, error
 		return targetSameDigest, nil
 	}
 	return targetAbsent, fmt.Errorf(
-		"refusing to overwrite %s: it already publishes %s, the source %s is %s",
+		"refusing to overwrite %s: it already publishes %s, the source %s is %s; "+
+			"delete the target tag first if replacing it is intended",
 		target, dst.Digest, source, src.Digest)
 }
