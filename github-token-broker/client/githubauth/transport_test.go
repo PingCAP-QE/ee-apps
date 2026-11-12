@@ -2,6 +2,7 @@ package githubauth
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -134,9 +135,40 @@ func TestTransportUsesWritePermissionsForMutations(t *testing.T) {
 	}
 }
 
-func TestTransportFallsBackWhenBrokerDenies(t *testing.T) {
+// A denial is an authorization answer. Downgrading it to a static PAT would
+// turn "the broker said no" into "here is a full-scope token".
+func TestTransportDoesNotFallBackWhenBrokerDenies(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusUnauthorized} {
+		broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "forbidden", status)
+		}))
+		defer broker.Close()
+
+		base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			t.Fatalf("GitHub request must not be sent after a %d denial", status)
+			return nil, nil
+		})
+		client := &http.Client{Transport: testTransport(t, broker.URL, "pat-token", base)}
+
+		_, err := client.Get("https://api.github.com/repos/pingcap/tidb/git/ref/heads/master")
+		if err == nil {
+			t.Fatalf("status %d: want an error, got a token", status)
+		}
+		var denial *DenialError
+		if !errors.As(err, &denial) {
+			t.Fatalf("status %d: error = %v, want *DenialError", status, err)
+		}
+		if denial.StatusCode != status {
+			t.Fatalf("status %d: DenialError.StatusCode = %d", status, denial.StatusCode)
+		}
+	}
+}
+
+// A broker that fails without answering falls back: that is availability, not
+// an authorization decision.
+func TestTransportFallsBackOnTransientBrokerFailure(t *testing.T) {
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer broker.Close()
 
@@ -153,7 +185,7 @@ func TestTransportFallsBackWhenBrokerDenies(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 	if auth != "Bearer pat-token" {
-		t.Fatalf("Authorization = %q, want static fallback", auth)
+		t.Fatalf("Authorization = %q, want static fallback on a transient failure", auth)
 	}
 }
 
@@ -316,7 +348,7 @@ func TestTransportPinnedRepoDoesNotLeakToOtherHosts(t *testing.T) {
 
 func TestTransportPinnedRepoReportsFallback(t *testing.T) {
 	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		http.Error(w, "boom", http.StatusInternalServerError)
 	}))
 	defer broker.Close()
 

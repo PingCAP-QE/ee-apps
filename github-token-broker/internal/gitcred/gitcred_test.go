@@ -220,9 +220,11 @@ func TestGetReportsBrokerFailure(t *testing.T) {
 	}
 }
 
+// A broker that is unavailable falls back: that is availability, not an
+// authorization answer.
 func TestGetFallsBackToCredentialsFile(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "no installation", http.StatusForbidden)
+		http.Error(w, "upstream unavailable", http.StatusInternalServerError)
 	}))
 	defer server.Close()
 
@@ -245,9 +247,35 @@ func TestGetFallsBackToCredentialsFile(t *testing.T) {
 	}
 }
 
+// A denial must never be answered with the fallback credentials, even when the
+// host matches a line in that file.
+func TestGetDoesNotFallBackWhenBrokerDenies(t *testing.T) {
+	for _, status := range []int{http.StatusForbidden, http.StatusUnauthorized} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "repository is not allowed", status)
+		}))
+
+		dir := t.TempDir()
+		fallback := filepath.Join(dir, ".git-credentials")
+		if err := os.WriteFile(fallback, []byte("https://pat-user:pat-secret@github.com\n"), 0o600); err != nil {
+			t.Fatalf("write fallback: %v", err)
+		}
+		helper := newTestHelper(t, server.URL, func(cfg *Config) { cfg.FallbackCredentialsFile = fallback })
+
+		_, err := helper.Get(context.Background(), Request{Protocol: "https", Host: "github.com", Path: "pingcap/tidb.git"})
+		if err == nil {
+			t.Fatalf("status %d: Get returned credentials after a denial", status)
+		}
+		if mode := helper.AuthMode(); mode == ModePAT {
+			t.Fatalf("status %d: auth mode = %q, want no PAT fallback", status, mode)
+		}
+		server.Close()
+	}
+}
+
 func TestGetIgnoresFallbackForOtherHosts(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "no installation", http.StatusForbidden)
+		http.Error(w, "upstream unavailable", http.StatusInternalServerError)
 	}))
 	defer server.Close()
 

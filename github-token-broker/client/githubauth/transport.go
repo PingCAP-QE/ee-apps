@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -112,6 +113,22 @@ func copyPermissions(permissions map[string]string) map[string]string {
 	return out
 }
 
+// DenialError reports that the broker refused this caller for this repository
+// or permission set. A denial is an authorization answer, not a transient
+// failure, so it is never downgraded to a static token: doing that would turn
+// "the broker said no" into "here is a full-scope PAT".
+type DenialError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *DenialError) Error() string {
+	if e.Message == "" {
+		return fmt.Sprintf("token broker denied the request with HTTP %d", e.StatusCode)
+	}
+	return fmt.Sprintf("token broker denied the request with HTTP %d: %s", e.StatusCode, e.Message)
+}
+
 // RoundTrip implements http.RoundTripper.
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	repo, scoped := repositoryFromPath(req.URL.Path)
@@ -147,6 +164,10 @@ func (t *Transport) tokenFor(ctx context.Context, req *http.Request, repo string
 
 	token, expiresAt, err := t.mint(ctx, repo, perms)
 	if err != nil {
+		var denial *DenialError
+		if errors.As(err, &denial) {
+			return "", err
+		}
 		if t.fallbackToken != "" {
 			if t.onFallback != nil {
 				t.onFallback(repo, err)
@@ -219,6 +240,9 @@ func (t *Transport) mint(ctx context.Context, repo string, perms map[string]stri
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("read broker response: %w", err)
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return "", time.Time{}, &DenialError{StatusCode: resp.StatusCode, Message: strings.TrimSpace(string(body))}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return "", time.Time{}, fmt.Errorf("token broker returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
