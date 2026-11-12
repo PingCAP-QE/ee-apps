@@ -133,6 +133,13 @@ func (s *tidbcloudsrvc) kernelImageSource(ctx context.Context, image string, rea
 		return OpsKernelImageSyncRequestImage{}, kernelImageMeta{}, err
 	}
 
+	if !repositoryAllowed(s.kernelImageAllowlist(), sourceRepository) {
+		err = fmt.Errorf("source repository %q is not allowed: set tidbcloud.kernel_image_allowed_repositories", sourceRepository)
+		s.logger.Error().Err(err).Str("source_image", image).Str("repository", sourceRepository).
+			Msg("tidbcloud.request-sync-kernel-image refused")
+		return OpsKernelImageSyncRequestImage{}, kernelImageMeta{}, err
+	}
+
 	meta := readMeta(ctx, image)
 	if meta.Repo == "" || meta.CommitSHA == "" {
 		err = fmt.Errorf("failed to read source image metadata: missing repo or commit_sha labels")
@@ -148,6 +155,34 @@ func (s *tidbcloudsrvc) kernelImageSource(ctx context.Context, image string, rea
 	}
 
 	return OpsKernelImageSyncRequestImage{SourceRepository: sourceRepository, SourceTag: sourceTag}, meta, nil
+}
+
+// repositoryAllowed reports whether repository matches one of the patterns.
+//
+// A pattern is an exact "host/path" or a "host/path/*" prefix. Matching is
+// case-insensitive, and an empty list matches nothing: the ops platform pulls
+// whatever repository it is handed, so the check has to fail closed.
+func repositoryAllowed(patterns []string, repository string) bool {
+	repository = strings.ToLower(strings.TrimSpace(repository))
+	if repository == "" {
+		return false
+	}
+	for _, pattern := range patterns {
+		pattern = strings.ToLower(strings.TrimSpace(pattern))
+		if pattern == "" {
+			continue
+		}
+		if prefix, ok := strings.CutSuffix(pattern, "/*"); ok {
+			if repository == prefix || strings.HasPrefix(repository, prefix+"/") {
+				return true
+			}
+			continue
+		}
+		if repository == pattern {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveKernelImageApplicant resolves the applicant and ops request ids from

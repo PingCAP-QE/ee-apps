@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -298,6 +299,25 @@ func (t *tiupCLI) downloadPackage(ctx context.Context, payload TiUPStepPayload, 
 	return t.download(ctx, payload.ArtifactURL, payload.Digest, file)
 }
 
+// maxPublishDownloadBytes bounds an `http` publish source. The largest package
+// published today is a few hundred MB; anything past this is a request we do not
+// want to stream to disk. It is a variable so tests can lower it.
+var maxPublishDownloadBytes int64 = 2 << 30 // 2 GiB
+
+// sanitizedURL keeps scheme, host and path and drops the query, fragment and
+// userinfo. Publish sources arrive from the request and end up in step errors,
+// which are persisted and shown in the UI, so they must not carry credentials.
+func sanitizedURL(raw string) string {
+	u, err := neturl.Parse(raw)
+	if err != nil {
+		return "<invalid url>"
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.User = nil
+	return u.String()
+}
+
 // downloadHTTP fetches a tarball over HTTP into a temp file.
 func (t *tiupCLI) downloadHTTP(ctx context.Context, url string) (string, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -311,20 +331,25 @@ func (t *tiupCLI) downloadHTTP(ctx context.Context, url string) (string, string,
 	client := *t.http
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 3 {
-			return fmt.Errorf("download %s: stopped after %d redirects", url, len(via))
+			return fmt.Errorf("download %s: stopped after %d redirects", sanitizedURL(url), len(via))
 		}
 		if req.URL.Scheme != "http" && req.URL.Scheme != "https" {
-			return fmt.Errorf("download %s: redirect to unsupported scheme %q", url, req.URL.Scheme)
+			return fmt.Errorf("download %s: redirect to unsupported scheme %q", sanitizedURL(url), req.URL.Scheme)
 		}
 		return nil
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", err
+		// url.Error embeds the full URL, query string included.
+		var urlErr *neturl.Error
+		if errors.As(err, &urlErr) {
+			return "", "", fmt.Errorf("download %s: %w", sanitizedURL(url), urlErr.Err)
+		}
+		return "", "", fmt.Errorf("download %s: %w", sanitizedURL(url), err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("download %s: status %d", url, resp.StatusCode)
+		return "", "", fmt.Errorf("download %s: status %d", sanitizedURL(url), resp.StatusCode)
 	}
 
 	tmp, err := os.CreateTemp("", "tiup-publish-*")
@@ -332,10 +357,18 @@ func (t *tiupCLI) downloadHTTP(ctx context.Context, url string) (string, string,
 		return "", "", err
 	}
 	hash := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(tmp, hash), resp.Body); err != nil {
+	// Read one byte past the ceiling so an oversized body is detected instead
+	// of being silently truncated.
+	written, err := io.Copy(io.MultiWriter(tmp, hash), io.LimitReader(resp.Body, maxPublishDownloadBytes+1))
+	if err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
-		return "", "", err
+		return "", "", fmt.Errorf("download %s: %w", sanitizedURL(url), err)
+	}
+	if written > maxPublishDownloadBytes {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", "", fmt.Errorf("download %s: exceeds %d bytes", sanitizedURL(url), maxPublishDownloadBytes)
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(tmp.Name())

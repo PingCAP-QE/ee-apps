@@ -34,8 +34,13 @@ func newArtifact(t *testing.T, cfgMods ...func(*config.Service)) (artifact.Servi
 			Driver: "sqlite3",
 			DSN:    dsn,
 		},
+		// The fixture opts in to an explicitly permissive policy: image sync
+		// fails closed when the regexes are unset, so a case that wants the
+		// unset behaviour has to clear them through cfgMods.
 		ImageSync: config.ImageSync{
 			PollingRate: "100ms",
+			SourceRegx:  `.*`,
+			TargetRegx:  `.*`,
 		},
 	}
 	for _, mod := range cfgMods {
@@ -154,15 +159,20 @@ func TestListImageSyncTasks(t *testing.T) {
 func stringPtr(s string) *string { return &s }
 
 func TestSyncImage_Validation(t *testing.T) {
-	t.Run("no rules configured skips validation", func(t *testing.T) {
-		svc, _ := newArtifact(t)
-		resp, err := svc.SyncImage(context.Background(), &artifact.ImageSyncRequest{
+	t.Run("unset rules deny every request", func(t *testing.T) {
+		svc, _ := newArtifact(t, func(cfg *config.Service) {
+			cfg.ImageSync.SourceRegx = ""
+			cfg.ImageSync.TargetRegx = ""
+		})
+		_, err := svc.SyncImage(context.Background(), &artifact.ImageSyncRequest{
 			Source: "whatever/image:tag",
 			Target: "whatever/image:tag",
 		})
-		assert.NoError(t, err)
-		require.NotNil(t, resp)
-		assert.Equal(t, "PENDING", resp.Status)
+		require.Error(t, err)
+		httpErr, ok := err.(*artifact.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, 403, httpErr.Code)
+		assert.Contains(t, httpErr.Message, "image sync is disabled")
 	})
 
 	t.Run("rules enforced from config", func(t *testing.T) {
@@ -222,12 +232,16 @@ func TestSyncImage_ConfigHotReload(t *testing.T) {
 	require.True(t, ok)
 	cfg.OnReload(reloader.Reload)
 
-	// No rules yet: validation is skipped.
+	// No rules yet: the endpoint is closed, not open.
 	_, err = svc.SyncImage(context.Background(), &artifact.ImageSyncRequest{
 		Source: "foo/bar:tag",
 		Target: "foo/bar:tag",
 	})
-	assert.NoError(t, err)
+	require.Error(t, err)
+	disabled, ok := err.(*artifact.HTTPError)
+	require.True(t, ok)
+	assert.Equal(t, 403, disabled.Code)
+	assert.Contains(t, disabled.Message, "image sync is disabled")
 
 	// Update the config file on disk and trigger a reload.
 	writeConfig(storeBlock + "image_sync:\n  source_regx: \"^hub\\\\.pingcap\\\\.net/\"\n  target_regx: \"^pingcap/\"\n")

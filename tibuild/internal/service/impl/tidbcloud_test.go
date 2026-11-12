@@ -38,6 +38,14 @@ func newTidbcloudTestService(t *testing.T, ops *OpsConfig, tps *TestPlatformsCon
 		cfg.Tidbcloud.TestPlatformsConfigFile = path
 	}
 
+	// Kernel-image sync fails closed on an empty allowlist, so the fixture has
+	// to name the repositories its cases use.
+	cfg.Tidbcloud.KernelImageAllowedRepositories = []string{
+		"us.gcr.io/pingcap-public/tidbx/*",
+		"hub.pingcap.net/*",
+		"example.com/*",
+	}
+
 	logger := zerolog.Nop()
 	svc := &tidbcloudsrvc{
 		logger:     &logger,

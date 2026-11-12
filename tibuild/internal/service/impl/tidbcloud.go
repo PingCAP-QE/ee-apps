@@ -119,6 +119,10 @@ type tidbcloudsrvc struct {
 	// can replay recorded labels without a registry.
 	readImageConfig func(context.Context, string) ([]byte, error)
 
+	// kernelImageAllowedRepositories limits which repositories a kernel-image
+	// sync may name; empty means "none", not "any".
+	kernelImageAllowedRepositories []string
+
 	// kernelImageMetaReader overrides the default OCI label reader (tests).
 	kernelImageMetaReader kernelImageMetaReader
 	// resolveTagMetadata resolves git tag metadata in process; nil skips it.
@@ -189,6 +193,7 @@ func (s *tidbcloudsrvc) applyConfig(cfg *config.Service) error {
 	s.mu.Lock()
 	s.opsCfg = opsCfg
 	s.tpsCfg = tpsCfg
+	s.kernelImageAllowedRepositories = cfg.Tidbcloud.KernelImageAllowedRepositories
 	s.mu.Unlock()
 	return nil
 }
@@ -197,6 +202,12 @@ func (s *tidbcloudsrvc) opsConfig() *OpsConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.opsCfg
+}
+
+func (s *tidbcloudsrvc) kernelImageAllowlist() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.kernelImageAllowedRepositories
 }
 
 func (s *tidbcloudsrvc) testPlatformsConfig() *TestPlatformsConfig {

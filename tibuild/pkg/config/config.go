@@ -56,6 +56,13 @@ type DevBuild struct {
 
 // Tidbcloud configures the TiDB Cloud ops and TCMS integrations.
 type Tidbcloud struct {
+	// KernelImageAllowedRepositories lists the repositories a kernel-image sync
+	// may name, as "host/path" with an optional "/*" suffix (for example
+	// "hub.pingcap.net/pingcap/*"). The ops platform pulls whatever repository
+	// it is given, so an unset list rejects every sync rather than allowing any
+	// registry. Hot-reloadable.
+	KernelImageAllowedRepositories []string `yaml:"kernel_image_allowed_repositories,omitempty" json:"kernel_image_allowed_repositories,omitempty"`
+
 	// OpsConfigFile points at the ops platform config (stages, API keys and
 	// the component catalogue). The file is mounted from a Secret, so the
 	// keys never appear in this document.
