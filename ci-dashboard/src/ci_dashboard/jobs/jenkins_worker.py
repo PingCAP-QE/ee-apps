@@ -736,6 +736,10 @@ def _build_kafka_consumer(settings: Settings, *, topic: str, group_id: str) -> A
             "sasl_plain_username": settings.kafka.sasl_username,
             "sasl_plain_password": settings.kafka.sasl_password,
         }
+        # The Strimzi internal listener presents the cluster CA, which is not in
+        # the system trust store.
+        if settings.kafka.ssl_cafile:
+            sasl["ssl_cafile"] = settings.kafka.ssl_cafile
     return KafkaConsumer(
         topic,
         bootstrap_servers=list(settings.kafka.bootstrap_servers),

@@ -912,6 +912,7 @@ def test_kafka_consumer_enables_sasl_when_credentials_configured(monkeypatch) ->
         bootstrap_servers=("kafka-a:9094",),
         sasl_username="ci-dashboard-jenkins-worker",
         sasl_password="s3cret",
+        ssl_cafile="/etc/kafka/ca.crt",
     )
 
     _build_kafka_consumer(settings, topic="jenkins-event", group_id="g")
@@ -921,6 +922,7 @@ def test_kafka_consumer_enables_sasl_when_credentials_configured(monkeypatch) ->
     assert kwargs["sasl_mechanism"] == "SCRAM-SHA-512"
     assert kwargs["sasl_plain_username"] == "ci-dashboard-jenkins-worker"
     assert kwargs["sasl_plain_password"] == "s3cret"
+    assert kwargs["ssl_cafile"] == "/etc/kafka/ca.crt"
 
 
 def test_kafka_consumer_stays_plain_without_sasl_credentials(monkeypatch) -> None:
