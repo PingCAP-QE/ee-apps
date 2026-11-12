@@ -728,9 +728,18 @@ def _build_kafka_consumer(settings: Settings, *, topic: str, group_id: str) -> A
             "kafka-python-ng is required to consume Jenkins events; reinstall ci-dashboard dependencies"
         ) from exc
 
+    sasl = {}
+    if settings.kafka.sasl_username and settings.kafka.sasl_password:
+        sasl = {
+            "security_protocol": "SASL_SSL",
+            "sasl_mechanism": "SCRAM-SHA-512",
+            "sasl_plain_username": settings.kafka.sasl_username,
+            "sasl_plain_password": settings.kafka.sasl_password,
+        }
     return KafkaConsumer(
         topic,
         bootstrap_servers=list(settings.kafka.bootstrap_servers),
+        **sasl,
         group_id=group_id,
         enable_auto_commit=False,
         auto_offset_reset="earliest",

@@ -77,6 +77,10 @@ class KafkaSettings:
     jenkins_events_topic: str = "jenkins-event"
     jenkins_consumer_group: str = "ci-dashboard-v3-jenkins-worker"
     poll_timeout_ms: int = 1000
+    # SASL/SCRAM credentials for the authenticated listener. Empty means "plain
+    # connection, no SASL" so existing deployments keep working unchanged.
+    sasl_username: str | None = None
+    sasl_password: str | None = None
 
 
 @dataclass(frozen=True)
@@ -285,6 +289,8 @@ def load_settings(environ: Mapping[str, str] | None = None) -> Settings:
                 env.get("CI_DASHBOARD_KAFKA_JENKINS_GROUP_ID") or "ci-dashboard-v3-jenkins-worker"
             ),
             poll_timeout_ms=_read_int(env, "CI_DASHBOARD_KAFKA_POLL_TIMEOUT_MS", 1000),
+            sasl_username=env.get("CI_DASHBOARD_KAFKA_SASL_USERNAME") or None,
+            sasl_password=env.get("CI_DASHBOARD_KAFKA_SASL_PASSWORD") or None,
         ),
         jenkins=JenkinsSettings(
             internal_base_url=env.get("CI_DASHBOARD_JENKINS_INTERNAL_BASE_URL") or None,

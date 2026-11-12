@@ -878,3 +878,65 @@ def test_map_jenkins_result_to_state() -> None:
     assert map_jenkins_result_to_state("ABORTED") == "aborted"
     assert map_jenkins_result_to_state("NOT_BUILT") == "error"
     assert map_jenkins_result_to_state(None) == "error"
+
+def _kafka_settings(**kwargs) -> Settings:
+    return Settings(
+        database=DatabaseSettings(
+            url="sqlite+pysqlite:///:memory:",
+            host=None,
+            port=None,
+            user=None,
+            password=None,
+            database=None,
+            ssl_ca=None,
+        ),
+        jobs=JobSettings(batch_size=10),
+        kafka=KafkaSettings(**kwargs),
+        log_level="INFO",
+    )
+
+
+def test_kafka_consumer_enables_sasl_when_credentials_configured(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeKafkaConsumer:
+        def __init__(self, *args, **kwargs) -> None:
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+    import sys
+    import types
+
+    monkeypatch.setitem(sys.modules, "kafka", types.SimpleNamespace(KafkaConsumer=_FakeKafkaConsumer))
+    settings = _kafka_settings(
+        bootstrap_servers=("kafka-a:9094",),
+        sasl_username="ci-dashboard-jenkins-worker",
+        sasl_password="s3cret",
+    )
+
+    _build_kafka_consumer(settings, topic="jenkins-event", group_id="g")
+
+    kwargs = captured["kwargs"]
+    assert kwargs["security_protocol"] == "SASL_SSL"
+    assert kwargs["sasl_mechanism"] == "SCRAM-SHA-512"
+    assert kwargs["sasl_plain_username"] == "ci-dashboard-jenkins-worker"
+    assert kwargs["sasl_plain_password"] == "s3cret"
+
+
+def test_kafka_consumer_stays_plain_without_sasl_credentials(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeKafkaConsumer:
+        def __init__(self, *args, **kwargs) -> None:
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+    import sys
+    import types
+
+    monkeypatch.setitem(sys.modules, "kafka", types.SimpleNamespace(KafkaConsumer=_FakeKafkaConsumer))
+    settings = _kafka_settings(bootstrap_servers=("kafka-a:9092",))
+
+    _build_kafka_consumer(settings, topic="jenkins-event", group_id="g")
+
+    assert "security_protocol" not in captured["kwargs"]
