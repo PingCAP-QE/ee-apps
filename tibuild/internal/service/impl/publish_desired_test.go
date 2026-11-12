@@ -3,6 +3,8 @@ package impl
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -517,6 +519,7 @@ func storeConfigForTest() config.NightlyPublish {
 // A nightly unit that only reaches part of its steps is recorded as a failure
 // on the desired row, but nothing else makes the shortfall visible: the lag
 // alert only fires after 1.5 windows and its predicate is version-string based.
+// The settle path accumulates it and the tick flushes one aggregated alert.
 func TestSettleNightlyUnitAlertsOnPartial(t *testing.T) {
 	svc, clock := newFlowTestService(t)
 	ctx := context.Background()
@@ -584,9 +587,10 @@ func TestSettleNightlyUnitAlertsOnPartial(t *testing.T) {
 	require.NoError(t, err)
 
 	svc.refreshUnit(ctx, unit.ID)
+	svc.flushNightlyFailureAlert(ctx)
 
 	require.Equal(t, 1, notifier.count(), "a partial nightly unit must alert once")
-	require.Contains(t, notifier.alerts[0], "nightly publish partial")
+	require.Contains(t, notifier.alerts[0], "nightly publish failed")
 	row, err := svc.desired.Get(ctx, key)
 	require.NoError(t, err)
 	require.Empty(t, row.RunningUnitID)
@@ -658,22 +662,164 @@ func TestSettleNightlyUnitDoesNotAlertOnSuccess(t *testing.T) {
 	require.Zero(t, notifier.count())
 }
 
+func (f *fakeAlertNotifier) lastAlert() (string, string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.alerts) == 0 {
+		return "", ""
+	}
+	return f.alerts[len(f.alerts)-1], f.bodies[len(f.bodies)-1]
+}
+
 type failingAlertNotifier struct{}
 
 func (failingAlertNotifier) SendAlert(context.Context, string, string) error {
 	return errors.New("lark is down")
 }
 
-// The partial alert must never panic: no notifier, an unknown version and a
-// failing notifier are all tolerated.
-func TestAlertPartialNightlyUnitToleratesMissingNotifierVersionAndErrors(t *testing.T) {
-	svc, _ := newFlowTestService(t)
+// failedNightlyUnitSettles creates a nightly unit whose single step failed and
+// claims the desired row for it, then settles it.
+func failedNightlyUnitSettles(t *testing.T, svc *publishsrvc, clock *time.Time, pkg, osName, arch string) {
+	t.Helper()
 	ctx := context.Background()
-	rows := []string{"tiup-prod/pd/linux/amd64"}
+	key := desiredKeyForTest(delivery.TiUPTargetProd, pkg, osName, arch)
+	payload := TiUPStepPayload{
+		Mirror:         delivery.TiUPMirrorProd,
+		MirrorURL:      "http://tiup.pingcap.net:8987",
+		ArtifactURL:    nightlyArtifact,
+		Digest:         "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		Nightly:        true,
+		NightlyVersion: "v9.0.0-nightly",
+		Packages: []delivery.TiUPPackage{{
+			Name: pkg, Version: "v9.0.0-nightly", OS: osName, Arch: arch,
+			EntryPoint: pkg, File: pkg + "-v9.0.0-nightly.tar.gz",
+		}},
+	}
+	raw, err := payloadMap(payload)
+	require.NoError(t, err)
+	_, err = svc.desired.Upsert(ctx, key, payload.NightlyVersion, raw, *clock)
+	require.NoError(t, err)
+
+	now := svc.now()
+	unit, err := svc.db.PublishUnit.Create().
+		SetID(svc.id()).
+		SetKind(PublishKindTiUP).
+		SetArtifactURL(payload.ArtifactURL).
+		SetState(PublishStateRunning).
+		SetCreatedAt(now).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = svc.db.PublishStep.Create().
+		SetID(svc.id()).
+		SetUnitID(unit.ID).
+		SetTarget(delivery.TiUPTargetProd).
+		SetState(PublishStepStateFailed).
+		SetLastError("The server refused").
+		SetPayload(raw).
+		SetCreatedAt(now).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = svc.db.PublishDesired.Update().
+		Where(entpublishdesired.Target(key.Target), entpublishdesired.Pkg(key.Pkg)).
+		SetRunningUnitID(unit.ID).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc.refreshUnit(ctx, unit.ID)
+}
+
+func newNightlyAlertTestService(t *testing.T) (*publishsrvc, *time.Time, *fakeAlertNotifier) {
+	t.Helper()
+	svc, clock := newFlowTestService(t)
+	enabled := true
+	svc.publishCfg.Nightly = config.NightlyPublish{
+		Enabled: &enabled,
+		Default: config.NightlyWindow{
+			Window: "12h", Anchor: "02:00", Timezone: "UTC", RetryAfter: "5m", Jitter: "1ns",
+		},
+		Targets: map[string]config.NightlyWindow{delivery.TiUPTargetProd: {}},
+	}
+	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
+	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly)
+	svc.desired.nowFn = func() time.Time { return *clock }
+	notifier := &fakeAlertNotifier{}
+	svc.alerter = notifier
+	return svc, clock, notifier
+}
+
+// A failed nightly publish used to be invisible: the unit ends `failed`, the row
+// keeps retrying, and only the lag alert (1.5 windows, version-string based)
+// could ever notice. The tick flushes one aggregated alert instead.
+func TestNightlyFailureAlertAggregatesFailedUnitsPerTick(t *testing.T) {
+	svc, clock, notifier := newNightlyAlertTestService(t)
+	ctx := context.Background()
+
+	failedNightlyUnitSettles(t, svc, clock, "pd", "linux", "amd64")
+	failedNightlyUnitSettles(t, svc, clock, "tidb", "darwin", "arm64")
+	require.Zero(t, notifier.count(), "settling must not alert on its own")
+
+	svc.flushNightlyFailureAlert(ctx)
+
+	require.Equal(t, 1, notifier.count(), "both failures must fold into one alert")
+	title, body := notifier.lastAlert()
+	require.Equal(t, "[tibuild] nightly publish failed", title)
+	require.Contains(t, body, "channels=2")
+	require.Contains(t, body, "tiup-prod/pd/linux/amd64")
+	require.Contains(t, body, "tiup-prod/tidb/darwin/arm64")
+	require.Contains(t, body, "The server refused")
+
+	// Nothing pending -> nothing sent.
+	svc.flushNightlyFailureAlert(ctx)
+	require.Equal(t, 1, notifier.count())
+}
+
+// A sustained outage must not produce one message per failed unit: the second
+// batch inside the interval is dropped, a later one is sent again.
+func TestNightlyFailureAlertIsRateLimited(t *testing.T) {
+	svc, clock, notifier := newNightlyAlertTestService(t)
+	ctx := context.Background()
+
+	failedNightlyUnitSettles(t, svc, clock, "pd", "linux", "amd64")
+	svc.flushNightlyFailureAlert(ctx)
+	require.Equal(t, 1, notifier.count())
+
+	failedNightlyUnitSettles(t, svc, clock, "tikv", "linux", "arm64")
+	svc.flushNightlyFailureAlert(ctx)
+	require.Equal(t, 1, notifier.count(), "inside the interval the batch is dropped")
+
+	*clock = clock.Add(11 * time.Minute)
+	failedNightlyUnitSettles(t, svc, clock, "tiflash", "linux", "amd64")
+	svc.flushNightlyFailureAlert(ctx)
+	require.Equal(t, 2, notifier.count(), "after the interval the next batch is sent")
+}
+
+// A notifier error must not panic or block the tick.
+func TestNightlyFailureAlertToleratesNotifierErrors(t *testing.T) {
+	svc, clock, _ := newNightlyAlertTestService(t)
+	ctx := context.Background()
+	svc.alerter = failingAlertNotifier{}
+	failedNightlyUnitSettles(t, svc, clock, "pd", "linux", "amd64")
+	svc.flushNightlyFailureAlert(ctx)
 
 	svc.alerter = nil
-	svc.alertPartialNightlyUnit(ctx, "unit-1", "", "", rows)
+	failedNightlyUnitSettles(t, svc, clock, "tikv", "linux", "amd64")
+	svc.flushNightlyFailureAlert(ctx)
+}
 
-	svc.alerter = failingAlertNotifier{}
-	svc.alertPartialNightlyUnit(ctx, "unit-2", "", "boom", rows)
+// A whole window failing at once must stay readable: the channel sample is
+// bounded and the error is truncated.
+func TestNightlyFailureAlertBoundsBody(t *testing.T) {
+	svc, clock, notifier := newNightlyAlertTestService(t)
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		svc.failedNightly.add(fmt.Sprintf("tiup-prod/pd%d/linux/amd64", i), "v9.0.0-nightly", strings.Repeat("x", 400))
+	}
+	svc.flushNightlyFailureAlert(ctx)
+
+	require.Equal(t, 1, notifier.count())
+	_, body := notifier.lastAlert()
+	require.Contains(t, body, "channels=10")
+	require.Contains(t, body, "+2 more")
+	require.LessOrEqual(t, len(body), 900)
+	_ = clock
 }
