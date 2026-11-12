@@ -513,3 +513,167 @@ func storeConfigForTest() config.NightlyPublish {
 		},
 	}
 }
+
+// A nightly unit that only reaches part of its steps is recorded as a failure
+// on the desired row, but nothing else makes the shortfall visible: the lag
+// alert only fires after 1.5 windows and its predicate is version-string based.
+func TestSettleNightlyUnitAlertsOnPartial(t *testing.T) {
+	svc, clock := newFlowTestService(t)
+	ctx := context.Background()
+	enabled := true
+	svc.publishCfg.Nightly = config.NightlyPublish{
+		Enabled: &enabled,
+		Default: config.NightlyWindow{
+			Window: "12h", Anchor: "02:00", Timezone: "UTC", RetryAfter: "5m", Jitter: "1ns",
+		},
+		Targets: map[string]config.NightlyWindow{delivery.TiUPTargetProd: {}},
+	}
+	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
+	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly)
+	svc.desired.nowFn = func() time.Time { return *clock }
+	notifier := &fakeAlertNotifier{}
+	svc.alerter = notifier
+
+	key := desiredKeyForTest(delivery.TiUPTargetProd, "pd", "linux", "amd64")
+	payload := TiUPStepPayload{
+		Mirror:         delivery.TiUPMirrorProd,
+		MirrorURL:      "http://tiup.pingcap.net:8987",
+		ArtifactURL:    nightlyArtifact,
+		Digest:         "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		Nightly:        true,
+		NightlyVersion: "v9.0.0-nightly",
+		Packages: []delivery.TiUPPackage{{
+			Name: "pd", Version: "v9.0.0-nightly", OS: "linux", Arch: "amd64",
+			EntryPoint: "pd-server", File: "pd-v9.0.0-nightly-linux-amd64.tar.gz",
+		}},
+	}
+	raw, err := payloadMap(payload)
+	require.NoError(t, err)
+	_, err = svc.desired.Upsert(ctx, key, payload.NightlyVersion, raw, *clock)
+	require.NoError(t, err)
+
+	now := svc.now()
+	unit, err := svc.db.PublishUnit.Create().
+		SetID(svc.id()).
+		SetKind(PublishKindTiUP).
+		SetArtifactURL(payload.ArtifactURL).
+		SetState(PublishStateRunning).
+		SetCreatedAt(now).
+		Save(ctx)
+	require.NoError(t, err)
+	addStep := func(target, state, lastError string) {
+		create := svc.db.PublishStep.Create().
+			SetID(svc.id()).
+			SetUnitID(unit.ID).
+			SetTarget(target).
+			SetState(state).
+			SetPayload(raw).
+			SetCreatedAt(now)
+		if lastError != "" {
+			create = create.SetLastError(lastError)
+		}
+		_, err := create.Save(ctx)
+		require.NoError(t, err)
+	}
+	addStep(delivery.TiUPTargetProd, PublishStepStateSucceeded, "")
+	addStep(delivery.TiUPTargetStaging, PublishStepStateFailed, "The server refused")
+	_, err = svc.db.PublishDesired.Update().
+		Where(entpublishdesired.Target(key.Target), entpublishdesired.Pkg(key.Pkg)).
+		SetRunningUnitID(unit.ID).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc.refreshUnit(ctx, unit.ID)
+
+	require.Equal(t, 1, notifier.count(), "a partial nightly unit must alert once")
+	require.Contains(t, notifier.alerts[0], "nightly publish partial")
+	row, err := svc.desired.Get(ctx, key)
+	require.NoError(t, err)
+	require.Empty(t, row.RunningUnitID)
+	require.Equal(t, "v9.0.0-nightly", row.LastFailedVersion, "a partial unit still keeps the schedule retrying")
+}
+
+// A fully successful unit must not raise the partial alert.
+func TestSettleNightlyUnitDoesNotAlertOnSuccess(t *testing.T) {
+	svc, clock := newFlowTestService(t)
+	ctx := context.Background()
+	enabled := true
+	svc.publishCfg.Nightly = config.NightlyPublish{
+		Enabled: &enabled,
+		Default: config.NightlyWindow{
+			Window: "12h", Anchor: "02:00", Timezone: "UTC", RetryAfter: "5m", Jitter: "1ns",
+		},
+		Targets: map[string]config.NightlyWindow{delivery.TiUPTargetProd: {}},
+	}
+	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
+	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly)
+	svc.desired.nowFn = func() time.Time { return *clock }
+	notifier := &fakeAlertNotifier{}
+	svc.alerter = notifier
+
+	key := desiredKeyForTest(delivery.TiUPTargetProd, "pd", "linux", "amd64")
+	payload := TiUPStepPayload{
+		Mirror:         delivery.TiUPMirrorProd,
+		MirrorURL:      "http://tiup.pingcap.net:8987",
+		ArtifactURL:    nightlyArtifact,
+		Digest:         "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		Nightly:        true,
+		NightlyVersion: "v9.0.0-nightly",
+		Packages: []delivery.TiUPPackage{{
+			Name: "pd", Version: "v9.0.0-nightly", OS: "linux", Arch: "amd64",
+			EntryPoint: "pd-server", File: "pd-v9.0.0-nightly-linux-amd64.tar.gz",
+		}},
+	}
+	raw, err := payloadMap(payload)
+	require.NoError(t, err)
+	_, err = svc.desired.Upsert(ctx, key, payload.NightlyVersion, raw, *clock)
+	require.NoError(t, err)
+
+	now := svc.now()
+	unit, err := svc.db.PublishUnit.Create().
+		SetID(svc.id()).
+		SetKind(PublishKindTiUP).
+		SetArtifactURL(payload.ArtifactURL).
+		SetState(PublishStateRunning).
+		SetCreatedAt(now).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = svc.db.PublishStep.Create().
+		SetID(svc.id()).
+		SetUnitID(unit.ID).
+		SetTarget(delivery.TiUPTargetProd).
+		SetState(PublishStepStateSucceeded).
+		SetPayload(raw).
+		SetCreatedAt(now).
+		Save(ctx)
+	require.NoError(t, err)
+	_, err = svc.db.PublishDesired.Update().
+		Where(entpublishdesired.Target(key.Target), entpublishdesired.Pkg(key.Pkg)).
+		SetRunningUnitID(unit.ID).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc.refreshUnit(ctx, unit.ID)
+
+	require.Zero(t, notifier.count())
+}
+
+type failingAlertNotifier struct{}
+
+func (failingAlertNotifier) SendAlert(context.Context, string, string) error {
+	return errors.New("lark is down")
+}
+
+// The partial alert must never panic: no notifier, an unknown version and a
+// failing notifier are all tolerated.
+func TestAlertPartialNightlyUnitToleratesMissingNotifierVersionAndErrors(t *testing.T) {
+	svc, _ := newFlowTestService(t)
+	ctx := context.Background()
+	rows := []string{"tiup-prod/pd/linux/amd64"}
+
+	svc.alerter = nil
+	svc.alertPartialNightlyUnit(ctx, "unit-1", "", "", rows)
+
+	svc.alerter = failingAlertNotifier{}
+	svc.alertPartialNightlyUnit(ctx, "unit-2", "", "boom", rows)
+}
