@@ -24,6 +24,43 @@ type Service struct {
 	DevBuild DevBuild `yaml:"devbuild,omitempty" json:"devbuild,omitempty"`
 	// Tidbcloud holds the TiDB Cloud ops and TCMS integration configuration.
 	Tidbcloud Tidbcloud `yaml:"tidbcloud,omitempty" json:"tidbcloud,omitempty"`
+	// Identity configures how a request gets a principal.
+	Identity Identity `yaml:"identity,omitempty" json:"identity,omitempty"`
+	// Authorization configures whether mutations are authorized.
+	Authorization Authorization `yaml:"authorization,omitempty" json:"authorization,omitempty"`
+}
+
+// Identity configures how the service derives a principal from a request.
+//
+// Authentication is the Gateway's job. What the service has to decide is
+// whether it may believe the X-User-* headers. It may not until the Gateway
+// strips client values and injects verified claims, so TrustedHeaders stays
+// false by default and the service uses ServiceIdentity for requests that carry
+// no trusted user.
+type Identity struct {
+	// TrustedHeaders accepts the identity headers as a principal. Turn this on
+	// only after the Gateway identity normalizer is in place; otherwise any
+	// pod can choose which colleague it claims to be.
+	TrustedHeaders bool `yaml:"trusted_headers,omitempty" json:"trusted_headers,omitempty"`
+	// ServiceIdentity is the principal used when no trusted user is present.
+	// It keeps automation working without letting a caller impersonate a
+	// person, and it is what a build's createdBy becomes until trusted headers
+	// are available.
+	ServiceIdentity string `yaml:"service_identity,omitempty" json:"service_identity,omitempty"`
+	// ServiceName is the display name recorded alongside ServiceIdentity.
+	ServiceName string `yaml:"service_name,omitempty" json:"service_name,omitempty"`
+}
+
+// Authorization configures whether mutations are authorized.
+type Authorization struct {
+	// Mode is "off", "observe" or "enforce". Observe records what would be
+	// denied and lets the request through; enforce denies it. The rollout is
+	// observe in the cluster, then enforce.
+	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
+	// AllowPrincipals lists who may mutate: exact email addresses or
+	// "*@domain" patterns. An empty list allows nobody, so the check is
+	// fail-closed.
+	AllowPrincipals []string `yaml:"allow_principals,omitempty" json:"allow_principals,omitempty"`
 }
 
 // DevBuild configures the devbuild request policy.
