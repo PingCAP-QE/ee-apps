@@ -22,6 +22,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/predicate"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/authz"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/identity"
 )
@@ -44,9 +45,12 @@ type devbuildsrvc struct {
 	dashboardViewURL       string
 	ociFileDownloadURL     string
 	reconcilerSince        time.Duration
-	httpClient             *http.Client
-	larkNotifier           *LarkNotifier
-	jenkins                struct {
+	// authorizationMode mirrors config.Authorization.Mode. It decides whether a
+	// missing principal blocks a build mutation or is only recorded.
+	authorizationMode string
+	httpClient        *http.Client
+	larkNotifier      *LarkNotifier
+	jenkins           struct {
 		client  *gojenkins.Jenkins
 		jobName string
 	}
@@ -86,6 +90,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service, registerer prometh
 		dashboardViewURL:       cfg.Tekton.ViewBaseURL(),
 		ociFileDownloadURL:     strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/"),
 		reconcilerSince:        reconcilerSince,
+		authorizationMode:      cfg.Authorization.Mode,
 		httpClient:             &http.Client{Timeout: 30 * time.Second},
 		repoMetrics:            newDevbuildRepoMetrics(registerer),
 	}
@@ -237,10 +242,18 @@ var supportedPlatforms = []string{"linux", "linux/amd64", "linux/arm64", "darwin
 // Create and trigger devbuild
 func (s *devbuildsrvc) Create(ctx context.Context, p *devbuild.CreatePayload) (*devbuild.DevBuild, error) {
 	s.logger.Info().Msgf("devbuild.create")
-	if p.CreatedBy == nil {
-		if user, ok := identity.FromContext(ctx); ok {
-			p.CreatedBy = &user.Email
+	// A principal that represents a person is authoritative: a caller may not
+	// record somebody else as the creator. Automation carries no person, so its
+	// request keeps the createdBy the caller supplied (the requester recorded by
+	// CI); that value is only trusted for display, never for authorization.
+	if user, ok := identity.FromContext(ctx); ok && !user.Service && user.Email != "" {
+		if p.CreatedBy != nil && !strings.EqualFold(*p.CreatedBy, user.Email) {
+			s.logger.Warn().
+				Str("claimed_created_by", *p.CreatedBy).
+				Str("principal", user.Email).
+				Msg("ignoring a createdBy that differs from the authenticated principal")
 		}
+		p.CreatedBy = &user.Email
 	}
 	if p.CreatedBy == nil || strings.TrimSpace(*p.CreatedBy) == "" {
 		return nil, &devbuild.DevBuildUnauthorizedError{Code: http.StatusUnauthorized, Message: "createdBy or authenticated identity is required"}
@@ -312,6 +325,21 @@ func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (*devbui
 func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (res *devbuild.DevBuild, err error) {
 	s.logger.Info().Msgf("devbuild.update")
 
+	// Update rewrites a build's status, which the reconciler then acts on, so it
+	// needs the same ownership rule as rerun. Reading the row first is what
+	// makes the check possible: the update itself carries no creator.
+	existing, err := s.dbClient.DevBuild.Get(ctx, p.ID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, &devbuild.DevBuildNotFoundError{Code: http.StatusNotFound, Message: "build not found"}
+		}
+		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to get build for update")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to update build"}
+	}
+	if err := s.authorizeBuildMutation(ctx, existing, "update"); err != nil {
+		return nil, err
+	}
+
 	updater := s.dbClient.DevBuild.UpdateOneID(p.ID)
 	if p.Status != nil {
 		updater.SetStatus(string(p.Status.Status))
@@ -377,8 +405,8 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to get build for rerun")
 		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to rerun build"}
 	}
-	if user, ok := identity.FromContext(ctx); ok && !strings.EqualFold(user.Email, existingBuild.CreatedBy) {
-		return nil, &devbuild.DevBuildForbiddenError{Code: http.StatusForbidden, Message: "only the build creator can rerun this build"}
+	if err := s.authorizeBuildMutation(ctx, existingBuild, "rerun"); err != nil {
+		return nil, err
 	}
 	if !isTerminalStatus(existingBuild.Status) {
 		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "only terminal builds can be rerun"}
@@ -449,6 +477,56 @@ func (s *devbuildsrvc) applyPermissions(ctx context.Context, build *devbuild.Dev
 		canRerun = strings.EqualFold(user.Email, build.Meta.CreatedBy) && isTerminalStatus(string(build.Status.Status))
 	}
 	build.Permissions = &devbuild.DevBuildPermissions{CanRerun: canRerun}
+}
+
+// authorizeBuildMutation decides whether the caller may change this build.
+//
+// The Gateway authenticates the request; this decides whether the caller may
+// act on this particular build. Two rules, in order:
+//
+//   - a principal that represents automation (the configured service identity)
+//     may act on any build, because that is how CI reruns a build;
+//   - a person may act only on a build recorded under their own address.
+//
+// Without a principal the answer depends on authorization.mode: "enforce"
+// refuses and everything else records the decision and allows the request. That
+// is the rollout: observe in the cluster until the logs are clean, then enforce.
+// The check never lets a caller name a different creator to pass, which is what
+// made the old condition fail open.
+func (s *devbuildsrvc) authorizeBuildMutation(ctx context.Context, build *ent.DevBuild, op string) error {
+	principal, ok := identity.FromContext(ctx)
+	logger := s.logger.With().
+		Str("op", op).
+		Int("build_id", build.ID).
+		Str("created_by", build.CreatedBy).
+		Str("authorization_mode", s.authorizationMode).
+		Logger()
+
+	if !ok || (principal.Email == "" && principal.ID == "") {
+		if s.authorizationMode == string(authz.ModeEnforce) {
+			logger.Warn().Msg("build mutation without a principal")
+			return &devbuild.DevBuildUnauthorizedError{
+				Code:    http.StatusUnauthorized,
+				Message: "authenticated identity required to modify a build",
+			}
+		}
+		logger.Info().Msg("build mutation without a principal is allowed while authorization is not enforced")
+		return nil
+	}
+
+	if principal.Service {
+		logger.Info().Str("principal", principal.Email).Msg("automation mutating a build")
+		return nil
+	}
+
+	if !strings.EqualFold(principal.Email, build.CreatedBy) {
+		logger.Warn().Str("principal", principal.Email).Msg("build mutation by a non-owner")
+		return &devbuild.DevBuildForbiddenError{
+			Code:    http.StatusForbidden,
+			Message: "only the build creator can modify this build",
+		}
+	}
+	return nil
 }
 
 func productLabel(product string) string {
