@@ -24,6 +24,10 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+        {{- if .Values.server.tls.enabled }}
+        - protocol: TCP
+          port: {{ .Values.server.tls.port }}
+        {{- end }}
   {{- with .Values.networkPolicy.egress }}
   egress:
     {{- toYaml . | nindent 4 }}

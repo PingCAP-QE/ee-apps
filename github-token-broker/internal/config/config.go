@@ -31,12 +31,22 @@ type Config struct {
 	policy *authz.Policy
 }
 
-// Server configures the HTTP listener.
+// Server configures the HTTP listener and optional additional HTTPS listener.
 type Server struct {
+	TLS             TLS           `yaml:"tls"`
 	Address         string        `yaml:"address"`
 	ReadTimeout     time.Duration `yaml:"read_timeout"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
+}
+
+// TLS adds an HTTPS listener without changing the existing HTTP listener.
+// Certificate contents are reloaded for each new TLS handshake.
+type TLS struct {
+	Enabled  bool   `yaml:"enabled"`
+	Address  string `yaml:"address"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // GitHub configures the GitHub App and the optional fallback PAT.
@@ -110,6 +120,9 @@ func (c *Config) applyDefaults() {
 	if c.Server.Address == "" {
 		c.Server.Address = ":8080"
 	}
+	if c.Server.TLS.Address == "" {
+		c.Server.TLS.Address = ":8443"
+	}
 	if c.Server.ReadTimeout == 0 {
 		c.Server.ReadTimeout = 10 * time.Second
 	}
@@ -152,6 +165,17 @@ func (c *Config) applyDefaults() {
 func (c *Config) Validate() error {
 	if strings.TrimSpace(c.Server.Address) == "" {
 		return fmt.Errorf("server.address is required")
+	}
+	if c.Server.TLS.Enabled {
+		if strings.TrimSpace(c.Server.TLS.Address) == "" {
+			return fmt.Errorf("server.tls.address is required when TLS is enabled")
+		}
+		if strings.TrimSpace(c.Server.TLS.CertFile) == "" || strings.TrimSpace(c.Server.TLS.KeyFile) == "" {
+			return fmt.Errorf("server.tls.cert_file and server.tls.key_file are required when TLS is enabled")
+		}
+		if c.Server.TLS.Address == c.Server.Address {
+			return fmt.Errorf("server.tls.address must differ from server.address")
+		}
 	}
 	if c.GitHub.AppID <= 0 {
 		return fmt.Errorf("github.app_id must be positive")

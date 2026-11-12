@@ -145,6 +145,34 @@ See [config.example.yaml](./config.example.yaml). Notable settings:
 - `reload.interval`: how often the configuration and policy files are polled
   for changes (default `5s`; set `reload.disabled: true` to turn it off).
 
+## Optional native HTTPS
+
+HTTP remains on `server.address` (default `:8080`). To add an HTTPS listener
+with the same API, health and metrics handlers, configure:
+
+```yaml
+server:
+  tls:
+    enabled: true
+    address: ":8443"
+    cert_file: /etc/github-token-broker/tls/tls.crt
+    key_file: /etc/github-token-broker/tls/tls.key
+```
+
+TLS 1.2 or newer is required. Missing, malformed or mismatched certificate/key
+files, or failure to bind either listener, fail startup with a nonzero exit;
+the broker never silently falls back to HTTP-only mode when TLS is enabled.
+The certificate/key are read on every new TLS handshake, independently of
+configuration reload. Mount their Secret as a directory, not `subPath`, so
+Kubernetes projected Secret rotations take effect without restart. Invalid
+rotated files reject new handshakes until repaired; established connections
+are unaffected. Listener addresses, file paths and enabling TLS require restart.
+
+Clients must use HTTPS and trust the issuing CA (including the broker Service
+DNS name in the certificate SANs). Do not use `insecureSkipVerify` or `curl -k`.
+HTTP remains enabled for existing clients, probes and monitoring; this is an
+additive migration feature, **not** an HTTPS-only security boundary.
+
 ## Configuration reload
 
 The broker polls the configuration file (and `policy.file`, when configured)
@@ -186,6 +214,42 @@ The chart lives in [`../charts/github-token-broker`](../charts/github-token-brok
 
 ```bash
 helm template github-token-broker ../charts/github-token-broker --namespace ci
+```
+
+Before enabling TLS, pin `image.tag` to a build containing native HTTPS support.
+The default `appVersion` image (`0.1.0`) predates `server.tls` and rejects that
+configuration at startup. HTTP-only chart renders omit `server.tls` and are
+unaffected. The chart requires `server.address: ":8080"` to match its fixed
+HTTP container port and probes.
+
+To enable the additional HTTPS Service port using an existing TLS Secret:
+
+```yaml
+server:
+  tls:
+    enabled: true
+    port: 8443
+    existingSecret: github-token-broker-tls
+    certKey: tls.crt
+    keyKey: tls.key
+service:
+  httpsPort: 443
+```
+
+The chart does not create certificates or Secrets. It mounts selected Secret
+keys at `/etc/github-token-broker/tls/tls.crt` and `tls.key`, exposes the named
+`https` port, and adds that container port to the existing NetworkPolicy
+namespace allowlist. The HTTP Service port, probes and ServiceMonitor remain
+unchanged after successful activation. Invalid TLS credentials or either listener's
+startup failure stops the process rather than silently running HTTP-only, so a
+bad activation also affects existing HTTP consumers. Both listeners drain
+concurrently on shutdown; an exhausted shutdown timeout still exits nonzero,
+preserving the previous server's shutdown-error contract. A missing Secret name
+or invalid/conflicting HTTPS port fails Helm rendering; the container TLS port
+must be unprivileged (1024 or above) for the default non-root security context. To run the chart contract tests locally (Go and Helm required):
+
+```bash
+go test ../charts/github-token-broker/tests/render_test.go
 ```
 
 ## Local development

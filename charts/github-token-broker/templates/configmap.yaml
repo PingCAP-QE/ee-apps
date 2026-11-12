@@ -11,6 +11,13 @@ data:
       read_timeout: {{ .Values.server.readTimeout | quote }}
       write_timeout: {{ .Values.server.writeTimeout | quote }}
       shutdown_timeout: {{ .Values.server.shutdownTimeout | quote }}
+      {{- if .Values.server.tls.enabled }}
+      tls:
+        enabled: true
+        address: {{ printf ":%v" .Values.server.tls.port | quote }}
+        cert_file: /etc/github-token-broker/tls/tls.crt
+        key_file: /etc/github-token-broker/tls/tls.key
+      {{- end }}
     github:
       app_id: {{ .Values.github.appId }}
       private_key_path: /etc/github-token-broker/credentials/{{ .Values.github.credentialsSecret.key }}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"log/slog"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	goahttp "goa.design/goa/v3/http"
 
@@ -86,27 +84,8 @@ func main() {
 		go store.Watch(ctx, cfg.Reload.Interval)
 	}
 
-	httpServer := &http.Server{
-		Addr:         cfg.Server.Address,
-		Handler:      root,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	go func() {
-		logger.Info("starting github-token-broker", "address", cfg.Server.Address, "app_id", cfg.GitHub.AppID)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("http server failed", "error", err)
-			stop()
-		}
-	}()
-
-	<-ctx.Done()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
-	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		logger.Error("graceful shutdown failed", "error", err)
+	if err := server.Serve(ctx, cfg.Server, root, logger); err != nil {
+		logger.Error("broker server failed", "error", err)
 		os.Exit(1)
 	}
 	logger.Info("github-token-broker stopped")
