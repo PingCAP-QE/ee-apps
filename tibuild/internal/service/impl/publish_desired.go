@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -583,11 +584,50 @@ func (s *publishsrvc) settleNightlyUnit(ctx context.Context, unitID string) {
 		}
 	}
 
+	// A partial unit keeps the schedule retrying, but nothing else surfaces it:
+	// capture the rows before settling clears running_unit_id, so the alert can
+	// name them.
+	var partialRows []string
+	if unit.State == PublishStatePartial {
+		rows, err := s.db.PublishDesired.Query().
+			Where(entpublishdesired.RunningUnitID(unitID)).
+			All(ctx)
+		if err != nil {
+			s.logger.Err(err).Str("unit_id", unitID).Msg("failed to load the rows of a partial nightly unit")
+		}
+		for _, row := range rows {
+			partialRows = append(partialRows, fmt.Sprintf("%s/%s/%s/%s", row.Target, row.Pkg, row.Os, row.Arch))
+		}
+	}
+
 	settled, err := s.desired.Settle(ctx, unitID, unit.State, version, detail, s.now())
 	if err != nil {
 		s.logger.Err(err).Str("unit_id", unitID).Msg("failed to settle the nightly desired rows")
 	}
 	if settled > 0 && s.metrics != nil {
 		s.metrics.recordPublished(unit.State)
+	}
+	if settled > 0 && len(partialRows) > 0 {
+		s.alertPartialNightlyUnit(ctx, unitID, version, detail, partialRows)
+	}
+}
+
+// alertPartialNightlyUnit reports a nightly unit that reached only part of its
+// steps. The desired row is retried in the next window, so the publication is
+// not lost, but the shortfall is otherwise invisible until the lag alert fires
+// (1.5 windows, and that predicate is version-string based).
+func (s *publishsrvc) alertPartialNightlyUnit(ctx context.Context, unitID, version, detail string, rows []string) {
+	if s.alerter == nil {
+		return
+	}
+	if version == "" {
+		version = "unknown"
+	}
+	body := fmt.Sprintf("unit=%s version=%s rows=%s", unitID, version, strings.Join(rows, ","))
+	if detail != "" {
+		body += fmt.Sprintf(" last_error=%s", detail)
+	}
+	if err := s.alerter.SendAlert(ctx, "[tibuild] nightly publish partial", body); err != nil {
+		s.logger.Err(err).Str("unit_id", unitID).Msg("failed to send the nightly partial alert")
 	}
 }
