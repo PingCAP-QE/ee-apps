@@ -67,8 +67,11 @@ type publishsrvc struct {
 	desired *desiredStore
 	// metrics and nightlyAlerts expose the desired-state queue and alert on
 	// rows that wait longer than 1.5 windows.
-	metrics        *nightlyMetrics
-	nightlyAlerts  *nightlyAlertTracker
+	metrics       *nightlyMetrics
+	nightlyAlerts *nightlyAlertTracker
+	// failedNightly batches the nightly units that settled as a failure between
+	// two ticks so the whole batch becomes one alert.
+	failedNightly  *nightlyFailureAccumulator
 	conflictAlerts *conflictAlertTracker
 	alerter        AlertNotifier
 	// tiup publishes packages to a mirror.
@@ -130,10 +133,11 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 		desired:        newDesiredStore(db, cfg.Publish.Nightly),
 		metrics:        newNightlyMetrics(),
 		nightlyAlerts:  newNightlyAlertTracker(time.Hour),
+		failedNightly:  newNightlyFailureAccumulator(),
 		conflictAlerts: newConflictAlertTracker(time.Hour),
 		alerter:        alerter,
 		tiup:           newTiupCLI(cfg.Publish.TiUPBinary),
-		tiupMirror:   newTiupMirrorReader(nightlyVerifyCacheTTL),
+		tiupMirror:     newTiupMirrorReader(nightlyVerifyCacheTTL),
 		publishCfg:     cfg.Publish,
 		fetchConfig:    fetchTiUPArtifactConfig,
 		nowFn:          time.Now,

@@ -261,13 +261,15 @@ failures wait for the next window. On success `last_succeeded_version` records
 what was actually published, even if a newer push replaced the desired version
 while the unit was running.
 
-A unit that reaches only some of its steps ends `partial`. The schedule treats
-it exactly like a failure (retry in the next window, `last_failed_version` kept),
-and the worker additionally sends one `[tibuild] nightly publish partial` alert
-per unit, naming the affected `target/pkg/os/arch` rows and the last step error.
-Without it a half-published nightly would only show up through the lag alert,
-which waits 1.5 windows and compares version strings — constant for a nightly
-channel, so it cannot tell a stalled publication from a delivered one.
+A nightly unit publishes one row to one mirror, so it ends either `succeeded` or
+`failed`: `partial` needs a multi-step unit and cannot happen on this path. Every
+failed row keeps `desired_version` and retries, and the worker sends one
+aggregated `[tibuild] nightly publish failed` alert per tick — at most one every
+10 minutes — carrying the number of affected channels, a bounded sample of
+`target/pkg/os/arch` and the first error. Without it a refusing mirror (every
+channel of the window failing within minutes) would only surface through the lag
+alert, which waits 1.5 windows and compares version strings — constant for a
+nightly channel, so it cannot tell a stalled publication from a delivered one.
 
 Nightly convergence is **off by default**; enabling it on staging first keeps
 prod on the legacy "publish every push" path until the rollout reaches it.
