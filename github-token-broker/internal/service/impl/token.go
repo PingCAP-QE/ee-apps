@@ -90,7 +90,6 @@ func (s *Token) Issue(ctx context.Context, payload *tokenapi.TokenPayload) (*tok
 	}
 
 	s.cache.SetTTLMargin(cfg.Cache.TTLMargin)
-	fallbackPAT := strings.TrimSpace(cfg.GitHub.FallbackPAT)
 	repositories := normalizeRepositories(payload.Repositories)
 	if len(repositories) == 0 && hasWrite(permissions) {
 		// Never hand out an installation-wide write token by default.
@@ -103,13 +102,10 @@ func (s *Token) Issue(ctx context.Context, payload *tokenapi.TokenPayload) (*tok
 		minted, err := s.minter.Mint(ctx, owner, repository, repositories, permissions)
 		s.metrics.MintDuration(time.Since(start))
 		if err != nil {
-			if errors.Is(err, githubapp.ErrNoInstallation) && fallbackPAT != "" {
-				return cache.Token{
-					Value:     fallbackPAT,
-					ExpiresAt: s.now().Add(10 * time.Minute),
-					Source:    "pat",
-				}, nil
-			}
+			// A repository without an App installation is refused. Handing back a
+			// configured static PAT here would answer a narrowed request
+			// ("contents: read on owner/repo") with a token that is neither
+			// narrowed nor scoped, so it is not a fallback at all.
 			return cache.Token{}, err
 		}
 		return cache.Token{

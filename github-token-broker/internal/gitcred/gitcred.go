@@ -161,10 +161,13 @@ func (h *Helper) Get(ctx context.Context, req Request) (Response, error) {
 	}
 	token, err := h.token(ctx, repo)
 	if err != nil {
-		if resp, ok := h.fallback(req.Host); ok {
-			h.logger.Warn("token broker denied git credentials, using fallback PAT", "repo", repo, "error", err)
-			h.setState(ModePAT)
-			return resp, nil
+		var be *brokerError
+		if !(errors.As(err, &be) && be.denied) {
+			if resp, ok := h.fallback(req.Host); ok {
+				h.logger.Warn("token broker unavailable, using fallback PAT", "repo", repo, "error", err)
+				h.setState(ModePAT)
+				return resp, nil
+			}
 		}
 		return Response{}, err
 	}
@@ -323,8 +326,9 @@ func (h *Helper) mintOnce(ctx context.Context, callerToken string, body []byte) 
 	}
 	if resp.StatusCode != http.StatusOK {
 		return cachedToken{}, fmt.Errorf("gitcred: %w", &brokerError{
-			err:   fmt.Errorf("token broker returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(payload))),
-			retry: resp.StatusCode >= 500,
+			err:    fmt.Errorf("token broker returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(payload))),
+			retry:  resp.StatusCode >= 500,
+			denied: resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden,
 		})
 	}
 	var out tokenResponse
@@ -341,6 +345,10 @@ func (h *Helper) mintOnce(ctx context.Context, callerToken string, body []byte) 
 type brokerError struct {
 	err   error
 	retry bool
+	// denied marks an authorization answer (401/403) as opposed to a transient
+	// failure. A denial must not be downgraded to the fallback credentials:
+	// that would turn "the broker said no" into a full-scope PAT.
+	denied bool
 }
 
 func (e *brokerError) Error() string { return e.err.Error() }
