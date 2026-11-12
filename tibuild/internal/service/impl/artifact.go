@@ -138,6 +138,9 @@ type artifactsrvc struct {
 	mu         sync.RWMutex
 	sourceRegx *regexp.Regexp
 	targetRegx *regexp.Regexp
+	// policyReason is non-empty when no image sync may be accepted; see
+	// applyConfig.
+	policyReason string
 
 	pollingRate time.Duration
 	workerCfg   config.Worker
@@ -192,16 +195,32 @@ func (s *artifactsrvc) applyConfig(cfg *config.Service) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// An unset or unusable policy rejects every sync. Treating "not configured"
+	// as "validate nothing" turned a missing key into an open relay for image
+	// copies, which is the opposite of what the regexes exist for.
+	reason := ""
 	if cfg.ImageSync.SourceRegx == "" {
 		s.sourceRegx = nil
+		reason = "image_sync.source_regx is not configured"
 	} else if src != nil {
 		s.sourceRegx = src
+	} else if s.sourceRegx == nil {
+		reason = "image_sync.source_regx is invalid and no previous value is available"
 	}
 	if cfg.ImageSync.TargetRegx == "" {
 		s.targetRegx = nil
+		if reason == "" {
+			reason = "image_sync.target_regx is not configured"
+		}
 	} else if dst != nil {
 		s.targetRegx = dst
+	} else if s.targetRegx == nil && reason == "" {
+		reason = "image_sync.target_regx is invalid and no previous value is available"
 	}
+	if reason == "" && (s.sourceRegx == nil || s.targetRegx == nil) {
+		reason = "image sync validation is not configured"
+	}
+	s.policyReason = reason
 	if cfg.ImageSync.PollingRate != "" {
 		if d, err := time.ParseDuration(cfg.ImageSync.PollingRate); err == nil && d > 0 {
 			s.pollingRate = d
@@ -241,8 +260,21 @@ func (s *artifactsrvc) Reload(cfg *config.Service) {
 // configured validation regexes. An empty regex disables validation.
 func (s *artifactsrvc) validate(p *artifact.ImageSyncRequest) error {
 	s.mu.RLock()
-	src, dst := s.sourceRegx, s.targetRegx
+	src, dst, reason := s.sourceRegx, s.targetRegx, s.policyReason
 	s.mu.RUnlock()
+
+	if reason != "" {
+		return &artifact.HTTPError{
+			Code:    http.StatusForbidden,
+			Message: "image sync is disabled: " + reason,
+		}
+	}
+	if src == nil || dst == nil {
+		return &artifact.HTTPError{
+			Code:    http.StatusForbidden,
+			Message: "image sync is disabled: no validation policy is configured",
+		}
+	}
 
 	if src != nil && !src.MatchString(p.Source) {
 		return &artifact.HTTPError{

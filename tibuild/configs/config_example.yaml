@@ -194,3 +194,13 @@ publish:
 # tidbcloud:
 #   ops_config_file: /etc/tidbcloud/ops.yaml
 #   testplatforms_config_file: /etc/tidbcloud/testplatforms.yaml
+
+# tidbcloud integrates TiBuild with the TiDB Cloud ops platform and TCMS.
+# tidbcloud:
+#   ops_config_file: "/etc/tibuild/tidbcloud-ops.yaml"
+#   testplatforms_config_file: "/etc/tibuild/tidbcloud-tcms.yaml"
+#   # Repositories a kernel-image sync may name, as "host/path" or
+#   # "host/path/*". The ops platform pulls whatever it is handed, so an unset
+#   # list rejects every sync rather than allowing any registry.
+#   kernel_image_allowed_repositories:
+#     - "hub.pingcap.net/pingcap/*"
