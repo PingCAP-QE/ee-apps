@@ -261,6 +261,14 @@ failures wait for the next window. On success `last_succeeded_version` records
 what was actually published, even if a newer push replaced the desired version
 while the unit was running.
 
+A unit that reaches only some of its steps ends `partial`. The schedule treats
+it exactly like a failure (retry in the next window, `last_failed_version` kept),
+and the worker additionally sends one `[tibuild] nightly publish partial` alert
+per unit, naming the affected `target/pkg/os/arch` rows and the last step error.
+Without it a half-published nightly would only show up through the lag alert,
+which waits 1.5 windows and compares version strings — constant for a nightly
+channel, so it cannot tell a stalled publication from a delivered one.
+
 Nightly convergence is **off by default**; enabling it on staging first keeps
 prod on the legacy "publish every push" path until the rollout reaches it.
 Deferred pushes create no step, so `POST /tiup/delivery-by-rules` returns an
