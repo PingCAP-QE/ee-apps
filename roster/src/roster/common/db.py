@@ -7,6 +7,8 @@ from roster.common.config import DatabaseSettings, Settings, get_settings
 
 
 def _build_connect_args(database: DatabaseSettings) -> dict[str, object]:
+    if database.url and database.url.startswith("sqlite"):
+        return {}
     if not database.ssl_ca:
         return {}
     return {"ssl": {"ca": database.ssl_ca}}
@@ -19,6 +21,7 @@ def build_engine(settings: Settings | None = None) -> Engine:
             resolved.database.url,
             pool_pre_ping=True,
             future=True,
+            connect_args=_build_connect_args(resolved.database),
         )
 
     url = URL.create(
