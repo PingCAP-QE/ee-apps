@@ -204,3 +204,11 @@ publish:
 #   # list rejects every sync rather than allowing any registry.
 #   kernel_image_allowed_repositories:
 #     - "hub.pingcap.net/pingcap/*"
+
+# hotfix gates the hot-fix tag endpoints. Creating a tag writes into a
+# repository consumers release from, and the repository comes from the request,
+# so an unset list denies every repository.
+# hotfix:
+#   github_repo_allowlist:
+#     - "pingcap/tidb"
+#     - "tikv/*"
