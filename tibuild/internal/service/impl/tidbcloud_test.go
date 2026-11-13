@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,11 @@ func newTidbcloudTestService(t *testing.T, ops *OpsConfig, tps *TestPlatformsCon
 		logger:     &logger,
 		httpClient: &http.Client{Timeout: 5 * time.Second},
 		readFile:   os.ReadFile,
+		// Rollouts verify the tag exists; cases that do not exercise that check
+		// get a resolver that always succeeds.
+		resolveImageTag: func(context.Context, string) (string, error) {
+			return "sha256:" + strings.Repeat("a", 64), nil
+		},
 	}
 	require.NoError(t, svc.applyConfig(cfg))
 	return svc
