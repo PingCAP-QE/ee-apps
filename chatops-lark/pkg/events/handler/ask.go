@@ -148,16 +148,16 @@ func setupAskCtx(ctx context.Context, cfg config.Config, _ *CommandActor) contex
 	var toolDeclarations []openai.ChatCompletionToolParam
 	{
 		for name, cfg := range cfg.Ask.LLM.MCPServers {
-			log.Debug().Str("name", name).Str("url", cfg.BaseURL).Msg("initializing MCP SSE client")
+			log.Debug().Str("name", name).Str("url", cfg.BaseURL).Msg("initializing MCP HTTP stream client")
 			client, declarations, err := initializeMCPClient(ctx, name, cfg.BaseURL)
 			if err != nil {
-				log.Err(err).Str("name", name).Str("url", cfg.BaseURL).Msg("failed to initialize MCP SSE client")
+				log.Err(err).Str("name", name).Str("url", cfg.BaseURL).Msg("failed to initialize MCP HTTP stream client")
 				continue
 			}
 
 			mcpClients = append(mcpClients, client)
 			toolDeclarations = append(toolDeclarations, declarations...)
-			log.Debug().Str("name", name).Str("url", cfg.BaseURL).Msg("initialized MCP SSE client")
+			log.Debug().Str("name", name).Str("url", cfg.BaseURL).Msg("initialized MCP HTTP stream client")
 		}
 	}
 
