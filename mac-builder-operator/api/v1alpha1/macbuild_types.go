@@ -70,20 +70,32 @@ type MacBuildSpec struct {
 // SourceSpec defines the code source
 type SourceSpec struct {
 	// Git repository URL (e.g., https://github.com/user/repo.git)
+	// Only http(s), ssh and git transports are accepted, and the value may not
+	// begin with "-": the value becomes a `git clone` argument on the macOS
+	// worker, where a leading dash would be parsed as an option.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^((https?|ssh|git)://[^[:space:]-][^[:space:]]*|git@[A-Za-z0-9._-]+:[^[:space:]]+)$`
 	GitRepository string `json:"gitRepository"`
 
 	// Git ref (branch or tag) (e.g., main, v1.0.0)
+	// Must start with an alphanumeric character, so it can never be mistaken for
+	// a `git checkout` option.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9][A-Za-z0-9._/+~^-]*$`
 	GitRef string `json:"gitRef"`
 
 	// Optional: A specific git commit SHA to check out. Overrides gitRef if provided.
 	// (Maps to Tekton git-sha param)
 	// +optional
+	// +kubebuilder:validation:Pattern=`^[0-9a-f]{7,40}$`
 	GitSha *string `json:"gitSha,omitempty"`
 
 	// Optional: A git refspec to fetch before checkout (e.g., refs/pull/123/head)
 	// +optional
+	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9][A-Za-z0-9._/*~^:{}@+-]*$`
 	GitRefspec *string `json:"gitRefspec,omitempty"`
 
 	// Optional: Name of a Secret in the MacBuild's namespace that holds the git
@@ -107,7 +119,11 @@ type SourceSpec struct {
 // BuildSpec defines the build parameters
 type BuildSpec struct {
 	// Component to build (e.g., tidb, tikv)
+	// This value becomes a directory name and is embedded in the build script the
+	// worker executes, so it is restricted to a DNS label.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	Component string `json:"component"`
 
 	// Version string to release (e.g., v1.2.3, nightly)
