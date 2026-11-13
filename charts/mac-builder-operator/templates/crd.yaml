@@ -85,7 +85,12 @@ spec:
                     - arm64
                     type: string
                   component:
-                    description: Component to build (e.g., tidb, tikv)
+                    description: |-
+                      Component to build (e.g., tidb, tikv)
+                      This value becomes a directory name and is embedded in the build script the
+                      worker executes, so it is restricted to a DNS label.
+                    maxLength: 63
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                   os:
                     default: darwin
@@ -106,14 +111,27 @@ spec:
                 description: Source defines the code to be built
                 properties:
                   gitRef:
-                    description: Git ref (branch or tag) (e.g., main, v1.0.0)
+                    description: |-
+                      Git ref (branch or tag) (e.g., main, v1.0.0)
+                      Must start with an alphanumeric character, so it can never be mistaken for
+                      a `git checkout` option.
+                    maxLength: 255
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9._/+~^-]*$
                     type: string
                   gitRefspec:
                     description: 'Optional: A git refspec to fetch before checkout
                       (e.g., refs/pull/123/head)'
+                    maxLength: 255
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9._/*~^:{}@+-]*$
                     type: string
                   gitRepository:
-                    description: Git repository URL (e.g., https://github.com/user/repo.git)
+                    description: |-
+                      Git repository URL (e.g., https://github.com/user/repo.git)
+                      Only http(s), ssh and git transports are accepted, and the value may not
+                      begin with "-": the value becomes a `git clone` argument on the macOS
+                      worker, where a leading dash would be parsed as an option.
+                    maxLength: 2048
+                    pattern: ^((https?|ssh|git)://[^[:space:]-][^[:space:]]*|git@[A-Za-z0-9._-]+:[^[:space:]]+)$
                     type: string
                   gitSecretRef:
                     description: |-
@@ -128,6 +146,7 @@ spec:
                     description: |-
                       Optional: A specific git commit SHA to check out. Overrides gitRef if provided.
                       (Maps to Tekton git-sha param)
+                    pattern: ^[0-9a-f]{7,40}$
                     type: string
                   submodules:
                     description: |-
