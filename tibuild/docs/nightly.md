@@ -40,6 +40,12 @@ Consequences worth internalising:
 - **Publishing stays serial.** Nightly units share the `tiup` lane with release
   and API publications and carry the lowest base priority (`release > api >
   nightly`), with aging so they cannot be starved indefinitely.
+- **A worker only reschedules the targets it shards.** The unit aggregator and
+  the lease reaper see units of every target, but the window belongs to the
+  target: a prod worker that settled a staging row would advance it to the next
+  prod boundary and the hourly channel would silently skip eleven windows. Rows
+  of a target a worker does not shard are left to that target's worker, whose own
+  sweep closes them.
 
 ## Reading `publish_desired`
 
@@ -190,6 +196,7 @@ as in [Troubleshooting](#troubleshooting)).
 | `publish_desired_lag_seconds` grows while units succeed | lane congestion, or a window longer than the build cadence | `publish_lane_starvation_seconds`, `oldest_pending_seconds` of queued units |
 | pushes create units instead of deferred rows | `publish.nightly` missing from the API's config, or the target not listed under `targets` | the API's loaded config and its startup log line per target |
 | deferred pushes create no publication at all | worker not running, or `worker.kinds` does not include `tiup` | worker logs: `nightly target schedule` and `nightly desired-state reconciler started` |
+| a row skips its windows: `next_run_at` sits on another target's boundary (an hourly staging row parked at `14:1x`) | a worker that does not shard the target advanced the row. Settles are now scoped to the worker's own targets, so this means the row was written before that scoping shipped (or a worker runs with a stale shard) | compare `next_run_at` with the row's target window, and the worker's `nightly target schedule` line; re-arm the row as above, it is safe |
 
 ## Limits
 
