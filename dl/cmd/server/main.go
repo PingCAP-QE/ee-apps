@@ -30,6 +30,11 @@ func main() {
 		secureF     = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
 		dbgF        = flag.Bool("debug", false, "Log request and response bodies")
 		ociCfgPathF = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
+		// Deprecated: the KS3 backend is gone. The flag stays accepted for one
+		// release so the new image can be rolled out while the deployment still
+		// passes it — `flag.Parse` exits on an unknown flag, so dropping it here
+		// would turn the rollout order into a crash loop instead of a no-op.
+		_           = flag.String("ks3-config", "ks3.yaml", "deprecated: the KS3 backend was removed, this flag is ignored")
 		gcsCfgPathF = flag.String("gcs-config", "", "gcs config file path (yaml or json, optional: uses ADC if not set)")
 
 		ociAllowedRegistriesF = flag.String("oci-allowed-registries", "", "comma-separated registry hosts allowed for OCI downloads; empty denies all")
