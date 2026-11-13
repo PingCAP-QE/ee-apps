@@ -32,8 +32,14 @@ func (h *CompositeEventHandler) Handle(event cloudevents.Event) cloudevents.Resu
 	var results []cloudevents.Result
 
 	// Loop through all registered handlers for the given event type.
+	//
+	// A handler runs on the Kafka consumer goroutine, so a panic there takes the
+	// whole process down: one malformed event would stop every notification.
+	// Recover per handler and turn it into a failed receipt, which the consumer
+	// records and moves past.
 	for _, eh := range handlers {
-		if handlerResult := eh.Handle(event); !cloudevents.IsACK(handlerResult) {
+		handlerResult := handleSafely(eh, event)
+		if !cloudevents.IsACK(handlerResult) {
 			// Accumulate errors from each handler.
 			results = append(results, handlerResult)
 		}
@@ -41,6 +47,21 @@ func (h *CompositeEventHandler) Handle(event cloudevents.Event) cloudevents.Resu
 
 	// Combine and return the aggregated results.
 	return combineResults(results)
+}
+
+// handleSafely runs one handler and converts a panic into a failed receipt.
+func handleSafely(eh EventHandler, event cloudevents.Event) (result cloudevents.Result) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Error().
+				Interface("panic", recovered).
+				Str("ce-type", event.Type()).
+				Str("ce-id", event.ID()).
+				Msg("event handler panicked")
+			result = cloudevents.NewReceipt(false, "event handler panicked: %v", recovered)
+		}
+	}()
+	return eh.Handle(event)
 }
 
 // AddHandlers adds child handlers to the composite event handler.
