@@ -1,0 +1,52 @@
+name: Test and Build - dl
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/ci-dl.yaml
+      - dl/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      tidb:
+        image: pingcap/tidb:v8.5.8
+        ports: [4000:4000]
+    defaults:
+      run:
+        working-directory: dl
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: dl/go.mod
+          cache-dependency-path: dl/go.sum
+      - name: Wait for TiDB
+        run: |
+          for _ in $(seq 1 60); do
+            if (echo > /dev/tcp/127.0.0.1/4000) 2>/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+      - name: Test including TiDB concurrency and revocation
+        env:
+          DL_TEST_TIDB_DSN: root@tcp(127.0.0.1:4000)/test?parseTime=true&loc=UTC
+        run: go test -race ./...
+      - name: Build
+        run: go build ./...
+      - name: Check generated APIs
+        run: |
+          go generate ./...
+          git diff --exit-code -- gen internal/database/ent
