@@ -23,7 +23,10 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 	if err := validateProductRequest(p.Request); err != nil {
 		return nil, gitRefInfo{}, err
 	}
-	if err := validateBuilderImage(s.builderImageAllowlist, derefString(p.Request.BuilderImg)); err != nil {
+	// One snapshot per request: the allowlists and the product map must come
+	// from the same configuration revision.
+	policy := s.currentPolicy()
+	if err := validateBuilderImage(policy.builderImageAllowlist, derefString(p.Request.BuilderImg)); err != nil {
 		return nil, gitRefInfo{}, err
 	}
 
@@ -33,7 +36,7 @@ func (s *devbuildsrvc) newBuildEntity(ctx context.Context, p *devbuild.CreatePay
 
 	// 1. get the github full repo. Honor an explicit repo from the request,
 	// and fall back to the product default only when it is not provided.
-	githubFullRepo, err := resolveGithubRepo(derefString(p.Request.GithubRepo), s.productRepoMap, p.Request.Product, s.currentAllowlist())
+	githubFullRepo, err := resolveGithubRepo(derefString(p.Request.GithubRepo), policy.productRepoMap, p.Request.Product, policy.repoAllowlist)
 	if err != nil {
 		if isRepoDenied(err) {
 			s.recordRepoDenied("create", derefString(p.Request.GithubRepo), p.Request.Product, derefString(p.CreatedBy))
