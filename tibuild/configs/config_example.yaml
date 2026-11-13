@@ -212,3 +212,12 @@ publish:
 #   github_repo_allowlist:
 #     - "pingcap/tidb"
 #     - "tikv/*"
+
+# publish.oci_source_allowed_hosts gates the registry an OCI TiUP publish
+# source may be read from (artifact_url of /publish/tiup/publish-request).
+# Pinning a tag or digest fixes what is published, not where it is fetched from,
+# so an unset list rejects every OCI source.
+# publish:
+#   oci_source_allowed_hosts:
+#     - "hub.pingcap.net"
+#     - "us-docker.pkg.dev"

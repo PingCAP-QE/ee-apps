@@ -60,6 +60,9 @@ type fakeImageOps struct {
 
 	copies  []string
 	copyErr error
+	// onCopy lets a case update the table the way a real registry would, for
+	// example so the post-copy verification sees the digest it just wrote.
+	onCopy func(src, dst string)
 }
 
 func (f *fakeImageOps) Digest(_ context.Context, ref string) (string, error) {
@@ -76,6 +79,9 @@ func (f *fakeImageOps) Digest(_ context.Context, ref string) (string, error) {
 
 func (f *fakeImageOps) Copy(_ context.Context, src, dst string) error {
 	f.copies = append(f.copies, src+" -> "+dst)
+	if f.onCopy != nil {
+		f.onCopy(src, dst)
+	}
 	return f.copyErr
 }
 

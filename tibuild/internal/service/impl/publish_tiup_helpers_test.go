@@ -24,7 +24,13 @@ import (
 func newFlowTestService(t *testing.T) (*publishsrvc, *time.Time) {
 	t.Helper()
 	logger := zerolog.Nop()
-	svc := newPublishService(&logger, serverlessTestDB(t), &config.Service{})
+	// The OCI publish source fails closed, so the fixture names the registries
+	// its cases read from.
+	svc := newPublishService(&logger, serverlessTestDB(t), &config.Service{
+		Publish: config.Publish{
+			OCISourceAllowedHosts: []string{"us-docker.pkg.dev", "hub.pingcap.net", "docker.io"},
+		},
+	})
 	now := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 	clock := &now
 	svc.nowFn = func() time.Time { return *clock }

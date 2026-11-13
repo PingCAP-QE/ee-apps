@@ -115,6 +115,20 @@ type Publish struct {
 	// PingCAP-QE/artifacts), mounted by the deployment. The rules are reloaded
 	// when the file changes, so a Flux sync takes effect without a restart.
 	DeliveryConfigPath string `yaml:"delivery_config_path,omitempty" json:"delivery_config_path,omitempty"`
+	// OCISourceAllowedHosts is the registry-host allowlist for a TiUP publish
+	// source that is an OCI reference (`artifact_url` of
+	// POST /publish/tiup/publish-request).
+	//
+	// Pinning a tag or digest fixes *what* is published, not *where it is read
+	// from*: the worker pulls the artifact with its own registry credentials, so
+	// an unvalidated host is a fetch primitive against any registry the process
+	// can reach. The list therefore fails closed — unset rejects every OCI
+	// source.
+	//
+	// Entries are registry hosts ("hub.pingcap.net"); a leading "*." also allows
+	// subdomains. Matching is case-insensitive.
+	OCISourceAllowedHosts []string `yaml:"oci_source_allowed_hosts,omitempty" json:"oci_source_allowed_hosts,omitempty"`
+
 	// Targets restricts which publish targets this worker claims, for example
 	// ["gcr.io", "docker.io"] in GCP and ["uhub.service.ucloud.cn"] in TKE.
 	// Empty falls back to worker.targets.
