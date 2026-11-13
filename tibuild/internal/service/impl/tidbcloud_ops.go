@@ -63,6 +63,16 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 		return &tidbcloud.UpdateComponentVersionInCloudconfigResult{Stage: p.Stage}, nil
 	}
 
+	// The caller picks which tag of a configured base image gets rolled out, so
+	// the tag has to exist. A roll to a tag nobody published is a typo or a
+	// downgrade to something that was never built; the sibling kernel-image
+	// endpoint refuses the same input for the same reason.
+	if err := s.verifyImageTagExists(ctx, imageRepo, imageTag); err != nil {
+		s.logger.Error().Err(err).Str("stage", p.Stage).Str("image", p.Image).
+			Msg("tidbcloud.update-component-version-in-cloudconfig refused")
+		return nil, err
+	}
+
 	var components []string
 	for name, c := range stageCfg.Components {
 		if c.BaseImage == imageRepo {
@@ -88,6 +98,23 @@ func (s *tidbcloudsrvc) UpdateComponentVersionInCloudconfig(ctx context.Context,
 	s.logger.Info().Str("stage", p.Stage).Str("image", p.Image).Int("tickets", len(res.Tickets)).
 		Msg("tidbcloud.update-component-version-in-cloudconfig succeeded")
 	return res, nil
+}
+
+// verifyImageTagExists checks that repo:tag resolves in the registry.
+func (s *tidbcloudsrvc) verifyImageTagExists(ctx context.Context, repo, tag string) error {
+	ref := repo + ":" + tag
+	resolve := s.resolveImageTag
+	if resolve == nil {
+		return fmt.Errorf("cannot verify %s: no image resolver is configured", ref)
+	}
+	digest, err := resolve(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("image %s is not readable: %w", ref, err)
+	}
+	if strings.TrimSpace(digest) == "" {
+		return fmt.Errorf("image %s resolved to an empty digest", ref)
+	}
+	return nil
 }
 
 func (s *tidbcloudsrvc) callOpsPlatformAPI(
