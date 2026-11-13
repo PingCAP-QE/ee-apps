@@ -116,6 +116,9 @@ func (s *publishsrvc) RequestToPublish(ctx context.Context, p *publish.RequestTo
 		return nil, badRequest("artifact_url is required")
 	}
 	src := strings.TrimSpace(p.ArtifactURL)
+	if err := validateTiUPOCIPublishSource(s.publishConfig().OCISourceAllowedHosts, src); err != nil {
+		return nil, badRequest(err.Error())
+	}
 
 	mirror := p.TiupMirror
 	if mirror == "" {

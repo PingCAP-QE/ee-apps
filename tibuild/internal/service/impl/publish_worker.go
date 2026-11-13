@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"regexp"
 	"sync"
 	"time"
 
@@ -311,6 +312,14 @@ func (s *publishsrvc) executeStep(ctx context.Context, step *ent.PublishStep) {
 		Msg("image copied")
 }
 
+// formalImageTagPattern matches a released version tag, the one class of image
+// tag that must not be silently replaced.
+var formalImageTagPattern = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+
+func isFormalImageTag(tag string) bool {
+	return formalImageTagPattern.MatchString(tag)
+}
+
 // copyImage writes every tag of the payload on the destination repository.
 //
 // Tags are processed in order: a step carries at most a couple of them (the
@@ -330,11 +339,25 @@ func (s *publishsrvc) copyImage(ctx context.Context, payload ImageCopyPayload) (
 		}
 		dst := payload.Dest + ":" + tag
 
-		// Idempotency: the destination already holds the planned digest, so
-		// there is nothing to send.
-		if current, err := s.images.Digest(ctx, dst); err == nil && current == payload.Digest {
-			result.Skipped = append(result.Skipped, dst)
-			continue
+		// Look the destination up once: it decides both cases below.
+		//
+		//   - it already holds the planned digest -> nothing to send;
+		//   - it holds a different digest on a released version tag -> refuse.
+		//     Nightly, nextgen, pre/beta/rc and branch tags are overwritten by
+		//     design (that is what re-running a non-formal publication means),
+		//     but a released `vX.Y.Z` is what users already pull, and the TiUP
+		//     path has refused the same overwrite since #862.
+		current, lookupErr := s.images.Digest(ctx, dst)
+		if lookupErr == nil {
+			if current == payload.Digest {
+				result.Skipped = append(result.Skipped, dst)
+				continue
+			}
+			if isFormalImageTag(tag) {
+				return imageCopyResult{}, fmt.Errorf(
+					"refusing to overwrite published release tag %s: it serves %s, the plan is %s",
+					dst, current, payload.Digest)
+			}
 		}
 
 		if err := s.images.Copy(ctx, payload.Source, dst); err != nil {

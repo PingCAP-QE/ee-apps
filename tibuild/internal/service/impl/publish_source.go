@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/distribution/reference"
 )
 
 // validateTiUPHTTPPublishSource enforces the source policy for an `http` TiUP
@@ -102,4 +104,52 @@ func normalizePublishSourceHost(entry string) (string, bool) {
 		return "*." + trimmed, true
 	}
 	return trimmed, true
+}
+
+// validateTiUPOCIPublishSource enforces the source policy for an OCI TiUP
+// publish source (`artifact_url` of POST /publish/tiup/publish-request).
+//
+// Pinning a tag or digest fixes what gets published, not where it is read from:
+// the worker pulls the artifact with its own registry credentials, so a caller
+// naming an arbitrary host turns the worker into a fetch primitive against any
+// registry it can reach. The host allowlist therefore fails closed.
+func validateTiUPOCIPublishSource(allowedHosts []string, artifactURL string) error {
+	trimmed := strings.TrimSpace(artifactURL)
+	if trimmed == "" {
+		return fmt.Errorf("artifact_url is required for an oci source")
+	}
+	if strings.Contains(trimmed, "://") {
+		return fmt.Errorf("artifact_url must be an OCI reference, not a URL")
+	}
+
+	named, err := reference.ParseNormalizedNamed(trimmed)
+	if err != nil {
+		return fmt.Errorf("artifact_url is not a valid OCI reference: %v", err)
+	}
+	host := strings.ToLower(reference.Domain(named))
+
+	normalized := make([]string, 0, len(allowedHosts))
+	for _, entry := range allowedHosts {
+		if candidate, ok := normalizePublishSourceHost(entry); ok {
+			normalized = append(normalized, candidate)
+		}
+	}
+	if len(normalized) == 0 {
+		return fmt.Errorf(
+			"oci publish sources are disabled: publish.oci_source_allowed_hosts is empty (registry %q rejected)",
+			host)
+	}
+
+	for _, entry := range normalized {
+		if entry == host {
+			return nil
+		}
+		if suffix, wildcard := strings.CutPrefix(entry, "*."); wildcard {
+			if suffix != "" && strings.HasSuffix(host, "."+suffix) {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("artifact_url registry %q is not in publish.oci_source_allowed_hosts (%s)",
+		host, strings.Join(normalized, ", "))
 }
