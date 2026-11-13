@@ -15,7 +15,7 @@ type devbuildPolicy struct {
 	repoAllowlist config.RepoAllowlist
 	// builderImageAllowlist holds the repository prefixes a caller may name in
 	// builderImg. Empty disables the check (legacy behaviour).
-	builderImageAllowlist []string
+	builderImageAllowlist config.BuilderImageAllowlist
 	// productRepoMap maps a product name to its default GitHub repository.
 	productRepoMap map[string]string
 	// imageMirrorURLMap maps an image URL prefix to its mirror prefix.
@@ -25,21 +25,25 @@ type devbuildPolicy struct {
 // newDevbuildPolicy copies the configuration into a new snapshot, so a caller
 // that keeps mutating cfg cannot change a snapshot that is already published.
 //
-// When the githubRepo allowlist does not parse, the returned policy is still
-// usable: its allowlist is empty, which rejects every explicit repository. The
-// error is returned for the caller to log and decide what to publish.
+// When an allowlist does not parse, the returned policy is still usable: the
+// affected policy allows nothing, which rejects every explicit value. The error
+// is returned for the caller to log and decide what to publish.
 func newDevbuildPolicy(cfg *config.Service) (*devbuildPolicy, error) {
+	builderImages, builderErr := config.NewBuilderImageAllowlist(cfg.DevBuild.BuilderImageAllowedRepositories)
 	policy := &devbuildPolicy{
-		builderImageAllowlist: append([]string(nil), cfg.DevBuild.BuilderImageAllowedRepositories...),
+		builderImageAllowlist: builderImages,
 		productRepoMap:        copyStringMap(cfg.ProductRepoMap),
 		imageMirrorURLMap:     copyStringMap(cfg.ImageMirrorURLMap),
 	}
-	allowlist, err := config.NewRepoAllowlist(cfg.DevBuild.GithubRepoAllowlist)
-	if err != nil {
-		return policy, err
+	allowlist, repoErr := config.NewRepoAllowlist(cfg.DevBuild.GithubRepoAllowlist)
+	if repoErr == nil {
+		policy.repoAllowlist = allowlist
 	}
-	policy.repoAllowlist = allowlist
-	return policy, nil
+	// Report the first problem; both policies stay fail-closed on their own.
+	if builderErr != nil {
+		return policy, builderErr
+	}
+	return policy, repoErr
 }
 
 // currentPolicy returns the snapshot the service is serving. A service built
