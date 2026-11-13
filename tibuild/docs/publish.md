@@ -144,6 +144,18 @@ version. The per-package outcome is recorded in the step result's `action`:
 | `overwritten_non_formal` | a pre/beta/rc/nextgen/rust/branch build replaced the previous package |
 | `refused_formal_overwrite` | failure log only: the replacement of a released `vX.Y.Z` was refused |
 
+The same rule applies per tag on the `image_copy` path, where the unit of
+immutability is the destination tag rather than a package:
+
+- the tag already serves the planned digest → skipped, the copy is a no-op;
+- the tag is a released `vX.Y.Z` and serves a different digest → refused
+  ("refusing to overwrite published release tag");
+- the tag is non-formal — nightly, nextgen, pre/beta/rc, branch — → replaced,
+  because re-publishing one of those means moving it forward.
+
+Replacing a released image tag on purpose therefore means deleting the tag
+first; a re-run does not do it silently.
+
 A package with an empty version is treated as non-formal (overwrite allowed) and
 logged as a warning: the planner always sets a version, so an empty one means a
 rule/artifact-config anomaly rather than a released package.
