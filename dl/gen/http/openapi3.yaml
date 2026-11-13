@@ -20,8 +20,8 @@ paths:
                   schema:
                     type: string
                     description: bucket name
-                    example: In repellat et quis neque aut et.
-                  example: Illum rem fugiat mollitia iusto.
+                    example: Ut et quia quas qui esse omnis.
+                  example: Dolore error.
                 - name: key
                   in: path
                   description: object key
@@ -29,8 +29,8 @@ paths:
                   schema:
                     type: string
                     description: object key
-                    example: Cupiditate reprehenderit accusantium.
-                  example: Beatae voluptatem saepe labore.
+                    example: Accusantium et enim nostrum.
+                  example: Omnis veniam distinctio.
             responses:
                 "200":
                     description: OK response.
@@ -68,8 +68,8 @@ paths:
                   schema:
                     type: string
                     description: bucket name
-                    example: Aut est veritatis dolor blanditiis ipsum.
-                  example: Odio totam.
+                    example: Dicta temporibus est aut animi.
+                  example: Quis voluptatem sed.
                 - name: key
                   in: path
                   description: object key
@@ -77,8 +77,8 @@ paths:
                   schema:
                     type: string
                     description: object key
-                    example: Voluptatem maiores vel sit quam.
-                  example: Ipsum dolorem nam porro.
+                    example: Consequuntur et neque in nulla.
+                  example: Accusantium cupiditate tenetur dolore.
             responses:
                 "200":
                     description: OK response.
@@ -88,16 +88,16 @@ paths:
                             schema:
                                 type: string
                                 description: Content-Disposition header value
-                                example: Dolorum ex et ipsam consequuntur.
-                            example: Consequatur quis blanditiis rerum porro.
+                                example: Aut minima qui repudiandae ut.
+                            example: Ullam aliquid harum ipsam reiciendis id pariatur.
                         Content-Length:
                             description: Content length in bytes.
                             schema:
                                 type: integer
                                 description: Content length in bytes.
-                                example: 7247259954925731484
+                                example: 799513059352070576
                                 format: int64
-                            example: 5345409264058847302
+                            example: 9125981162664080476
     /oci-file-sha256/{repository}:
         get:
             tags:
@@ -113,8 +113,8 @@ paths:
                   schema:
                     type: string
                     description: file name in OCI artifact
-                    example: Aut minima qui repudiandae ut.
-                  example: Voluptates et.
+                    example: Consequuntur fugiat officiis.
+                  example: Dolorum doloremque reprehenderit impedit.
                 - name: tag
                   in: query
                   description: OCI artifact tag
@@ -123,8 +123,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Ullam aliquid harum ipsam reiciendis id pariatur.
-                  example: Minus molestias.
+                    example: Itaque rem autem.
+                  example: Illo voluptatibus sunt omnis a.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -132,8 +132,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Quia delectus sed est ut.
-                  example: Id corrupti.
+                    example: Soluta fugit vitae laborum fuga molestiae quas.
+                  example: Vero voluptates aut quae aut officiis aut.
             responses:
                 "200":
                     description: OK response.
@@ -241,8 +241,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Enim ut quisquam repellendus officiis iste.
-                  example: Quia deserunt dolores exercitationem unde quas.
+                    example: Sed autem.
+                  example: Repellendus deserunt et fuga.
                 - name: file
                   in: query
                   description: file name in OCI artifact
@@ -250,8 +250,8 @@ paths:
                   schema:
                     type: string
                     description: file name in OCI artifact
-                    example: Libero voluptatem eum.
-                  example: Libero atque at.
+                    example: Labore vitae excepturi repudiandae est maxime.
+                  example: Numquam quas alias.
                 - name: file_regex
                   in: query
                   description: file name regex pattern in OCI artifact
@@ -259,9 +259,9 @@ paths:
                   schema:
                     type: string
                     description: file name regex pattern in OCI artifact
-                    example: nk7.*
+                    example: 7sf.*
                     format: regexp
-                  example: 2bn.*
+                  example: 1ol.*
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -269,8 +269,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Enim nostrum omnis omnis veniam distinctio est.
-                  example: Temporibus est aut animi exercitationem.
+                    example: Commodi nihil.
+                  example: Quis nemo nulla quidem voluptatem consequuntur repellendus.
             responses:
                 "200":
                     description: OK response.
@@ -280,16 +280,16 @@ paths:
                             schema:
                                 type: string
                                 description: Content-Disposition header value
-                                example: Consequuntur et neque in nulla.
-                            example: Veritatis id.
+                                example: Et beatae reprehenderit non velit corporis.
+                            example: Similique aspernatur facere.
                         Content-Length:
                             description: Content length in bytes.
                             schema:
                                 type: integer
                                 description: Content length in bytes.
-                                example: 33620596145260890
+                                example: 4650115202112355007
                                 format: int64
-                            example: 2472394871623881111
+                            example: 3915580421301890318
     /oci-files/{repository}:
         get:
             tags:
@@ -305,8 +305,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Cupiditate unde ducimus quis aut.
-                  example: Et minus qui et mollitia in veritatis.
+                    example: Totam dolor in.
+                  example: Doloremque laborum quis voluptas voluptatum voluptate est.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -314,8 +314,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Sunt ut soluta et dignissimos.
-                  example: Ut consectetur est dolores doloribus.
+                    example: Molestiae laudantium et corporis ullam.
+                  example: Voluptatem ut non amet natus quia.
             responses:
                 "200":
                     description: OK response.
@@ -325,114 +325,17 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Repudiandae est maxime harum numquam quas.
+                                    example: Velit quia saepe.
                                 example:
-                                    - Velit autem.
-                                    - Et voluptatem quia perferendis.
-                                    - Occaecati occaecati.
-                                    - Atque voluptatibus.
+                                    - Nobis velit facilis unde quas minus.
+                                    - Ratione repudiandae nihil et.
+                                    - Veritatis facilis et sit recusandae.
                             example:
-                                - Numquam quibusdam.
-                                - Explicabo autem temporibus voluptatem ratione deserunt.
-                                - Vel laudantium id amet.
-                                - Eaque consequatur iusto.
-    /s3-obj/{bucket}/{key}:
-        get:
-            tags:
-                - ks3
-            summary: download-object ks3
-            operationId: ks3#download-object
-            parameters:
-                - name: bucket
-                  in: path
-                  description: bucket name
-                  required: true
-                  schema:
-                    type: string
-                    description: bucket name
-                    example: Vero quas in ducimus numquam fugit.
-                  example: Exercitationem ullam est.
-                - name: key
-                  in: path
-                  description: object key
-                  required: true
-                  schema:
-                    type: string
-                    description: object key
-                    example: Laudantium vel recusandae.
-                  example: Molestiae autem deserunt modi ut omnis.
-            responses:
-                "200":
-                    description: OK response.
-                    headers:
-                        Content-Disposition:
-                            description: Content-Disposition header for downloading
-                            schema:
-                                type: string
-                                description: Content-Disposition header for downloading
-                                example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
-                            example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
-                        Content-Length:
-                            description: Length is the downloaded content length in bytes.
-                            schema:
-                                type: integer
-                                description: Length is the downloaded content length in bytes.
-                                example: 4194304
-                                format: int64
-                            example: 4194304
-                    content:
-                        application/octet-stream:
-                            schema:
-                                type: string
-                                format: binary
-        head:
-            tags:
-                - ks3
-            summary: head-object ks3
-            operationId: ks3#head-object
-            parameters:
-                - name: bucket
-                  in: path
-                  description: bucket name
-                  required: true
-                  schema:
-                    type: string
-                    description: bucket name
-                    example: Laboriosam corporis iusto ipsa autem.
-                  example: Odio blanditiis corrupti ea voluptas repudiandae.
-                - name: key
-                  in: path
-                  description: object key
-                  required: true
-                  schema:
-                    type: string
-                    description: object key
-                    example: Voluptas in.
-                  example: Ea sunt voluptas minus tenetur omnis.
-            responses:
-                "200":
-                    description: OK response.
-                    headers:
-                        Content-Disposition:
-                            description: Content-Disposition header value
-                            schema:
-                                type: string
-                                description: Content-Disposition header value
-                                example: Quod eveniet nam eius minima.
-                            example: Expedita amet architecto.
-                        Content-Length:
-                            description: Content length in bytes.
-                            schema:
-                                type: integer
-                                description: Content length in bytes.
-                                example: 2679576127124721776
-                                format: int64
-                            example: 7055750621825731261
+                                - Eos laudantium possimus quam.
+                                - Ut soluta sed minima.
 components: {}
 tags:
     - name: oci
       description: OCI artifacts download service
-    - name: ks3
-      description: KS3 object download service
     - name: gcs
       description: GCS object download service

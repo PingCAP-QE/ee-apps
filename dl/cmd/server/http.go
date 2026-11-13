@@ -20,9 +20,7 @@ import (
 
 	gcs "github.com/PingCAP-QE/ee-apps/dl/gen/gcs"
 	gcssvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/gcs/server"
-	ks3svr "github.com/PingCAP-QE/ee-apps/dl/gen/http/ks3/server"
 	ocisvr "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/server"
-	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
 	ocisvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/oci"
 	"github.com/PingCAP-QE/ee-apps/dl/pkg/attachment"
@@ -37,7 +35,7 @@ type ociRepoProvider interface {
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, ks3Endpoints *ks3.Endpoints, gcsEndpoints *gcs.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool, ociSvc oci.Service) {
+func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoints, gcsEndpoints *gcs.Endpoints, wg *sync.WaitGroup, errc chan error, logger *log.Logger, debug bool, ociSvc oci.Service) {
 
 	// Setup goa log adapter.
 	var (
@@ -69,18 +67,15 @@ func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoin
 	// responses.
 	var (
 		ociServer *ocisvr.Server
-		ks3Server *ks3svr.Server
 		gcsServer *gcssvr.Server
 	)
 	{
 		eh := errorHandler(logger)
 		ociServer = ocisvr.New(ociEndpoints, mux, dec, enc, eh, nil)
-		ks3Server = ks3svr.New(ks3Endpoints, mux, dec, enc, eh, nil)
 		gcsServer = gcssvr.New(gcsEndpoints, mux, dec, enc, eh, nil)
 		if debug {
 			servers := goahttp.Servers{
 				ociServer,
-				ks3Server,
 				gcsServer,
 			}
 			servers.Use(httpmdlwr.Debug(mux, os.Stdout))
@@ -88,7 +83,6 @@ func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoin
 	}
 	// Configure the mux.
 	ocisvr.Mount(mux, ociServer)
-	ks3svr.Mount(mux, ks3Server)
 	gcssvr.Mount(mux, gcsServer)
 
 	// ** Mount health check handler **
@@ -111,9 +105,6 @@ func handleHTTPServer(ctx context.Context, u *url.URL, ociEndpoints *oci.Endpoin
 	// configure the server as required by your service.
 	srv := &http.Server{Addr: u.Host, Handler: handler, ReadHeaderTimeout: time.Second * 60}
 	for _, m := range ociServer.Mounts {
-		logger.Printf("HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
-	}
-	for _, m := range ks3Server.Mounts {
 		logger.Printf("HTTP %q mounted on %s %s", m.Method, m.Verb, m.Pattern)
 	}
 	for _, m := range gcsServer.Mounts {
