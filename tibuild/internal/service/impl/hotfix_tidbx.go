@@ -48,6 +48,16 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 		}
 	}
 	owner, repo := parts[0], parts[1]
+	if !s.repoAllowed(p.Repo) {
+		// A hot-fix tag is a write into a repository consumers release from, and
+		// the repository is whatever the caller typed. Without an allowlist a
+		// caller can tag any repository the service token can reach.
+		l.Warn().Msg("Repository is not in hotfix.github_repo_allowlist")
+		return nil, &hotfix.HTTPError{
+			Code:    http.StatusForbidden,
+			Message: fmt.Sprintf("repository %q is not allowed: set hotfix.github_repo_allowlist", p.Repo),
+		}
+	}
 
 	// Validate that at least one of branch or commit is provided
 	if p.Branch == nil && p.Commit == nil {

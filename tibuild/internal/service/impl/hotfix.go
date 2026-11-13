@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/google/go-github/v93/github"
 	"github.com/rs/zerolog"
@@ -16,6 +17,39 @@ import (
 type hotfixsrvc struct {
 	logger   *zerolog.Logger
 	ghClient *github.Client
+	// repoAllowlist gates which repositories a hot-fix tag may be created in.
+	// It is replaced as a whole by Reload, so handlers read it without a lock.
+	// A nil pointer (or an empty list) allows nothing.
+	repoAllowlist atomic.Pointer[config.RepoAllowlist]
+}
+
+// applyConfig refreshes the repository allowlist. A list that does not parse
+// keeps the previous one, so a bad edit cannot silently widen or narrow what
+// callers may tag.
+func (s *hotfixsrvc) applyConfig(cfg *config.Service) {
+	if cfg == nil {
+		empty := config.RepoAllowlist{}
+		s.repoAllowlist.Store(&empty)
+		return
+	}
+	allowlist, err := config.NewRepoAllowlist(cfg.Hotfix.GithubRepoAllowlist)
+	if err != nil {
+		s.logger.Err(err).Msg("invalid hotfix github_repo_allowlist, keeping the previous value")
+		if s.repoAllowlist.Load() != nil {
+			return
+		}
+		allowlist = config.RepoAllowlist{}
+	}
+	s.repoAllowlist.Store(&allowlist)
+}
+
+// repoAllowed reports whether a hot-fix tag may be created in repo.
+func (s *hotfixsrvc) repoAllowed(repo string) bool {
+	allowlist := s.repoAllowlist.Load()
+	if allowlist == nil {
+		return false
+	}
+	return allowlist.Allows(repo)
 }
 
 // tagInfo holds information about a parsed tag
@@ -27,17 +61,20 @@ type tagInfo struct {
 }
 
 // NewHotfix returns the hotfix service implementation.
-func NewHotfix(logger *zerolog.Logger, ghClient *github.Client) hotfix.Service {
-	return &hotfixsrvc{
+func NewHotfix(logger *zerolog.Logger, ghClient *github.Client, cfg *config.Service) hotfix.Service {
+	srvc := &hotfixsrvc{
 		logger:   logger,
 		ghClient: ghClient,
 	}
+	srvc.applyConfig(cfg)
+	return srvc
 }
 
 // Reload updates the hotfix service configuration at runtime.
 func (s *hotfixsrvc) Reload(cfg *config.Service) {
 	s.logger.Info().Msg("hot-reloading hotfix configuration")
 	s.ghClient = NewGitHubClientWithConfig(cfg.Github)
+	s.applyConfig(cfg)
 	s.logger.Info().Msg("hotfix configuration reloaded successfully")
 }
 

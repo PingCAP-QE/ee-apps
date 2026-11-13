@@ -24,6 +24,20 @@ type Service struct {
 	DevBuild DevBuild `yaml:"devbuild,omitempty" json:"devbuild,omitempty"`
 	// Tidbcloud holds the TiDB Cloud ops and TCMS integration configuration.
 	Tidbcloud Tidbcloud `yaml:"tidbcloud,omitempty" json:"tidbcloud,omitempty"`
+	// Hotfix configures the hot-fix tag endpoints.
+	Hotfix Hotfix `yaml:"hotfix,omitempty" json:"hotfix,omitempty"`
+}
+
+// Hotfix configures the hot-fix tag endpoints.
+type Hotfix struct {
+	// GithubRepoAllowlist lists the repositories a hot-fix git tag may be
+	// created in, as "<owner>/<repo>" or "<owner>/*"; matching is
+	// case-insensitive.
+	//
+	// A tag is a write into a repository consumers release from, and the
+	// repository comes from the request, so an unset list denies every
+	// repository rather than allowing any. Hot-reloadable.
+	GithubRepoAllowlist []string `yaml:"github_repo_allowlist,omitempty" json:"github_repo_allowlist,omitempty"`
 }
 
 // DevBuild configures the devbuild request policy.

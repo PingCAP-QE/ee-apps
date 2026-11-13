@@ -13,14 +13,23 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 func newServiceWithClient(client *github.Client) *hotfixsrvc {
 	logger := zerolog.New(io.Discard)
-	return &hotfixsrvc{
+	// Hot-fix tag creation fails closed on an unset allowlist, so the fixture
+	// opts in to the repositories its cases use.
+	allowlist, err := config.NewRepoAllowlist([]string{"owner/*"})
+	if err != nil {
+		panic(err)
+	}
+	srvc := &hotfixsrvc{
 		logger:   &logger,
 		ghClient: client,
 	}
+	srvc.repoAllowlist.Store(&allowlist)
+	return srvc
 }
 
 func TestComputeNewTagNameForTidbx(t *testing.T) {
