@@ -130,7 +130,7 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 		workerCfg:      workerCfg,
 		images:         craneImageOps{},
 		lane:           newPublishLane(db, PublishLaneTiUP),
-		desired:        newDesiredStore(db, cfg.Publish.Nightly),
+		desired:        newDesiredStore(db, cfg.Publish.Nightly, nightlyTargetsFor(cfg.Publish, workerCfg)...),
 		metrics:        newNightlyMetrics(),
 		nightlyAlerts:  newNightlyAlertTracker(time.Hour),
 		failedNightly:  newNightlyFailureAccumulator(),
@@ -163,7 +163,7 @@ func (s *publishsrvc) Reload(cfg *config.Service) {
 	s.cfgMu.Unlock()
 
 	if s.desired != nil {
-		s.desired.setConfig(cfg.Publish.Nightly)
+		s.desired.setConfig(cfg.Publish.Nightly, s.nightlyTargets()...)
 	}
 	if s.planner != nil {
 		s.planner.setRulesPath(cfg.Publish.DeliveryConfigPathOrDefault())

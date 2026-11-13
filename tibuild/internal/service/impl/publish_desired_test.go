@@ -823,3 +823,72 @@ func TestNightlyFailureAlertBoundsBody(t *testing.T) {
 	require.LessOrEqual(t, len(body), 900)
 	_ = clock
 }
+
+// A worker is regularly handed another target's unit: the aggregator and the
+// lease reaper both look at every unit, so a prod worker settles staging work
+// and vice versa. Only the owning worker knows the target's window, so a settle
+// here must leave the foreign row to its owner. Otherwise an hourly staging row
+// is advanced with the 12h prod schedule and parks for the rest of the day.
+func TestDesiredSettleLeavesForeignTargetsToTheirOwner(t *testing.T) {
+	store, db := newDesiredTestStore(t)
+	store.setConfig(config.NightlyPublish{
+		Default: config.NightlyWindow{
+			Window: "12h", Anchor: "02:00", Timezone: "UTC", RetryAfter: "5m", Jitter: "1ns",
+		},
+		Targets: map[string]config.NightlyWindow{
+			delivery.TiUPTargetStaging: {Window: "1h", Anchor: "00:00", Timezone: "UTC"},
+		},
+	}, delivery.TiUPTargetStaging)
+	ctx := context.Background()
+	now := store.now()
+
+	// One unit id claims both rows, which is what a two-step delivery unit or a
+	// shared reaper looks like from the store's perspective.
+	unitID := "unit-shared"
+	ownKey := desiredKeyForTest(delivery.TiUPTargetStaging, "pd-recover", "linux", "amd64")
+	foreignKey := desiredKeyForTest(delivery.TiUPTargetProd, "pd-recover", "linux", "amd64")
+	createDesiredRow(t, db, ownKey, "v9.0.0-nightly", now.Add(-time.Hour), unitID)
+	createDesiredRow(t, db, foreignKey, "v9.0.0-nightly", now.Add(-time.Hour), unitID)
+
+	settled, err := store.Settle(ctx, unitID, PublishStateSucceeded, "v9.0.0-nightly", "", now)
+	require.NoError(t, err)
+	require.Equal(t, 1, settled, "only the sharded target's row settles here")
+
+	own, err := store.Get(ctx, ownKey)
+	require.NoError(t, err)
+	require.Empty(t, own.RunningUnitID)
+	require.Equal(t, "v9.0.0-nightly", own.LastSucceededVersion)
+	require.Equal(t, store.nextRunAt(now, ownKey.Target, ownKey.Pkg).UTC(), own.NextRunAt.UTC())
+	require.True(t, own.NextRunAt.Before(now.Add(2*time.Hour)), "the hourly window lands inside the next hour")
+
+	foreign, err := store.Get(ctx, foreignKey)
+	require.NoError(t, err)
+	require.Equal(t, unitID, foreign.RunningUnitID, "a foreign target's row stays claimed for its owner")
+	require.Empty(t, foreign.LastSucceededVersion)
+	require.Equal(t, now.Add(-time.Hour).UTC(), foreign.NextRunAt.UTC(),
+		"its schedule must not be rewritten from this worker's window")
+}
+
+// The sweep that closes rows whose completion callback was missed is scoped to
+// this worker's targets for the same reason: releasing or advancing a foreign
+// row writes the wrong window onto it.
+func TestNightlySweepIgnoresForeignTargets(t *testing.T) {
+	svc, clock := newFlowTestService(t)
+	ctx := context.Background()
+	enabled := true
+	svc.publishCfg.Nightly = nightlyTestConfig(enabled, delivery.TiUPTargetProd)
+	svc.workerCfg.Targets = []string{delivery.TiUPTargetProd}
+	svc.desired = newDesiredStore(svc.db, svc.publishCfg.Nightly, delivery.TiUPTargetProd)
+	svc.desired.nowFn = func() time.Time { return *clock }
+
+	key := desiredKeyForTest(delivery.TiUPTargetStaging, "pd-recover", "linux", "amd64")
+	createDesiredRow(t, svc.db, key, "v9.0.0-nightly", clock.Add(-time.Minute), "ghost-unit")
+
+	svc.settleNightlyClaims(ctx)
+
+	row, err := svc.desired.Get(ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, "ghost-unit", row.RunningUnitID, "the staging row belongs to the staging worker's sweep")
+	require.Empty(t, row.LastError, "a worker that does not shard the target must not release the row")
+	require.Equal(t, clock.Add(-time.Minute).UTC(), row.NextRunAt.UTC())
+}
