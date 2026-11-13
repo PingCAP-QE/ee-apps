@@ -6,7 +6,6 @@ toolchain go1.27.3
 
 require (
 	cloud.google.com/go/storage v1.63.0
-	github.com/ks3sdklib/aws-sdk-go v1.3.0
 	github.com/opencontainers/image-spec v1.1.1
 	goa.design/clue v1.2.3
 	goa.design/goa/v3 v3.22.2
