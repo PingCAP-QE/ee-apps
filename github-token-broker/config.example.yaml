@@ -3,6 +3,12 @@ server:
   read_timeout: 10s
   write_timeout: 30s
   shutdown_timeout: 10s
+  # Optional additional HTTPS listener. HTTP remains available for compatibility.
+  # tls:
+  #   enabled: true
+  #   address: ":8443"
+  #   cert_file: /etc/github-token-broker/tls/tls.crt
+  #   key_file: /etc/github-token-broker/tls/tls.key
 
 github:
   # Set to the GitHub App ID used for this deployment.

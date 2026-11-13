@@ -1,3 +1,16 @@
+{{- if ne .Values.server.address ":8080" -}}
+{{- fail "server.address must be :8080 to match the HTTP container port and probes" -}}
+{{- end -}}
+{{- if .Values.server.tls.enabled -}}
+{{- $port := int .Values.server.tls.port -}}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .Values.server.tls.port))) (lt $port 1024) (gt $port 65535) (eq $port 8080) -}}
+{{- fail "server.tls.port must be an unprivileged integer from 1024 to 65535, different from HTTP port 8080" -}}
+{{- end -}}
+{{- $servicePort := int .Values.service.httpsPort -}}
+{{- if or (not (regexMatch "^[0-9]+$" (toString .Values.service.httpsPort))) (lt $servicePort 1) (gt $servicePort 65535) (eq $servicePort (int .Values.service.port)) -}}
+{{- fail "service.httpsPort must be an integer from 1 to 65535, different from service.port" -}}
+{{- end -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,6 +55,11 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            {{- if .Values.server.tls.enabled }}
+            - name: https
+              containerPort: {{ .Values.server.tls.port }}
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -59,6 +77,11 @@ spec:
             - name: github-app-credentials
               mountPath: /etc/github-token-broker/credentials
               readOnly: true
+            {{- if .Values.server.tls.enabled }}
+            - name: tls
+              mountPath: /etc/github-token-broker/tls
+              readOnly: true
+            {{- end }}
             {{- if .Values.github.fallback.enabled }}
             - name: github-fallback-pat
               mountPath: /etc/github-token-broker/fallback
@@ -76,6 +99,16 @@ spec:
         - name: github-app-credentials
           secret:
             secretName: {{ .Values.github.credentialsSecret.name }}
+        {{- if .Values.server.tls.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ required "server.tls.existingSecret is required when TLS is enabled" .Values.server.tls.existingSecret | quote }}
+            items:
+              - key: {{ required "server.tls.certKey is required when TLS is enabled" .Values.server.tls.certKey | quote }}
+                path: tls.crt
+              - key: {{ required "server.tls.keyKey is required when TLS is enabled" .Values.server.tls.keyKey | quote }}
+                path: tls.key
+        {{- end }}
         {{- if .Values.github.fallback.enabled }}
         - name: github-fallback-pat
           secret:
