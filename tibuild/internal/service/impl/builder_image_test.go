@@ -1,6 +1,7 @@
 package impl
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -88,10 +89,19 @@ func TestValidateBuilderImage(t *testing.T) {
 		} {
 			err := validateBuilderImage(configured, image)
 			require.Error(t, err, "image %q should be rejected", image)
-			var badRequest *devbuild.DevBuildBadRequestError
-			require.ErrorAs(t, err, &badRequest)
-			require.Equal(t, 400, badRequest.Code)
+			var forbidden *devbuild.DevBuildForbiddenError
+			require.ErrorAs(t, err, &forbidden)
+			require.Equal(t, http.StatusForbidden, forbidden.Code)
 		}
+
+		// The rejection names the value, never the allowlist. Checked with a
+		// value that does not itself contain a configured entry.
+		err := validateBuilderImage(configured, "docker.io/library/golang:1.24.2-bullseye")
+		var forbidden *devbuild.DevBuildForbiddenError
+		require.ErrorAs(t, err, &forbidden)
+		require.NotContains(t, forbidden.Message, "ghcr.io/pingcap-qe",
+			"the message must not echo the allowlist")
+		require.NotContains(t, forbidden.Message, "us-docker.pkg.dev/pingcap-testing-account")
 	})
 }
 

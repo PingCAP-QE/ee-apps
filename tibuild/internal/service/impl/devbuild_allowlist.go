@@ -43,8 +43,8 @@ func checkExplicitRepo(explicitRepo string, productRepoMap map[string]string, pr
 // surface and a warning with the fields needed to find the caller. Neither the
 // token nor the allowlist content is logged.
 func (s *devbuildsrvc) recordRepoDenied(surface, repo, product, createdBy string) {
-	if s.repoMetrics != nil {
-		s.repoMetrics.recordDenied(surface)
+	if s.policyMetrics != nil {
+		s.policyMetrics.recordRepoDenied(surface)
 	}
 	if s.logger != nil {
 		s.logger.Warn().
@@ -56,34 +56,64 @@ func (s *devbuildsrvc) recordRepoDenied(surface, repo, product, createdBy string
 	}
 }
 
-// isRepoDenied reports whether err is an allowlist rejection, so the callers
+// recordBuilderImageDenied is the builder image counterpart of
+// recordRepoDenied: the same counter shape and the same fields, so one query
+// shows every policy rejection. The allowlist content is deliberately not
+// logged.
+func (s *devbuildsrvc) recordBuilderImageDenied(surface, image, product, createdBy string) {
+	if s.policyMetrics != nil {
+		s.policyMetrics.recordBuilderImageDenied(surface)
+	}
+	if s.logger != nil {
+		s.logger.Warn().
+			Str("surface", surface).
+			Str("builder_img", image).
+			Str("product", product).
+			Str("created_by", createdBy).
+			Msg("devbuild builderImg rejected by the allowlist")
+	}
+}
+
+// isAllowlistDenied reports whether err is a policy rejection, so the callers
 // can record it once at the point where they know the request context.
-func isRepoDenied(err error) bool {
+func isAllowlistDenied(err error) bool {
 	var forbidden *devbuild.DevBuildForbiddenError
 	return errors.As(err, &forbidden)
 }
 
-// devbuildRepoMetrics holds the devbuild policy counters. A nil registry keeps
+// devbuildPolicyMetrics holds the devbuild policy counters. A nil registry keeps
 // every method a no-op, which is what tests and the metrics-disabled API need.
-type devbuildRepoMetrics struct {
-	denied *prometheus.CounterVec
+type devbuildPolicyMetrics struct {
+	repoDenied         *prometheus.CounterVec
+	builderImageDenied *prometheus.CounterVec
 }
 
-func newDevbuildRepoMetrics(registerer prometheus.Registerer) *devbuildRepoMetrics {
+func newDevbuildPolicyMetrics(registerer prometheus.Registerer) *devbuildPolicyMetrics {
 	if registerer == nil {
 		return nil
 	}
-	denied := prometheus.NewCounterVec(prometheus.CounterOpts{
+	repoDenied := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "devbuild_github_repo_denied_total",
 		Help: "Number of devbuild requests rejected because githubRepo is not in the allowlist.",
 	}, []string{"surface"})
-	registerer.MustRegister(denied)
-	return &devbuildRepoMetrics{denied: denied}
+	builderImageDenied := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "devbuild_builder_image_denied_total",
+		Help: "Number of devbuild requests rejected because builderImg is not in the allowlist.",
+	}, []string{"surface"})
+	registerer.MustRegister(repoDenied, builderImageDenied)
+	return &devbuildPolicyMetrics{repoDenied: repoDenied, builderImageDenied: builderImageDenied}
 }
 
-func (m *devbuildRepoMetrics) recordDenied(surface string) {
-	if m == nil || m.denied == nil {
+func (m *devbuildPolicyMetrics) recordRepoDenied(surface string) {
+	if m == nil || m.repoDenied == nil {
 		return
 	}
-	m.denied.WithLabelValues(surface).Inc()
+	m.repoDenied.WithLabelValues(surface).Inc()
+}
+
+func (m *devbuildPolicyMetrics) recordBuilderImageDenied(surface string) {
+	if m == nil || m.builderImageDenied == nil {
+		return
+	}
+	m.builderImageDenied.WithLabelValues(surface).Inc()
 }
