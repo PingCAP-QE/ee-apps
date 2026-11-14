@@ -255,6 +255,7 @@ func EncodeCreateRequest(encoder func(*http.Request) goahttp.Encoder) func(*http
 // should be restored after having been read.
 // DecodeCreateResponse may return the following errors:
 //   - "BadRequest" (type *devbuild.DevBuildBadRequestError): http.StatusBadRequest
+//   - "Forbidden" (type *devbuild.DevBuildForbiddenError): http.StatusForbidden
 //   - "InternalServerError" (type *devbuild.DevBuildInternalServerError): http.StatusInternalServerError
 //   - "Unauthorized" (type *devbuild.DevBuildUnauthorizedError): http.StatusUnauthorized
 //   - error: internal error
@@ -302,6 +303,20 @@ func DecodeCreateResponse(decoder func(*http.Response) goahttp.Decoder, restoreB
 				return nil, goahttp.ErrValidationError("devbuild", "create", err)
 			}
 			return nil, NewCreateBadRequest(&body)
+		case http.StatusForbidden:
+			var (
+				body CreateForbiddenResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "create", err)
+			}
+			err = ValidateCreateForbiddenResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "create", err)
+			}
+			return nil, NewCreateForbidden(&body)
 		case http.StatusInternalServerError:
 			var (
 				body CreateInternalServerErrorResponseBody
