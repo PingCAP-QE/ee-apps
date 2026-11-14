@@ -111,6 +111,13 @@ type CreateBadRequestResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// CreateForbiddenResponseBody is the type of the "devbuild" service "create"
+// endpoint HTTP response body for the "Forbidden" error.
+type CreateForbiddenResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
 // CreateInternalServerErrorResponseBody is the type of the "devbuild" service
 // "create" endpoint HTTP response body for the "InternalServerError" error.
 type CreateInternalServerErrorResponseBody struct {
@@ -669,6 +676,16 @@ func NewListUnauthorizedResponseBody(res *devbuild.DevBuildUnauthorizedError) *L
 // result of the "create" endpoint of the "devbuild" service.
 func NewCreateBadRequestResponseBody(res *devbuild.DevBuildBadRequestError) *CreateBadRequestResponseBody {
 	body := &CreateBadRequestResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewCreateForbiddenResponseBody builds the HTTP response body from the result
+// of the "create" endpoint of the "devbuild" service.
+func NewCreateForbiddenResponseBody(res *devbuild.DevBuildForbiddenError) *CreateForbiddenResponseBody {
+	body := &CreateForbiddenResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}

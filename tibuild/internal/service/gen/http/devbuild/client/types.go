@@ -107,6 +107,13 @@ type CreateBadRequestResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
+// CreateForbiddenResponseBody is the type of the "devbuild" service "create"
+// endpoint HTTP response body for the "Forbidden" error.
+type CreateForbiddenResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
 // CreateInternalServerErrorResponseBody is the type of the "devbuild" service
 // "create" endpoint HTTP response body for the "InternalServerError" error.
 type CreateInternalServerErrorResponseBody struct {
@@ -622,6 +629,16 @@ func NewCreateBadRequest(body *CreateBadRequestResponseBody) *devbuild.DevBuildB
 	return v
 }
 
+// NewCreateForbidden builds a devbuild service create endpoint Forbidden error.
+func NewCreateForbidden(body *CreateForbiddenResponseBody) *devbuild.DevBuildForbiddenError {
+	v := &devbuild.DevBuildForbiddenError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
 // NewCreateInternalServerError builds a devbuild service create endpoint
 // InternalServerError error.
 func NewCreateInternalServerError(body *CreateInternalServerErrorResponseBody) *devbuild.DevBuildInternalServerError {
@@ -985,6 +1002,18 @@ func ValidateListUnauthorizedResponseBody(body *ListUnauthorizedResponseBody) (e
 // ValidateCreateBadRequestResponseBody runs the validations defined on
 // create_BadRequest_response_body
 func ValidateCreateBadRequestResponseBody(body *CreateBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateCreateForbiddenResponseBody runs the validations defined on
+// create_Forbidden_response_body
+func ValidateCreateForbiddenResponseBody(body *CreateForbiddenResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}

@@ -191,6 +191,7 @@ var _ = Service("devbuild", func() {
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
 			Response("Unauthorized", StatusUnauthorized)
+			Response("Forbidden", StatusForbidden)
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
