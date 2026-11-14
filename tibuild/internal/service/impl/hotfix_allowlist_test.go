@@ -56,7 +56,7 @@ func TestBumpTagForTidbxRequiresAllowlistedRepository(t *testing.T) {
 				return
 			}
 			require.Error(t, err)
-			var httpErr *hotfix.HTTPError
+			var httpErr *hotfix.HTTPErrorForbidden
 			require.ErrorAs(t, err, &httpErr)
 			require.Equal(t, tc.expected, httpErr.Code)
 			require.Contains(t, httpErr.Message, "not allowed")
@@ -85,7 +85,7 @@ func TestHotfixReloadAppliesAllowlist(t *testing.T) {
 		Repo: "pingcap/tidb", Branch: &branch, Author: "someone@pingcap.com",
 	})
 	require.Error(t, err)
-	var httpErr *hotfix.HTTPError
+	var httpErr *hotfix.HTTPErrorForbidden
 	require.ErrorAs(t, err, &httpErr)
 	require.Contains(t, httpErr.Message, "not allowed")
 }

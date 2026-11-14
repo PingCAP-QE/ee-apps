@@ -65,6 +65,13 @@ type BumpTagForTidbxBadRequestResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
+// BumpTagForTidbxForbiddenResponseBody is the type of the "hotfix" service
+// "bump-tag-for-tidbx" endpoint HTTP response body for the "Forbidden" error.
+type BumpTagForTidbxForbiddenResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
 // BumpTagForTidbxInternalServerErrorResponseBody is the type of the "hotfix"
 // service "bump-tag-for-tidbx" endpoint HTTP response body for the
 // "InternalServerError" error.
@@ -76,6 +83,13 @@ type BumpTagForTidbxInternalServerErrorResponseBody struct {
 // QueryTagOfTidbxBadRequestResponseBody is the type of the "hotfix" service
 // "query-tag-of-tidbx" endpoint HTTP response body for the "BadRequest" error.
 type QueryTagOfTidbxBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// QueryTagOfTidbxForbiddenResponseBody is the type of the "hotfix" service
+// "query-tag-of-tidbx" endpoint HTTP response body for the "Forbidden" error.
+type QueryTagOfTidbxForbiddenResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
@@ -148,10 +162,21 @@ func NewBumpTagForTidbxBadRequest(body *BumpTagForTidbxBadRequestResponseBody) *
 	return v
 }
 
+// NewBumpTagForTidbxForbidden builds a hotfix service bump-tag-for-tidbx
+// endpoint Forbidden error.
+func NewBumpTagForTidbxForbidden(body *BumpTagForTidbxForbiddenResponseBody) *hotfix.HTTPErrorForbidden {
+	v := &hotfix.HTTPErrorForbidden{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
 // NewBumpTagForTidbxInternalServerError builds a hotfix service
 // bump-tag-for-tidbx endpoint InternalServerError error.
-func NewBumpTagForTidbxInternalServerError(body *BumpTagForTidbxInternalServerErrorResponseBody) *hotfix.HTTPError {
-	v := &hotfix.HTTPError{
+func NewBumpTagForTidbxInternalServerError(body *BumpTagForTidbxInternalServerErrorResponseBody) *hotfix.HTTPErrorInternalServerError {
+	v := &hotfix.HTTPErrorInternalServerError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -186,10 +211,21 @@ func NewQueryTagOfTidbxBadRequest(body *QueryTagOfTidbxBadRequestResponseBody) *
 	return v
 }
 
+// NewQueryTagOfTidbxForbidden builds a hotfix service query-tag-of-tidbx
+// endpoint Forbidden error.
+func NewQueryTagOfTidbxForbidden(body *QueryTagOfTidbxForbiddenResponseBody) *hotfix.HTTPErrorForbidden {
+	v := &hotfix.HTTPErrorForbidden{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
 // NewQueryTagOfTidbxInternalServerError builds a hotfix service
 // query-tag-of-tidbx endpoint InternalServerError error.
-func NewQueryTagOfTidbxInternalServerError(body *QueryTagOfTidbxInternalServerErrorResponseBody) *hotfix.HTTPError {
-	v := &hotfix.HTTPError{
+func NewQueryTagOfTidbxInternalServerError(body *QueryTagOfTidbxInternalServerErrorResponseBody) *hotfix.HTTPErrorInternalServerError {
+	v := &hotfix.HTTPErrorInternalServerError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -239,6 +275,18 @@ func ValidateBumpTagForTidbxBadRequestResponseBody(body *BumpTagForTidbxBadReque
 	return
 }
 
+// ValidateBumpTagForTidbxForbiddenResponseBody runs the validations defined on
+// bump-tag-for-tidbx_Forbidden_response_body
+func ValidateBumpTagForTidbxForbiddenResponseBody(body *BumpTagForTidbxForbiddenResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
 // ValidateBumpTagForTidbxInternalServerErrorResponseBody runs the validations
 // defined on bump-tag-for-tidbx_InternalServerError_response_body
 func ValidateBumpTagForTidbxInternalServerErrorResponseBody(body *BumpTagForTidbxInternalServerErrorResponseBody) (err error) {
@@ -254,6 +302,18 @@ func ValidateBumpTagForTidbxInternalServerErrorResponseBody(body *BumpTagForTidb
 // ValidateQueryTagOfTidbxBadRequestResponseBody runs the validations defined
 // on query-tag-of-tidbx_BadRequest_response_body
 func ValidateQueryTagOfTidbxBadRequestResponseBody(body *QueryTagOfTidbxBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateQueryTagOfTidbxForbiddenResponseBody runs the validations defined on
+// query-tag-of-tidbx_Forbidden_response_body
+func ValidateQueryTagOfTidbxForbiddenResponseBody(body *QueryTagOfTidbxForbiddenResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}

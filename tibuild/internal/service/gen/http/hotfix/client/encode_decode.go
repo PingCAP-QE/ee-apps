@@ -55,7 +55,8 @@ func EncodeBumpTagForTidbxRequest(encoder func(*http.Request) goahttp.Encoder) f
 // response body should be restored after having been read.
 // DecodeBumpTagForTidbxResponse may return the following errors:
 //   - "BadRequest" (type *hotfix.HTTPError): http.StatusBadRequest
-//   - "InternalServerError" (type *hotfix.HTTPError): http.StatusInternalServerError
+//   - "Forbidden" (type *hotfix.HTTPErrorForbidden): http.StatusForbidden
+//   - "InternalServerError" (type *hotfix.HTTPErrorInternalServerError): http.StatusInternalServerError
 //   - error: internal error
 func DecodeBumpTagForTidbxResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -101,6 +102,20 @@ func DecodeBumpTagForTidbxResponse(decoder func(*http.Response) goahttp.Decoder,
 				return nil, goahttp.ErrValidationError("hotfix", "bump-tag-for-tidbx", err)
 			}
 			return nil, NewBumpTagForTidbxBadRequest(&body)
+		case http.StatusForbidden:
+			var (
+				body BumpTagForTidbxForbiddenResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("hotfix", "bump-tag-for-tidbx", err)
+			}
+			err = ValidateBumpTagForTidbxForbiddenResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("hotfix", "bump-tag-for-tidbx", err)
+			}
+			return nil, NewBumpTagForTidbxForbidden(&body)
 		case http.StatusInternalServerError:
 			var (
 				body BumpTagForTidbxInternalServerErrorResponseBody
@@ -158,7 +173,8 @@ func EncodeQueryTagOfTidbxRequest(encoder func(*http.Request) goahttp.Encoder) f
 // response body should be restored after having been read.
 // DecodeQueryTagOfTidbxResponse may return the following errors:
 //   - "BadRequest" (type *hotfix.HTTPError): http.StatusBadRequest
-//   - "InternalServerError" (type *hotfix.HTTPError): http.StatusInternalServerError
+//   - "Forbidden" (type *hotfix.HTTPErrorForbidden): http.StatusForbidden
+//   - "InternalServerError" (type *hotfix.HTTPErrorInternalServerError): http.StatusInternalServerError
 //   - error: internal error
 func DecodeQueryTagOfTidbxResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -204,6 +220,20 @@ func DecodeQueryTagOfTidbxResponse(decoder func(*http.Response) goahttp.Decoder,
 				return nil, goahttp.ErrValidationError("hotfix", "query-tag-of-tidbx", err)
 			}
 			return nil, NewQueryTagOfTidbxBadRequest(&body)
+		case http.StatusForbidden:
+			var (
+				body QueryTagOfTidbxForbiddenResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("hotfix", "query-tag-of-tidbx", err)
+			}
+			err = ValidateQueryTagOfTidbxForbiddenResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("hotfix", "query-tag-of-tidbx", err)
+			}
+			return nil, NewQueryTagOfTidbxForbidden(&body)
 		case http.StatusInternalServerError:
 			var (
 				body QueryTagOfTidbxInternalServerErrorResponseBody
