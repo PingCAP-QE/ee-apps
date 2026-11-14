@@ -53,7 +53,7 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 		// the repository is whatever the caller typed. Without an allowlist a
 		// caller can tag any repository the service token can reach.
 		l.Warn().Msg("Repository is not in hotfix.github_repo_allowlist")
-		return nil, &hotfix.HTTPError{
+		return nil, &hotfix.HTTPErrorForbidden{
 			Code:    http.StatusForbidden,
 			Message: fmt.Sprintf("repository %q is not allowed: set hotfix.github_repo_allowlist", p.Repo),
 		}
@@ -180,7 +180,7 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 	for {
 		tags, resp, err := s.ghClient.Repositories.ListTags(ctx, owner, repo, opts)
 		if err != nil {
-			return "", &hotfix.HTTPError{
+			return "", &hotfix.HTTPErrorInternalServerError{
 				Code:    http.StatusInternalServerError,
 				Message: fmt.Sprintf("failed to list tags: %v", err),
 			}
@@ -302,7 +302,7 @@ func (s *hotfixsrvc) computeNewTagNameForTidbx(ctx context.Context, owner, repo,
 func (s *hotfixsrvc) computeNextTagByCompareCommits(ctx context.Context, owner, repo, commitSHA, lastTag string, aheadFn tidbxTagPatchBumper) (string, error) {
 	comparison, _, err := s.ghClient.Repositories.CompareCommits(ctx, owner, repo, lastTag, commitSHA, nil)
 	if err != nil {
-		return "", &hotfix.HTTPError{
+		return "", &hotfix.HTTPErrorInternalServerError{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("failed to compare commits: %v", err),
 		}
@@ -334,7 +334,7 @@ func (s *hotfixsrvc) computeNextTagByCompareCommits(ctx context.Context, owner, 
 		if err != nil {
 			errMsg := fmt.Sprintf("failed to generate next tag from %s: %v", lastTag, err)
 			s.logger.Error().Msg(errMsg)
-			return "", &hotfix.HTTPError{
+			return "", &hotfix.HTTPErrorInternalServerError{
 				Code:    http.StatusInternalServerError,
 				Message: errMsg,
 			}
@@ -343,7 +343,7 @@ func (s *hotfixsrvc) computeNextTagByCompareCommits(ctx context.Context, owner, 
 	default:
 		errMsg := fmt.Sprintf("unknown compare status: '%s'", status)
 		s.logger.Error().Msg(errMsg)
-		return "", &hotfix.HTTPError{
+		return "", &hotfix.HTTPErrorInternalServerError{
 			Code:    http.StatusInternalServerError,
 			Message: errMsg,
 		}

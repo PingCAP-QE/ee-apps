@@ -154,7 +154,7 @@ func (s *hotfixsrvc) createTag(ctx context.Context, owner, repo, tagName, commit
 		Type:    "commit",
 	})
 	if err != nil {
-		return &hotfix.HTTPError{
+		return &hotfix.HTTPErrorInternalServerError{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("failed to create tag object: %v", err),
 		}
@@ -168,7 +168,7 @@ func (s *hotfixsrvc) createTag(ctx context.Context, owner, repo, tagName, commit
 
 	_, _, err = s.ghClient.Git.CreateRef(ctx, owner, repo, ref)
 	if err != nil {
-		return &hotfix.HTTPError{
+		return &hotfix.HTTPErrorInternalServerError{
 			Code:    http.StatusInternalServerError,
 			Message: fmt.Sprintf("failed to create tag reference: %v", err),
 		}

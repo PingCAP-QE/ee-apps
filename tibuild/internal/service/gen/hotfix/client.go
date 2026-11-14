@@ -32,7 +32,8 @@ func NewClient(bumpTagForTidbx, queryTagOfTidbx goa.Endpoint) *Client {
 // service.
 // BumpTagForTidbx may return the following errors:
 //   - "BadRequest" (type *HTTPError): Bad Request
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "Forbidden" (type *HTTPErrorForbidden): Forbidden
+//   - "InternalServerError" (type *HTTPErrorInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) BumpTagForTidbx(ctx context.Context, p *BumpTagForTidbxPayload) (res *HotfixTagResult, err error) {
 	var ires any
@@ -47,7 +48,8 @@ func (c *Client) BumpTagForTidbx(ctx context.Context, p *BumpTagForTidbxPayload)
 // service.
 // QueryTagOfTidbx may return the following errors:
 //   - "BadRequest" (type *HTTPError): Bad Request
-//   - "InternalServerError" (type *HTTPError): Internal Server Error
+//   - "Forbidden" (type *HTTPErrorForbidden): Forbidden
+//   - "InternalServerError" (type *HTTPErrorInternalServerError): Internal Server Error
 //   - error: internal error
 func (c *Client) QueryTagOfTidbx(ctx context.Context, p *QueryTagOfTidbxPayload) (res *HotfixTagResult, err error) {
 	var ires any

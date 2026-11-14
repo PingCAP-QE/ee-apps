@@ -261,8 +261,12 @@ var _ = Service("devbuild", func() {
 
 var _ = Service("hotfix", func() {
 	Description("The hotfix service provides operations to manage hotfix git tags.")
+	// Each status needs its own Go type: Goa derives the HTTP status from the
+	// type's GoaErrorName(), so declaring one type under several error names
+	// collapses them all onto whichever name was registered first.
 	Error("BadRequest", HTTPError, "Bad Request")
-	Error("InternalServerError", HTTPError, "Internal Server Error")
+	Error("Forbidden", HTTPErrorForbidden, "Forbidden")
+	Error("InternalServerError", HTTPErrorInternalServerError, "Internal Server Error")
 	HTTP(func() {
 		Path("/hotfix")
 	})
@@ -290,6 +294,7 @@ var _ = Service("hotfix", func() {
 			POST("/tidbx/bump-tag")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
+			Response("Forbidden", StatusForbidden)
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
@@ -311,6 +316,7 @@ var _ = Service("hotfix", func() {
 			Param("tag")
 			Response(StatusOK)
 			Response("BadRequest", StatusBadRequest)
+			Response("Forbidden", StatusForbidden)
 			Response("InternalServerError", StatusInternalServerError)
 		})
 	})
@@ -514,6 +520,22 @@ var TektonPipelineRunStatus = Type("TektonPipelineRunStatus", String, func() {
 })
 
 var HTTPError = Type("HTTPError", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+// HTTPErrorForbidden is the body of a request the hot-fix policy rejects. It is
+// a distinct Go type from HTTPError so the transport keeps the 403 status.
+var HTTPErrorForbidden = Type("HTTPErrorForbidden", func() {
+	Attribute("code", Int)
+	Attribute("message", String)
+	Required("code", "message")
+})
+
+// HTTPErrorInternalServerError is the body of a failure that is not the caller's
+// fault. Separate type for the same reason as HTTPErrorForbidden.
+var HTTPErrorInternalServerError = Type("HTTPErrorInternalServerError", func() {
 	Attribute("code", Int)
 	Attribute("message", String)
 	Required("code", "message")
