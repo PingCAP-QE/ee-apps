@@ -289,14 +289,17 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 	j.logger.Info("Cloning source repository", "repo", j.spec.Source.GitRepository, "credentials", creds.describe())
 
 	toCloneDir := filepath.Join(j.sourceDir, j.spec.Build.Component)
-	cmdClone := j.gitCommand(creds, "clone", j.spec.Source.GitRepository, toCloneDir)
+	// `--` keeps a value that starts with a dash from being read as an option.
+	// The CRD pattern already rejects such values; this is the in-process guard
+	// for objects created before that pattern existed.
+	cmdClone := j.gitCommand(creds, "clone", "--", j.spec.Source.GitRepository, toCloneDir)
 	if err := j.exec(cmdClone); err != nil {
 		return "", fmt.Errorf("failed to clone source repo: %w", err)
 	}
 
 	if j.spec.Source.GitRefspec != nil && *j.spec.Source.GitRefspec != "" {
 		j.logger.Info("Fetching refspec", "refspec", *j.spec.Source.GitRefspec)
-		cmdFetch := j.gitCommand(creds, "fetch", "origin", *j.spec.Source.GitRefspec)
+		cmdFetch := j.gitCommand(creds, "fetch", "origin", "--", *j.spec.Source.GitRefspec)
 		if err := j.exec(cmdFetch, toCloneDir); err != nil {
 			return "", fmt.Errorf("failed to fetch refspec: %w", err)
 		}
@@ -307,7 +310,9 @@ func (j *nativeBuildJob) cloneAndCheckoutSource() (string, error) {
 		checkoutRef = *j.spec.Source.GitSha
 	}
 	j.logger.Info("Checking out source", "ref", checkoutRef)
-	cmdCheckout := j.gitCommand(creds, "checkout", checkoutRef)
+	// Trailing `--` separates the ref from any paths; it cannot turn the ref
+	// itself into an option.
+	cmdCheckout := j.gitCommand(creds, "checkout", checkoutRef, "--")
 	if err := j.exec(cmdCheckout, toCloneDir); err != nil {
 		return "", fmt.Errorf("failed to checkout source: %w", err)
 	}
@@ -601,6 +606,12 @@ func (j *nativeBuildJob) toolchainCommand(name string, args ...string) *exec.Cmd
 	return exec.Command(name, args...)
 }
 
+// shellQuote wraps s in single quotes so a generated script treats it as one
+// literal word. A single quote inside the value is emitted as '\” .
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // createRunnableScript creates a runnable script with the given content.
 func (j *nativeBuildJob) createRunnableScript(wrapperName string, scriptContent string) (string, error) {
 	scriptPath := filepath.Join(j.workspaceDir, wrapperName)
@@ -617,7 +628,10 @@ func (j *nativeBuildJob) executeBuild() error {
 	j.logger.Info("Executing build script (Build phase)...")
 	releaseDir := filepath.Join(j.sourceDir, j.spec.Build.Component, "build")
 
-	scriptContent := fmt.Sprintf(`source %s;%s -b -a -w %s`, j.envFilePath, j.buildScriptPath, releaseDir)
+	// The paths are single-quoted: `releaseDir` contains spec.build.component,
+	// which must not be able to end the command or start a new one.
+	scriptContent := fmt.Sprintf("source %s;%s -b -a -w %s",
+		shellQuote(j.envFilePath), shellQuote(j.buildScriptPath), shellQuote(releaseDir))
 	runScriptPath, err := j.createRunnableScript("run_build.sh", scriptContent)
 	if err != nil {
 		return err

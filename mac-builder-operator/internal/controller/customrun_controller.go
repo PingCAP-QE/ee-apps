@@ -98,6 +98,13 @@ func (r *MacBuildCustomRunReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if buildErr != nil {
 			return ctrl.Result{}, buildErr
 		}
+		// Record which CustomRun this MacBuild belongs to. The mapping is by
+		// name only, so without this a CustomRun in any other namespace that
+		// happens to carry the same name would be adopted as the owner.
+		if mb.Annotations == nil {
+			mb.Annotations = map[string]string{}
+		}
+		mb.Annotations[customRunOwnerAnnotation] = customRunOwner(&cr)
 		if createErr := r.Create(ctx, mb); createErr != nil && !apierrors.IsAlreadyExists(createErr) {
 			return ctrl.Result{}, fmt.Errorf("failed to create MacBuild %s/%s: %w", namespace, name, createErr)
 		}
@@ -105,6 +112,15 @@ func (r *MacBuildCustomRunReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{RequeueAfter: r.pollInterval()}, nil
 	case err != nil:
 		return ctrl.Result{}, err
+	}
+
+	// Only the CustomRun that created this MacBuild may drive it: the name is
+	// cluster-unique only within a namespace, so a same-named CustomRun in
+	// another namespace is a different object and must not adopt the build.
+	if owner := macBuild.Annotations[customRunOwnerAnnotation]; owner != "" && owner != customRunOwner(&cr) {
+		logger.Info("Ignoring CustomRun: MacBuild is owned by another CustomRun",
+			"macBuild", macBuild.Name, "owner", owner, "customRun", customRunOwner(&cr))
+		return ctrl.Result{}, nil
 	}
 
 	return r.syncCustomRunStatus(ctx, logger, &cr, &macBuild)
@@ -128,6 +144,16 @@ func (r *MacBuildCustomRunReconciler) syncCustomRunStatus(
 		return ctrl.Result{RequeueAfter: r.pollInterval()}, nil
 	}
 	return ctrl.Result{}, nil
+}
+
+// customRunOwnerAnnotation records the namespace/name of the CustomRun a
+// MacBuild was created for, so a same-named CustomRun in another namespace
+// cannot adopt the build.
+const customRunOwnerAnnotation = "tibuild.pingcap.net/customrun-owner"
+
+// customRunOwner returns the namespace-qualified identity of a CustomRun.
+func customRunOwner(cr *tektonv1beta1.CustomRun) string {
+	return cr.GetNamespace() + "/" + cr.GetName()
 }
 
 const (
