@@ -2,6 +2,7 @@ package impl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -12,6 +13,12 @@ import (
 )
 
 const syncKernelImageAPIPath = "/devops/kernel-images/build-callback"
+
+// errKernelImageSyncNotApplicable reports a payload that carries no next-gen
+// release build. The ops platform only syncs release images, so such a payload
+// is skipped rather than failed: the delivery pipeline also reports development
+// builds, and they must not turn into failed TaskRuns.
+var errKernelImageSyncNotApplicable = errors.New("payload has no next-gen release build")
 
 // kernelImageMeta holds source code metadata read from the source image labels.
 type kernelImageMeta struct {
@@ -48,6 +55,12 @@ func (s *tidbcloudsrvc) RequestSyncKernelImage(ctx context.Context, p *tidbcloud
 	}
 
 	payload, err := s.buildKernelImageSyncRequest(ctx, p.Images, readMeta)
+	if errors.Is(err, errKernelImageSyncNotApplicable) {
+		return fmt.Sprintf(
+			"skipped: no next-gen release build in the payload (stage=%s, images=%d)",
+			p.Stage, len(p.Images),
+		), nil
+	}
 	if err != nil {
 		return "", err
 	}
@@ -84,31 +97,59 @@ func validateKernelImageSyncPayload(p *tidbcloud.RequestSyncKernelImagePayload) 
 	return nil
 }
 
+// kernelImageSyncSource is one image of a sync request together with the
+// metadata read from its labels.
+type kernelImageSyncSource struct {
+	image string
+	req   OpsKernelImageSyncRequestImage
+	meta  kernelImageMeta
+}
+
 // buildKernelImageSyncRequest collects per-image source metadata, verifies that
 // all images were built from the same repo commit, resolves the tag metadata
 // once, and assembles the ops request.
+//
+// A payload without a single next-gen release build carries nothing for the ops
+// platform to sync; it returns errKernelImageSyncNotApplicable so the caller can
+// report a skip instead of a failure.
 func (s *tidbcloudsrvc) buildKernelImageSyncRequest(ctx context.Context, images []string, readMeta kernelImageMetaReader) (*OpsKernelImageSyncRequest, error) {
-	sources := make([]OpsKernelImageSyncRequestImage, 0, len(images))
-	var repo, branch, gitTag, commitSHA, firstSourceTag string
-
-	for i, image := range images {
+	sources := make([]kernelImageSyncSource, 0, len(images))
+	for _, image := range images {
 		src, meta, err := s.kernelImageSource(ctx, image, readMeta)
 		if err != nil {
 			return nil, err
 		}
-		if i == 0 {
-			repo, branch, gitTag, commitSHA, firstSourceTag = meta.Repo, meta.Branch, meta.GitTag, meta.CommitSHA, src.SourceTag
-		} else if meta.Repo != repo || meta.CommitSHA != commitSHA || meta.GitTag != gitTag || meta.Branch != branch {
-			err = fmt.Errorf("source images are not built from the same repo commit")
+		sources = append(sources, kernelImageSyncSource{image: image, req: src, meta: meta})
+	}
+
+	if !isNextgenReleaseBuild(sources) {
+		s.logger.Info().
+			Str("first_image", images[0]).
+			Str("first_branch", sources[0].meta.Branch).
+			Str("first_git_tag", sources[0].meta.GitTag).
+			Int("images", len(images)).
+			Msg("tidbcloud.request-sync-kernel-image skipped: not a next-gen release build")
+		return nil, errKernelImageSyncNotApplicable
+	}
+
+	first := sources[0]
+	repo, branch, gitTag, commitSHA, firstSourceTag := first.meta.Repo, first.meta.Branch, first.meta.GitTag, first.meta.CommitSHA, first.req.SourceTag
+
+	reqImages := make([]OpsKernelImageSyncRequestImage, 0, len(sources))
+	reqImages = append(reqImages, first.req)
+	for _, source := range sources[1:] {
+		meta := source.meta
+		if meta.Repo != repo || meta.CommitSHA != commitSHA || meta.GitTag != gitTag || meta.Branch != branch {
+			err := fmt.Errorf("source images are not built from the same repo commit")
 			s.logger.Error().Err(err).
-				Str("source_image", image).Str("repo", meta.Repo).Str("branch", meta.Branch).
+				Str("source_image", source.image).Str("repo", meta.Repo).Str("branch", meta.Branch).
 				Str("git_tag", meta.GitTag).Str("commit_sha", meta.CommitSHA).
-				Str("first_image", images[0]).Str("first_repo", repo).Str("first_branch", branch).
+				Str("first_image", first.image).Str("first_repo", repo).Str("first_branch", branch).
 				Str("first_git_tag", gitTag).Str("first_commit_sha", commitSHA).
 				Msg("tidbcloud.request-sync-kernel-image failed: source image metadata mismatch")
 			return nil, err
 		}
-		sources = append(sources, src)
+		reqImages = append(reqImages, source.req)
 	}
 
 	applicant, releaseID, changeID := s.resolveKernelImageApplicant(ctx, repo, firstSourceTag)
@@ -121,8 +162,24 @@ func (s *tidbcloudsrvc) buildKernelImageSyncRequest(ctx context.Context, images 
 		Branch:          branch,
 		CommitSHA:       commitSHA,
 		GitTag:          gitTag,
-		Images:          sources,
+		Images:          reqImages,
 	}, nil
+}
+
+// isNextgenReleaseBuild reports whether the payload carries at least one image
+// built from a next-gen release branch or a release git tag. Development builds
+// (master, cloud-engine, …) are not synced to the cloud, so they are skipped
+// instead of failed.
+func isNextgenReleaseBuild(sources []kernelImageSyncSource) bool {
+	for _, source := range sources {
+		if isSupportedKernelImageTag(source.meta.GitTag) {
+			return true
+		}
+		if releaseNextgenBranchPattern.MatchString(source.meta.Branch) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *tidbcloudsrvc) kernelImageSource(ctx context.Context, image string, readMeta kernelImageMetaReader) (OpsKernelImageSyncRequestImage, kernelImageMeta, error) {
@@ -229,6 +286,16 @@ func classifyKernelImageRef(ref string) (gitTag, branch string) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", ""
+	}
+	// The build template records the full refspec for tag builds and for
+	// pipelines that clone by branch, so strip the namespace before deciding
+	// what the ref is. Without this a tag build is mistaken for a branch whose
+	// name happens to be "refs/tags/v26.3.21-nextgen".
+	switch {
+	case strings.HasPrefix(ref, "refs/tags/"):
+		return strings.TrimPrefix(ref, "refs/tags/"), ""
+	case strings.HasPrefix(ref, "refs/heads/"):
+		return "", strings.TrimPrefix(ref, "refs/heads/")
 	}
 	if semver.IsValid(ref) {
 		return ref, ""

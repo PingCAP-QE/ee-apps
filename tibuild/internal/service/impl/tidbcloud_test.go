@@ -143,6 +143,16 @@ func TestClassifyKernelImageRef(t *testing.T) {
 	tag, branch = classifyKernelImageRef("")
 	require.Empty(t, tag)
 	require.Empty(t, branch)
+
+	// Builds record the full refspec for tag pushes; the namespace must not leak
+	// into the branch name.
+	tag, branch = classifyKernelImageRef("refs/tags/v26.3.21-nextgen")
+	require.Equal(t, "v26.3.21-nextgen", tag)
+	require.Empty(t, branch)
+
+	tag, branch = classifyKernelImageRef("refs/heads/release-nextgen-202603")
+	require.Empty(t, tag)
+	require.Equal(t, "release-nextgen-202603", branch)
 }
 
 func TestNewTidbcloudLoadsConfigAndReload(t *testing.T) {
@@ -186,7 +196,8 @@ func TestReadImageConfigLabels(t *testing.T) {
 	meta := svc.readKernelImageMeta(context.Background(), "example.com/tidb:v8.5.4")
 	require.Equal(t, "pingcap/tidb", meta.Repo)
 	require.Equal(t, sha, meta.CommitSHA)
-	require.Equal(t, "refs/heads/main", meta.Branch)
+	// The ref namespace is stripped so the ops payload carries a branch name.
+	require.Equal(t, "main", meta.Branch)
 	require.Empty(t, meta.GitTag)
 
 	p := &tidbcloud.AddTidbxImageTagInTcmsPayload{Image: "example.com/tidb:v8.5.4"}

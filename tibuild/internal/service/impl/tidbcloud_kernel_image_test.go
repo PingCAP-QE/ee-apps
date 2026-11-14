@@ -130,3 +130,67 @@ func TestRequestSyncKernelImageRequiresSameRepoLabels(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "missing repo or commit_sha labels")
 }
+
+func TestRequestSyncKernelImageSkipsNonReleasePayload(t *testing.T) {
+	ops := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("the ops platform must not be called for a non-release payload")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(ops.Close)
+
+	svc := newTidbcloudTestService(t, &OpsConfig{
+		Stages: map[string]OpsStageConfig{
+			"dev": {APIBaseURL: ops.URL, APIKey: "dev-key"},
+		},
+	}, nil)
+	svc.kernelImageMetaReader = func(_ context.Context, _ string) kernelImageMeta {
+		return kernelImageMeta{
+			Repo:      "pingcap/tikv",
+			Branch:    "cloud-engine",
+			CommitSHA: "abcdef0123456789abcdef0123456789abcdef01",
+		}
+	}
+
+	body, err := svc.RequestSyncKernelImage(context.Background(), &tidbcloud.RequestSyncKernelImagePayload{
+		Stage: "dev",
+		Images: []string{
+			"us.gcr.io/pingcap-public/tidbx/tikv:cloud-engine-2b8565c-nextgen",
+			"us.gcr.io/pingcap-public/tidbx/tikv:cloud-engine-nextgen",
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, body, "skipped")
+	require.Contains(t, body, "no next-gen release build")
+}
+
+func TestRequestSyncKernelImageStillSyncsReleaseBranchPayload(t *testing.T) {
+	var calls int
+	ops := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"message":"accepted"}`))
+	}))
+	t.Cleanup(ops.Close)
+
+	svc := newTidbcloudTestService(t, &OpsConfig{
+		Stages: map[string]OpsStageConfig{
+			"dev": {APIBaseURL: ops.URL, APIKey: "dev-key"},
+		},
+	}, nil)
+	svc.kernelImageMetaReader = func(_ context.Context, _ string) kernelImageMeta {
+		return kernelImageMeta{
+			Repo:      "pingcap/tiflash",
+			Branch:    "release-nextgen-202603",
+			CommitSHA: "2526e21bc21a067b659c6c36f87ca7f12ed04a1b",
+		}
+	}
+
+	_, err := svc.RequestSyncKernelImage(context.Background(), &tidbcloud.RequestSyncKernelImagePayload{
+		Stage: "dev",
+		Images: []string{
+			"us.gcr.io/pingcap-public/tidbx/tiflash:release-nextgen-202603-2526e21",
+			"us.gcr.io/pingcap-public/tidbx/tiflash:release-nextgen-202603",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, calls)
+}
