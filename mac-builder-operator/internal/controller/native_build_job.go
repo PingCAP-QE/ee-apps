@@ -654,10 +654,12 @@ func (j *nativeBuildJob) executePublish() (string, error) {
 
 	// Build a fresh command per attempt: an *exec.Cmd can only be started once.
 	cmdPublish := j.toolchainCommand(j.buildScriptPath, "-p", "-w", releaseDir, "-o", j.pushedResultPath)
+	cmdPublish.Env = append(os.Environ(), "GIT_URL="+j.spec.Source.GitRepository)
 	if err := j.exec(cmdPublish, buildDir); err != nil {
 		firstErr := err
 		j.logger.Info("Publish failed, retrying once...", "error", firstErr)
 		retry := j.toolchainCommand(j.buildScriptPath, "-p", "-w", releaseDir, "-o", j.pushedResultPath)
+		retry.Env = cmdPublish.Env
 		if errRetry := j.exec(retry, buildDir); errRetry != nil {
 			return "", fmt.Errorf("publish execution failed: %w (first attempt: %v)", errRetry, firstErr)
 		}

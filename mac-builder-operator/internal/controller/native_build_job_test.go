@@ -92,6 +92,69 @@ func TestCloneArtifactsRepoChecksOutBranchRevision(t *testing.T) {
 	}
 }
 
+func TestExecutePublishPreservesSourceRepository(t *testing.T) {
+	// A worker's inherited value must not override this build's source.
+	t.Setenv("GIT_URL", "https://github.com/incorrect/inherited.git")
+
+	for _, tt := range []struct {
+		name      string
+		repo      string
+		failFirst bool
+	}{
+		{"original cse", "https://github.com/tidbcloud/cloud-storage-engine.git", false},
+		{"renamed ticse", "https://github.com/pingcap/ticse.git", false},
+		{"classic tikv", "https://github.com/tikv/tikv.git", false},
+		{"ssh url", "ssh://git@github.com/pingcap/ticse.git", false},
+		{"scp style ssh", "git@github.com:pingcap/ticse.git", false},
+		{"renamed ticse retry", "https://github.com/pingcap/ticse.git", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			macBuild := newTestMacBuild()
+			macBuild.Spec.Source.GitRepository = tt.repo
+			macBuild.Spec.Build.Component = "tikv"
+			job := newNativeBuildJob(context.Background(), macBuild, ArtifactsScriptSourceConfig{})
+			if err := job.setupWorkspace(); err != nil {
+				t.Fatalf("setup workspace: %v", err)
+			}
+			defer job.cleanup()
+			buildDir := filepath.Join(job.sourceDir, macBuild.Spec.Build.Component)
+			if err := os.MkdirAll(buildDir, 0o755); err != nil {
+				t.Fatalf("mkdir source: %v", err)
+			}
+
+			// Capture publication metadata without building or pushing artifacts.
+			script := "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$GIT_URL\" >> publish-sources.txt\n"
+			if tt.failFirst {
+				script += "if [ \"$(wc -l < publish-sources.txt)\" -eq 1 ]; then exit 7; fi\n"
+			}
+			const wantResult = "oci: {repo: example.invalid/tikv/package, tag: test}\n"
+			script += "printf '%s' '" + wantResult + "' > \"$5\"\n"
+			if err := os.WriteFile(job.buildScriptPath, []byte(script), 0o755); err != nil {
+				t.Fatalf("write publish script: %v", err)
+			}
+
+			got, err := job.executePublish()
+			if err != nil {
+				t.Fatalf("execute publish: %v", err)
+			}
+			if got != wantResult {
+				t.Fatalf("publish result = %q, want %q", got, wantResult)
+			}
+			data, err := os.ReadFile(filepath.Join(buildDir, "publish-sources.txt"))
+			if err != nil {
+				t.Fatalf("read publication sources: %v", err)
+			}
+			attempts := 1
+			if tt.failFirst {
+				attempts = 2
+			}
+			if want := strings.Repeat(tt.repo+"\n", attempts); string(data) != want {
+				t.Fatalf("publication sources = %q, want %q", data, want)
+			}
+		})
+	}
+}
+
 func TestExecStreamsOutputAndReturnsFailureTail(t *testing.T) {
 	t.Parallel()
 
