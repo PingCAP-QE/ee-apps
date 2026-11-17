@@ -5,8 +5,8 @@
 Add a `QA Cost Weekly` tab at `/qa-cost-weekly`, backed by `GET /api/v1/pages/weekly-cost`.
 It is a fixed weekly-review report for QA cloud accounts:
 
-- summary cards show the previous complete natural week's total, its week-over-week
-  change against the preceding complete natural week, and the previous complete
+- summary cards show the previous complete Sunday-through-Saturday UTC week's total,
+  its week-over-week change against the preceding report week, and the previous complete
   natural month's total;
 - an account table shows cloud/account identity, configured purpose, last-week
   list cost, week-over-week change, QA share, and last-natural-month list cost;
@@ -14,7 +14,7 @@ It is a fixed weekly-review report for QA cloud accounts:
   table; and
 - account identity is `(vendor, account_id)`; `display_name` is presentation only.
 
-Summary cards are labeled **Previous calendar week**, **Week before last** (the
+Summary cards are labeled **Previous reporting week**, **Week before last** (the
 WoW comparison baseline), and **Previous calendar month**, each with its date
 range. The summary and account table remain fixed when allocation periods switch.
 
@@ -35,21 +35,40 @@ Dates are inclusive; no timestamp conversion is applied to `usage_date`.
 
 For `D = datetime.now(UTC).date()` and Monday numbered `0`:
 
-- last complete week: `start = D - (D.weekday() + 7) days`, `end = start + 6 days`;
+- current report-week start: `S = D - ((D.weekday() + 1) % 7) days` (Sunday);
+- last complete week: `start = S - 7 days`, `end = start + 6 days` (Saturday);
 - preceding complete week: the seven days ending the day before last-week start;
 - last complete natural month: the first through last day of the calendar month
   immediately before `D`'s month.
 
-For example, when `D` is Monday `2026-07-20`, the periods are `2026-07-13` through
-`2026-07-19`, `2026-07-06` through `2026-07-12`, and `2026-06-01` through
-`2026-06-30`. Thus a report never includes the in-progress week or month.
-Late upstream corrections can change an already completed period; the page shows
-the shared table's values at request time.
+For example, when `D` is Monday `2026-07-20`, the periods are `2026-07-12` through
+`2026-07-18`, `2026-07-05` through `2026-07-11`, and `2026-06-01` through
+`2026-06-30`. On Sunday the report advances to the week ending the day before;
+on Saturday the current week is still in progress and is excluded.
+
+The one-day shift leaves an extra billing-arrival buffer for Tuesday Beijing-time
+reviews. T+3 is an availability estimate, not a finality guarantee: before 08:00
+Beijing time on Tuesday it is still Monday UTC, and imports can arrive later.
+Keep the UTC date range and delayed-billing notice visible; retain CI's existing
+missing-billing-date warnings. Do not dynamically shorten or move weeks based on
+source availability, or interpret absent billing dates as verified zero spend.
+Late upstream corrections can change a completed period; the page shows the
+shared table's values at request time.
 
 The history window starts `49` days before `last_week.start_date` and ends on
-`last_week.end_date`. It is exactly eight adjacent Monday-through-Sunday UTC
+`last_week.end_date`. It is exactly eight adjacent Sunday-through-Saturday UTC
 weeks, in ascending order: the seven complete weeks preceding `last_week`, then
-`last_week` itself. Each history x-axis bucket is its Monday `start_date`.
+`last_week` itself. Each history x-axis bucket is its Sunday `start_date`.
+
+The same week boundaries apply to summaries, WoW baselines, account tables,
+weekly budget proration/utilization, allocation/team shares, and both full and
+progressively loaded responses. Budget-period cumulative charts also use Sunday
+weekly buckets, retaining their existing plan-start-through-today scope and
+partial edge buckets. Natural-month and daily scopes, accounting expressions,
+source selection, API field names, and other dashboards' weekly buckets do not
+change. This is a read-time calendar change: no schema migration, stored-data
+rewrite, backfill, or snapshot is needed. Historical weeks are regrouped from
+existing daily facts; do not compare a new week with an old Monday-based bucket.
 
 `cost-insight/` owns the shared schema, migrations, and writes. `ci-dashboard/`
 only has read access to `cost_sources` and `cost_attribution_daily`; it must not
@@ -129,8 +148,8 @@ For `D = 2026-07-20`, the response shape (shown with one source) is:
     "cost_metric": "list_cost",
     "purpose_schema_available": true
   },
-  "last_week": {"start_date": "2026-07-13", "end_date": "2026-07-19"},
-  "previous_week": {"start_date": "2026-07-06", "end_date": "2026-07-12"},
+  "last_week": {"start_date": "2026-07-12", "end_date": "2026-07-18"},
+  "previous_week": {"start_date": "2026-07-05", "end_date": "2026-07-11"},
   "previous_month": {"start_date": "2026-06-01", "end_date": "2026-06-30"},
   "summary": {
     "last_week_cost": 1200.0,
@@ -154,17 +173,17 @@ For `D = 2026-07-20`, the response shape (shown with one source) is:
   ],
   "list_cost_history": {
     "metric": "list_cost",
-    "start_date": "2026-05-25",
-    "end_date": "2026-07-19",
+    "start_date": "2026-05-24",
+    "end_date": "2026-07-18",
     "weeks": [
-      {"start_date": "2026-05-25", "end_date": "2026-05-31"},
-      {"start_date": "2026-06-01", "end_date": "2026-06-07"},
-      {"start_date": "2026-06-08", "end_date": "2026-06-14"},
-      {"start_date": "2026-06-15", "end_date": "2026-06-21"},
-      {"start_date": "2026-06-22", "end_date": "2026-06-28"},
-      {"start_date": "2026-06-29", "end_date": "2026-07-05"},
-      {"start_date": "2026-07-06", "end_date": "2026-07-12"},
-      {"start_date": "2026-07-13", "end_date": "2026-07-19"}
+      {"start_date": "2026-05-24", "end_date": "2026-05-30"},
+      {"start_date": "2026-05-31", "end_date": "2026-06-06"},
+      {"start_date": "2026-06-07", "end_date": "2026-06-13"},
+      {"start_date": "2026-06-14", "end_date": "2026-06-20"},
+      {"start_date": "2026-06-21", "end_date": "2026-06-27"},
+      {"start_date": "2026-06-28", "end_date": "2026-07-04"},
+      {"start_date": "2026-07-05", "end_date": "2026-07-11"},
+      {"start_date": "2026-07-12", "end_date": "2026-07-18"}
     ],
     "series": [
       {
@@ -175,14 +194,14 @@ For `D = 2026-07-20`, the response shape (shown with one source) is:
         "purpose": "机器统一资源池及重点项目测试",
         "total_list_cost": 2600.0,
         "points": [
-          {"week_start": "2026-05-25", "list_cost": 0.0},
-          {"week_start": "2026-06-01", "list_cost": 0.0},
-          {"week_start": "2026-06-08", "list_cost": 0.0},
-          {"week_start": "2026-06-15", "list_cost": 1400.0},
-          {"week_start": "2026-06-22", "list_cost": 0.0},
-          {"week_start": "2026-06-29", "list_cost": 0.0},
-          {"week_start": "2026-07-06", "list_cost": 0.0},
-          {"week_start": "2026-07-13", "list_cost": 1200.0}
+          {"week_start": "2026-05-24", "list_cost": 0.0},
+          {"week_start": "2026-05-31", "list_cost": 0.0},
+          {"week_start": "2026-06-07", "list_cost": 0.0},
+          {"week_start": "2026-06-14", "list_cost": 1400.0},
+          {"week_start": "2026-06-21", "list_cost": 0.0},
+          {"week_start": "2026-06-28", "list_cost": 0.0},
+          {"week_start": "2026-07-05", "list_cost": 0.0},
+          {"week_start": "2026-07-12", "list_cost": 1200.0}
         ]
       }
     ]
@@ -206,7 +225,7 @@ The additive `team_share` object contains the same metric, the positive
 Each share item has `{key, name, value, share_pct, interactive:false}`. These
 objects are absent only when the old `purpose` schema is absent, preserving the
 old-schema compatibility response described above. The default report remains
-last-natural-week. The additive `/api/v1/pages/weekly-cost/allocation?period=month`
+last-complete-report-week (Sunday–Saturday UTC). The additive `/api/v1/pages/weekly-cost/allocation?period=month`
 endpoint returns only `{period, meta, budget_pace, team_share}` for the previous
 natural month, so changing the allocation views does not refetch the account
 table or trend data. The page initially requests
@@ -215,7 +234,7 @@ table or trend data. The page initially requests
 The default `include_trend=true` API behavior remains available for compatible
 callers.
 
-`weeks` and each series' `points` are ascending by Monday and contain exactly
+`weeks` and each series' `points` are ascending by Sunday and contain exactly
 eight entries. The first history week is `last_week.start_date - 49 days`; the
 last is the existing `last_week` exactly, so `list_cost_history.start_date` and
 `end_date` are inclusive. Every active, non-blank-purpose source appears in both
@@ -236,7 +255,7 @@ fabricated `0%`.
 The report also shows the Demo's report-level budget and allocation views, but
 keeps the existing fixed QA scope and last-complete-week calendar. It adds no
 page filters and creates no new database table or snapshot. Budget utilization
-exposes the browser-state switch between **Previous calendar week** (the default)
+exposes the browser-state switch between **Previous reporting week** (the default)
 and **Previous calendar month**; Team share follows that selected
 period without duplicating the control. The month view is loaded from the
 allocation-only endpoint.
@@ -275,7 +294,7 @@ period rather than always claiming a weekly window.
   projects not covered by a plan are omitted from this card.
 - **Budget-period cumulative cost** covers only current QA plans with explicit
   project membership (`projects` or legacy `label_filters.project`). It starts
-  at the earliest plan start date, has one cumulative-cost bar per UTC natural
+  at the earliest plan start date, has one cumulative-cost bar per Sunday-based UTC
   week through today, and displays cumulative actual, the summed full
   product-plan budget, and its utilization percentage in the chart header.
   Source-wide and other non-project budgets are
@@ -304,7 +323,7 @@ instead of a hard-coded half-year in the title.
 
 ### Team share
 
-For the selected previous calendar week or month, the page displays three
+For the selected previous reporting week or calendar month, the page displays three
 list-cost shares:
 
 1. Level 1 groups — the direct children of the active `Engineering Group` roster
@@ -326,20 +345,20 @@ Owner share.
 ## Table and chart presentation
 
 The account table displays list-cost fields: **Account**, **Purpose**, **Previous
-calendar week**, **WoW**, **QA share**, and **Previous calendar month**. The
+reporting week**, **WoW**, **QA share**, and **Previous calendar month**. The
 compatible `previous_week_cost` and `week_wow_pct` response fields supply the
 comparison.
 
-- The **Previous calendar week** and **Previous calendar month** headers each
+- The **Previous reporting week** and **Previous calendar month** headers each
   use two lines: the metric title first, then its inclusive fixed UTC range
   (`YYYY-MM-DD – YYYY-MM-DD`) from `last_week` or `previous_month` directly beneath it.
 - Account and Purpose are left-aligned. Every money or percentage header and
-  cell is right-aligned, including Previous calendar week, WoW, QA share, and
+  cell is right-aligned, including Previous reporting week, WoW, QA share, and
   Previous calendar month.
 - Three fixed vendor-summary rows (`AWS total`, `GCP total`, and `AZURE total`)
   appear above the account rows. They sum every qualifying QA account for their vendor
   and are not moved by account-column sorting.
-- Each of the four numeric columns (Previous calendar week, WoW, QA share, and
+- Each of the four numeric columns (Previous reporting week, WoW, QA share, and
   Previous calendar month) is sortable by its header. The first selection sorts
   descending; a second selection of the same column switches to ascending. Missing values
   remain last.
@@ -352,7 +371,7 @@ comparison.
   long words cannot expand the table.
 
 Below the table, render one fixed stacked bar chart titled **Cost trend** from
-`list_cost_history`. The x-axis labels are the eight `weeks[].start_date` Monday
+`list_cost_history`. The x-axis labels are the eight `weeks[].start_date` Sunday
 dates, in response order; there is no date picker, filter, or arbitrary time
 selection. In the unfocused **All** state, render every returned series in order
 with a deterministically assigned, high-contrast, visually distinct palette color.
@@ -363,7 +382,7 @@ every series. This is browser presentation state keyed by `cost_source`, not a
 URL value or API query parameter, and it does not change the table, cards,
 QA-share denominator, or history data fetched.
 
-Hovering any week shows a tooltip with its Monday-to-Sunday date range, every
+Hovering any week shows a tooltip with its Sunday-to-Saturday date range, every
 visible source's formatted list-cost value, and the formatted total of those
 visible sources. Thus the All tooltip totals the full stack and an account-focus
 tooltip totals that one source. The chart panel subtitle identifies the metric as
@@ -374,9 +393,11 @@ exclusion.
 
 Backend acceptance:
 
-- freeze the UTC clock and verify Monday-through-Sunday, preceding-week,
-  previous-month, and all eight history boundaries, including month/year
-  transitions; the eighth history bucket is exactly `last_week`;
+- freeze the UTC clock and verify Sunday-through-Saturday, preceding-week,
+  previous-month, and all eight history boundaries, including Saturday/Sunday
+  rollover, Monday/Tuesday reviews, and month/year transitions; the eighth history
+  bucket is exactly `last_week`, including Sunday/Saturday facts and excluding the
+  next Sunday; full/section/trend/allocation responses must agree;
 - verify only active, non-blank-purpose sources are selected, including the two
   initial accounts and a newly configured QA source; a configured source without
   facts has a normal zero-cost item and eight zero history points;
@@ -394,13 +415,13 @@ Backend acceptance:
 Frontend acceptance:
 
 - `QA Cost Weekly` is reachable from navigation and renders billing-report
-  list-cost summary and table values; the Previous calendar week and Previous
+  list-cost summary and table values; the Previous reporting week and Previous
   calendar month table headers have the title over the fixed UTC range,
   numeric/percentage cells are right-aligned, and long Purpose text wraps within the `1.5 × Account` limit;
-- the restored row-level WoW column is between Previous calendar week and QA
+- the restored row-level WoW column is between Previous reporting week and QA
   share, contains only percentage text, and is bold red only above `30%` (with `30%`, `30.01%`,
   and null covered by regression tests);
-- below the table **Cost trend** renders eight Monday labels and every history
+- below the table **Cost trend** renders eight Sunday labels and every history
   series as a returned-order stack, with the largest eight-week series at the
   bottom and an explicit distinct palette color that remains stable on focus;
 - its All and account controls focus only the chart in client state, restore the
