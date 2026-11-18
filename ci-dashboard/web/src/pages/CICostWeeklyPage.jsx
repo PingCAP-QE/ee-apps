@@ -67,12 +67,13 @@ export default function CICostWeeklyPage() {
     <div className="page-stack weekly-cost ci-weekly-cost">
       <PageIntro
         eyebrow="CI Cost Weekly"
+        description="Reporting weeks run Sunday–Saturday UTC (inclusive dates). Billing typically arrives T+3 or later, so completed weeks may still be incomplete."
         kicker={formatDateRangeLabel(lastCompleteWeek.start_date, lastCompleteWeek.end_date)}
       />
 
       <Panel
         title="Overall"
-        subtitle={`Previous calendar week: ${formatDateRangeLabel(
+        subtitle={`Previous reporting week: ${formatDateRangeLabel(
           lastCompleteWeek.start_date,
           lastCompleteWeek.end_date,
         )}; previous calendar month: ${formatDateRangeLabel(
@@ -92,7 +93,7 @@ export default function CICostWeeklyPage() {
                 <h4>{`${formatAccountLabel(account)} ${formatCostBasis(account.cost_basis)}`}</h4>
                 <div className="ci-weekly-cost__account-row">
                   <StatCard
-                    label={<PeriodLabel title="Previous calendar week" period={lastCompleteWeek} />}
+                    label={<PeriodLabel title="Previous reporting week" period={lastCompleteWeek} />}
                     value={formatCurrency(account.last_complete_week?.actual_cost)}
                     delta={formatWeekOverWeek(account.week_wow_pct)}
                     deltaTone={costDeltaTone(account.week_wow_pct)}
@@ -126,6 +127,7 @@ export default function CICostWeeklyPage() {
 
       <Panel
         title="Cost trend"
+        subtitle="Last eight complete Sunday–Saturday UTC weeks."
         loading={report.loading}
         error={report.error}
       >

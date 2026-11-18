@@ -122,6 +122,14 @@ Notes:
   Resource details remain on demand, including while other charts are loading.
   Summary cards show placeholders until spend is available instead of displaying
   pending or failed queries as zero spending.
+- CI and QA Cost Weekly use the previous complete **Sunday–Saturday UTC** week,
+  including WoW, eight-week histories, weekly budgets, and allocation panels.
+  Their budget-period cumulative charts use Sunday-based weekly buckets too.
+  Monthly/daily scopes and other dashboards' week buckets are unchanged. This
+  adds a day of billing-arrival buffer for Tuesday Beijing-time review, not a
+  completeness guarantee; late imports/corrections can still change totals.
+  See [QA calendar rules](docs/weekly-cost-design.md#calendar-and-data-contract)
+  and [CI report rules](docs/ci-weekly-cost-design.md#weekly-calendar-and-billing-delay).
 - the Cost tab uses T+3 data availability in UTC. End has a hover/focus info hint,
   its calendar and URL filters cap End at the latest available date, and the
   default End date uses the same three-day lag.

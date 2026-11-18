@@ -51,8 +51,8 @@ function weeklyCostReport({ items = [], listCostHistory, budgetPace, teamShare, 
       cost_metric: "list_cost",
       purpose_schema_available: true,
     },
-    last_week: { start_date: "2026-07-13", end_date: "2026-07-19" },
-    previous_week: { start_date: "2026-07-06", end_date: "2026-07-12" },
+    last_week: { start_date: "2026-07-12", end_date: "2026-07-18" },
+    previous_week: { start_date: "2026-07-05", end_date: "2026-07-11" },
     previous_month: { start_date: "2026-06-01", end_date: "2026-06-30" },
     summary: {
       last_week_cost: 0,
@@ -71,17 +71,17 @@ function weeklyCostReport({ items = [], listCostHistory, budgetPace, teamShare, 
 function weeklyCostHistory(series = []) {
   return {
     metric: "list_cost",
-    start_date: "2026-05-25",
-    end_date: "2026-07-19",
+    start_date: "2026-05-24",
+    end_date: "2026-07-18",
     weeks: [
-      { start_date: "2026-05-25", end_date: "2026-05-31" },
-      { start_date: "2026-06-01", end_date: "2026-06-07" },
-      { start_date: "2026-06-08", end_date: "2026-06-14" },
-      { start_date: "2026-06-15", end_date: "2026-06-21" },
-      { start_date: "2026-06-22", end_date: "2026-06-28" },
-      { start_date: "2026-06-29", end_date: "2026-07-05" },
-      { start_date: "2026-07-06", end_date: "2026-07-12" },
-      { start_date: "2026-07-13", end_date: "2026-07-19" },
+      { start_date: "2026-05-24", end_date: "2026-05-30" },
+      { start_date: "2026-05-31", end_date: "2026-06-06" },
+      { start_date: "2026-06-07", end_date: "2026-06-13" },
+      { start_date: "2026-06-14", end_date: "2026-06-20" },
+      { start_date: "2026-06-21", end_date: "2026-06-27" },
+      { start_date: "2026-06-28", end_date: "2026-07-04" },
+      { start_date: "2026-07-05", end_date: "2026-07-11" },
+      { start_date: "2026-07-12", end_date: "2026-07-18" },
     ],
     series,
   };
@@ -805,8 +805,8 @@ test("QA Cost Weekly direct route uses its fixed API URL and explains an old sou
           cost_metric: "list_cost",
           purpose_schema_available: false,
         },
-        last_week: { start_date: "2026-07-13", end_date: "2026-07-19" },
-        previous_week: { start_date: "2026-07-06", end_date: "2026-07-12" },
+        last_week: { start_date: "2026-07-12", end_date: "2026-07-18" },
+        previous_week: { start_date: "2026-07-05", end_date: "2026-07-11" },
         previous_month: { start_date: "2026-06-01", end_date: "2026-06-30" },
         summary: {
           last_week_cost: 0,
@@ -834,6 +834,9 @@ test("QA Cost Weekly direct route uses its fixed API URL and explains an old sou
     assert.deepEqual(requests, ["/api/v1/pages/weekly-cost?include_trend=false"]);
     const rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /QA Cost Weekly/);
+    assert.match(rendered, /Sunday–Saturday UTC week \(inclusive dates\)/);
+    assert.match(rendered, /Billing typically arrives T\+3 or later, so completed weeks may still be incomplete/);
+    assert.doesNotMatch(rendered, /Monday–Sunday/);
     assert.match(rendered, /QA source metadata is not deployed yet/);
   } finally {
     await act(async () => renderer?.unmount());
@@ -864,8 +867,8 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
           calendar_timezone: "UTC",
           cost_metric: "budget_basis_spend",
         },
-        last_complete_week: { start_date: "2026-09-14", end_date: "2026-09-20" },
-        previous_complete_week: { start_date: "2026-09-07", end_date: "2026-09-13" },
+        last_complete_week: { start_date: "2026-09-13", end_date: "2026-09-19" },
+        previous_complete_week: { start_date: "2026-09-06", end_date: "2026-09-12" },
         last_complete_month: { start_date: "2026-08-01", end_date: "2026-08-31" },
         accounts: [
           {
@@ -899,40 +902,40 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
         },
         weekly_cost_history: {
           budget_points: [
-            { week_start: "2026-08-31", period_budget: 650 },
-            { week_start: "2026-09-07", period_budget: 300 },
+            { week_start: "2026-08-30", period_budget: 650 },
+            { week_start: "2026-09-06", period_budget: 300 },
           ],
           series: [
             {
               cost_source: "gcp:pingcap-testing-account",
               cost_metric: "list_cost",
               points: [
-                { week_start: "2026-08-31", cost: 100 },
-                { week_start: "2026-09-07", cost: 150 },
+                { week_start: "2026-08-30", cost: 100 },
+                { week_start: "2026-09-06", cost: 150 },
               ],
             },
             {
               cost_source: "tencent:100050658403",
               cost_metric: "list_cost",
               points: [
-                { week_start: "2026-08-31", cost: 200 },
-                { week_start: "2026-09-07", cost: 300 },
+                { week_start: "2026-08-30", cost: 200 },
+                { week_start: "2026-09-06", cost: 300 },
               ],
             },
             {
               cost_source: "gcp:pingcap-testing-account",
               cost_metric: "net_cost",
               points: [
-                { week_start: "2026-08-31", cost: 80 },
-                { week_start: "2026-09-07", cost: 120 },
+                { week_start: "2026-08-30", cost: 80 },
+                { week_start: "2026-09-06", cost: 120 },
               ],
             },
             {
               cost_source: "tencent:100050658403",
               cost_metric: "net_cost",
               points: [
-                { week_start: "2026-08-31", cost: 500 },
-                { week_start: "2026-09-07", cost: 250 },
+                { week_start: "2026-08-30", cost: 500 },
+                { week_start: "2026-09-06", cost: 250 },
               ],
             },
           ],
@@ -946,7 +949,7 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
               period: { start_date: "2026-09-01", end_date: "2026-09-23" },
               total_budget: 21200,
               points: [{
-                week_start: "2026-08-31",
+                week_start: "2026-08-30",
                 budget_basis_cost: 100,
                 cumulative_budget_basis_cost: 100,
               }],
@@ -957,7 +960,7 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
               period: { start_date: "2026-09-01", end_date: "2026-09-23" },
               total_budget: 84000,
               points: [{
-                week_start: "2026-08-31",
+                week_start: "2026-08-30",
                 budget_basis_cost: 200,
                 cumulative_budget_basis_cost: 200,
               }],
@@ -1006,6 +1009,11 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
     }
     assert.ok(Math.abs(historyBars[2].props.height / historyBars[0].props.height - 5) < 1e-8);
     assert.ok(Math.abs(historyBars[3].props.height / historyBars[1].props.height - 250 / 150) < 1e-8);
+    assert.deepEqual(
+      historyChart.findAllByProps({ className: "chart-axis-label chart-axis-label--bottom" })
+        .map((label) => label.children.join("")),
+      ["08-30", "09-06"],
+    );
     const budgetLine = historyChart.findByType("polyline");
     assert.equal(budgetLine.props.stroke, "#d1495b");
     assert.equal(budgetLine.props.strokeDasharray, "7 6");
@@ -1057,12 +1065,21 @@ test("CI Cost Weekly stacks GCP list and Tencent net costs against a weekly budg
       "Cumulative spend by account",
       "Cumulative spend by account",
     ]);
+    assert.deepEqual(
+      renderer.root.findAllByProps({ role: "img", "aria-label": "Budget period cumulative cost chart" })
+        .map((chart) => chart.findAllByProps({ className: "chart-axis-label chart-axis-label--bottom" })
+          .map((label) => label.children.join(""))),
+      [["Aug 30"], ["Aug 30"]],
+    );
     assert.match(rendered, /Cost trend/);
     assert.match(rendered, /Last week's budget utilization · GCP list \+ Tencent net/);
     assert.match(rendered, /GCP \+ Tencent weekly budget/);
     assert.doesNotMatch(rendered, /Each week has list-cost and net-cost bars; each is stacked by GCP and Tencent/);
-    assert.match(rendered, /2026-09-14 – 2026-09-20/);
-    assert.match(rendered, /Previous calendar week/);
+    assert.match(rendered, /2026-09-13 – 2026-09-19/);
+    assert.match(rendered, /Reporting weeks run Sunday–Saturday UTC \(inclusive dates\)/);
+    assert.match(rendered, /Billing typically arrives T\+3 or later, so completed weeks may still be incomplete/);
+    assert.match(rendered, /Last eight complete Sunday–Saturday UTC weeks/);
+    assert.match(rendered, /Previous reporting week/);
     assert.match(rendered, /Previous calendar month/);
     assert.match(rendered, /Previous month's budget utilization/);
     assert.match(rendered, /Last week's list-cost share/);
@@ -1094,9 +1111,9 @@ test("CI Cost Weekly distinguishes a zero weekly budget from an unavailable budg
         series: [{
           cost_source: "gcp:pingcap-testing-account",
           cost_metric: "list_cost",
-          points: [{ week_start: "2026-09-07", cost: 100 }],
+          points: [{ week_start: "2026-09-06", cost: 100 }],
         }],
-        budget_points: [{ week_start: "2026-09-07", period_budget: periodBudget }],
+        budget_points: [{ week_start: "2026-09-06", period_budget: periodBudget }],
       },
     }),
   });
@@ -1164,9 +1181,9 @@ test("weekly cost distinguishes no QA sources from configured zero-cost sources"
       .map((label) => label.children.map((part) => part.children.join("")));
     assert.match(rendered, /Configured QA environment/);
     assert.deepEqual(periodLabels, [
-      ["Previous calendar week", "2026-07-13 – 2026-07-19"],
+      ["Previous reporting week", "2026-07-12 – 2026-07-18"],
       ["Previous calendar month", "2026-06-01 – 2026-06-30"],
-      ["Previous calendar week", "2026-07-13 – 2026-07-19"],
+      ["Previous reporting week", "2026-07-12 – 2026-07-18"],
       ["Previous calendar month", "2026-06-01 – 2026-06-30"],
     ]);
     assert.match(rendered, /Week before last/);
@@ -1185,7 +1202,7 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
   const report = weeklyCostReport({
     budgetPace: {
       metric: "list_cost",
-      period: { start_date: "2026-07-13", end_date: "2026-07-19" },
+      period: { start_date: "2026-07-12", end_date: "2026-07-18" },
       overall: { actual_list_cost: 220, period_budget: 1050, utilization_pct: 20.95 },
       projects: [
         {
@@ -1255,8 +1272,8 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
       period: { start_date: "2026-01-01", end_date: "2026-07-20" },
       total_budget: 1000,
       points: [
-        { week_start: "2026-01-05", list_cost: 100, cumulative_list_cost: 100 },
-        { week_start: "2026-01-12", list_cost: 100, cumulative_list_cost: 200 },
+        { week_start: "2026-01-04", list_cost: 100, cumulative_list_cost: 100 },
+        { week_start: "2026-01-11", list_cost: 100, cumulative_list_cost: 200 },
       ],
     },
     teamShare: {
@@ -1379,6 +1396,12 @@ test("weekly cost renders only matched budget scenarios plus team shares", async
     });
     assert.equal(cumulativeSummary.findByType("strong").children.join(""), "Cumulative spend $200.00");
     assert.equal(cumulativeSummary.findByType("span").children.join(""), "$1,000 budget · 20.0%");
+    assert.deepEqual(
+      renderer.root.findByProps({ role: "img", "aria-label": "Budget period cumulative cost chart" })
+        .findAllByProps({ className: "chart-axis-label chart-axis-label--bottom" })
+        .map((label) => label.children.join("")),
+      ["Jan 4", "Jan 11"],
+    );
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;
@@ -1424,7 +1447,7 @@ test("weekly cost keeps budget titles, chart titles and empty states aligned whe
   let renderer;
   const weekBudgetPace = {
     metric: "list_cost",
-    period: { start_date: "2026-07-13", end_date: "2026-07-19" },
+    period: { start_date: "2026-07-12", end_date: "2026-07-18" },
     overall: { actual_list_cost: 100, period_budget: 200, utilization_pct: 50 },
     projects: [],
     team_cost: { metric: "list_cost", total_list_cost: 100, items: [] },
@@ -1541,6 +1564,8 @@ test("weekly cost keeps budget titles, chart titles and empty states aligned whe
 
     const rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /2026-06-01 – 2026-06-30/);
+    assert.match(rendered, /2026-07-12 – 2026-07-18/);
+    assert.match(rendered, /Jul 5 - Jul 11, 2026/);
     assert.match(rendered, /Monthly matched scenario/);
     assert.doesNotMatch(rendered, /Monthly unmatched project/);
     assert.deepEqual(
@@ -1576,7 +1601,7 @@ test("weekly cost keeps budget titles, chart titles and empty states aligned whe
     await act(async () => {
       renderer.root
         .findAllByType("button")
-        .find((button) => button.children.join("") === "Previous calendar week")
+        .find((button) => button.children.join("") === "Previous reporting week")
         .props.onClick();
       await Promise.resolve();
     });
@@ -1650,14 +1675,14 @@ test("weekly cost sorts account breakdown numeric columns on demand", async () =
 
     await act(async () => {
       renderer.root
-        .findByProps({ "aria-label": "Sort Previous calendar week descending" })
+        .findByProps({ "aria-label": "Sort Previous reporting week descending" })
         .props.onClick();
     });
     assert.deepEqual(accountNames(), ["AWS · high", "GCP · low"]);
 
     await act(async () => {
       renderer.root
-        .findByProps({ "aria-label": "Sort Previous calendar week ascending" })
+        .findByProps({ "aria-label": "Sort Previous reporting week ascending" })
         .props.onClick();
     });
     assert.deepEqual(accountNames(), ["GCP · low", "AWS · high"]);
@@ -1753,14 +1778,14 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
   const originalWindow = globalThis.window;
   let renderer;
   const points = (first, second) => [
-    ["2026-05-25", first],
-    ["2026-06-01", 0],
-    ["2026-06-08", 0],
-    ["2026-06-15", 0],
-    ["2026-06-22", 0],
-    ["2026-06-29", 0],
-    ["2026-07-06", 0],
-    ["2026-07-13", second],
+    ["2026-05-24", first],
+    ["2026-05-31", 0],
+    ["2026-06-07", 0],
+    ["2026-06-14", 0],
+    ["2026-06-21", 0],
+    ["2026-06-28", 0],
+    ["2026-07-05", 0],
+    ["2026-07-12", second],
   ].map(([week_start, list_cost]) => ({ week_start, list_cost }));
   const report = weeklyCostReport({
     items: [
@@ -1836,6 +1861,7 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
     });
 
     assert.equal(requests.length, 3);
+    assert.match(JSON.stringify(renderer.toJSON()), /last eight complete Sunday–Saturday UTC weeks/);
     assert.ok(renderer.root.findByProps({ role: "img", "aria-label": "Trend chart" }));
     assert.ok(
       renderer.root.findAllByType("h3").some((heading) => heading.children.join("") === "Cost trend"),
@@ -1845,14 +1871,14 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
     assert.deepEqual(
       costTrendLabels.map((label) => label.children.join("")),
       [
-        "2026-05-25",
-        "2026-06-01",
-        "2026-06-08",
-        "2026-06-15",
-        "2026-06-22",
-        "2026-06-29",
-        "2026-07-06",
-        "2026-07-13",
+        "2026-05-24",
+        "2026-05-31",
+        "2026-06-07",
+        "2026-06-14",
+        "2026-06-21",
+        "2026-06-28",
+        "2026-07-05",
+        "2026-07-12",
       ],
     );
     assert.ok(
@@ -1877,7 +1903,7 @@ test("weekly cost renders and focuses list-cost history without refetching", asy
     });
     assert.equal(
       renderer.root.findByProps({ className: "chart-tooltip__title" }).children.join(""),
-      "2026-07-13 – 2026-07-19",
+      "2026-07-12 – 2026-07-18",
     );
     await act(async () => {
       lastHitArea.props.onMouseLeave();

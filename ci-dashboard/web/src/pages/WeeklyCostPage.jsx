@@ -112,13 +112,13 @@ export default function WeeklyCostPage() {
       <PageIntro
         eyebrow="QA Cost Weekly"
         title="QA cloud spend, ready for the weekly review"
-        description="Summary and account breakdown cover the previous calendar week (Monday–Sunday, UTC). Budget utilization and team share can also show the previous calendar month. QA accounts have a configured purpose."
+        description="Summary and account breakdown cover the last complete Sunday–Saturday UTC week (inclusive dates). Budget utilization and team share can also show the previous calendar month. QA accounts have a configured purpose. Billing typically arrives T+3 or later, so completed weeks may still be incomplete."
         kicker={formatDateRangeLabel(lastWeek.start_date, lastWeek.end_date)}
       />
 
       <section className="stats-grid weekly-cost__summary">
         <StatCard
-          label={<PeriodLabel title="Previous calendar week" period={lastWeek} />}
+          label={<PeriodLabel title="Previous reporting week" period={lastWeek} />}
           value={formatCurrency(summary.last_week_cost)}
           delta={formatWeekOverWeek(summary.week_wow_pct)}
           deltaTone={costDeltaTone(summary.week_wow_pct)}
@@ -139,7 +139,7 @@ export default function WeeklyCostPage() {
       {budgetPace ? (
         <Panel
           title="Budget utilization"
-          subtitle={`${allocationPeriod === "week" ? "Previous calendar week" : "Previous calendar month"}: ${formatDateRangeLabel(
+          subtitle={`${allocationPeriod === "week" ? "Previous reporting week" : "Previous calendar month"}: ${formatDateRangeLabel(
             allocationPeriodRange.start_date,
             allocationPeriodRange.end_date,
           )}. Cross-account cost allocation.`}
@@ -226,7 +226,7 @@ export default function WeeklyCostPage() {
 
       <Panel
         title="QA account breakdown"
-        subtitle="Costs use the billing report's list-cost basis. QA share is each account's share of total QA list cost for the previous calendar week."
+        subtitle="Costs use the billing report's list-cost basis. QA share is each account's share of total QA list cost for the previous reporting week."
         loading={report.loading}
         error={report.error}
       >
@@ -239,8 +239,8 @@ export default function WeeklyCostPage() {
                   <th scope="col">Purpose</th>
                   <SortableCostHeader
                     field="last_week_cost"
-                    label={<PeriodLabel title="Previous calendar week" period={lastWeek} />}
-                    sortLabel="Previous calendar week"
+                    label={<PeriodLabel title="Previous reporting week" period={lastWeek} />}
+                    sortLabel="Previous reporting week"
                     sort={accountSort}
                     onSort={handleAccountSort}
                   />
@@ -315,7 +315,7 @@ export default function WeeklyCostPage() {
 
       <Panel
         title="Cost trend"
-        subtitle="List cost by account for the last eight complete UTC weeks. GCP Compute Flexible Committed Use Discounts are excluded."
+        subtitle="List cost by account for the last eight complete Sunday–Saturday UTC weeks. GCP Compute Flexible Committed Use Discounts are excluded."
         loading={report.loading || trendReport.loading}
         error={report.error || trendReport.error}
       >
@@ -379,7 +379,7 @@ function AllocationPeriodToggle({ value, onChange }) {
       value={value}
       onChange={onChange}
       options={[
-        { key: "week", label: "Previous calendar week" },
+        { key: "week", label: "Previous reporting week" },
         { key: "month", label: "Previous calendar month" },
       ]}
     />
