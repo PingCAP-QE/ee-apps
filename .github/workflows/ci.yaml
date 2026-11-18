@@ -25,7 +25,7 @@ on:
       - "**/package.json"
       - "**/package-lock.json"
 env:
-  SKAFFOLD_VER: v2.17.0
+  SKAFFOLD_VER: v2.25.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -58,6 +58,8 @@ jobs:
           filters: |
             ci-dashboard:
               - 'ci-dashboard/**'
+              - '.github/workflows/ci.yaml'
+              - '.github/workflows/release.yaml'
             cost-insight:
               - 'cost-insight/**'
             roster:
