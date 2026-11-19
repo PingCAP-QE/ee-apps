@@ -64,19 +64,22 @@ lark:
     - name: "devbuild-team"
       chat_id: "oc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
-# Devbuild request policy. Every key is optional; unset keys keep the legacy
-# behaviour.
+# Devbuild request policy.
 devbuild:
-  # Repository namespaces a caller may name in a devbuild's `builderImg`, for
-  # example:
-  #   - ghcr.io/pingcap-qe
-  #   - hub.pingcap.net/pingcap
-  #   - us-docker.pkg.dev/pingcap-testing-account
-  # Only the repository is matched; tags and digests are not restricted. A
-  # trailing slash is optional and matching is case-insensitive. Empty
-  # disables the check: any valid image reference is accepted.
+  # Repository namespaces a caller may name in a devbuild's `builderImg`. Only
+  # the repository is matched; tags and digests are not restricted. A trailing
+  # slash is optional and matching is case-insensitive.
+  #
+  # The check is fail-closed: an empty list rejects every builderImg override,
+  # so a devbuild always uses the image the artifacts config pins for the
+  # component. List the namespaces we pin as builders to allow overrides:
   # Hot-reloadable: changes take effect without a restart.
-  builder_image_allowed_repositories: []
+  builder_image_allowed_repositories:
+    - ghcr.io/pingcap-qe/cd/builders
+    - ghcr.io/pingcap-qe/cd/utils/release
+    - docker.io/library/golang
+    - docker.io/rustlang/rust
+    - public.ecr.aws/amazonlinux/amazonlinux
 
   # GitHub repositories an explicit devbuild `githubRepo` may name. Entries are
   # "<owner>/<repo>" or "<owner>/*"; matching is case-insensitive.

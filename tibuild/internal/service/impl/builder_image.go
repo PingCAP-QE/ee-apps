@@ -17,12 +17,14 @@ import (
 // `image:` of the Tekton build step, which runs with CI credentials and pushes
 // to the testing-account registry).
 //
-// Then, if an allowlist is configured (devbuild.builder_image_allowed_repositories),
-// the repository part must be inside one of the listed namespaces. Only the
-// repository is matched: tags and digests are not restricted. An empty
-// allowlist disables that policy, which keeps the previous behaviour, and an
-// empty image is always accepted because it means "use the image the artifacts
-// config pins for the component".
+// Then the repository part must be inside one of the namespaces listed in
+// devbuild.builder_image_allowed_repositories. Only the repository is matched:
+// tags and digests are not restricted. The policy is fail-closed: an empty
+// allowlist rejects every override, because treating "not configured" as
+// "allow anything" would let a missing config key hand the build step an
+// arbitrary image. An empty image is still accepted: it means "use the image
+// the artifacts config pins for the component", which never reaches this
+// allowlist.
 //
 // The policy belongs in this API, because this is where the request enters the
 // system. The Tekton tasks downstream cannot do it: they receive the pinned
@@ -33,15 +35,19 @@ func validateBuilderImage(allowedRepositories []string, image string) error {
 	if image == "" {
 		return nil
 	}
-	badRequest := func(message string) error {
-		return &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: message}
-	}
 	named, err := reference.ParseNormalizedNamed(image)
 	if err != nil {
-		return badRequest(fmt.Sprintf("builderImg is not a valid image reference: %v", err))
+		return &devbuild.DevBuildBadRequestError{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("builderImg is not a valid image reference: %v", err),
+		}
 	}
+
 	if len(allowedRepositories) == 0 {
-		return nil
+		return &devbuild.DevBuildForbiddenError{
+			Code:    http.StatusForbidden,
+			Message: "builderImg overrides are disabled: devbuild.builder_image_allowed_repositories is not configured",
+		}
 	}
 
 	// The repository without the tag or digest, e.g.
@@ -58,7 +64,10 @@ func validateBuilderImage(allowedRepositories []string, image string) error {
 			return nil
 		}
 	}
-	return badRequest(fmt.Sprintf("builderImg repository %q must be one of %s", repository, strings.Join(allowed, ", ")))
+	return &devbuild.DevBuildForbiddenError{
+		Code:    http.StatusForbidden,
+		Message: fmt.Sprintf("builderImg repository %q must be one of %s", repository, strings.Join(allowed, ", ")),
+	}
 }
 
 // normalizeRepositoryPrefix makes a configured namespace comparable with the
