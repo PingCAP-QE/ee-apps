@@ -24,13 +24,6 @@ type CreateRequestBody struct {
 	Request *DevBuildSpecRequestBody `form:"request" json:"request" xml:"request"`
 }
 
-// UpdateRequestBody is the type of the "devbuild" service "update" endpoint
-// HTTP request body.
-type UpdateRequestBody struct {
-	// Status to update
-	Status *DevBuildStatusRequestBody `form:"status" json:"status" xml:"status"`
-}
-
 // CapabilitiesResponseBody is the type of the "devbuild" service
 // "capabilities" endpoint HTTP response body.
 type CapabilitiesResponseBody struct {
@@ -52,16 +45,6 @@ type CreateResponseBody struct {
 // GetResponseBody is the type of the "devbuild" service "get" endpoint HTTP
 // response body.
 type GetResponseBody struct {
-	ID          *int                             `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
-	Meta        *DevBuildMetaResponseBody        `form:"meta,omitempty" json:"meta,omitempty" xml:"meta,omitempty"`
-	Spec        *DevBuildSpecResponseBody        `form:"spec,omitempty" json:"spec,omitempty" xml:"spec,omitempty"`
-	Status      *DevBuildStatusResponseBody      `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
-	Permissions *DevBuildPermissionsResponseBody `form:"permissions,omitempty" json:"permissions,omitempty" xml:"permissions,omitempty"`
-}
-
-// UpdateResponseBody is the type of the "devbuild" service "update" endpoint
-// HTTP response body.
-type UpdateResponseBody struct {
 	ID          *int                             `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty"`
 	Meta        *DevBuildMetaResponseBody        `form:"meta,omitempty" json:"meta,omitempty" xml:"meta,omitempty"`
 	Spec        *DevBuildSpecResponseBody        `form:"spec,omitempty" json:"spec,omitempty" xml:"spec,omitempty"`
@@ -107,6 +90,13 @@ type CreateBadRequestResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
+// CreateForbiddenResponseBody is the type of the "devbuild" service "create"
+// endpoint HTTP response body for the "Forbidden" error.
+type CreateForbiddenResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
 // CreateInternalServerErrorResponseBody is the type of the "devbuild" service
 // "create" endpoint HTTP response body for the "InternalServerError" error.
 type CreateInternalServerErrorResponseBody struct {
@@ -131,20 +121,6 @@ type GetInternalServerErrorResponseBody struct {
 // GetNotFoundResponseBody is the type of the "devbuild" service "get" endpoint
 // HTTP response body for the "NotFound" error.
 type GetNotFoundResponseBody struct {
-	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
-	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
-}
-
-// UpdateInternalServerErrorResponseBody is the type of the "devbuild" service
-// "update" endpoint HTTP response body for the "InternalServerError" error.
-type UpdateInternalServerErrorResponseBody struct {
-	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
-	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
-}
-
-// UpdateNotFoundResponseBody is the type of the "devbuild" service "update"
-// endpoint HTTP response body for the "NotFound" error.
-type UpdateNotFoundResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
@@ -432,78 +408,6 @@ type DevBuildPermissionsResponseBody struct {
 	CanRerun *bool `form:"canRerun,omitempty" json:"canRerun,omitempty" xml:"canRerun,omitempty"`
 }
 
-// DevBuildStatusRequestBody is used to define fields on request body types.
-type DevBuildStatusRequestBody struct {
-	BuildReport      *BuildReportRequestBody  `form:"buildReport,omitempty" json:"buildReport,omitempty" xml:"buildReport,omitempty"`
-	ErrMsg           *string                  `form:"errMsg,omitempty" json:"errMsg,omitempty" xml:"errMsg,omitempty"`
-	PipelineBuildID  *int                     `form:"pipelineBuildID,omitempty" json:"pipelineBuildID,omitempty" xml:"pipelineBuildID,omitempty"`
-	PipelineStartAt  *string                  `form:"pipelineStartAt,omitempty" json:"pipelineStartAt,omitempty" xml:"pipelineStartAt,omitempty"`
-	PipelineEndAt    *string                  `form:"pipelineEndAt,omitempty" json:"pipelineEndAt,omitempty" xml:"pipelineEndAt,omitempty"`
-	PipelineViewURL  *string                  `form:"pipelineViewURL,omitempty" json:"pipelineViewURL,omitempty" xml:"pipelineViewURL,omitempty"`
-	PipelineViewURLs []string                 `form:"pipelineViewURLs,omitempty" json:"pipelineViewURLs,omitempty" xml:"pipelineViewURLs,omitempty"`
-	Status           string                   `form:"status" json:"status" xml:"status"`
-	TektonStatus     *TektonStatusRequestBody `form:"tektonStatus,omitempty" json:"tektonStatus,omitempty" xml:"tektonStatus,omitempty"`
-}
-
-// BuildReportRequestBody is used to define fields on request body types.
-type BuildReportRequestBody struct {
-	Binaries       []*BinArtifactRequestBody   `form:"binaries,omitempty" json:"binaries,omitempty" xml:"binaries,omitempty"`
-	GitHash        *string                     `form:"gitHash,omitempty" json:"gitHash,omitempty" xml:"gitHash,omitempty"`
-	Images         []*ImageArtifactRequestBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	PluginGitHash  *string                     `form:"pluginGitHash,omitempty" json:"pluginGitHash,omitempty" xml:"pluginGitHash,omitempty"`
-	PrintedVersion *string                     `form:"printedVersion,omitempty" json:"printedVersion,omitempty" xml:"printedVersion,omitempty"`
-}
-
-// BinArtifactRequestBody is used to define fields on request body types.
-type BinArtifactRequestBody struct {
-	Component     *string             `form:"component,omitempty" json:"component,omitempty" xml:"component,omitempty"`
-	OciFile       *OciFileRequestBody `form:"ociFile,omitempty" json:"ociFile,omitempty" xml:"ociFile,omitempty"`
-	Platform      *string             `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	Sha256OCIFile *OciFileRequestBody `form:"sha256OCIFile,omitempty" json:"sha256OCIFile,omitempty" xml:"sha256OCIFile,omitempty"`
-	Sha256URL     *string             `form:"sha256URL,omitempty" json:"sha256URL,omitempty" xml:"sha256URL,omitempty"`
-	URL           *string             `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
-}
-
-// OciFileRequestBody is used to define fields on request body types.
-type OciFileRequestBody struct {
-	File string `form:"file" json:"file" xml:"file"`
-	Repo string `form:"repo" json:"repo" xml:"repo"`
-	Tag  string `form:"tag" json:"tag" xml:"tag"`
-}
-
-// ImageArtifactRequestBody is used to define fields on request body types.
-type ImageArtifactRequestBody struct {
-	Platform    string  `form:"platform" json:"platform" xml:"platform"`
-	URL         string  `form:"url" json:"url" xml:"url"`
-	InternalURL *string `form:"internalURL,omitempty" json:"internalURL,omitempty" xml:"internalURL,omitempty"`
-}
-
-// TektonStatusRequestBody is used to define fields on request body types.
-type TektonStatusRequestBody struct {
-	Pipelines        []*TektonPipelineRequestBody `form:"pipelines" json:"pipelines" xml:"pipelines"`
-	TriggersEventIDs []string                     `form:"triggersEventIDs,omitempty" json:"triggersEventIDs,omitempty" xml:"triggersEventIDs,omitempty"`
-}
-
-// TektonPipelineRequestBody is used to define fields on request body types.
-type TektonPipelineRequestBody struct {
-	Name         string                      `form:"name" json:"name" xml:"name"`
-	Namespace    string                      `form:"namespace" json:"namespace" xml:"namespace"`
-	Status       string                      `form:"status" json:"status" xml:"status"`
-	StartAt      *string                     `form:"startAt,omitempty" json:"startAt,omitempty" xml:"startAt,omitempty"`
-	EndAt        *string                     `form:"endAt,omitempty" json:"endAt,omitempty" xml:"endAt,omitempty"`
-	Images       []*ImageArtifactRequestBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	OciArtifacts []*OciArtifactRequestBody   `form:"ociArtifacts,omitempty" json:"ociArtifacts,omitempty" xml:"ociArtifacts,omitempty"`
-	Platform     *string                     `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	URL          *string                     `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
-}
-
-// OciArtifactRequestBody is used to define fields on request body types.
-type OciArtifactRequestBody struct {
-	Files []string `form:"files" json:"files" xml:"files"`
-	Repo  string   `form:"repo" json:"repo" xml:"repo"`
-	Tag   string   `form:"tag" json:"tag" xml:"tag"`
-}
-
 // NewCreateRequestBody builds the HTTP request body from the payload of the
 // "create" endpoint of the "devbuild" service.
 func NewCreateRequestBody(p *devbuild.CreatePayload) *CreateRequestBody {
@@ -512,16 +416,6 @@ func NewCreateRequestBody(p *devbuild.CreatePayload) *CreateRequestBody {
 	}
 	if p.Request != nil {
 		body.Request = marshalDevbuildDevBuildSpecToDevBuildSpecRequestBody(p.Request)
-	}
-	return body
-}
-
-// NewUpdateRequestBody builds the HTTP request body from the payload of the
-// "update" endpoint of the "devbuild" service.
-func NewUpdateRequestBody(p *devbuild.UpdatePayload) *UpdateRequestBody {
-	body := &UpdateRequestBody{}
-	if p.Status != nil {
-		body.Status = marshalDevbuildDevBuildStatusToDevBuildStatusRequestBody(p.Status)
 	}
 	return body
 }
@@ -622,6 +516,16 @@ func NewCreateBadRequest(body *CreateBadRequestResponseBody) *devbuild.DevBuildB
 	return v
 }
 
+// NewCreateForbidden builds a devbuild service create endpoint Forbidden error.
+func NewCreateForbidden(body *CreateForbiddenResponseBody) *devbuild.DevBuildForbiddenError {
+	v := &devbuild.DevBuildForbiddenError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
 // NewCreateInternalServerError builds a devbuild service create endpoint
 // InternalServerError error.
 func NewCreateInternalServerError(body *CreateInternalServerErrorResponseBody) *devbuild.DevBuildInternalServerError {
@@ -673,43 +577,6 @@ func NewGetInternalServerError(body *GetInternalServerErrorResponseBody) *devbui
 
 // NewGetNotFound builds a devbuild service get endpoint NotFound error.
 func NewGetNotFound(body *GetNotFoundResponseBody) *devbuild.DevBuildNotFoundError {
-	v := &devbuild.DevBuildNotFoundError{
-		Code:    *body.Code,
-		Message: *body.Message,
-	}
-
-	return v
-}
-
-// NewUpdateDevBuildOK builds a "devbuild" service "update" endpoint result
-// from a HTTP "OK" response.
-func NewUpdateDevBuildOK(body *UpdateResponseBody) *devbuild.DevBuild {
-	v := &devbuild.DevBuild{
-		ID: *body.ID,
-	}
-	v.Meta = unmarshalDevBuildMetaResponseBodyToDevbuildDevBuildMeta(body.Meta)
-	v.Spec = unmarshalDevBuildSpecResponseBodyToDevbuildDevBuildSpec(body.Spec)
-	v.Status = unmarshalDevBuildStatusResponseBodyToDevbuildDevBuildStatus(body.Status)
-	if body.Permissions != nil {
-		v.Permissions = unmarshalDevBuildPermissionsResponseBodyToDevbuildDevBuildPermissions(body.Permissions)
-	}
-
-	return v
-}
-
-// NewUpdateInternalServerError builds a devbuild service update endpoint
-// InternalServerError error.
-func NewUpdateInternalServerError(body *UpdateInternalServerErrorResponseBody) *devbuild.DevBuildInternalServerError {
-	v := &devbuild.DevBuildInternalServerError{
-		Code:    *body.Code,
-		Message: *body.Message,
-	}
-
-	return v
-}
-
-// NewUpdateNotFound builds a devbuild service update endpoint NotFound error.
-func NewUpdateNotFound(body *UpdateNotFoundResponseBody) *devbuild.DevBuildNotFoundError {
 	v := &devbuild.DevBuildNotFoundError{
 		Code:    *body.Code,
 		Message: *body.Message,
@@ -872,43 +739,6 @@ func ValidateGetResponseBody(body *GetResponseBody) (err error) {
 	return
 }
 
-// ValidateUpdateResponseBody runs the validations defined on UpdateResponseBody
-func ValidateUpdateResponseBody(body *UpdateResponseBody) (err error) {
-	if body.ID == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("id", "body"))
-	}
-	if body.Meta == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("meta", "body"))
-	}
-	if body.Spec == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("spec", "body"))
-	}
-	if body.Status == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
-	}
-	if body.Meta != nil {
-		if err2 := ValidateDevBuildMetaResponseBody(body.Meta); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	if body.Spec != nil {
-		if err2 := ValidateDevBuildSpecResponseBody(body.Spec); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	if body.Status != nil {
-		if err2 := ValidateDevBuildStatusResponseBody(body.Status); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	if body.Permissions != nil {
-		if err2 := ValidateDevBuildPermissionsResponseBody(body.Permissions); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	return
-}
-
 // ValidateRerunResponseBody runs the validations defined on RerunResponseBody
 func ValidateRerunResponseBody(body *RerunResponseBody) (err error) {
 	if body.ID == nil {
@@ -994,6 +824,18 @@ func ValidateCreateBadRequestResponseBody(body *CreateBadRequestResponseBody) (e
 	return
 }
 
+// ValidateCreateForbiddenResponseBody runs the validations defined on
+// create_Forbidden_response_body
+func ValidateCreateForbiddenResponseBody(body *CreateForbiddenResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
 // ValidateCreateInternalServerErrorResponseBody runs the validations defined
 // on create_InternalServerError_response_body
 func ValidateCreateInternalServerErrorResponseBody(body *CreateInternalServerErrorResponseBody) (err error) {
@@ -1033,30 +875,6 @@ func ValidateGetInternalServerErrorResponseBody(body *GetInternalServerErrorResp
 // ValidateGetNotFoundResponseBody runs the validations defined on
 // get_NotFound_response_body
 func ValidateGetNotFoundResponseBody(body *GetNotFoundResponseBody) (err error) {
-	if body.Code == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
-	}
-	if body.Message == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
-	}
-	return
-}
-
-// ValidateUpdateInternalServerErrorResponseBody runs the validations defined
-// on update_InternalServerError_response_body
-func ValidateUpdateInternalServerErrorResponseBody(body *UpdateInternalServerErrorResponseBody) (err error) {
-	if body.Code == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
-	}
-	if body.Message == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
-	}
-	return
-}
-
-// ValidateUpdateNotFoundResponseBody runs the validations defined on
-// update_NotFound_response_body
-func ValidateUpdateNotFoundResponseBody(body *UpdateNotFoundResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}
@@ -1710,125 +1528,6 @@ func ValidateOciArtifactResponseBody(body *OciArtifactResponseBody) (err error) 
 func ValidateDevBuildPermissionsResponseBody(body *DevBuildPermissionsResponseBody) (err error) {
 	if body.CanRerun == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("canRerun", "body"))
-	}
-	return
-}
-
-// ValidateDevBuildStatusRequestBody runs the validations defined on
-// DevBuildStatusRequestBody
-func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err error) {
-	if body.BuildReport != nil {
-		if err2 := ValidateBuildReportRequestBody(body.BuildReport); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineStartAt", *body.PipelineStartAt, goa.FormatDateTime))
-	}
-	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineEndAt", *body.PipelineEndAt, goa.FormatDateTime))
-	}
-	if body.PipelineViewURL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURL", *body.PipelineViewURL, goa.FormatURI))
-	}
-	for _, e := range body.PipelineViewURLs {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURLs[*]", e, goa.FormatURI))
-	}
-	if !(body.Status == "PENDING" || body.Status == "PROCESSING" || body.Status == "ABORTED" || body.Status == "SUCCESS" || body.Status == "FAILURE" || body.Status == "ERROR") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
-	}
-	if body.TektonStatus != nil {
-		if err2 := ValidateTektonStatusRequestBody(body.TektonStatus); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	return
-}
-
-// ValidateBuildReportRequestBody runs the validations defined on
-// BuildReportRequestBody
-func ValidateBuildReportRequestBody(body *BuildReportRequestBody) (err error) {
-	for _, e := range body.Binaries {
-		if e != nil {
-			if err2 := ValidateBinArtifactRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
-	if body.GitHash != nil {
-		if utf8.RuneCountInString(*body.GitHash) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitHash", *body.GitHash, utf8.RuneCountInString(*body.GitHash), 40, false))
-		}
-	}
-	if body.PluginGitHash != nil {
-		if utf8.RuneCountInString(*body.PluginGitHash) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitHash", *body.PluginGitHash, utf8.RuneCountInString(*body.PluginGitHash), 40, false))
-		}
-	}
-	return
-}
-
-// ValidateBinArtifactRequestBody runs the validations defined on
-// BinArtifactRequestBody
-func ValidateBinArtifactRequestBody(body *BinArtifactRequestBody) (err error) {
-	if body.Sha256URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.sha256URL", *body.Sha256URL, goa.FormatURI))
-	}
-	if body.URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
-	}
-	return
-}
-
-// ValidateTektonStatusRequestBody runs the validations defined on
-// TektonStatusRequestBody
-func ValidateTektonStatusRequestBody(body *TektonStatusRequestBody) (err error) {
-	if body.Pipelines == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("pipelines", "body"))
-	}
-	for _, e := range body.Pipelines {
-		if e != nil {
-			if err2 := ValidateTektonPipelineRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
-	for _, e := range body.TriggersEventIDs {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.triggersEventIDs[*]", e, goa.FormatUUID))
-	}
-	return
-}
-
-// ValidateTektonPipelineRequestBody runs the validations defined on
-// TektonPipelineRequestBody
-func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err error) {
-	if !(body.Status == "Started" || body.Status == "Running" || body.Status == "Succeeded" || body.Status == "Failed" || body.Status == "Cancelled" || body.Status == "Skipped" || body.Status == "TimedOut" || body.Status == "ExceededNodeResources") {
-		err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", body.Status, []any{"Started", "Running", "Succeeded", "Failed", "Cancelled", "Skipped", "TimedOut", "ExceededNodeResources"}))
-	}
-	if body.StartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.startAt", *body.StartAt, goa.FormatDateTime))
-	}
-	if body.EndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.endAt", *body.EndAt, goa.FormatDateTime))
-	}
-	for _, e := range body.OciArtifacts {
-		if e != nil {
-			if err2 := ValidateOciArtifactRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
-	if body.URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
-	}
-	return
-}
-
-// ValidateOciArtifactRequestBody runs the validations defined on
-// OciArtifactRequestBody
-func ValidateOciArtifactRequestBody(body *OciArtifactRequestBody) (err error) {
-	if body.Files == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("files", "body"))
 	}
 	return
 }

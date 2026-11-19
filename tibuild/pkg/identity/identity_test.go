@@ -53,3 +53,81 @@ func TestMiddlewareUsesConfiguredHeaderNames(t *testing.T) {
 	handler.ServeHTTP(res, req)
 	assert.Equal(t, http.StatusNoContent, res.Code)
 }
+
+func TestNewMiddlewareDoesNotTrustHeadersByDefault(t *testing.T) {
+	var principal User
+	var ok bool
+	handler := NewMiddleware(Headers{}, Policy{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok = FromContext(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/devbuilds", nil)
+	req.Header.Set(DefaultUserEmailHeader, "attacker@example.com")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	assert.False(t, ok, "client-supplied headers must not become a principal")
+	assert.Empty(t, principal.Email)
+}
+
+func TestNewMiddlewareKeepsAssertedHeadersForAudit(t *testing.T) {
+	var asserted User
+	var assertedOK bool
+	handler := NewMiddleware(Headers{}, Policy{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asserted, assertedOK = AssertedFromContext(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/devbuilds", nil)
+	req.Header.Set(DefaultUserEmailHeader, "Attacker@Example.com")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.True(t, assertedOK)
+	assert.Equal(t, "attacker@example.com", asserted.Email)
+}
+
+func TestNewMiddlewareFallsBackToServiceIdentity(t *testing.T) {
+	var principal User
+	var ok bool
+	handler := NewMiddleware(Headers{}, Policy{ServiceIdentity: "tibuild-v2@pingcap.com", ServiceName: "tibuild-v2"})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok = FromContext(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/v2/devbuilds", nil))
+
+	assert.True(t, ok)
+	assert.Equal(t, "tibuild-v2@pingcap.com", principal.Email)
+	assert.True(t, principal.Service)
+}
+
+func TestNewMiddlewareTrustsHeadersWhenEnabled(t *testing.T) {
+	var principal User
+	handler := NewMiddleware(Headers{}, Policy{TrustHeaders: true, ServiceIdentity: "tibuild-v2@pingcap.com"})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, _ = FromContext(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/devbuilds", nil)
+	req.Header.Set(DefaultUserEmailHeader, "Dev@PingCAP.com")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.Equal(t, "dev@pingcap.com", principal.Email)
+	assert.False(t, principal.Service, "a trusted header is a person, not the service account")
+}
+
+func TestNewMiddlewarePrefersServiceIdentityOverUntrustedHeader(t *testing.T) {
+	var principal User
+	handler := NewMiddleware(Headers{}, Policy{ServiceIdentity: "tibuild-v2@pingcap.com"})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, _ = FromContext(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v2/devbuilds", nil)
+	req.Header.Set(DefaultUserEmailHeader, "attacker@example.com")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	assert.Equal(t, "tibuild-v2@pingcap.com", principal.Email)
+	assert.True(t, principal.Service)
+}

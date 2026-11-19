@@ -22,8 +22,6 @@ type Service interface {
 	Create(context.Context, *CreatePayload) (res *DevBuild, err error)
 	// Get devbuild
 	Get(context.Context, *GetPayload) (res *DevBuild, err error)
-	// Update devbuild status
-	Update(context.Context, *UpdatePayload) (res *DevBuild, err error)
 	// Rerun devbuild
 	Rerun(context.Context, *RerunPayload) (res *DevBuild, err error)
 }
@@ -42,7 +40,7 @@ const ServiceName = "devbuild"
 // MethodNames lists the service method names as defined in the design. These
 // are the same values that are set in the endpoint request contexts under the
 // MethodKey key.
-var MethodNames = [6]string{"list", "capabilities", "create", "get", "update", "rerun"}
+var MethodNames = [5]string{"list", "capabilities", "create", "get", "rerun"}
 
 type BinArtifact struct {
 	Component     *string
@@ -240,16 +238,6 @@ type TektonPipelineRunStatus string
 type TektonStatus struct {
 	Pipelines        []*TektonPipeline
 	TriggersEventIDs []string
-}
-
-// UpdatePayload is the payload type of the devbuild service update method.
-type UpdatePayload struct {
-	// ID of build
-	ID int
-	// Status to update
-	Status *DevBuildStatus
-	// Dry run
-	Dryrun bool
 }
 
 // Error returns an error description.

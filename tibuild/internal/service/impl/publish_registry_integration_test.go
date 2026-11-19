@@ -81,18 +81,34 @@ func TestCopyImageAgainstRealRegistry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, firstDigest, digest, "the copy uses the planned digest, not the current tag")
 
-	// Overwriting a tag whose digest differs is allowed: the tag is supposed to
-	// point at the new digest.
+	// A released tag that already serves a different digest is refused, the same
+	// way the TiUP executor refuses to replace a formal version. Replacing it on
+	// purpose means deleting the tag first, which is an explicit operator step
+	// rather than something a re-run does silently.
 	overwrite := ImageCopyPayload{
 		Source: srcRepo + "@" + secondDigest,
 		Digest: secondDigest,
 		Dest:   payload.Dest,
 		Tags:   []string{"v8.5.0"},
 	}
-	result, err = svc.copyImage(ctx, overwrite)
+	_, err = svc.copyImage(ctx, overwrite)
+	require.ErrorContains(t, err, "refusing to overwrite published release tag")
+	digest, err = crane.Digest(payload.Dest + ":v8.5.0")
+	require.NoError(t, err)
+	require.Equal(t, firstDigest, digest, "the released tag must still serve the original digest")
+
+	// The same replacement is allowed on a non-formal tag: that is what
+	// re-publishing nightly means.
+	nightly := ImageCopyPayload{
+		Source: srcRepo + "@" + secondDigest,
+		Digest: secondDigest,
+		Dest:   payload.Dest,
+		Tags:   []string{"nightly"},
+	}
+	result, err = svc.copyImage(ctx, nightly)
 	require.NoError(t, err)
 	require.Len(t, result.Copied, 1)
-	digest, err = crane.Digest(payload.Dest + ":v8.5.0")
+	digest, err = crane.Digest(payload.Dest + ":nightly")
 	require.NoError(t, err)
 	require.Equal(t, secondDigest, digest)
 }

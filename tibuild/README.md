@@ -13,7 +13,9 @@ by a single-row lane that keeps the two TiUP mirrors from publishing at the
 same time; `PARTIAL` publications need an operator and are resumed explicitly.
 
 See [docs/publish.md](./docs/publish.md) for the model, targets, failure
-handling and the legacy `/tiup/*` contract.
+handling and the legacy `/tiup/*` contract, and
+[docs/nightly.md](./docs/nightly.md) for the nightly desired-state schedule
+(what maintainers should expect, and the operator runbook).
 
 ## Technologies
 + Backend:

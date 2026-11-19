@@ -94,6 +94,110 @@ def test_both_routes_resolve_latest_actual_day_and_apply_all_query_bounds(vendor
     assert all(event["bytes_processed"] == 90 and event["job_id"] for event in actuals)
 
 
+def f04_client(results):
+    client, _ = client_for()
+    jobs = []
+    for result in results:
+        preview = Mock(total_bytes_processed=3 * 1024**3, job_id="f04-preview")
+        actual = Mock(total_bytes_processed=3 * 1024**3, job_id="f04-actual")
+        actual.result.return_value = result
+        jobs.extend((preview, actual))
+    client.query.side_effect = jobs
+    return client, jobs
+
+
+def test_f04_uses_exact_nested_scope_full_products_and_independent_month_reads():
+    october = {"usage_date": date(2026, 10, 31), "export_partition_date": date(2026, 10, 1), "n": 1}
+    november = {"usage_date": END, "export_partition_date": date(2026, 11, 1), "n": 1}
+    client, _ = f04_client([[october], [november], [{"month": "oct"}], [{"month": "nov"}]])
+    window = fetch(client, account_id=source.F04_ACCOUNT_ID, f04=True)
+    assert (window.start, window.end) == (START, END)
+    assert window.controls == [october, november]
+    assert window.rows == [{"currency": "USD", "month": "oct"}, {"currency": "USD", "month": "nov"}]
+    calls = client.query.call_args_list
+    assert len(calls) == 8
+    for index, call in enumerate(calls):
+        sql, config = call.args[0], call.kwargs["job_config"]
+        bound = parameters(call)
+        assert bound["account_id"] == "380838443567" and bound["usedby"] == "prod-us-west-2-f04"
+        assert bound["export_partition_start"] == bound["export_partition_end"]
+        assert bound["export_partition_start"] == date(2026, 10 if index % 4 < 2 else 11, 1)
+        assert config.maximum_bytes_billed == source.F04_MAX_BYTES == 32 * 1024**3
+        assert config.use_query_cache is False and bool(config.dry_run) == (index % 2 == 0)
+        assert "resource_tags.key_value" in sql and "@usedby" in sql
+        assert "line_item_usage_account_id = @account_id" in sql
+        assert "line_item_line_item_type IN ('Usage', 'SavingsPlanCoveredUsage')" in sql
+        assert "line_item_product_code =" not in sql and "product_code IN" not in sql
+    control, summary = calls[0].args[0], calls[4].args[0]
+    assert "COUNTIF(line_item_currency_code IS NULL OR line_item_currency_code != 'USD')" in control
+    assert "AS BIGNUMERIC" in control
+    assert "resource_tags_user_usedby = @usedby" in summary
+    assert "line_item_currency_code = 'USD'" in summary
+    assert all(row["currency"] == "USD" for row in window.rows)
+    assert "source_schema_version" not in summary
+
+
+@pytest.mark.parametrize("days", [1, 3, 5])
+def test_f04_historical_reads_keep_explicit_dates_without_latest_day_discovery(days):
+    start = date(2026, 10, 27)
+    end = start + timedelta(days=days - 1)
+    control = {"usage_date": start, "export_partition_date": start.replace(day=1), "n": 1}
+    client, _ = f04_client([[control], [{"historical": True}]])
+    window = fetch(client, account_id=source.F04_ACCOUNT_ID, f04=True,
+                   start_date=start, end_date=end)
+    assert (window.start, window.end) == (start, end)
+    assert len(client.query.call_args_list) == 4
+    for call in client.query.call_args_list:
+        bound = parameters(call)
+        assert bound["earliest_usage_date"] == start and bound["usage_end_date"] == end
+        assert bound["export_partition_start"] == bound["export_partition_end"] == start.replace(day=1)
+
+
+@pytest.mark.parametrize("options", [
+    {"start_date": date(2026, 10, 27)}, {"end_date": date(2026, 10, 31)},
+    {"start_date": date(2026, 10, 31), "end_date": date(2026, 10, 27)},
+    {"start_date": date(2026, 10, 27), "end_date": date(2026, 11, 1)},
+    {"start_date": TODAY, "end_date": TODAY},
+    {"start_date": datetime(2026, 10, 27), "end_date": date(2026, 10, 31)},
+])
+def test_f04_invalid_explicit_bounds_refuse_metadata_or_queries(options):
+    client, _ = client_for()
+    with pytest.raises(ValueError):
+        fetch(client, account_id=source.F04_ACCOUNT_ID, f04=True, **options)
+    client.get_table.assert_not_called()
+    client.query.assert_not_called()
+
+
+@pytest.mark.parametrize("vendor,account,f04", [
+    ("azure", source.F04_ACCOUNT_ID, True), ("aws", "another-account", True),
+    ("aws", source.F04_ACCOUNT_ID, False), ("aws", source.F04_ACCOUNT_ID, "true"),
+])
+def test_f04_never_falls_back_to_account_wide_or_other_identity(vendor, account, f04):
+    client, _ = client_for()
+    with pytest.raises(ValueError, match="F04"):
+        fetch(client, vendor, account_id=account, f04=f04)
+    client.query.assert_not_called()
+    client.get_table.assert_not_called()
+
+
+@pytest.mark.parametrize("actual", [False, True])
+@pytest.mark.parametrize("value", [None, True, -1, source.F04_MAX_BYTES + 1])
+def test_f04_unknown_or_overbudget_scan_stops_before_later_month(actual, value):
+    client, jobs = f04_client([[{"usage_date": END}]])
+    jobs[int(actual)].total_bytes_processed = value
+    with pytest.raises(ValueError, match="bytes|estimate"):
+        fetch(client, account_id=source.F04_ACCOUNT_ID, f04=True)
+    assert client.query.call_count == (2 if actual else 1)
+
+
+def test_f04_empty_explicit_source_stops_without_reading_summary():
+    client, _ = f04_client([[]])
+    with pytest.raises(ValueError, match="No actual usage"):
+        fetch(client, account_id=source.F04_ACCOUNT_ID, f04=True,
+              start_date=date(2026, 10, 27), end_date=date(2026, 10, 31))
+    assert client.query.call_count == 2
+
+
 def test_aws_uses_existing_warehouse_raw_builder_and_exact_usage_listcost_semantics():
     client, _ = client_for()
     fetch(client)

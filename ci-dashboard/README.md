@@ -27,6 +27,7 @@ Current scope in this scaffold:
   - `/api/v1/flaky/distinct-case-counts`
   - `/api/v1/flaky/issue-weekly-rates`
   - `/api/v1/flaky/top-jobs`
+  - `/api/v1/flaky/top-cases`
   - `/api/v1/flaky/period-comparison`
   - `/api/v1/failures/*`
 - first React dashboard shell under `web/`, including:
@@ -98,6 +99,21 @@ Notes:
   job lists, and shared Cost filter parsing; Cost date-window rules are unchanged.
   Oversized filters return HTTP 422 before splitting, SQL bind expansion or DB
   reads. Background jobs and direct query helpers retain their existing behavior.
+- before deploying the Top 10 flaky case endpoint, apply
+  `sql/033_add_flaky_report_time_index.sql` to the serving database. Its narrow
+  `(flaky, report_time)` index supports report-time range scans even with all repos
+  or all branches selected; verify those scopes with `EXPLAIN` after applying it.
+- the Flaky tab's Top 10 case table ranks distinct builds affected by a flaky case
+  (`problem_case_runs.flaky = 1`) in the selected UTC report-time window. Repo and
+  branch refer to the tested code, not the triggering build or the tracking Issue.
+  Job filters use attributable CI builds; cloud filters follow the reported build
+  controller. A build may eventually pass after retry: “Affected builds” counts
+  builds where the case was reported, not final failed build states, and is not a
+  flaky rate. Expanding a row lists at most the 10 most recent build URLs, on the
+  controller that reported them. Associations use tracked Issues
+  with the same repo and case name, regardless of Issue branch, status, or lifetime;
+  they do not confirm the same failure cause. Cases without a matching Issue remain
+  visible. Issue status and bucket granularity do not change this ranking.
 - the Cost and CI details insight tabs are always available
 - the Cost tab prioritizes its top spend/breakdown requests: share and trend
   charts have independent loading/error states, and Engineering Group shares
@@ -106,6 +122,14 @@ Notes:
   Resource details remain on demand, including while other charts are loading.
   Summary cards show placeholders until spend is available instead of displaying
   pending or failed queries as zero spending.
+- CI and QA Cost Weekly use the previous complete **Sunday–Saturday UTC** week,
+  including WoW, eight-week histories, weekly budgets, and allocation panels.
+  Their budget-period cumulative charts use Sunday-based weekly buckets too.
+  Monthly/daily scopes and other dashboards' week buckets are unchanged. This
+  adds a day of billing-arrival buffer for Tuesday Beijing-time review, not a
+  completeness guarantee; late imports/corrections can still change totals.
+  See [QA calendar rules](docs/weekly-cost-design.md#calendar-and-data-contract)
+  and [CI report rules](docs/ci-weekly-cost-design.md#weekly-calendar-and-billing-delay).
 - the Cost tab uses T+3 data availability in UTC. End has a hover/focus info hint,
   its calendar and URL filters cap End at the latest available date, and the
   default End date uses the same three-day lag.
@@ -222,7 +246,11 @@ allowances; `FRESHNESS_DRY_RUN=true` reads and prints without sending.
 
 See [the design and rollout contract](docs/cost-source-freshness-design.md) for
 bounded query budgets, importer eligibility, explicit dormant-source exceptions,
-and AWS split/F04 scope limitations. The checker does not import or repair data.
+and AWS split/F04 scope limitations. Even when upstream scope is unverified,
+per-account local summary data older than seven UTC days or missing from the
+observation window raises an alert (with a bounded initial grace for explicitly
+dated new sources). This is not a claim that account-wide source dates verify
+the F04 tenant boundary. The checker does not import or repair data.
 
 ## Container Builds
 

@@ -138,12 +138,46 @@ def test_only_failures_sent_once_with_gap_and_excess(setup, attr, suffix):
 
 def test_scope_diagnostics_not_failures_or_healthy(setup):
     _, checker, sender = setup
-    checker.return_value = [CostSourceResult("aws", "f04", status="scope_unverified",
-                                           scope="accountwide_diagnostic_only")]
+    result = CostSourceResult("aws", "f04", scope="accountwide_diagnostic_only",
+        source_latest=date(2026, 10, 28), summary_latest=date(2026, 10, 26),
+        attribution_latest=date(2026, 10, 26))
+    _classify(result, date(2026, 10, 28))
+    assert result.status == "scope_unverified"
+    checker.return_value = [result]
     report = freshness.run_check_data_freshness(settings())
     assert report.cost_sources and not report.results
     assert report.cost_sources[0].passed is None
     sender.assert_not_called()
+
+
+@pytest.mark.parametrize("today,local,status", [
+    (date(2026, 11, 8), date(2026, 10, 26), "local_data_stale"),
+    (date(2026, 11, 9), None, "local_data_missing"),
+])
+def test_f04_local_stall_reaches_notification_and_nonzero_exit(setup, monkeypatch, today, local, status):
+    from ci_dashboard.jobs import cli
+
+    _, checker, sender = setup
+    result = CostSourceResult("aws", "380838443567", scope="accountwide_diagnostic_only",
+        source_latest=today, eligible_latest=today, summary_latest=local, attribution_latest=local)
+    _classify(result, today)
+    checker.return_value = [result]
+    report = freshness.run_check_data_freshness(settings())
+    assert result.status == status and result.passed is False
+    assert len(report.failed) == 1 and report.failed[0].check.level == "MEDIUM"
+    assert report.failed[0].check.threshold_description == "local summary usage age ≤7 days"
+    sender.assert_called_once()
+    message = sender.call_args.args[0]
+    assert message.count("aws/380838443567") == 1
+    assert "本地" in message and "上游口径未验证" in message
+    assert "导入落后" not in message and "源最新" not in message
+    assert len(message.splitlines()) == 2
+
+    monkeypatch.setattr(cli, "get_settings", settings)
+    monkeypatch.setattr(cli, "configure_logging", Mock())
+    monkeypatch.setattr(cli, "run_check_data_freshness", Mock(return_value=report))
+    monkeypatch.setattr("sys.argv", ["ci-dashboard", "check-data-freshness"])
+    assert cli.main() == 1
 
 
 def test_unknown_vendor_alerts_and_cli_exits_nonzero(setup, monkeypatch):

@@ -16,12 +16,14 @@ import (
 type fakeAlertNotifier struct {
 	mu     sync.Mutex
 	alerts []string
+	bodies []string
 }
 
-func (f *fakeAlertNotifier) SendAlert(_ context.Context, title, _ string) error {
+func (f *fakeAlertNotifier) SendAlert(_ context.Context, title, body string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.alerts = append(f.alerts, title)
+	f.bodies = append(f.bodies, body)
 	return nil
 }
 

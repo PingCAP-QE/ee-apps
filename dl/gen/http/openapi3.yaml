@@ -20,10 +20,10 @@ paths:
                             $ref: '#/components/schemas/CreateRequestBody'
                         example:
                             artifact:
-                                file: b40
-                                repository: i88
-                                tag: mqx
-                            customer_id: hr6
+                                file: leg
+                                repository: phc
+                                tag: ujw
+                            customer_id: nyw
                             expires_in_seconds: 86400
                             max_sessions: 5
                             purpose: customer-delivery
@@ -36,23 +36,23 @@ paths:
                                 $ref: '#/components/schemas/Share'
                             example:
                                 artifact:
-                                    blob_digest: Quam et ut soluta sed minima dolores.
-                                    filename: Autem blanditiis repellendus deserunt.
-                                    manifest_digest: Amet natus quia eos autem eos laudantium.
-                                    media_type: Rerum labore vitae excepturi.
-                                    repository: Autem molestiae.
-                                    size: 8530410839330046368
-                                    source_tag: Et corporis ullam libero voluptatem ut.
-                                created_at: Et minus qui et mollitia in veritatis.
-                                customer_id: Atque voluptatibus.
-                                download_url: Alias nostrum velit autem inventore et voluptatem.
-                                expires_at: Sunt ut soluta et dignissimos.
-                                id: Est maxime harum numquam.
-                                issued_by: Perferendis aspernatur occaecati occaecati.
-                                max_sessions: 212443993414401167
-                                purpose: Cupiditate unde ducimus quis aut.
-                                revoked_at: Ut consectetur est dolores doloribus.
-                                sessions_started: 4664704924836044459
+                                    blob_digest: Et sit recusandae qui totam dolor.
+                                    filename: Ut doloremque laborum quis voluptas voluptatum voluptate.
+                                    manifest_digest: Repudiandae nihil et ducimus veritatis.
+                                    media_type: Molestiae laudantium et corporis ullam.
+                                    repository: Sunt nobis velit facilis.
+                                    size: 2501030581489099372
+                                    source_tag: Quas minus tempora.
+                                created_at: Labore vitae excepturi repudiandae est maxime.
+                                customer_id: Sed autem.
+                                download_url: Autem eos laudantium possimus quam et.
+                                expires_at: Numquam quas alias.
+                                id: Voluptatem ut non amet natus quia.
+                                issued_by: Soluta sed minima.
+                                max_sessions: 3366721435538418819
+                                purpose: Repellendus deserunt et fuga.
+                                revoked_at: Velit autem.
+                                sessions_started: 6693115432387282211
                 "400":
                     description: 'invalid_request: Bad Request response.'
                     content:
@@ -97,9 +97,9 @@ paths:
                   required: true
                   schema:
                     type: string
-                    example: 7a5c93aa-c036-4020-ad57-5febd7ac3678
+                    example: 28d7f22c-3fd9-4379-9d6d-5b514e07c26b
                     format: uuid
-                  example: ffcdcfa1-b14f-4d70-8ce6-17e782a50d33
+                  example: 889357eb-f287-49c6-aaf2-8490bceb0ac8
             responses:
                 "204":
                     description: No Content response.
@@ -146,9 +146,9 @@ paths:
                   required: true
                   schema:
                     type: string
-                    example: dfe08434-9c42-464e-be5a-fb0cc8c7130d
+                    example: 95c1f6d8-205e-40e2-b1dc-2254d77aecb0
                     format: uuid
-                  example: ab2960aa-2f21-4848-af61-f4e4900717e7
+                  example: 564d36e6-5d0b-4668-bb8c-518c93cb6308
             responses:
                 "200":
                     description: OK response.
@@ -158,23 +158,23 @@ paths:
                                 $ref: '#/components/schemas/Share'
                             example:
                                 artifact:
-                                    blob_digest: Quam et ut soluta sed minima dolores.
-                                    filename: Autem blanditiis repellendus deserunt.
-                                    manifest_digest: Amet natus quia eos autem eos laudantium.
-                                    media_type: Rerum labore vitae excepturi.
-                                    repository: Autem molestiae.
-                                    size: 8530410839330046368
-                                    source_tag: Et corporis ullam libero voluptatem ut.
-                                created_at: Est aut animi.
-                                customer_id: Quia accusantium et enim nostrum omnis omnis.
-                                download_url: Aut non ut et quia quas.
-                                expires_at: Quis voluptatem sed.
-                                id: Aut quae aut.
-                                issued_by: Esse omnis quia dolore.
-                                max_sessions: 8595744189784996520
-                                purpose: Distinctio est dicta.
-                                revoked_at: Consequuntur et neque in nulla.
-                                sessions_started: 8125088300986963346
+                                    blob_digest: Et sit recusandae qui totam dolor.
+                                    filename: Ut doloremque laborum quis voluptas voluptatum voluptate.
+                                    manifest_digest: Repudiandae nihil et ducimus veritatis.
+                                    media_type: Molestiae laudantium et corporis ullam.
+                                    repository: Sunt nobis velit facilis.
+                                    size: 2501030581489099372
+                                    source_tag: Quas minus tempora.
+                                created_at: Soluta fugit vitae laborum fuga molestiae quas.
+                                customer_id: Itaque rem autem.
+                                download_url: Consequuntur fugiat officiis.
+                                expires_at: Vero voluptates aut quae aut officiis aut.
+                                id: Similique aspernatur facere.
+                                issued_by: Dolorum doloremque reprehenderit impedit.
+                                max_sessions: 5980992898025835095
+                                purpose: Illo voluptatibus sunt omnis a.
+                                revoked_at: Ut et quia quas qui esse omnis.
+                                sessions_started: 8539118469653153073
                 "400":
                     description: 'invalid_request: Bad Request response.'
                     content:
@@ -221,8 +221,8 @@ paths:
                   schema:
                     type: string
                     description: bucket name
-                    example: Officiis sint quo modi inventore quod iure.
-                  example: Aut omnis non exercitationem distinctio eius sunt.
+                    example: Numquam velit alias dolor.
+                  example: Dolorem sit tempora quam.
                 - name: key
                   in: path
                   description: object key
@@ -230,8 +230,8 @@ paths:
                   schema:
                     type: string
                     description: object key
-                    example: Quod repellat.
-                  example: Pariatur unde quo dolor doloremque voluptate.
+                    example: Eum ea.
+                  example: Ad et suscipit fuga deserunt corporis.
             responses:
                 "200":
                     description: OK response.
@@ -269,8 +269,8 @@ paths:
                   schema:
                     type: string
                     description: bucket name
-                    example: Qui alias eos beatae illo repudiandae ut.
-                  example: Rerum voluptas.
+                    example: Vero ducimus sed tempore voluptatem aperiam dolor.
+                  example: Repellat iusto in facilis ut.
                 - name: key
                   in: path
                   description: object key
@@ -278,8 +278,8 @@ paths:
                   schema:
                     type: string
                     description: object key
-                    example: Voluptas odio et odio cum aut.
-                  example: Earum enim beatae odio molestiae harum amet.
+                    example: Est placeat.
+                  example: Omnis blanditiis rerum aliquid sunt dolore commodi.
             responses:
                 "200":
                     description: OK response.
@@ -289,16 +289,16 @@ paths:
                             schema:
                                 type: string
                                 description: Content-Disposition header value
-                                example: Laboriosam et eum ut vel.
-                            example: Id non voluptate.
+                                example: Itaque ratione qui et non.
+                            example: Alias dolorem voluptas dolor.
                         Content-Length:
                             description: Content length in bytes.
                             schema:
                                 type: integer
                                 description: Content length in bytes.
-                                example: 3271820190997468490
+                                example: 4677650905703600764
                                 format: int64
-                            example: 3924280298065396988
+                            example: 5116419324621465827
     /oci-file-sha256/{repository}:
         get:
             tags:
@@ -314,8 +314,8 @@ paths:
                   schema:
                     type: string
                     description: file name in OCI artifact
-                    example: Nam repellat iusto in facilis ut quia.
-                  example: Placeat numquam omnis blanditiis rerum.
+                    example: Dicta sint qui.
+                  example: Illum qui accusamus non.
                 - name: tag
                   in: query
                   description: OCI artifact tag
@@ -324,8 +324,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Sunt dolore commodi voluptatum non.
-                  example: Quia itaque ratione qui et non.
+                    example: Architecto ut esse.
+                  example: Eum atque fuga.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -333,8 +333,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Sequi aut consectetur nihil eos.
-                  example: Alias dolorem voluptas dolor.
+                    example: Qui vel.
+                  example: Voluptatem impedit non quia tempora.
             responses:
                 "200":
                     description: OK response.
@@ -442,8 +442,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Sit culpa dolores minima laborum.
-                  example: Vel unde.
+                    example: Repellat voluptates voluptatem laboriosam veritatis.
+                  example: Sit ut placeat.
                 - name: file
                   in: query
                   description: file name in OCI artifact
@@ -451,8 +451,8 @@ paths:
                   schema:
                     type: string
                     description: file name in OCI artifact
-                    example: Voluptatem consequuntur quasi unde perferendis.
-                  example: Voluptatem temporibus odio.
+                    example: Temporibus inventore et.
+                  example: Ex repudiandae nulla.
                 - name: file_regex
                   in: query
                   description: file name regex pattern in OCI artifact
@@ -460,9 +460,9 @@ paths:
                   schema:
                     type: string
                     description: file name regex pattern in OCI artifact
-                    example: 7fa.*
+                    example: 2ty.*
                     format: regexp
-                  example: u8x.*
+                  example: aiy.*
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -470,8 +470,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Vel quibusdam voluptatem impedit non quia tempora.
-                  example: Numquam velit alias dolor.
+                    example: Soluta incidunt ipsa cum voluptate impedit.
+                  example: Exercitationem consectetur.
             responses:
                 "200":
                     description: OK response.
@@ -481,16 +481,16 @@ paths:
                             schema:
                                 type: string
                                 description: Content-Disposition header value
-                                example: Quam quia eum ea vel ad et.
-                            example: Ducimus sed tempore voluptatem aperiam.
+                                example: Vel rerum tempore praesentium.
+                            example: Rerum iure eum ea.
                         Content-Length:
                             description: Content length in bytes.
                             schema:
                                 type: integer
                                 description: Content length in bytes.
-                                example: 6554310791021555322
+                                example: 2221396632080006927
                                 format: int64
-                            example: 1842632690357884998
+                            example: 2955584761949956712
     /oci-files/{repository}:
         get:
             tags:
@@ -506,8 +506,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact tag
-                    example: Sit incidunt iste saepe repellat voluptates voluptatem.
-                  example: Veritatis eveniet sit ut placeat.
+                    example: Ut fugiat soluta officia sint.
+                  example: Et possimus nostrum earum similique.
                 - name: repository
                   in: path
                   description: OCI artifact repository
@@ -515,8 +515,8 @@ paths:
                   schema:
                     type: string
                     description: OCI artifact repository
-                    example: Temporibus inventore et.
-                  example: Ex repudiandae nulla.
+                    example: Ullam quasi omnis molestiae maiores.
+                  example: Quod eveniet iusto non.
             responses:
                 "200":
                     description: OK response.
@@ -526,107 +526,17 @@ paths:
                                 type: array
                                 items:
                                     type: string
-                                    example: Quo non et eligendi voluptatum.
+                                    example: Dignissimos ipsam rem aliquam.
                                 example:
-                                    - Quasi est ullam voluptatem.
-                                    - Qui quos est aperiam nihil et.
+                                    - Numquam eveniet voluptatum.
+                                    - Nihil quam expedita iusto.
+                                    - Cum ex sit et rem.
+                                    - At ratione dolor.
                             example:
-                                - Accusantium est ut incidunt quibusdam corporis id.
-                                - Quo tempore consequatur natus.
-                                - Voluptas consequuntur.
-                                - Sunt non vitae porro reprehenderit voluptate.
-    /s3-obj/{bucket}/{key}:
-        get:
-            tags:
-                - ks3
-            summary: download-object ks3
-            operationId: ks3#download-object
-            parameters:
-                - name: bucket
-                  in: path
-                  description: bucket name
-                  required: true
-                  schema:
-                    type: string
-                    description: bucket name
-                    example: Omnis libero perspiciatis et.
-                  example: Architecto ea rerum pariatur ipsum laudantium exercitationem.
-                - name: key
-                  in: path
-                  description: object key
-                  required: true
-                  schema:
-                    type: string
-                    description: object key
-                    example: Et est minus qui repellat cumque.
-                  example: Nam ut.
-            responses:
-                "200":
-                    description: OK response.
-                    headers:
-                        Content-Disposition:
-                            description: Content-Disposition header for downloading
-                            schema:
-                                type: string
-                                description: Content-Disposition header for downloading
-                                example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
-                            example: attachment; filename*=UTF-8''tidb-v7.5.0-darwin-arm64.tar.gz
-                        Content-Length:
-                            description: Length is the downloaded content length in bytes.
-                            schema:
-                                type: integer
-                                description: Length is the downloaded content length in bytes.
-                                example: 4194304
-                                format: int64
-                            example: 4194304
-                    content:
-                        application/octet-stream:
-                            schema:
-                                type: string
-                                format: binary
-        head:
-            tags:
-                - ks3
-            summary: head-object ks3
-            operationId: ks3#head-object
-            parameters:
-                - name: bucket
-                  in: path
-                  description: bucket name
-                  required: true
-                  schema:
-                    type: string
-                    description: bucket name
-                    example: Voluptatum voluptatem non.
-                  example: Libero occaecati qui aliquam magni amet.
-                - name: key
-                  in: path
-                  description: object key
-                  required: true
-                  schema:
-                    type: string
-                    description: object key
-                    example: Maiores mollitia aspernatur error neque ad est.
-                  example: Autem quos ex tempora enim.
-            responses:
-                "200":
-                    description: OK response.
-                    headers:
-                        Content-Disposition:
-                            description: Content-Disposition header value
-                            schema:
-                                type: string
-                                description: Content-Disposition header value
-                                example: Sunt cupiditate voluptates totam sit.
-                            example: Iste eos officiis ea asperiores fugiat.
-                        Content-Length:
-                            description: Content length in bytes.
-                            schema:
-                                type: integer
-                                description: Content length in bytes.
-                                example: 5698000617691704297
-                                format: int64
-                            example: 5820851393144466887
+                                - Dolor aut voluptatem qui sed corporis sit.
+                                - Incidunt at quis.
+                                - Eligendi nulla eveniet dolor tenetur explicabo.
+                                - Officiis aut repudiandae autem sit incidunt iste.
 components:
     schemas:
         CreateRequestBody:
@@ -636,7 +546,7 @@ components:
                     $ref: '#/components/schemas/ShareArtifact'
                 customer_id:
                     type: string
-                    example: xnv
+                    example: psu
                     maxLength: 255
                 expires_in_seconds:
                     type: integer
@@ -658,10 +568,10 @@ components:
                         - customer-delivery
             example:
                 artifact:
-                    file: b40
-                    repository: i88
-                    tag: mqx
-                customer_id: iox
+                    file: leg
+                    repository: phc
+                    tag: ujw
+                customer_id: fgw
                 expires_in_seconds: 86400
                 max_sessions: 5
                 purpose: customer-delivery
@@ -674,7 +584,7 @@ components:
                 fault:
                     type: boolean
                     description: Is the error a server-side fault?
-                    example: true
+                    example: false
                 id:
                     type: string
                     description: ID is a unique identifier for this particular occurrence of the problem.
@@ -694,14 +604,14 @@ components:
                 timeout:
                     type: boolean
                     description: Is the error a timeout?
-                    example: true
+                    example: false
             example:
                 fault: true
                 id: 123abc
                 message: parameter 'p' must be an integer
                 name: bad_request
-                temporary: true
-                timeout: true
+                temporary: false
+                timeout: false
             required:
                 - name
                 - id
@@ -714,34 +624,34 @@ components:
             properties:
                 blob_digest:
                     type: string
-                    example: Est magnam eos aut.
+                    example: Ex ipsum a aut ipsam ea.
                 filename:
                     type: string
-                    example: Deserunt maxime voluptatibus enim.
+                    example: Consequatur amet molestiae illum aut.
                 manifest_digest:
                     type: string
-                    example: Quo nihil maxime aut totam rerum.
+                    example: Ea sequi dolor ex facilis.
                 media_type:
                     type: string
-                    example: Rem qui et praesentium dolorem.
+                    example: Eos et esse.
                 repository:
                     type: string
-                    example: Excepturi ea explicabo est voluptatum sed quae.
+                    example: Ut officia expedita.
                 size:
                     type: integer
-                    example: 29202535076790332
+                    example: 1064271118928070478
                     format: int64
                 source_tag:
                     type: string
-                    example: Et sit iusto eligendi.
+                    example: Nulla et quos ut tempore qui.
             example:
-                blob_digest: Debitis dolores nulla.
-                filename: Totam dolorem vero.
-                manifest_digest: Dicta reiciendis voluptatibus aliquam eaque ut.
-                media_type: Exercitationem maiores sit.
-                repository: Vel blanditiis sed veritatis doloremque nulla.
-                size: 8020348903157165158
-                source_tag: Neque sint quod voluptatum temporibus dolorum.
+                blob_digest: Optio perferendis harum possimus voluptatem ut et.
+                filename: Ut nulla.
+                manifest_digest: Qui provident.
+                media_type: Aliquam omnis consequatur qui assumenda accusamus.
+                repository: Quae facere error quia sit.
+                size: 2865077370839720780
+                source_tag: Cupiditate voluptatum et et.
             required:
                 - repository
                 - source_tag
@@ -757,56 +667,56 @@ components:
                     $ref: '#/components/schemas/PinnedArtifact'
                 created_at:
                     type: string
-                    example: Totam molestiae.
+                    example: Tenetur rem qui et praesentium.
                 customer_id:
                     type: string
-                    example: Sit eum commodi eos necessitatibus voluptate voluptates.
+                    example: Totam rerum magni est magnam eos aut.
                 download_url:
                     type: string
                     description: Returned only once, at creation
-                    example: Consequatur soluta aut.
+                    example: Est voluptatum sed quae error et sit.
                 expires_at:
                     type: string
-                    example: Necessitatibus enim eum sit rerum non.
+                    example: Voluptas vel blanditiis sed veritatis doloremque nulla.
                 id:
                     type: string
-                    example: Atque est aut nesciunt laborum.
+                    example: Numquam quam enim excepturi ea.
                 issued_by:
                     type: string
-                    example: Eius enim et nesciunt est error.
+                    example: Eligendi dolorum quo nihil maxime.
                 max_sessions:
                     type: integer
-                    example: 6822919697618441923
+                    example: 6871008391164418744
                     format: int64
                 purpose:
                     type: string
-                    example: Facere corporis et quibusdam qui.
+                    example: Deserunt maxime voluptatibus enim.
                 revoked_at:
                     type: string
-                    example: Harum provident.
+                    example: Neque sint quod voluptatum temporibus dolorum.
                 sessions_started:
                     type: integer
-                    example: 7558893964577949787
+                    example: 3632876842764536721
                     format: int64
             example:
                 artifact:
-                    blob_digest: Maiores est.
-                    filename: Eligendi aut vero et neque odit.
-                    manifest_digest: Nesciunt aut debitis.
-                    media_type: Aperiam laboriosam odio ut quam iusto assumenda.
-                    repository: Quidem fugiat tempore sapiente dolorem et.
-                    size: 482858341519461238
-                    source_tag: Impedit odit vero dolores amet possimus quasi.
-                created_at: Aut numquam nihil quis.
-                customer_id: Et rem.
-                download_url: Vel numquam eveniet voluptatum ut.
-                expires_at: Id et rerum laboriosam.
-                id: Voluptatum dicta quisquam dignissimos ipsam rem aliquam.
-                issued_by: Quam expedita iusto minima cum ex.
-                max_sessions: 6877392436551546759
-                purpose: At ratione dolor.
-                revoked_at: Veniam eum dolorem perspiciatis.
-                sessions_started: 6685808325546375353
+                    blob_digest: Quam et asperiores.
+                    filename: Deserunt esse et.
+                    manifest_digest: Dolore et et fugit officia quia aperiam.
+                    media_type: Quidem fugiat tempore sapiente dolorem et.
+                    repository: Ex nisi dolor itaque ullam eum.
+                    size: 2687498372818838164
+                    source_tag: Id dolorem dolor quasi qui.
+                created_at: Eius enim et nesciunt est error.
+                customer_id: Atque est aut nesciunt laborum.
+                download_url: Dolores nulla facilis totam dolorem vero aut.
+                expires_at: Sit eum commodi eos necessitatibus voluptate voluptates.
+                id: Voluptatibus aliquam eaque ut sunt.
+                issued_by: Exercitationem maiores sit.
+                max_sessions: 7370860052581476664
+                purpose: Consequatur soluta aut.
+                revoked_at: Facere corporis et quibusdam qui.
+                sessions_started: 2440660033217079736
             required:
                 - id
                 - artifact
@@ -820,20 +730,20 @@ components:
             properties:
                 file:
                     type: string
-                    example: pdo
+                    example: 17b
                     maxLength: 255
                 repository:
                     type: string
-                    example: k1y
+                    example: 92y
                     maxLength: 512
                 tag:
                     type: string
-                    example: 9ou
+                    example: 91l
                     maxLength: 128
             example:
-                file: 9sy
-                repository: 8ua
-                tag: 0ix
+                file: qom
+                repository: qi5
+                tag: 72a
             required:
                 - repository
                 - tag
@@ -849,7 +759,5 @@ tags:
       description: Trusted delivery grant management; mount only in management mode
     - name: oci
       description: OCI artifacts download service
-    - name: ks3
-      description: KS3 object download service
     - name: gcs
       description: GCS object download service

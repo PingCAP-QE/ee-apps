@@ -99,7 +99,22 @@ func (s *artifactsrvc) process(ctx context.Context, task *ent.ImageSyncTask) {
 
 	l.Info().Msg("Syncing Docker image")
 
-	err := crane.Copy(task.Source, task.Target, crane.WithContext(copyCtx))
+	// Refuse to overwrite a tag that already publishes a different image; a tag
+	// that already publishes this image makes the copy a no-op, so retries and
+	// deliberate re-syncs stay idempotent.
+	state, err := guardTarget(copyCtx, task.Source, task.Target)
+	if err == nil && state == targetSameDigest {
+		l.Info().Msg("Target already publishes the same digest, skipping the copy")
+		if ok, markErr := s.markSucceeded(ctx, task); markErr != nil {
+			l.Err(markErr).Msg("failed to record image sync success")
+		} else if !ok {
+			l.Warn().Msg("task lease lost, success not recorded")
+		}
+		return
+	}
+	if err == nil {
+		err = crane.Copy(task.Source, task.Target, crane.WithContext(copyCtx))
+	}
 	if ctx.Err() != nil {
 		l.Info().Msg("worker stopping, discarding image sync result")
 		return

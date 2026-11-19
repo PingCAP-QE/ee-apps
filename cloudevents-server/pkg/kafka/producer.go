@@ -12,7 +12,7 @@ func NewWriter(auth Authentication, brokers []string, topic, clientID string) (*
 	if err != nil {
 		return nil, err
 	}
-	dialer, err := NewDialer(mechanism, clientID)
+	dialer, err := NewDialer(auth, mechanism, clientID)
 	if err != nil {
 		return nil, err
 	}

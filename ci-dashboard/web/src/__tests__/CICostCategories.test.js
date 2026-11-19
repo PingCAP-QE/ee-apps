@@ -37,7 +37,7 @@ function account(vendor, total, items, missingDates = []) {
       share_pct: sharePct ?? (total ? value / total * 100 : 0),
       evidence: `Billing evidence for ${name}`,
     })),
-    observed_dates: ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-11"]
+    observed_dates: ["2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10"]
       .filter((date) => !missingDates.includes(date)),
     missing_dates: missingDates,
   };
@@ -53,7 +53,7 @@ async function withReport(accounts, check) {
       ok: true,
       json: async () => ({
         accounts: [],
-        last_complete_week: { start_date: "2026-10-05", end_date: "2026-10-11" },
+        last_complete_week: { start_date: "2026-10-04", end_date: "2026-10-10" },
         last_complete_month: { start_date: "2026-09-01", end_date: "2026-09-30" },
         last_week_category_share: { accounts },
       }),
@@ -83,7 +83,7 @@ test("category pies strictly exclude shares <= 1% without renormalizing or dropp
       ["Just above one percent", 1.0001, 1],
       ["Exactly one percent", 1],
       ["Small category", 0.1],
-    ], ["2026-10-11"]),
+    ], ["2026-10-10"]),
     account("tencent", 20, [["TKE", 18], ["CBS", 2]]),
   ], (renderer) => {
     const charts = renderer.root.findAllByType(LabeledDonutShareChart)
@@ -107,7 +107,8 @@ test("category pies strictly exclude shares <= 1% without renormalizing or dropp
     assert.equal(table.findByType("tfoot").findAllByType("td")[0].children.join(""), "$100.00");
     const status = renderer.root.findByProps({ role: "status" });
     assert.match(status.children.join(""), /6\/7 dates/);
-    assert.match(status.children.join(""), /2026-10-11/);
+    assert.match(status.children.join(""), /No records for 2026-10-10; totals may be incomplete/);
+    assert.match(rendered, /Billing records cover all 7 dates; amounts may still be revised/);
     assert.match(JSON.stringify(renderer.toJSON()), /not self-hosted/);
 
     const panels = renderer.root.findAllByType("section").filter((section) => section.props.className === "panel");

@@ -364,66 +364,7 @@ paths:
                         type: array
                         items:
                             type: string
-                            example: Et non.
-            schemes:
-                - http
-    /s3-obj/{bucket}/{key}:
-        get:
-            tags:
-                - ks3
-            summary: download-object ks3
-            operationId: ks3#download-object
-            produces:
-                - application/octet-stream
-            parameters:
-                - name: bucket
-                  in: path
-                  description: bucket name
-                  required: true
-                  type: string
-                - name: key
-                  in: path
-                  description: object key
-                  required: true
-                  type: string
-            responses:
-                "200":
-                    description: OK response.
-                    headers:
-                        Content-Disposition:
-                            description: Content-Disposition header for downloading
-                            type: string
-                        Content-Length:
-                            description: Length is the downloaded content length in bytes.
-                            type: int64
-            schemes:
-                - http
-        head:
-            tags:
-                - ks3
-            summary: head-object ks3
-            operationId: ks3#head-object
-            parameters:
-                - name: bucket
-                  in: path
-                  description: bucket name
-                  required: true
-                  type: string
-                - name: key
-                  in: path
-                  description: object key
-                  required: true
-                  type: string
-            responses:
-                "200":
-                    description: OK response.
-                    headers:
-                        Content-Disposition:
-                            description: Content-Disposition header value
-                            type: string
-                        Content-Length:
-                            description: Content length in bytes.
-                            type: int64
+                            example: Dolore ex iure ullam architecto voluptatem.
             schemes:
                 - http
 definitions:
@@ -433,34 +374,34 @@ definitions:
         properties:
             blob_digest:
                 type: string
-                example: Explicabo ea modi in et possimus.
+                example: Saepe qui.
             filename:
                 type: string
-                example: Voluptas voluptates assumenda quasi ipsa mollitia est.
+                example: Earum quae vel atque qui sint consectetur.
             manifest_digest:
                 type: string
-                example: Ut odit quo voluptates facilis.
+                example: Minima itaque vitae sapiente dolorem in.
             media_type:
                 type: string
-                example: Perspiciatis omnis provident et est.
+                example: Non excepturi quos aut qui.
             repository:
                 type: string
-                example: Accusantium molestias tempora dicta facere consequuntur cum.
+                example: Dolore amet autem atque quae.
             size:
                 type: integer
-                example: 5837770085715846635
+                example: 5358388934355161946
                 format: int64
             source_tag:
                 type: string
-                example: Earum est et et.
+                example: Labore non quidem dolorem.
         example:
-            blob_digest: Minus illum ut iure.
-            filename: Maiores est atque velit.
-            manifest_digest: Soluta distinctio qui aut qui.
-            media_type: In adipisci magnam.
-            repository: Distinctio non dicta adipisci alias et et.
-            size: 3546259887199988066
-            source_tag: Ipsam et quos consequatur exercitationem officia ullam.
+            blob_digest: At natus.
+            filename: Ut omnis.
+            manifest_digest: Et voluptate illum fuga.
+            media_type: Nulla consequatur aut aliquid sunt.
+            repository: Fugit rerum quis libero mollitia.
+            size: 8827538938178416997
+            source_tag: Repellat id ducimus deserunt quos magni.
         required:
             - repository
             - source_tag
@@ -477,56 +418,56 @@ definitions:
                 $ref: '#/definitions/PinnedArtifact'
             created_at:
                 type: string
-                example: At nulla soluta.
+                example: Earum est et et.
             customer_id:
                 type: string
-                example: Nihil tenetur.
+                example: Atque placeat sunt nostrum reprehenderit sunt.
             download_url:
                 type: string
                 description: Returned only once, at creation
-                example: Atque placeat sunt nostrum reprehenderit sunt.
+                example: Suscipit dicta.
             expires_at:
                 type: string
-                example: Animi quas eos id voluptatem neque nihil.
+                example: Ut odit quo voluptates facilis.
             id:
                 type: string
-                example: Inventore veritatis dolore odit.
+                example: Temporibus voluptates voluptas.
             issued_by:
                 type: string
-                example: Dolor rerum ab est.
+                example: Inventore veritatis dolore odit.
             max_sessions:
                 type: integer
-                example: 1965566518662805170
+                example: 4962267788257340667
                 format: int64
             purpose:
                 type: string
-                example: Perferendis alias iste.
+                example: Accusantium molestias tempora dicta facere consequuntur cum.
             revoked_at:
                 type: string
-                example: Qui magni.
+                example: Explicabo ea modi in et possimus.
             sessions_started:
                 type: integer
-                example: 4609683565247935685
+                example: 8473653903677355081
                 format: int64
         example:
             artifact:
-                blob_digest: Quam et ut soluta sed minima dolores.
-                filename: Autem blanditiis repellendus deserunt.
-                manifest_digest: Amet natus quia eos autem eos laudantium.
-                media_type: Rerum labore vitae excepturi.
-                repository: Autem molestiae.
-                size: 8530410839330046368
-                source_tag: Et corporis ullam libero voluptatem ut.
-            created_at: Molestiae est optio.
-            customer_id: Et quisquam eum consectetur ea perferendis non.
-            download_url: Et vel doloremque sint sunt necessitatibus et.
-            expires_at: Sed itaque officia delectus.
-            id: Libero temporibus nisi omnis.
-            issued_by: Vel sequi ex tempore.
-            max_sessions: 8086904141900767812
-            purpose: Deleniti exercitationem vitae harum accusamus.
-            revoked_at: Dolorum corrupti quibusdam quam.
-            sessions_started: 9124907572916215376
+                blob_digest: Et sit recusandae qui totam dolor.
+                filename: Ut doloremque laborum quis voluptas voluptatum voluptate.
+                manifest_digest: Repudiandae nihil et ducimus veritatis.
+                media_type: Molestiae laudantium et corporis ullam.
+                repository: Sunt nobis velit facilis.
+                size: 2501030581489099372
+                source_tag: Quas minus tempora.
+            created_at: Minus illum ut iure.
+            customer_id: Ipsam et quos consequatur exercitationem officia ullam.
+            download_url: Perspiciatis omnis provident et est.
+            expires_at: Maiores est atque velit.
+            id: Assumenda quasi ipsa mollitia est autem.
+            issued_by: Distinctio non dicta adipisci alias et et.
+            max_sessions: 1407444978993375863
+            purpose: Soluta distinctio qui aut qui.
+            revoked_at: Laudantium in adipisci magnam.
+            sessions_started: 8165705626977242773
         required:
             - id
             - artifact
@@ -541,20 +482,20 @@ definitions:
         properties:
             file:
                 type: string
-                example: mac
+                example: wpa
                 maxLength: 255
             repository:
                 type: string
-                example: z6g
+                example: 7pa
                 maxLength: 512
             tag:
                 type: string
-                example: iay
+                example: 6en
                 maxLength: 128
         example:
-            file: e52
-            repository: qbt
-            tag: 57d
+            file: r8a
+            repository: 00f
+            tag: g9w
         required:
             - repository
             - tag
@@ -566,7 +507,7 @@ definitions:
             fault:
                 type: boolean
                 description: Is the error a server-side fault?
-                example: true
+                example: false
             id:
                 type: string
                 description: ID is a unique identifier for this particular occurrence of the problem.
@@ -586,7 +527,7 @@ definitions:
             timeout:
                 type: boolean
                 description: Is the error a timeout?
-                example: false
+                example: true
         description: create_forbidden_response_body result type (default view)
         example:
             fault: false
@@ -637,7 +578,7 @@ definitions:
             message: parameter 'p' must be an integer
             name: bad_request
             temporary: false
-            timeout: false
+            timeout: true
         required:
             - name
             - id
@@ -652,7 +593,7 @@ definitions:
             fault:
                 type: boolean
                 description: Is the error a server-side fault?
-                example: true
+                example: false
             id:
                 type: string
                 description: ID is a unique identifier for this particular occurrence of the problem.
@@ -668,7 +609,7 @@ definitions:
             temporary:
                 type: boolean
                 description: Is the error temporary?
-                example: true
+                example: false
             timeout:
                 type: boolean
                 description: Is the error a timeout?
@@ -696,7 +637,7 @@ definitions:
                 $ref: '#/definitions/ShareArtifact'
             customer_id:
                 type: string
-                example: p92
+                example: "807"
                 maxLength: 255
             expires_in_seconds:
                 type: integer
@@ -718,10 +659,10 @@ definitions:
                     - customer-delivery
         example:
             artifact:
-                file: b40
-                repository: i88
-                tag: mqx
-            customer_id: 91l
+                file: leg
+                repository: phc
+                tag: ujw
+            customer_id: 9ia
             expires_in_seconds: 86400
             max_sessions: 5
             purpose: customer-delivery
@@ -751,14 +692,14 @@ definitions:
             temporary:
                 type: boolean
                 description: Is the error temporary?
-                example: true
+                example: false
             timeout:
                 type: boolean
                 description: Is the error a timeout?
-                example: false
+                example: true
         description: create_unauthorized_response_body result type (default view)
         example:
-            fault: false
+            fault: true
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
@@ -778,7 +719,7 @@ definitions:
             fault:
                 type: boolean
                 description: Is the error a server-side fault?
-                example: true
+                example: false
             id:
                 type: string
                 description: ID is a unique identifier for this particular occurrence of the problem.
@@ -794,18 +735,18 @@ definitions:
             temporary:
                 type: boolean
                 description: Is the error temporary?
-                example: false
+                example: true
             timeout:
                 type: boolean
                 description: Is the error a timeout?
-                example: false
+                example: true
         description: create_unavailable_response_body result type (default view)
         example:
             fault: false
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
-            temporary: false
+            temporary: true
             timeout: false
         required:
             - name
@@ -837,14 +778,14 @@ definitions:
             temporary:
                 type: boolean
                 description: Is the error temporary?
-                example: true
+                example: false
             timeout:
                 type: boolean
                 description: Is the error a timeout?
-                example: false
+                example: true
         description: revoke_forbidden_response_body result type (default view)
         example:
-            fault: false
+            fault: true
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
@@ -864,7 +805,7 @@ definitions:
             fault:
                 type: boolean
                 description: Is the error a server-side fault?
-                example: false
+                example: true
             id:
                 type: string
                 description: ID is a unique identifier for this particular occurrence of the problem.
@@ -884,14 +825,14 @@ definitions:
             timeout:
                 type: boolean
                 description: Is the error a timeout?
-                example: false
+                example: true
         description: revoke_invalid_request_response_body result type (default view)
         example:
             fault: true
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
-            temporary: false
+            temporary: true
             timeout: true
         required:
             - name
@@ -923,18 +864,18 @@ definitions:
             temporary:
                 type: boolean
                 description: Is the error temporary?
-                example: false
+                example: true
             timeout:
                 type: boolean
                 description: Is the error a timeout?
                 example: false
         description: revoke_not_found_response_body result type (default view)
         example:
-            fault: true
+            fault: false
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
-            temporary: false
+            temporary: true
             timeout: true
         required:
             - name
@@ -973,11 +914,11 @@ definitions:
                 example: true
         description: revoke_unauthorized_response_body result type (default view)
         example:
-            fault: true
+            fault: false
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
-            temporary: true
+            temporary: false
             timeout: false
         required:
             - name
@@ -1013,10 +954,10 @@ definitions:
             timeout:
                 type: boolean
                 description: Is the error a timeout?
-                example: true
+                example: false
         description: revoke_unavailable_response_body result type (default view)
         example:
-            fault: true
+            fault: false
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
@@ -1036,7 +977,7 @@ definitions:
             fault:
                 type: boolean
                 description: Is the error a server-side fault?
-                example: false
+                example: true
             id:
                 type: string
                 description: ID is a unique identifier for this particular occurrence of the problem.
@@ -1056,14 +997,14 @@ definitions:
             timeout:
                 type: boolean
                 description: Is the error a timeout?
-                example: false
+                example: true
         description: show_forbidden_response_body result type (default view)
         example:
             fault: true
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
-            temporary: false
+            temporary: true
             timeout: true
         required:
             - name
@@ -1079,7 +1020,7 @@ definitions:
             fault:
                 type: boolean
                 description: Is the error a server-side fault?
-                example: true
+                example: false
             id:
                 type: string
                 description: ID is a unique identifier for this particular occurrence of the problem.
@@ -1107,7 +1048,7 @@ definitions:
             message: parameter 'p' must be an integer
             name: bad_request
             temporary: true
-            timeout: true
+            timeout: false
         required:
             - name
             - id
@@ -1122,7 +1063,7 @@ definitions:
             fault:
                 type: boolean
                 description: Is the error a server-side fault?
-                example: false
+                example: true
             id:
                 type: string
                 description: ID is a unique identifier for this particular occurrence of the problem.
@@ -1138,19 +1079,19 @@ definitions:
             temporary:
                 type: boolean
                 description: Is the error temporary?
-                example: true
+                example: false
             timeout:
                 type: boolean
                 description: Is the error a timeout?
                 example: true
         description: show_not_found_response_body result type (default view)
         example:
-            fault: false
+            fault: true
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
             temporary: true
-            timeout: true
+            timeout: false
         required:
             - name
             - id
@@ -1192,7 +1133,7 @@ definitions:
             id: 123abc
             message: parameter 'p' must be an integer
             name: bad_request
-            temporary: false
+            temporary: true
             timeout: true
         required:
             - name
@@ -1208,7 +1149,7 @@ definitions:
             fault:
                 type: boolean
                 description: Is the error a server-side fault?
-                example: true
+                example: false
             id:
                 type: string
                 description: ID is a unique identifier for this particular occurrence of the problem.
@@ -1224,7 +1165,7 @@ definitions:
             temporary:
                 type: boolean
                 description: Is the error temporary?
-                example: true
+                example: false
             timeout:
                 type: boolean
                 description: Is the error a timeout?

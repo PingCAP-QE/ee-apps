@@ -9,7 +9,6 @@ require (
 	entgo.io/ent v0.14.6
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/uuid v1.6.0
-	github.com/ks3sdklib/aws-sdk-go v1.3.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	goa.design/clue v1.2.3

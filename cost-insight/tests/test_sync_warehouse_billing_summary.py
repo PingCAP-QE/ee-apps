@@ -249,6 +249,128 @@ def test_excess_backlog_is_not_silently_skipped(engine, vendor):
         run(engine, vendor)
 
 
+F04_ACCOUNT = "380838443567"
+F04_SCHEMA = "aws_tidb_cloud_f04_v1"
+F04_USEDBY = "prod-us-west-2-f04"
+
+
+@pytest.fixture
+def f04_engine(engine, vendor, monkeypatch):
+    if vendor != "aws":
+        pytest.skip("F04 is an AWS-only profile")
+    with engine.begin() as c:
+        c.execute(text("UPDATE cost_sources SET account_id=:f04, source_schema_version=:profile, "
+                       "source_table=:table WHERE account_id=:old"),
+                  {"f04": F04_ACCOUNT, "profile": F04_SCHEMA,
+                   "table": job.source_table("aws", PROJECT), "old": ACCOUNT})
+        c.execute(text(f"UPDATE {job.SUMMARY} SET account_id=:f04 WHERE account_id=:old"),
+                  {"f04": F04_ACCOUNT, "old": ACCOUNT})
+    def fetch(client, **kw):
+        assert kw["f04"] is True and kw["account_id"] == F04_ACCOUNT
+        first, last = kw.get("start_date") or START, kw.get("end_date") or END
+        w = window("aws", F04_ACCOUNT, start=first, end=last)
+        rows = [{**r, "author": F04_USEDBY,
+                 "vendor_tags_json": '{"usedby":"prod-us-west-2-f04"}'} for r in w.rows]
+        return WarehouseWindow(w.start, w.end, rows, w.controls, w.snapshots)
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    yield engine
+
+
+def run_f04(engine, **extra):
+    return job.run_sync_warehouse_billing_summary(engine, client=Mock(), vendor="aws",
+        account_ids=[F04_ACCOUNT], project=PROJECT, tcms_allocation_table=RULES, **extra)
+
+
+def test_f04_warehouse_preserves_scope_hash_and_separate_state(f04_engine):
+    with f04_engine.begin() as c:
+        state_store.mark_job_failed(c, "sync_aws_warehouse_daily", {"run_id": "ordinary"}, "held")
+    result = run_f04(f04_engine)
+    assert result["percent"] == 100
+    with f04_engine.connect() as c:
+        state = state_store.get_job_state(c, "sync_aws_f04_warehouse_daily")
+        assert state.last_status == "succeeded"
+        assert state_store.get_job_state(c, "sync_aws_warehouse_daily").last_status == "failed"
+        rows = c.execute(text(f"SELECT * FROM {job.SUMMARY} WHERE account_id=:a AND usage_date=:d"),
+                         {"a": F04_ACCOUNT, "d": END}).mappings().all()
+        assert len(rows) == 1 and rows[0]["author"] == F04_USEDBY
+        assert rows[0]["source_schema_version"] is None
+        assert rows[0]["source_allocation_scope"] == "direct"
+        assert job._table_totals(c, job.SUMMARY, "aws", DORMANT, START - timedelta(days=1))["n"] == 1
+
+
+@pytest.mark.parametrize("days", [1, 3, 5])
+def test_f04_bounded_historical_window_replaces_only_requested_days(f04_engine, days):
+    last = START + timedelta(days=days-1)
+    result = run_f04(f04_engine, start_date=START, end_date=last)
+    assert len(result["completed_account_days"]) == days and result["percent"] == 100
+    with f04_engine.connect() as c:
+        assert job._table_totals(c, job.SUMMARY, "aws", F04_ACCOUNT, START - timedelta(days=1))["n"] == 1
+        assert job._table_totals(c, job.SUMMARY, "aws", F04_ACCOUNT, last + timedelta(days=1))["n"] == 0
+
+
+@pytest.mark.parametrize("dates", [
+    {"start_date": START}, {"end_date": END},
+    {"start_date": END, "end_date": START},
+    {"start_date": START, "end_date": START + timedelta(days=5)},
+])
+def test_f04_repair_requires_complete_at_most_five_day_bounds(f04_engine, dates):
+    with pytest.raises(ValueError):
+        run_f04(f04_engine, **dates)
+
+
+def test_f04_dry_run_is_select_only_and_failed_run_cannot_be_replayed(f04_engine):
+    with f04_engine.begin() as c:
+        state_store.mark_job_failed(c, "sync_aws_f04_warehouse_daily", {"run_id": "held"}, "uncertain write")
+    statements = []
+    event.listen(f04_engine, "before_cursor_execute",
+                 lambda c, cur, sql, p, ctx, many: statements.append(sql.strip().upper()))
+    result = run_f04(f04_engine, start_date=START, end_date=START, dry_run=True)
+    assert result["dry_run"] and not result["completed_account_days"]
+    assert statements and all(s.startswith("SELECT") for s in statements)
+    with pytest.raises(ValueError, match="inspect before recovery"):
+        run_f04(f04_engine, start_date=START, end_date=START)
+    with f04_engine.connect() as c:
+        held = state_store.get_job_state(c, "sync_aws_f04_warehouse_daily")
+        assert held.last_status == "failed" and held.watermark["run_id"] == "held"
+
+
+def test_f04_still_requires_contiguous_backlog_recovery(f04_engine):
+    with pytest.raises(ValueError, match="backlog"):
+        run_f04(f04_engine, start_date=START + timedelta(days=10), end_date=START + timedelta(days=12))
+
+
+@pytest.mark.parametrize("bad", ["another-tenant", None])
+def test_f04_rejects_unscoped_source_rows_before_writing(f04_engine, monkeypatch, bad):
+    w = window("aws", F04_ACCOUNT)
+    rows = [{**r, "author": bad, "vendor_tags_json": '{"usedby":"wrong"}'} for r in w.rows]
+    monkeypatch.setattr(job, "fetch_warehouse_window", Mock(return_value=WarehouseWindow(
+        w.start, w.end, rows, w.controls, w.snapshots)))
+    replacement = Mock()
+    monkeypatch.setattr(job, "replace_summary_partition_usage_dates", replacement)
+    with pytest.raises(ValueError, match="F04"):
+        run_f04(f04_engine)
+    replacement.assert_not_called()
+
+
+def test_f04_legacy_table_and_mixed_account_requests_are_rejected(f04_engine):
+    with pytest.raises(ValueError, match="mix|separate"):
+        job.run_sync_warehouse_billing_summary(f04_engine, client=Mock(), vendor="aws",
+            account_ids=[F04_ACCOUNT, "account-b"], project=PROJECT, tcms_allocation_table=RULES)
+    with f04_engine.begin() as c:
+        c.execute(text("UPDATE cost_sources SET source_table='gcp-digital-bi.aws_prod_billing.aws_prod_billing_data' "
+                       "WHERE account_id=:a"), {"a": F04_ACCOUNT})
+    with pytest.raises(ValueError):
+        run_f04(f04_engine)
+
+
+def test_f04_profile_cannot_be_used_for_other_accounts(engine, vendor):
+    with engine.begin() as c:
+        c.execute(text("UPDATE cost_sources SET source_schema_version=:p,source_table=:t WHERE account_id=:a"),
+                  {"p": F04_SCHEMA, "t": job.source_table(vendor, PROJECT), "a": ACCOUNT})
+    with pytest.raises(ValueError):
+        run(engine, vendor)
+
+
 def test_cli_requires_explicit_scope_and_wires_both_routes(monkeypatch, capsys):
     for args in (["sync-warehouse-billing-summary"], ["sync-warehouse-billing-summary", "--vendor", "aws"]):
         with pytest.raises(SystemExit):
@@ -269,6 +391,17 @@ def test_cli_requires_explicit_scope_and_wires_both_routes(monkeypatch, capsys):
         assert kw["vendor"] == vendor and kw["account_ids"] == [ACCOUNT, "account-b"]
         assert kw["client"] is client and kw["project"] == PROJECT and kw["dry_run"] is True
     assert engine.dispose.call_count == 2
+    assert cli.main(["sync-warehouse-billing-summary", "--vendor", "aws", "--account-id", F04_ACCOUNT,
+                     "--start-date", "2026-10-27", "--end-date", "2026-10-31", "--dry-run"]) == 0
+    assert runner.call_args.kwargs["start_date"] == date(2026, 10, 27)
+    assert runner.call_args.kwargs["end_date"] == date(2026, 10, 31)
+    for bounds in (["--start-date", "2026-10-27"],
+                   ["--start-date", "2026-10-27", "--end-date", "2026-11-01"],
+                   ["--start-date", "2026-10-31", "--end-date", "2026-10-27"]):
+        with pytest.raises(ValueError):
+            cli.main(["sync-warehouse-billing-summary", "--vendor", "aws",
+                      "--account-id", F04_ACCOUNT, "--dry-run", *bounds])
+    assert runner.call_count == 3
     assert '"dry_run": true' in capsys.readouterr().out
 
 

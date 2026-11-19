@@ -42,6 +42,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Server.Address != ":8080" {
 		t.Fatalf("unexpected address: %s", cfg.Server.Address)
 	}
+	if cfg.Server.TLS.Enabled || cfg.Server.TLS.Address != ":8443" {
+		t.Fatalf("unexpected TLS defaults: %#v", cfg.Server.TLS)
+	}
 	if cfg.Server.ReadTimeout != 10*time.Second || cfg.Server.WriteTimeout != 30*time.Second {
 		t.Fatalf("unexpected server timeouts: %#v", cfg.Server)
 	}
@@ -65,6 +68,34 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.HasFallback() {
 		t.Fatal("did not expect a fallback PAT")
+	}
+}
+
+func TestLoadTLS(t *testing.T) {
+	for _, tc := range []struct {
+		name, settings string
+		wantError      bool
+	}{
+		{"disabled without files", "enabled: false", false},
+		{"enabled", "enabled: true\n    cert_file: /tls/tls.crt\n    key_file: /tls/tls.key", false},
+		{"missing both", "enabled: true", true},
+		{"missing key", "enabled: true\n    cert_file: /tls/tls.crt", true},
+		{"missing cert", "enabled: true\n    key_file: /tls/tls.key", true},
+		{"blank key", "enabled: true\n    cert_file: /tls/tls.crt\n    key_file: ' '", true},
+		{"blank address", "enabled: true\n    address: ' '\n    cert_file: /tls/tls.crt\n    key_file: /tls/tls.key", true},
+		{"duplicate address", "enabled: true\n    address: ':8080'\n    cert_file: /tls/tls.crt\n    key_file: /tls/tls.key", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, minimalConfig+"\nserver:\n  tls:\n    "+tc.settings+"\n"))
+			if (err != nil) != tc.wantError {
+				t.Fatalf("Load error = %v; want error = %v", err, tc.wantError)
+			}
+			if tc.name == "enabled" && cfg.Server.TLS != (TLS{
+				Enabled: true, Address: ":8443", CertFile: "/tls/tls.crt", KeyFile: "/tls/tls.key",
+			}) {
+				t.Fatalf("TLS settings were not preserved: %#v", cfg.Server.TLS)
+			}
+		})
 	}
 }
 

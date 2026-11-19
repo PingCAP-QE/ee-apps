@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from roster.common.config import load_settings
@@ -109,11 +111,31 @@ def test_load_settings_requires_tidb_fields_without_url() -> None:
         load_settings({})
 
 
-def test_build_engine_uses_sqlite_url() -> None:
-    settings = load_settings({"ROSTER_DB_URL": "sqlite:///:memory:"})
+@pytest.mark.parametrize("ssl_ca", ["", "/var/run/ca.crt"])
+def test_build_engine_uses_sqlite_url(ssl_ca: str) -> None:
+    settings = load_settings({"ROSTER_DB_URL": "sqlite:///:memory:", "TIDB_SSL_CA": ssl_ca})
     engine = build_engine(settings)
 
     assert engine.dialect.name == "sqlite"
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("SELECT 1").scalar_one() == 1
+    engine.dispose()
+
+
+@pytest.mark.parametrize("url_key", ["ROSTER_DB_URL", "CI_DASHBOARD_DB_URL"])
+@pytest.mark.parametrize("ca_key", ["ROSTER_TIDB_SSL_CA", "TIDB_SSL_CA"])
+def test_build_engine_passes_ca_with_mysql_url(url_key: str, ca_key: str) -> None:
+    settings = load_settings(
+        {
+            url_key: "mysql+pymysql://roster:secret@tidb.example.com:4000/insight",
+            ca_key: "/var/run/ca.crt",
+        }
+    )
+
+    with patch("roster.common.db.create_engine") as create_engine:
+        build_engine(settings)
+
+    assert create_engine.call_args.kwargs["connect_args"] == {"ssl": {"ca": "/var/run/ca.crt"}}
 
 
 def test_build_engine_builds_mysql_url() -> None:

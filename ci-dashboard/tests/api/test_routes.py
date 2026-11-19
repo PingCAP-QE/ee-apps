@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -1571,7 +1571,7 @@ def test_flaky_trend_and_composition(api_client: TestClient) -> None:
     assert trend.status_code == 200
     trend_body = trend.json()
     series = {item["key"]: item for item in trend_body["series"]}
-    assert series["flaky_rate_pct"]["points"] == [["2026-04-10", 50.0], ["2026-04-11", 50.0]]
+    assert series["flaky_rate_pct"]["points"] == [["2026-04-10", 0.0], ["2026-04-11", 50.0]]
     assert series["flaky_rate_pct"]["axis"] == "right"
     assert series["total_failure_like_count"]["points"] == [["2026-04-10", 2], ["2026-04-11", 2]]
     assert series["total_failure_like_count"]["axis"] == "left"
@@ -1590,11 +1590,11 @@ def test_flaky_trend_and_composition(api_client: TestClient) -> None:
     assert composition.status_code == 200
     composition_body = composition.json()
     composition_series = {item["key"]: item for item in composition_body["series"]}
-    assert composition_series["flaky_rate_pct"]["points"] == [["2026-04-10", 50.0], ["2026-04-11", 50.0]]
+    assert composition_series["flaky_rate_pct"]["points"] == [["2026-04-10", 0.0], ["2026-04-11", 50.0]]
     assert composition_series["flaky_rate_pct"]["axis"] == "right"
     assert composition_series["retry_loop_rate_pct"]["points"] == [["2026-04-10", 50.0], ["2026-04-11", 0.0]]
     assert composition_series["retry_loop_rate_pct"]["axis"] == "right"
-    assert composition_series["noisy_rate_pct"]["points"] == [["2026-04-10", 100.0], ["2026-04-11", 50.0]]
+    assert composition_series["noisy_rate_pct"]["points"] == [["2026-04-10", 50.0], ["2026-04-11", 50.0]]
     assert composition_series["noisy_rate_pct"]["axis"] == "right"
     assert composition_series["total_failure_like_count"]["axis"] == "left"
 
@@ -1661,10 +1661,12 @@ def test_flaky_top_jobs_and_period_comparison(api_client: TestClient) -> None:
     )
     assert top_jobs.status_code == 200
     top_jobs_body = top_jobs.json()
-    assert [item["name"] for item in top_jobs_body["items"]] == ["job-a", "job-c"]
+    assert [item["name"] for item in top_jobs_body["items"]] == ["job-c", "job-a"]
     assert top_jobs_body["items"][0]["value"] == 100.0
-    assert top_jobs_body["items"][0]["noisy_build_count"] == 2
+    assert top_jobs_body["items"][0]["noisy_build_count"] == 1
     assert top_jobs_body["items"][0]["noisy_rate_pct"] == 100.0
+    assert top_jobs_body["items"][1]["noisy_build_count"] == 1
+    assert top_jobs_body["items"][1]["noisy_rate_pct"] == 50.0
     assert top_jobs_body["meta"]["limit"] == 2
     assert top_jobs_body["meta"]["value_key"] == "noisy_rate_pct"
 
@@ -1687,14 +1689,14 @@ def test_flaky_top_jobs_and_period_comparison(api_client: TestClient) -> None:
     assert groups["period_a"] == {
         "total_build_count": 3,
         "failure_like_build_count": 2,
-        "flaky_build_count": 1,
+        "flaky_build_count": 0,
         "retry_loop_build_count": 1,
-        "noisy_build_count": 2,
+        "noisy_build_count": 1,
         "total_pr_count": 2,
         "affected_pr_count": 1,
-        "flaky_rate_pct": 50.0,
+        "flaky_rate_pct": 0.0,
         "retry_loop_rate_pct": 50.0,
-        "noisy_rate_pct": 100.0,
+        "noisy_rate_pct": 50.0,
         "affected_pr_rate_pct": 50.0,
     }
     assert groups["period_b"] == {
@@ -1710,6 +1712,124 @@ def test_flaky_top_jobs_and_period_comparison(api_client: TestClient) -> None:
         "noisy_rate_pct": 50.0,
         "affected_pr_rate_pct": 100.0,
     }
+
+
+@pytest.mark.parametrize(
+    ("machine_category", "reviewed_category", "is_flaky", "is_retry_loop", "expected_flaky"),
+    [
+        ("INFRA", None, 1, 0, 0),
+        ("UT", "INFRA", 1, 0, 0),
+        ("INFRA", "UT", 1, 0, 1),
+        ("UT", None, 1, 0, 1),
+        (None, None, 1, 0, 1),
+        (None, "INFRA", 1, 0, 0),
+        ("UT", None, 0, 0, 0),
+        ("INFRA", None, 1, 1, 0),
+        ("INFRA", None, 0, 1, 0),
+    ],
+)
+def test_flaky_metrics_exclude_effective_infra_without_changing_denominators(
+    sqlite_engine,
+    api_client: TestClient,
+    machine_category: str | None,
+    reviewed_category: str | None,
+    is_flaky: int,
+    is_retry_loop: int,
+    expected_flaky: int,
+) -> None:
+    for index, state in enumerate(("failure", "failure", "success"), start=1000):
+        is_subject = index == 1000
+        _insert_build(
+            sqlite_engine,
+            source_prow_row_id=index,
+            source_prow_job_id=f"infra-exclusion-{index}",
+            repo_full_name="pingcap/tidb",
+            target_branch="master",
+            base_ref="master",
+            job_name="infra-exclusion",
+            state=state,
+            cloud_phase="GCP",
+            is_flaky=is_flaky if is_subject else 0,
+            is_retry_loop=is_retry_loop if is_subject else 0,
+            failure_category="FLAKY_TEST" if is_subject else None,
+            error_l1_category=machine_category if is_subject else "UT",
+            start_time="2026-04-20 10:00:00",
+            pr_number=index,
+        )
+    with sqlite_engine.begin() as connection:
+        connection.execute(
+            text("""
+                UPDATE ci_l1_builds
+                SET revise_error_l1_category = :reviewed_category
+                WHERE source_prow_job_id = 'infra-exclusion-1000'
+            """),
+            {"reviewed_category": reviewed_category},
+        )
+
+    params = {
+        "repo": "pingcap/tidb",
+        "branch": "master",
+        "start_date": "2026-04-20",
+        "end_date": "2026-04-26",
+    }
+    expected_noisy = int(bool(expected_flaky or is_retry_loop))
+    for path in ("trend", "composition"):
+        response = api_client.get(f"/api/v1/flaky/{path}", params=params)
+        assert response.status_code == 200
+        series = {item["key"]: item["points"] for item in response.json()["series"]}
+        assert series["flaky_rate_pct"] == [["2026-04-20", expected_flaky * 50.0]]
+        assert series["total_failure_like_count"] == [["2026-04-20", 2]]
+        if path == "composition":
+            assert series["retry_loop_rate_pct"] == [["2026-04-20", is_retry_loop * 50.0]]
+            assert series["noisy_rate_pct"] == [["2026-04-20", expected_noisy * 50.0]]
+
+    top_jobs = api_client.get("/api/v1/flaky/top-jobs", params=params)
+    assert top_jobs.status_code == 200
+    assert top_jobs.json()["items"][0] == {
+        "name": "infra-exclusion",
+        "value": expected_noisy * 50.0,
+        "failure_like_build_count": 2,
+        "flaky_build_count": expected_flaky,
+        "retry_loop_build_count": is_retry_loop,
+        "noisy_build_count": expected_noisy,
+        "noisy_rate_pct": expected_noisy * 50.0,
+    }
+
+    comparison = api_client.get(
+        "/api/v1/flaky/period-comparison",
+        params={
+            "repo": params["repo"],
+            "branch": params["branch"],
+            "period_a_start": params["start_date"],
+            "period_a_end": params["end_date"],
+            "period_b_start": params["start_date"],
+            "period_b_end": params["end_date"],
+        },
+    )
+    assert comparison.status_code == 200
+    for group in comparison.json()["groups"]:
+        values = group["values"]
+        assert values["total_build_count"] == 3
+        assert values["failure_like_build_count"] == 2
+        assert values["flaky_build_count"] == expected_flaky
+        assert values["retry_loop_build_count"] == is_retry_loop
+        assert values["noisy_build_count"] == expected_noisy
+        assert values["total_pr_count"] == 3
+        assert values["affected_pr_count"] == expected_noisy
+        assert values["flaky_rate_pct"] == expected_flaky * 50.0
+
+    page = api_client.get("/api/v1/pages/flaky", params=params)
+    assert page.status_code == 200
+    page_groups = page.json()["period_comparison"]["groups"]
+    assert page_groups[0] == comparison.json()["groups"][0]
+    assert page_groups[1]["values"]["failure_like_build_count"] == 0
+    assert page_groups[1]["values"]["flaky_build_count"] == 0
+    assert page_groups[1]["values"]["flaky_rate_pct"] == 0.0
+    assert page.json()["bucketed_flaky_rate"]["rows"][0]["flaky_rate_pct"] == expected_flaky * 50.0
+    with sqlite_engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT is_flaky FROM ci_l1_builds WHERE source_prow_job_id = 'infra-exclusion-1000'")
+        ).scalar_one() == is_flaky
 
 
 def test_flaky_case_flow_v2_two_week_confirmation(sqlite_engine, api_client: TestClient) -> None:
@@ -2982,7 +3102,7 @@ def test_page_routes(api_client: TestClient) -> None:
         for group in overview_body["period_comparison"]["groups"]
     }
     assert overview_groups["period_a"]["total_build_count"] == 5
-    assert overview_groups["period_a"]["noisy_build_count"] == 3
+    assert overview_groups["period_a"]["noisy_build_count"] == 2
     assert overview_groups["period_b"]["total_build_count"] == 0
 
     ci_status = api_client.get(
@@ -3293,13 +3413,13 @@ def test_page_routes(api_client: TestClient) -> None:
             "key": "flaky_rate_pct",
             "label": "Flaky rate",
             "type": "line",
-            "points": [["2026-04-06", 50.0]],
+            "points": [["2026-04-06", 25.0]],
         }
     ]
     assert flaky_body["bucketed_flaky_rate"]["rows"] == [
         {
             "time": "2026-04-06",
-            "flaky_rate_pct": 50.0,
+            "flaky_rate_pct": 25.0,
             "time_to_time_pct": None,
         }
     ]
@@ -5117,8 +5237,8 @@ def test_weekly_cost_report_uses_fixed_periods_list_cost_and_qa_share(
         "cost_metric": "list_cost",
         "purpose_schema_available": True,
     }
-    assert body["last_week"] == {"start_date": "2026-07-13", "end_date": "2026-07-19"}
-    assert body["previous_week"] == {"start_date": "2026-07-06", "end_date": "2026-07-12"}
+    assert body["last_week"] == {"start_date": "2026-07-12", "end_date": "2026-07-18"}
+    assert body["previous_week"] == {"start_date": "2026-07-05", "end_date": "2026-07-11"}
     assert body["previous_month"] == {"start_date": "2026-06-01", "end_date": "2026-06-30"}
     assert body["summary"] == {
         "last_week_cost": 3180.0,
@@ -5166,17 +5286,17 @@ def test_weekly_cost_report_uses_fixed_periods_list_cost_and_qa_share(
     ]
     assert body["list_cost_history"] == {
         "metric": "list_cost",
-        "start_date": "2026-05-25",
-        "end_date": "2026-07-19",
+        "start_date": "2026-05-24",
+        "end_date": "2026-07-18",
         "weeks": [
-            {"start_date": "2026-05-25", "end_date": "2026-05-31"},
-            {"start_date": "2026-06-01", "end_date": "2026-06-07"},
-            {"start_date": "2026-06-08", "end_date": "2026-06-14"},
-            {"start_date": "2026-06-15", "end_date": "2026-06-21"},
-            {"start_date": "2026-06-22", "end_date": "2026-06-28"},
-            {"start_date": "2026-06-29", "end_date": "2026-07-05"},
-            {"start_date": "2026-07-06", "end_date": "2026-07-12"},
-            {"start_date": "2026-07-13", "end_date": "2026-07-19"},
+            {"start_date": "2026-05-24", "end_date": "2026-05-30"},
+            {"start_date": "2026-05-31", "end_date": "2026-06-06"},
+            {"start_date": "2026-06-07", "end_date": "2026-06-13"},
+            {"start_date": "2026-06-14", "end_date": "2026-06-20"},
+            {"start_date": "2026-06-21", "end_date": "2026-06-27"},
+            {"start_date": "2026-06-28", "end_date": "2026-07-04"},
+            {"start_date": "2026-07-05", "end_date": "2026-07-11"},
+            {"start_date": "2026-07-12", "end_date": "2026-07-18"},
         ],
         "series": [
             {
@@ -5187,14 +5307,14 @@ def test_weekly_cost_report_uses_fixed_periods_list_cost_and_qa_share(
                 "purpose": "机器统一资源池",
                 "total_list_cost": 4220.0,
                 "points": [
-                    {"week_start": "2026-05-25", "list_cost": 0.0},
-                    {"week_start": "2026-06-01", "list_cost": 0.0},
-                    {"week_start": "2026-06-08", "list_cost": 0.0},
-                    {"week_start": "2026-06-15", "list_cost": 1100.0},
-                    {"week_start": "2026-06-22", "list_cost": 0.0},
-                    {"week_start": "2026-06-29", "list_cost": 0.0},
-                    {"week_start": "2026-07-06", "list_cost": 1060.0},
-                    {"week_start": "2026-07-13", "list_cost": 2060.0},
+                    {"week_start": "2026-05-24", "list_cost": 0.0},
+                    {"week_start": "2026-05-31", "list_cost": 0.0},
+                    {"week_start": "2026-06-07", "list_cost": 0.0},
+                    {"week_start": "2026-06-14", "list_cost": 1100.0},
+                    {"week_start": "2026-06-21", "list_cost": 0.0},
+                    {"week_start": "2026-06-28", "list_cost": 0.0},
+                    {"week_start": "2026-07-05", "list_cost": 1060.0},
+                    {"week_start": "2026-07-12", "list_cost": 2060.0},
                 ],
             },
             {
@@ -5205,14 +5325,14 @@ def test_weekly_cost_report_uses_fixed_periods_list_cost_and_qa_share(
                 "purpose": "机器统一资源池及重点项目测试",
                 "total_list_cost": 3600.0,
                 "points": [
-                    {"week_start": "2026-05-25", "list_cost": 0.0},
-                    {"week_start": "2026-06-01", "list_cost": 0.0},
-                    {"week_start": "2026-06-08", "list_cost": 0.0},
-                    {"week_start": "2026-06-15", "list_cost": 1400.0},
-                    {"week_start": "2026-06-22", "list_cost": 0.0},
-                    {"week_start": "2026-06-29", "list_cost": 0.0},
-                    {"week_start": "2026-07-06", "list_cost": 1080.0},
-                    {"week_start": "2026-07-13", "list_cost": 1120.0},
+                    {"week_start": "2026-05-24", "list_cost": 0.0},
+                    {"week_start": "2026-05-31", "list_cost": 0.0},
+                    {"week_start": "2026-06-07", "list_cost": 0.0},
+                    {"week_start": "2026-06-14", "list_cost": 1400.0},
+                    {"week_start": "2026-06-21", "list_cost": 0.0},
+                    {"week_start": "2026-06-28", "list_cost": 0.0},
+                    {"week_start": "2026-07-05", "list_cost": 1080.0},
+                    {"week_start": "2026-07-12", "list_cost": 1120.0},
                 ],
             },
             {
@@ -5223,14 +5343,14 @@ def test_weekly_cost_report_uses_fixed_periods_list_cost_and_qa_share(
                 "purpose": "新配置测试环境",
                 "total_list_cost": 0.0,
                 "points": [
-                    {"week_start": "2026-05-25", "list_cost": 0.0},
-                    {"week_start": "2026-06-01", "list_cost": 0.0},
-                    {"week_start": "2026-06-08", "list_cost": 0.0},
-                    {"week_start": "2026-06-15", "list_cost": 0.0},
-                    {"week_start": "2026-06-22", "list_cost": 0.0},
-                    {"week_start": "2026-06-29", "list_cost": 0.0},
-                    {"week_start": "2026-07-06", "list_cost": 0.0},
-                    {"week_start": "2026-07-13", "list_cost": 0.0},
+                    {"week_start": "2026-05-24", "list_cost": 0.0},
+                    {"week_start": "2026-05-31", "list_cost": 0.0},
+                    {"week_start": "2026-06-07", "list_cost": 0.0},
+                    {"week_start": "2026-06-14", "list_cost": 0.0},
+                    {"week_start": "2026-06-21", "list_cost": 0.0},
+                    {"week_start": "2026-06-28", "list_cost": 0.0},
+                    {"week_start": "2026-07-05", "list_cost": 0.0},
+                    {"week_start": "2026-07-12", "list_cost": 0.0},
                 ],
             },
         ],
@@ -5316,7 +5436,7 @@ def test_weekly_cost_report_adds_list_cost_budget_pace_and_team_share(
     body = response.json()
     assert body["budget_pace"] == {
         "metric": "list_cost",
-        "period": {"start_date": "2026-07-13", "end_date": "2026-07-19"},
+        "period": {"start_date": "2026-07-12", "end_date": "2026-07-18"},
         "overall": {
             "actual_list_cost": 220.0,
             "period_budget": 1199.59,
@@ -5439,17 +5559,17 @@ def test_weekly_cost_report_can_defer_list_cost_history_to_the_trend_endpoint(
         "meta": {"purpose_schema_available": True},
         "list_cost_history": {
             "metric": "list_cost",
-            "start_date": "2026-05-25",
-            "end_date": "2026-07-19",
+            "start_date": "2026-05-24",
+            "end_date": "2026-07-18",
             "weeks": [
-                {"start_date": "2026-05-25", "end_date": "2026-05-31"},
-                {"start_date": "2026-06-01", "end_date": "2026-06-07"},
-                {"start_date": "2026-06-08", "end_date": "2026-06-14"},
-                {"start_date": "2026-06-15", "end_date": "2026-06-21"},
-                {"start_date": "2026-06-22", "end_date": "2026-06-28"},
-                {"start_date": "2026-06-29", "end_date": "2026-07-05"},
-                {"start_date": "2026-07-06", "end_date": "2026-07-12"},
-                {"start_date": "2026-07-13", "end_date": "2026-07-19"},
+                {"start_date": "2026-05-24", "end_date": "2026-05-30"},
+                {"start_date": "2026-05-31", "end_date": "2026-06-06"},
+                {"start_date": "2026-06-07", "end_date": "2026-06-13"},
+                {"start_date": "2026-06-14", "end_date": "2026-06-20"},
+                {"start_date": "2026-06-21", "end_date": "2026-06-27"},
+                {"start_date": "2026-06-28", "end_date": "2026-07-04"},
+                {"start_date": "2026-07-05", "end_date": "2026-07-11"},
+                {"start_date": "2026-07-12", "end_date": "2026-07-18"},
             ],
             "series": [
                 {
@@ -5460,14 +5580,14 @@ def test_weekly_cost_report_can_defer_list_cost_history_to_the_trend_endpoint(
                     "purpose": "QA",
                     "total_list_cost": 100.0,
                     "points": [
-                        {"week_start": "2026-05-25", "list_cost": 0.0},
-                        {"week_start": "2026-06-01", "list_cost": 0.0},
-                        {"week_start": "2026-06-08", "list_cost": 0.0},
-                        {"week_start": "2026-06-15", "list_cost": 0.0},
-                        {"week_start": "2026-06-22", "list_cost": 0.0},
-                        {"week_start": "2026-06-29", "list_cost": 0.0},
-                        {"week_start": "2026-07-06", "list_cost": 0.0},
-                        {"week_start": "2026-07-13", "list_cost": 100.0},
+                        {"week_start": "2026-05-24", "list_cost": 0.0},
+                        {"week_start": "2026-05-31", "list_cost": 0.0},
+                        {"week_start": "2026-06-07", "list_cost": 0.0},
+                        {"week_start": "2026-06-14", "list_cost": 0.0},
+                        {"week_start": "2026-06-21", "list_cost": 0.0},
+                        {"week_start": "2026-06-28", "list_cost": 0.0},
+                        {"week_start": "2026-07-05", "list_cost": 0.0},
+                        {"week_start": "2026-07-12", "list_cost": 100.0},
                     ],
                 }
             ],
@@ -5523,7 +5643,7 @@ def test_weekly_cost_allocation_page_supports_last_natural_month(
     assert response.status_code == 200
     assert week_response.status_code == 200
     assert current_month_response.status_code == 200
-    assert week_response.json()["period"] == {"start_date": "2026-07-13", "end_date": "2026-07-19"}
+    assert week_response.json()["period"] == {"start_date": "2026-07-12", "end_date": "2026-07-18"}
     assert week_response.json()["budget_pace"]["overall"]["actual_list_cost"] == 50.0
     assert current_month_response.json()["period"] == {
         "start_date": "2026-07-01",
@@ -5782,6 +5902,187 @@ def _insert_ci_weekly_cost_budget(
         )
 
 
+@pytest.mark.parametrize(
+    ("today", "week_start", "month_start", "month_end"),
+    [
+        ("2026-07-18", "2026-07-05", "2026-06-01", "2026-06-30"),  # Saturday is not complete.
+        ("2026-07-19", "2026-07-12", "2026-06-01", "2026-06-30"),  # Sunday rollover.
+        ("2026-07-20", "2026-07-12", "2026-06-01", "2026-06-30"),
+        ("2026-07-21", "2026-07-12", "2026-06-01", "2026-06-30"),
+        ("2026-08-01", "2026-07-19", "2026-07-01", "2026-07-31"),
+        ("2026-08-02", "2026-07-26", "2026-07-01", "2026-07-31"),
+        ("2027-01-01", "2026-12-20", "2026-12-01", "2026-12-31"),
+        ("2027-01-03", "2026-12-27", "2026-12-01", "2026-12-31"),
+    ],
+)
+def test_weekly_cost_calendar_metadata_aligns_across_endpoints(
+    sqlite_engine, api_client, monkeypatch, today, week_start, month_start, month_end
+):
+    monkeypatch.setattr(cost_queries, "_today", lambda: date.fromisoformat(today))
+    _add_ci_weekly_cost_budget_schema(sqlite_engine)
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN team TEXT"))
+
+    qa_response = api_client.get("/api/v1/pages/weekly-cost")
+    ci_response = api_client.get("/api/v1/pages/ci-weekly-cost")
+    trend_response = api_client.get("/api/v1/pages/weekly-cost/trend")
+    allocation_response = api_client.get(
+        "/api/v1/pages/weekly-cost/allocation", params={"period": "week"}
+    )
+    month_response = api_client.get(
+        "/api/v1/pages/weekly-cost/allocation", params={"period": "month"}
+    )
+    assert all(response.status_code == 200 for response in (
+        qa_response, ci_response, trend_response, allocation_response, month_response
+    ))
+    qa, ci, trend = qa_response.json(), ci_response.json(), trend_response.json()
+    start = date.fromisoformat(week_start)
+    expected_week = {"start_date": week_start, "end_date": (start + timedelta(days=6)).isoformat()}
+    expected_previous = {
+        "start_date": (start - timedelta(days=7)).isoformat(),
+        "end_date": (start - timedelta(days=1)).isoformat(),
+    }
+    assert qa["meta"]["calendar_timezone"] == ci["meta"]["calendar_timezone"] == "UTC"
+    assert qa["last_week"] == ci["last_complete_week"] == expected_week
+    assert allocation_response.json()["period"] == expected_week
+    assert qa["previous_week"] == ci["previous_complete_week"] == expected_previous
+    for section in ("overview", "share", "categories"):
+        response = api_client.get("/api/v1/pages/ci-weekly-cost", params={"section": section})
+        assert response.status_code == 200
+        for key in ("meta", "last_complete_week", "previous_complete_week", "last_complete_month"):
+            assert response.json()[key] == ci[key]
+    assert qa["budget_pace"]["period"] == ci["last_week_category_share"]["period"] == expected_week
+    assert allocation_response.json()["budget_pace"]["period"] == expected_week
+    assert qa["previous_month"] == ci["last_complete_month"] == month_response.json()["period"] == {
+        "start_date": month_start, "end_date": month_end,
+    }
+    history = trend["list_cost_history"]
+    assert qa["list_cost_history"] == history
+    assert history["weeks"][-1] == expected_week
+    assert history["start_date"] == (start - timedelta(days=49)).isoformat()
+    assert history["end_date"] == expected_week["end_date"]
+    assert len(history["weeks"]) == 8
+    assert ci["weekly_cost_history"]["period"] == {
+        "start_date": history["start_date"], "end_date": history["end_date"],
+    }
+    assert [point["week_start"] for point in ci["weekly_cost_history"]["budget_points"]] == [
+        week["start_date"] for week in history["weeks"]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("today", "week_start", "month_cost", "current_month_cost"),
+    [
+        ("2026-07-19", "2026-07-12", 0.0, 3060.0),
+        ("2026-08-02", "2026-07-26", 1030.0, 2030.0),
+        ("2027-01-03", "2026-12-27", 1030.0, 2030.0),
+    ],
+)
+def test_weekly_cost_sunday_and_saturday_facts_reconcile_without_next_sunday(
+    sqlite_engine, api_client, monkeypatch, today, week_start, month_cost, current_month_cost
+):
+    today_date = date.fromisoformat(today)
+    start = date.fromisoformat(week_start)
+    monkeypatch.setattr(cost_queries, "_today", lambda: today_date)
+    _add_ci_weekly_cost_budget_schema(sqlite_engine)
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN team TEXT"))
+    sources = [
+        ("aws", "qa", 1),
+        ("gcp", "pingcap-testing-account", 2),
+        ("tencent", "100050658403", 3),
+    ]
+    for vendor, account_id, multiplier in sources:
+        _insert_cost_source(
+            sqlite_engine, vendor=vendor, account_id=account_id,
+            purpose="QA" if vendor == "aws" else None,
+        )
+        if vendor == "aws":
+            _insert_cost_budget(
+                sqlite_engine, vendor=vendor, account_id=account_id, budget_name="QA boundary plan",
+                period_start_date=(start - timedelta(days=3)).isoformat(),
+                period_end_date=(today_date + timedelta(days=30)).isoformat(), budget_amount=3400,
+            )
+            with sqlite_engine.begin() as connection:
+                connection.execute(text(
+                    "UPDATE cost_budgets SET accounts = '[\"qa\"]', projects = '[\"QA\"]', "
+                    "platform = 'QA' WHERE budget_name = 'QA boundary plan'"
+                ))
+        else:
+            _insert_ci_weekly_cost_budget(
+                sqlite_engine, vendor=vendor, account_id=account_id,
+                budget_name=f"CI {vendor} boundary plan",
+                cost_basis="net_cost" if vendor == "tencent" else "list_cost",
+                period_start_date=(start - timedelta(days=3)).isoformat(),
+                period_end_date=(today_date + timedelta(days=30)).isoformat(), budget_amount=3400,
+            )
+        # The two Sundays have different amounts, so shifting a fact cannot hide an off-by-one.
+        for offset, amount in [(-1, 1000), (0, 10), (1, 20), (6, 30), (7, 2000)]:
+            _insert_cost_attribution(
+                sqlite_engine, usage_date=(start + timedelta(days=offset)).isoformat(),
+                vendor=vendor, account_id=account_id, repo="tidb", group_id=None, project="QA",
+                list_cost=amount * multiplier, net_cost=amount * multiplier * 10,
+                dimension_hash=f"boundary-{vendor}-{offset}",
+            )
+
+    responses = [
+        api_client.get(path, params=params)
+        for path, params in [
+            ("/api/v1/pages/weekly-cost", {}),
+            ("/api/v1/pages/ci-weekly-cost", {}),
+            ("/api/v1/pages/weekly-cost/trend", {}),
+            ("/api/v1/pages/weekly-cost/allocation", {"period": "week"}),
+            ("/api/v1/pages/weekly-cost/allocation", {"period": "month"}),
+            ("/api/v1/pages/weekly-cost/allocation", {"period": "current_month"}),
+        ]
+    ]
+    assert all(response.status_code == 200 for response in responses)
+    qa, ci, trend, allocation, monthly, current_month = [response.json() for response in responses]
+    assert qa["summary"]["last_week_cost"] == qa["items"][0]["last_week_cost"] == 60.0
+    assert qa["summary"]["previous_week_cost"] == 1000.0
+    assert qa["items"][0]["last_week_share_pct"] == 100.0
+    assert qa["team_share"]["total_list_cost"] == allocation["team_share"]["total_list_cost"] == 60.0
+    assert allocation["budget_pace"]["overall"]["actual_list_cost"] == 60.0
+    assert trend["list_cost_history"] == qa["list_cost_history"]
+    assert trend["list_cost_history"]["series"][0]["points"][-1] == {
+        "week_start": week_start, "list_cost": 60.0,
+    }
+    assert trend["budget_period_cost"]["points"][-2:] == [
+        {"week_start": week_start, "list_cost": 60.0, "cumulative_list_cost": 1060.0},
+        {"week_start": today, "list_cost": 2000.0, "cumulative_list_cost": 3060.0},
+    ]
+    assert qa["summary"]["previous_month_cost"] == month_cost
+    assert monthly["budget_pace"]["overall"]["actual_list_cost"] == month_cost
+    assert current_month["budget_pace"]["overall"]["actual_list_cost"] == current_month_cost
+    for account, categories, cumulative in zip(
+        ci["accounts"], ci["last_week_category_share"]["accounts"],
+        ci["budget_period_cost"]["accounts"], strict=True
+    ):
+        multiplier = 2 if account["vendor"] == "gcp" else 30
+        expected = 60.0 * multiplier
+        assert account["last_complete_week"]["actual_cost"] == categories["total_cost"] == expected
+        assert sum(item["value"] for item in categories["items"]) == expected
+        assert categories["observed_dates"] == [
+            (start + timedelta(days=offset)).isoformat() for offset in (0, 1, 6)
+        ]
+        assert account["last_complete_month"]["actual_cost"] == month_cost * multiplier
+        history = next(
+            series for series in ci["weekly_cost_history"]["series"]
+            if series["cost_source"] == account["cost_source"]
+            and series["cost_metric"] == account["cost_basis"]
+        )
+        assert history["points"][-1] == {"week_start": week_start, "cost": expected}
+        assert [point["week_start"] for point in cumulative["points"][-2:]] == [week_start, today]
+        assert [point["budget_basis_cost"] for point in cumulative["points"][-2:]] == [
+            expected, 2000.0 * multiplier,
+        ]
+    assert ci["last_week_cost_share"]["total_list_cost"] == sum(
+        series["points"][-1]["cost"] for series in ci["weekly_cost_history"]["series"]
+        if series["cost_metric"] == "list_cost"
+    ) == 300.0
+    assert sum(item["value"] for item in ci["last_week_cost_share"]["repos"]["items"]) == 300.0
+
+
 def test_ci_weekly_cost_rejects_overlapping_plans(sqlite_engine) -> None:
     _add_ci_weekly_cost_budget_schema(sqlite_engine)
     for budget_name in ("CI plan one", "CI plan two"):
@@ -5837,15 +6138,15 @@ def test_ci_weekly_cost_budget_points_prorate_and_require_both_accounts() -> Non
 
     assert cost_queries._ci_weekly_cost_budget_points(
         budget_rows,
-        [date(2025, 12, 29), date(2026, 1, 5), date(2026, 1, 12), date(2026, 1, 19)],
+        [date(2025, 12, 28), date(2026, 1, 4), date(2026, 1, 11), date(2026, 1, 25)],
     ) == [
-        {"week_start": "2025-12-29", "period_budget": 80.0},
-        {"week_start": "2026-01-05", "period_budget": 120.0},
-        {"week_start": "2026-01-12", "period_budget": 70.0},
-        {"week_start": "2026-01-19", "period_budget": None},
+        {"week_start": "2025-12-28", "period_budget": 60.0},
+        {"week_start": "2026-01-04", "period_budget": 140.0},
+        {"week_start": "2026-01-11", "period_budget": 60.0},
+        {"week_start": "2026-01-25", "period_budget": None},
     ]
     assert cost_queries._ci_weekly_cost_total_weekly_budget(
-        {gcp: budget_rows[gcp]}, date(2026, 1, 5), date(2026, 1, 11)
+        {gcp: budget_rows[gcp]}, date(2026, 1, 4), date(2026, 1, 10)
     ) is None
     fractional_plans = {
         source: ({
@@ -5856,7 +6157,7 @@ def test_ci_weekly_cost_budget_points_prorate_and_require_both_accounts() -> Non
         for source in (gcp, tencent)
     }
     assert cost_queries._ci_weekly_cost_total_weekly_budget(
-        fractional_plans, date(2026, 1, 12), date(2026, 1, 18)
+        fractional_plans, date(2026, 1, 11), date(2026, 1, 17)
     ) == 0.01
 
 
@@ -6077,9 +6378,13 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
     ]
     assert [item["cost_basis"] for item in payload["accounts"]] == ["list_cost", "net_cost"]
     assert "display_name" not in payload["accounts"][0]
+    assert payload["last_complete_week"] == {
+        "start_date": "2026-09-13",
+        "end_date": "2026-09-19",
+    }
     assert payload["previous_complete_week"] == {
-        "start_date": "2026-09-07",
-        "end_date": "2026-09-13",
+        "start_date": "2026-09-06",
+        "end_date": "2026-09-12",
     }
     assert payload["accounts"][0]["week_wow_pct"] is None
     assert payload["accounts"][1]["week_wow_pct"] is None
@@ -6143,16 +6448,16 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
         assert len(account["missing_dates"]) == 6
 
     history = payload["weekly_cost_history"]
-    assert history["period"] == {"start_date": "2026-07-27", "end_date": "2026-09-20"}
+    assert history["period"] == {"start_date": "2026-07-26", "end_date": "2026-09-19"}
     assert history["budget_points"] == [
-        {"week_start": "2026-07-27", "period_budget": None},
-        {"week_start": "2026-08-03", "period_budget": None},
-        {"week_start": "2026-08-10", "period_budget": None},
-        {"week_start": "2026-08-17", "period_budget": None},
-        {"week_start": "2026-08-24", "period_budget": None},
-        {"week_start": "2026-08-31", "period_budget": 3077.36},
-        {"week_start": "2026-09-07", "period_budget": 3473.58},
-        {"week_start": "2026-09-14", "period_budget": 3473.58},
+        {"week_start": "2026-07-26", "period_budget": None},
+        {"week_start": "2026-08-02", "period_budget": None},
+        {"week_start": "2026-08-09", "period_budget": None},
+        {"week_start": "2026-08-16", "period_budget": None},
+        {"week_start": "2026-08-23", "period_budget": None},
+        {"week_start": "2026-08-30", "period_budget": 2681.13},
+        {"week_start": "2026-09-06", "period_budget": 3473.58},
+        {"week_start": "2026-09-13", "period_budget": 3473.58},
     ]
     assert [(item["cost_source"], item["cost_metric"]) for item in history["series"]] == [
         ("gcp:pingcap-testing-account", "list_cost"),
@@ -6182,22 +6487,22 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
                 "total_budget": 21200.0,
                 "points": [
                     {
-                        "week_start": "2026-08-31",
+                        "week_start": "2026-08-30",
                         "budget_basis_cost": 100.0,
                         "cumulative_budget_basis_cost": 100.0,
                     },
                     {
-                        "week_start": "2026-09-07",
+                        "week_start": "2026-09-06",
                         "budget_basis_cost": 0.0,
                         "cumulative_budget_basis_cost": 100.0,
                     },
                     {
-                        "week_start": "2026-09-14",
+                        "week_start": "2026-09-13",
                         "budget_basis_cost": 100.0,
                         "cumulative_budget_basis_cost": 200.0,
                     },
                     {
-                        "week_start": "2026-09-21",
+                        "week_start": "2026-09-20",
                         "budget_basis_cost": 0.0,
                         "cumulative_budget_basis_cost": 200.0,
                     },
@@ -6210,22 +6515,22 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
                 "total_budget": 84000.0,
                 "points": [
                     {
-                        "week_start": "2026-08-31",
+                        "week_start": "2026-08-30",
                         "budget_basis_cost": 500.0,
                         "cumulative_budget_basis_cost": 500.0,
                     },
                     {
-                        "week_start": "2026-09-07",
+                        "week_start": "2026-09-06",
                         "budget_basis_cost": 0.0,
                         "cumulative_budget_basis_cost": 500.0,
                     },
                     {
-                        "week_start": "2026-09-14",
+                        "week_start": "2026-09-13",
                         "budget_basis_cost": 500.0,
                         "cumulative_budget_basis_cost": 1000.0,
                     },
                     {
-                        "week_start": "2026-09-21",
+                        "week_start": "2026-09-20",
                         "budget_basis_cost": 0.0,
                         "cumulative_budget_basis_cost": 1000.0,
                     },
@@ -6358,8 +6663,8 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
         "end_date": "2026-07-20",
     }
     assert trend_response.json()["budget_period_cost"]["points"][-2:] == [
-        {"week_start": "2026-07-13", "list_cost": 150.0, "cumulative_list_cost": 150.0},
-        {"week_start": "2026-07-20", "list_cost": 0.0, "cumulative_list_cost": 150.0},
+        {"week_start": "2026-07-12", "list_cost": 150.0, "cumulative_list_cost": 150.0},
+        {"week_start": "2026-07-19", "list_cost": 0.0, "cumulative_list_cost": 150.0},
     ]
     assert current_month_response.json()["budget_pace"]["overall"]["actual_list_cost"] == 150.0
     budget_pace = response.json()["budget_pace"]
@@ -6372,17 +6677,17 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
         for allocation in plan.get("project_account_usage", []):
             daily_list_cost = allocation.pop("daily_list_cost")
             assert [point["date"] for point in daily_list_cost] == [
+                "2026-07-12",
                 "2026-07-13",
                 "2026-07-14",
                 "2026-07-15",
                 "2026-07-16",
                 "2026-07-17",
                 "2026-07-18",
-                "2026-07-19",
             ]
             assert [point["list_cost"] for point in daily_list_cost] == [
-                allocation["actual_list_cost"],
                 0.0,
+                allocation["actual_list_cost"],
                 0.0,
                 0.0,
                 0.0,
@@ -6390,8 +6695,8 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
                 0.0,
             ]
             assert [point["cumulative_list_cost"] for point in daily_list_cost] == [
-                allocation["actual_list_cost"]
-            ] * 7
+                0.0, *[allocation["actual_list_cost"]] * 6
+            ]
     assert budget_pace["projects"] == [
         {
             "key": "budget-plan:1",
@@ -6587,14 +6892,14 @@ def test_weekly_cost_history_uses_list_cost_and_sorts_unrounded_totals(
         "last_week_cost"
     ] == 140.0
     assert [week["start_date"] for week in history["weeks"]] == [
-        "2026-05-25",
-        "2026-06-01",
-        "2026-06-08",
-        "2026-06-15",
-        "2026-06-22",
-        "2026-06-29",
-        "2026-07-06",
-        "2026-07-13",
+        "2026-05-24",
+        "2026-05-31",
+        "2026-06-07",
+        "2026-06-14",
+        "2026-06-21",
+        "2026-06-28",
+        "2026-07-05",
+        "2026-07-12",
     ]
     assert [
         (series["cost_source"], series["total_list_cost"])
@@ -6609,7 +6914,7 @@ def test_weekly_cost_history_uses_list_cost_and_sorts_unrounded_totals(
         ("gcp:zero", 0.0),
     ]
     assert history["series"][1]["points"][-1] == {
-        "week_start": "2026-07-13",
+        "week_start": "2026-07-12",
         "list_cost": 140.0,
     }
     assert history["series"][-1]["points"] == [
@@ -6641,8 +6946,8 @@ def test_weekly_cost_report_returns_null_rates_for_zero_denominators(
             "cost_metric": "list_cost",
             "purpose_schema_available": True,
         },
-        "last_week": {"start_date": "2025-12-29", "end_date": "2026-01-04"},
-        "previous_week": {"start_date": "2025-12-22", "end_date": "2025-12-28"},
+        "last_week": {"start_date": "2025-12-28", "end_date": "2026-01-03"},
+        "previous_week": {"start_date": "2025-12-21", "end_date": "2025-12-27"},
         "previous_month": {"start_date": "2025-12-01", "end_date": "2025-12-31"},
         "summary": {
             "last_week_cost": 0.0,
@@ -6666,17 +6971,17 @@ def test_weekly_cost_report_returns_null_rates_for_zero_denominators(
         ],
         "list_cost_history": {
             "metric": "list_cost",
-            "start_date": "2025-11-10",
-            "end_date": "2026-01-04",
+            "start_date": "2025-11-09",
+            "end_date": "2026-01-03",
             "weeks": [
-                {"start_date": "2025-11-10", "end_date": "2025-11-16"},
-                {"start_date": "2025-11-17", "end_date": "2025-11-23"},
-                {"start_date": "2025-11-24", "end_date": "2025-11-30"},
-                {"start_date": "2025-12-01", "end_date": "2025-12-07"},
-                {"start_date": "2025-12-08", "end_date": "2025-12-14"},
-                {"start_date": "2025-12-15", "end_date": "2025-12-21"},
-                {"start_date": "2025-12-22", "end_date": "2025-12-28"},
-                {"start_date": "2025-12-29", "end_date": "2026-01-04"},
+                {"start_date": "2025-11-09", "end_date": "2025-11-15"},
+                {"start_date": "2025-11-16", "end_date": "2025-11-22"},
+                {"start_date": "2025-11-23", "end_date": "2025-11-29"},
+                {"start_date": "2025-11-30", "end_date": "2025-12-06"},
+                {"start_date": "2025-12-07", "end_date": "2025-12-13"},
+                {"start_date": "2025-12-14", "end_date": "2025-12-20"},
+                {"start_date": "2025-12-21", "end_date": "2025-12-27"},
+                {"start_date": "2025-12-28", "end_date": "2026-01-03"},
             ],
             "series": [
                 {
@@ -6687,21 +6992,21 @@ def test_weekly_cost_report_returns_null_rates_for_zero_denominators(
                     "purpose": "已配置但没有成本",
                     "total_list_cost": 0.0,
                     "points": [
-                        {"week_start": "2025-11-10", "list_cost": 0.0},
-                        {"week_start": "2025-11-17", "list_cost": 0.0},
-                        {"week_start": "2025-11-24", "list_cost": 0.0},
-                        {"week_start": "2025-12-01", "list_cost": 0.0},
-                        {"week_start": "2025-12-08", "list_cost": 0.0},
-                        {"week_start": "2025-12-15", "list_cost": 0.0},
-                        {"week_start": "2025-12-22", "list_cost": 0.0},
-                        {"week_start": "2025-12-29", "list_cost": 0.0},
+                        {"week_start": "2025-11-09", "list_cost": 0.0},
+                        {"week_start": "2025-11-16", "list_cost": 0.0},
+                        {"week_start": "2025-11-23", "list_cost": 0.0},
+                        {"week_start": "2025-11-30", "list_cost": 0.0},
+                        {"week_start": "2025-12-07", "list_cost": 0.0},
+                        {"week_start": "2025-12-14", "list_cost": 0.0},
+                        {"week_start": "2025-12-21", "list_cost": 0.0},
+                        {"week_start": "2025-12-28", "list_cost": 0.0},
                     ],
                 }
             ],
         },
         "budget_pace": {
             "metric": "list_cost",
-            "period": {"start_date": "2025-12-29", "end_date": "2026-01-04"},
+            "period": {"start_date": "2025-12-28", "end_date": "2026-01-03"},
             "overall": {
                 "actual_list_cost": 0.0,
                 "period_budget": None,
@@ -6773,8 +7078,8 @@ def test_weekly_cost_report_handles_old_purpose_schema(
             "cost_metric": "list_cost",
             "purpose_schema_available": False,
         },
-        "last_week": {"start_date": "2025-12-29", "end_date": "2026-01-04"},
-        "previous_week": {"start_date": "2025-12-22", "end_date": "2025-12-28"},
+        "last_week": {"start_date": "2025-12-28", "end_date": "2026-01-03"},
+        "previous_week": {"start_date": "2025-12-21", "end_date": "2025-12-27"},
         "previous_month": {"start_date": "2025-12-01", "end_date": "2025-12-31"},
         "summary": {
             "last_week_cost": 0.0,
@@ -6785,17 +7090,17 @@ def test_weekly_cost_report_handles_old_purpose_schema(
         "items": [],
         "list_cost_history": {
             "metric": "list_cost",
-            "start_date": "2025-11-10",
-            "end_date": "2026-01-04",
+            "start_date": "2025-11-09",
+            "end_date": "2026-01-03",
             "weeks": [
-                {"start_date": "2025-11-10", "end_date": "2025-11-16"},
-                {"start_date": "2025-11-17", "end_date": "2025-11-23"},
-                {"start_date": "2025-11-24", "end_date": "2025-11-30"},
-                {"start_date": "2025-12-01", "end_date": "2025-12-07"},
-                {"start_date": "2025-12-08", "end_date": "2025-12-14"},
-                {"start_date": "2025-12-15", "end_date": "2025-12-21"},
-                {"start_date": "2025-12-22", "end_date": "2025-12-28"},
-                {"start_date": "2025-12-29", "end_date": "2026-01-04"},
+                {"start_date": "2025-11-09", "end_date": "2025-11-15"},
+                {"start_date": "2025-11-16", "end_date": "2025-11-22"},
+                {"start_date": "2025-11-23", "end_date": "2025-11-29"},
+                {"start_date": "2025-11-30", "end_date": "2025-12-06"},
+                {"start_date": "2025-12-07", "end_date": "2025-12-13"},
+                {"start_date": "2025-12-14", "end_date": "2025-12-20"},
+                {"start_date": "2025-12-21", "end_date": "2025-12-27"},
+                {"start_date": "2025-12-28", "end_date": "2026-01-03"},
             ],
             "series": [],
         },

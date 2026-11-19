@@ -26,6 +26,30 @@ identity_headers:
   user_email: "X-User-Email"
   user_name: "X-User-Name"
 
+# Authentication belongs to the Gateway. These two blocks decide whether this
+# process believes the identity headers and whether it authorizes mutations.
+identity:
+  # Only enable after the Gateway strips client-supplied X-User-* headers and
+  # injects verified claims. While false a header value is recorded for audit
+  # and never becomes a principal, so nobody can pick which colleague to be.
+  trusted_headers: false
+  # Principal assumed for a request that carries no trusted user. Leave it empty
+  # unless you accept that every anonymous request acts as this identity: with a
+  # value here, authorization can no longer tell automation from an untrusted
+  # caller, because both look the same. It is a transitional convenience for a
+  # cluster whose callers are all automation, not a substitute for the Gateway
+  # identity normalizer.
+  service_identity: ""
+  service_name: ""
+
+authorization:
+  # off: legacy behaviour; observe: log what would be denied; enforce: deny it.
+  # Roll out as observe, watch the logs, then enforce.
+  mode: "observe"
+  # Who may mutate: exact addresses or "*@domain" patterns. Empty allows nobody.
+  allow_principals:
+    - "*@pingcap.com"
+
 jenkins:
   url: "https://<jenkins-url>"
   username: "your-jenkins-account"
@@ -64,19 +88,22 @@ lark:
     - name: "devbuild-team"
       chat_id: "oc_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
-# Devbuild request policy. Every key is optional; unset keys keep the legacy
-# behaviour.
+# Devbuild request policy.
 devbuild:
-  # Repository namespaces a caller may name in a devbuild's `builderImg`, for
-  # example:
-  #   - ghcr.io/pingcap-qe
-  #   - hub.pingcap.net/pingcap
-  #   - us-docker.pkg.dev/pingcap-testing-account
-  # Only the repository is matched; tags and digests are not restricted. A
-  # trailing slash is optional and matching is case-insensitive. Empty
-  # disables the check: any valid image reference is accepted.
+  # Repository namespaces a caller may name in a devbuild's `builderImg`. Only
+  # the repository is matched; tags and digests are not restricted. A trailing
+  # slash is optional and matching is case-insensitive.
+  #
+  # The check is fail-closed: an empty list rejects every builderImg override,
+  # so a devbuild always uses the image the artifacts config pins for the
+  # component. List the namespaces we pin as builders to allow overrides:
   # Hot-reloadable: changes take effect without a restart.
-  builder_image_allowed_repositories: []
+  builder_image_allowed_repositories:
+    - ghcr.io/pingcap-qe/cd/builders
+    - ghcr.io/pingcap-qe/cd/utils/release
+    - docker.io/library/golang
+    - docker.io/rustlang/rust
+    - public.ecr.aws/amazonlinux/amazonlinux
 
   # GitHub repositories an explicit devbuild `githubRepo` may name. Entries are
   # "<owner>/<repo>" or "<owner>/*"; matching is case-insensitive.
@@ -194,3 +221,30 @@ publish:
 # tidbcloud:
 #   ops_config_file: /etc/tidbcloud/ops.yaml
 #   testplatforms_config_file: /etc/tidbcloud/testplatforms.yaml
+
+# tidbcloud integrates TiBuild with the TiDB Cloud ops platform and TCMS.
+# tidbcloud:
+#   ops_config_file: "/etc/tibuild/tidbcloud-ops.yaml"
+#   testplatforms_config_file: "/etc/tibuild/tidbcloud-tcms.yaml"
+#   # Repositories a kernel-image sync may name, as "host/path" or
+#   # "host/path/*". The ops platform pulls whatever it is handed, so an unset
+#   # list rejects every sync rather than allowing any registry.
+#   kernel_image_allowed_repositories:
+#     - "hub.pingcap.net/pingcap/*"
+
+# hotfix gates the hot-fix tag endpoints. Creating a tag writes into a
+# repository consumers release from, and the repository comes from the request,
+# so an unset list denies every repository.
+# hotfix:
+#   github_repo_allowlist:
+#     - "pingcap/tidb"
+#     - "tikv/*"
+
+# publish.oci_source_allowed_hosts gates the registry an OCI TiUP publish
+# source may be read from (artifact_url of /publish/tiup/publish-request).
+# Pinning a tag or digest fixes what is published, not where it is fetched from,
+# so an unset list rejects every OCI source.
+# publish:
+#   oci_source_allowed_hosts:
+#     - "hub.pingcap.net"
+#     - "us-docker.pkg.dev"

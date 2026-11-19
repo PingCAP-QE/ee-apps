@@ -84,8 +84,21 @@ func EncodeBumpTagForTidbxError(encoder func(context.Context, http.ResponseWrite
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusBadRequest)
 			return enc.Encode(body)
+		case "Forbidden":
+			var res *hotfix.HTTPErrorForbidden
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewBumpTagForTidbxForbiddenResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusForbidden)
+			return enc.Encode(body)
 		case "InternalServerError":
-			var res *hotfix.HTTPError
+			var res *hotfix.HTTPErrorInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any
@@ -166,8 +179,21 @@ func EncodeQueryTagOfTidbxError(encoder func(context.Context, http.ResponseWrite
 			w.Header().Set("goa-error", res.GoaErrorName())
 			w.WriteHeader(http.StatusBadRequest)
 			return enc.Encode(body)
+		case "Forbidden":
+			var res *hotfix.HTTPErrorForbidden
+			errors.As(v, &res)
+			enc := encoder(ctx, w)
+			var body any
+			if formatter != nil {
+				body = formatter(ctx, res)
+			} else {
+				body = NewQueryTagOfTidbxForbiddenResponseBody(res)
+			}
+			w.Header().Set("goa-error", res.GoaErrorName())
+			w.WriteHeader(http.StatusForbidden)
+			return enc.Encode(body)
 		case "InternalServerError":
-			var res *hotfix.HTTPError
+			var res *hotfix.HTTPErrorInternalServerError
 			errors.As(v, &res)
 			enc := encoder(ctx, w)
 			var body any

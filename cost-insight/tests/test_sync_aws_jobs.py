@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -285,6 +286,69 @@ def test_f04_source_uses_the_dedicated_fetcher_without_extra_configuration() -> 
         engine.dispose()
 
     assert seen["earliest_usage_date"] == date(2026, 9, 2)
+
+
+@pytest.mark.parametrize("replace_partitions", [False, True])
+def test_empty_f04_write_fails_without_advancing_success_or_deleting_facts(replace_partitions):
+    engine = _sqlite_engine()
+    account = "380838443567"
+    try:
+        with engine.begin() as c:
+            c.execute(text("""INSERT INTO cost_bq_export_summary_daily
+                (vendor,account_id,export_partition_date,usage_date,source_row_hash,list_cost,
+                 effective_cost,credit_amount,net_cost)
+                VALUES ('aws',:account,'2026-11-01','2026-11-02','keep',12,12,0,12)"""),
+                {"account": account})
+        with pytest.raises(ValueError, match="F04.*no rows"):
+            run_sync_aws_billing_summary(
+                engine, settings=AwsBillingSettings(account_id=account), account_id=account,
+                export_partition_start=date(2026, 11, 1), export_partition_end=date(2026, 11, 1),
+                usage_start_date=date(2026, 11, 2), usage_end_date=date(2026, 11, 6),
+                replace_existing_partitions=replace_partitions,
+                source=AwsBillingSource(account, "gcp-digital-bi.aws_prod_billing.aws_prod_billing_data",
+                                        AWS_TIDB_CLOUD_F04_SCHEMA_VERSION),
+                fetch_rows=lambda **kwargs: iter(()),
+            )
+        with engine.connect() as c:
+            state = state_store.get_job_state(c, source_job_name(SUMMARY_JOB_NAME, vendor="aws", account_id=account))
+            assert state.last_status == "failed" and state.last_succeeded_at is None
+            assert c.execute(text("SELECT list_cost FROM cost_bq_export_summary_daily WHERE source_row_hash='keep'")).scalar_one() == 12
+    finally:
+        engine.dispose()
+
+
+def test_f04_route_migration_preserves_profile_and_other_sources():
+    engine = _sqlite_engine()
+    legacy = "gcp-digital-bi.aws_prod_billing.aws_prod_billing_data"
+    warehouse = "warehouse-f80fbbe8e8.raw_aws_billing.cur_line_items"
+    sql = (Path(__file__).parents[1] / "sql/030_move_aws_f04_to_warehouse.sql").read_text()
+    statements = [s.strip() for s in "\n".join(
+        line for line in sql.splitlines() if not line.lstrip().startswith("--")
+    ).split(";") if s.strip()]
+    try:
+        with engine.begin() as c:
+            for vendor, account, profile, active in (
+                ("aws", "380838443567", AWS_TIDB_CLOUD_F04_SCHEMA_VERSION, 1),
+                ("aws", "another-account", AWS_TIDB_CLOUD_F04_SCHEMA_VERSION, 1),
+                ("azure", "380838443567", AWS_TIDB_CLOUD_F04_SCHEMA_VERSION, 1),
+            ):
+                c.execute(text("""INSERT INTO cost_sources
+                    (vendor,account_id,source_table,source_schema_version,is_active)
+                    VALUES (:vendor,:account,:table,:profile,:active)"""),
+                    {"vendor": vendor, "account": account, "table": legacy,
+                     "profile": profile, "active": active})
+            for _ in range(2):  # Safe to re-run without widening the selected identity.
+                for statement in statements:
+                    c.execute(text(statement))
+            rows = c.execute(text("SELECT * FROM cost_sources")).mappings().all()
+            changed = [r for r in rows if r["source_table"] == warehouse]
+            assert len(changed) == 1
+            assert (changed[0]["vendor"], changed[0]["account_id"], changed[0]["source_schema_version"]) == (
+                "aws", "380838443567", AWS_TIDB_CLOUD_F04_SCHEMA_VERSION,
+            )
+            assert sum(r["source_table"] == legacy for r in rows) == 2
+    finally:
+        engine.dispose()
 
 
 def _resource_row() -> dict[str, object]:

@@ -495,7 +495,7 @@ select {
 
 .scope-note__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 0.8rem;
 }
 
@@ -2880,6 +2880,151 @@ button.chart-legend__item:focus-visible,
 .bucket-delta--up {
   color: var(--rose) !important;
   font-weight: 700;
+}
+
+.data-table--top-cases {
+  min-width: 680px;
+  table-layout: fixed;
+}
+
+.top-cases__rank-col { width: 3.2rem; }
+.top-cases__case-col { width: 42%; }
+.top-cases__count-col { width: 9.5rem; }
+
+.data-table--top-cases tbody th {
+  position: static;
+  min-width: 0;
+  background: var(--data-table-cell-bg);
+  box-shadow: none;
+  overflow-wrap: anywhere;
+}
+
+.top-cases__repo {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.top-cases__count {
+  color: var(--rose);
+  font-size: 1.2rem;
+}
+
+.top-cases__issues,
+.top-cases__issue {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.top-cases__issues { flex-wrap: wrap; }
+.top-cases__issue a { color: var(--navy); }
+
+.top-cases__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.35rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.top-cases__toggle:hover,
+.top-cases__toggle:focus-visible {
+  background: rgba(49, 87, 114, 0.1);
+  color: var(--navy);
+}
+
+.data-table--top-cases .top-cases__row:hover {
+  cursor: pointer;
+}
+
+/* Data rows interleave with a detail row, so stripe by an explicit class. */
+.data-table--top-cases tbody tr.top-cases__row {
+  --data-table-cell-bg: transparent;
+}
+
+.data-table--top-cases tbody tr.top-cases__row--striped {
+  --data-table-cell-bg: rgba(255, 255, 255, 0.28);
+}
+
+.data-table--top-cases tbody tr.top-cases__row--expanded {
+  --data-table-cell-bg: rgba(15, 124, 130, 0.06);
+}
+
+.data-table--top-cases tbody tr.top-cases__row:hover {
+  --data-table-cell-bg: rgba(15, 124, 130, 0.08);
+}
+
+/* Keep the header row sticky horizontally unpinned and vertically aligned. */
+.data-table--top-cases thead th:first-child {
+  position: sticky;
+  top: 0;
+  left: auto;
+  z-index: 1;
+}
+
+.data-table--top-cases .top-cases__detail td {
+  padding: 0 0.9rem 0.9rem;
+  background: rgba(15, 124, 130, 0.04);
+  white-space: normal;
+}
+
+.top-cases__detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.top-cases__build-list {
+  display: grid;
+  gap: 0.3rem;
+  max-height: 15rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.top-cases__build-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.84rem;
+}
+
+.top-cases__build-list a {
+  color: var(--navy);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.top-cases__build-list a:hover {
+  text-decoration: underline;
+}
+
+.top-cases__build-meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.top-cases__note {
+  margin: 0.8rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .issue-cell {

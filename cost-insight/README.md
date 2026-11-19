@@ -20,6 +20,7 @@ Current design:
 - [System design](docs/system-design.md)
 - [BigQuery cost optimization design](docs/bigquery-cost-optimization-design.md)
 - [AWS split-cost source adaptation design](docs/aws-split-cost-schema-migration.md)
+- [F04 warehouse cutover and historical recovery](docs/f04-warehouse-recovery.md)
 - [Alibaba billing import design](docs/alibaba-billing-import-design.md)
 - [Tencent billing import design](docs/tencent-billing-import-design.md)
 - [Tencent CI shared-cost allocation](docs/tencent-ci-native-shared-cost-allocation-design.md)
@@ -207,6 +208,16 @@ explicitly. This command also uses that project for source table names:
 physical tables, never a mixed-schema wildcard query. Missing/expiring tables,
 inactive/custom/split profiles, non-USD data and missing source days fail closed.
 It does not change registry entries or resume legacy importers.
+
+The dedicated F04 profile (`aws_tidb_cloud_f04_v1`, account `380838443567`)
+can also use this command **after** the guarded source-route migration. It runs
+separately, retaining the exact `prod-us-west-2-f04` tag boundary and its own
+failure latch; it is never an account-wide ordinary AWS import. Complete F04
+queries use a separately reviewed fixed **32 GiB/query** cap and billing-month
+splitting, while ordinary routes remain at 2 GiB. F04-only historical repairs
+accept `--start-date` and `--end-date` for 1..5 inclusive days, with both bounds
+required and no skipped backlog. See the [F04 recovery runbook](docs/f04-warehouse-recovery.md)
+for deployment gates, query-cost evidence and batched recovery instructions.
 
 For each explicitly requested account, discover the latest actual usage date
 not later than UTC yesterday, then reread its trailing **five days** sequentially.

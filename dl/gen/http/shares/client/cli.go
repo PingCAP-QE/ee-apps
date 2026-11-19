@@ -24,7 +24,7 @@ func BuildCreatePayload(sharesCreateBody string, sharesCreateAuthorization strin
 	{
 		err = json.Unmarshal([]byte(sharesCreateBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact\": {\n         \"file\": \"b40\",\n         \"repository\": \"i88\",\n         \"tag\": \"mqx\"\n      },\n      \"customer_id\": \"hr6\",\n      \"expires_in_seconds\": 86400,\n      \"max_sessions\": 5,\n      \"purpose\": \"customer-delivery\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact\": {\n         \"file\": \"leg\",\n         \"repository\": \"phc\",\n         \"tag\": \"ujw\"\n      },\n      \"customer_id\": \"nyw\",\n      \"expires_in_seconds\": 86400,\n      \"max_sessions\": 5,\n      \"purpose\": \"customer-delivery\"\n   }'")
 		}
 		if body.Artifact == nil {
 			err = goa.MergeErrors(err, goa.MissingFieldError("artifact", "body"))

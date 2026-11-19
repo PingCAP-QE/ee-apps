@@ -32,11 +32,6 @@ func GetDevbuildPath(id int) string {
 	return fmt.Sprintf("/api/v2/devbuilds/%v", id)
 }
 
-// UpdateDevbuildPath returns the URL path to the devbuild service update HTTP endpoint.
-func UpdateDevbuildPath(id int) string {
-	return fmt.Sprintf("/api/v2/devbuilds/%v", id)
-}
-
 // RerunDevbuildPath returns the URL path to the devbuild service rerun HTTP endpoint.
 func RerunDevbuildPath(id int) string {
 	return fmt.Sprintf("/api/v2/devbuilds/%v/rerun", id)

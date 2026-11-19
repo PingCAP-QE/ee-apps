@@ -19,6 +19,245 @@ def test_rule_engine_matches_network_infra_rule() -> None:
     assert classification.source == "rule:infra_network"
 
 
+_ZOT_BLOB_DIGEST = "sha256:" + "a" * 64
+
+
+def _zot_download_failure(
+    *,
+    host: str = "cr-qcloud.pingcap.net",
+    stage: str = "manifest",
+    error: str = "dial tcp 10.0.6.5:443: i/o timeout",
+    repository: str = "mirrors/hub/tikv/tikv/package",
+) -> str:
+    # ORAS 1.3.1 blob errors lack the manifest-only content wrapper.
+    reference = f"{host}/{repository}:master_linux_amd64"
+    diagnostic = (
+        f'Error: failed to fetch the content of "{reference}": '
+        f'Get "https://{host}/v2/{repository}/manifests/master_linux_amd64": {error}\n'
+    )
+    if stage == "blob":
+        reference = f"{host}/{repository}@{_ZOT_BLOB_DIGEST}"
+        diagnostic = f'Error: Get "https://{host}/v2/{repository}/blobs/{_ZOT_BLOB_DIGEST}": {error}\n'
+    return diagnostic + f"Error: {stage} fetch of {reference} failed after 3 attempts\n"
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    [
+        "pull_lightning_integration_test",
+        "pull_br_integration_test",
+        "pull_dm_integration_test",
+        "pull_dm_integration_test_next_gen",
+        "pull_cdc_integration_storage_test",
+        "pull_cdc_mysql_integration_light",
+        "pull_cdc_storage_integration_heavy_next_gen",
+        "pull_cdc_storage_integration_light",
+    ],
+)
+@pytest.mark.parametrize("appended_node_log", [False, True])
+@pytest.mark.parametrize(
+    ("host", "stage", "error"),
+    [
+        ("cr-qcloud.pingcap.net", "manifest", "dial tcp 10.0.6.5:443: i/o timeout"),
+        ("cr.pingcap.net", "manifest", "dial tcp 10.0.6.5:443: connect: connection refused"),
+        ("cr-qcloud.pingcap.net", "blob", "dial tcp 127.0.0.1:1: connect: connection refused"),
+        ("cr-qcloud.pingcap.net", "blob", "read tcp 10.0.6.5:443: connection reset by peer"),
+        ("cr-qcloud.pingcap.net", "manifest", "dial tcp: lookup cr-qcloud.pingcap.net: no such host"),
+        ("cr.pingcap.net", "blob", "net/http: TLS handshake timeout"),
+        ("cr-qcloud.pingcap.net", "manifest", "context deadline exceeded"),
+        ("cr.pingcap.net", "blob", "stream error: stream ID 3; NO_ERROR; received from peer"),
+        ("cr-qcloud.pingcap.net", "manifest", "dial tcp: lookup cr-qcloud.pingcap.net: temporary failure in name resolution"),
+        ("cr.pingcap.net", "blob", "stream error: stream ID 3; INTERNAL_ERROR; received from peer"),
+        ("cr.pingcap.net", "blob", "stream error: stream ID 3; PROTOCOL_ERROR; received from peer"),
+        ("cr.pingcap.net", "blob", "stream error: stream ID 3; CANCEL; received from peer"),
+    ],
+)
+def test_rule_engine_classifies_exhausted_zot_network_failure_before_matrix_wrapper(
+    job_name: str, appended_node_log: bool, host: str, stage: str, error: str,
+) -> None:
+    failure = _zot_download_failure(host=host, stage=stage, error=error)
+    wrapper = "Failed in branch Matrix - TEST_GROUP = 'G00'\nERROR: script returned exit code 1\n"
+    log_text = (
+        wrapper + "===== Failed pipeline node log =====\n" + failure
+        if appended_node_log else failure + wrapper
+    )
+    engine = RuleEngine.from_file()
+    classification = engine.classify(log_text=log_text, build={"job_name": f"pingcap/tidb/{job_name}"})
+
+    assert classification is not None
+    assert (classification.l1_category, classification.l2_subcategory) == ("INFRA", "ZOT_NETWORK")
+    assert classification.source == "rule:infra_zot_network"
+    assert ("INFRA", "ZOT_NETWORK") in engine.allowed_classifications
+
+
+@pytest.mark.parametrize("job_name", ["pull_br_integration_test", "pull_lightning_integration_test"])
+@pytest.mark.parametrize("stage", ["manifest", "blob"])
+@pytest.mark.parametrize("test_failure", ["--- FAIL: TestRestoreOrImport (0.01s)\n", "FAIL\tgithub.com/pingcap/tidb/br\t0.01s\n"])
+def test_rule_engine_keeps_later_test_failure_after_exhausted_inner_recovered_outer_retry(
+    job_name: str, stage: str, test_failure: str,
+) -> None:
+    log_text = (
+        _zot_download_failure(stage=stage)
+        + "[Pipeline] }\nERROR: script returned exit code 1\nRetrying\n[Pipeline] {\n"
+        + "✅ Downloaded, saved in tikv.tar.gz\n"
+        + "+ ./tikv-server -V\nTiKV\nRelease Version: 9.0.0\n"
+        + "[Pipeline] // retry\n[Pipeline] stage\n[Pipeline] { (Tests)\n"
+        + test_failure
+        + "Failed in branch Matrix - TEST_GROUP = 'G00'\n"
+    )
+    classification = RuleEngine.from_file().classify(
+        log_text=log_text, build={"job_name": f"pingcap/tidb/{job_name}"},
+    )
+
+    assert classification is not None
+    assert (classification.l1_category, classification.l2_subcategory) == ("IT", "TEST_FAILURE")
+    assert classification.source == "rule:integration_test_output_failure"
+
+
+@pytest.mark.parametrize("job_name", ["pull_br_integration_test", "pull_lightning_integration_test"])
+@pytest.mark.parametrize("stage", ["manifest", "blob"])
+def test_rule_engine_classifies_zot_when_both_outer_download_attempts_exhaust(
+    job_name: str, stage: str,
+) -> None:
+    failure = _zot_download_failure(stage=stage)
+    classification = RuleEngine.from_file().classify(
+        log_text=(
+            failure + "ERROR: script returned exit code 1\nRetrying\n"
+            + failure + '[Pipeline] // retry\nStage "Tests" skipped due to earlier failure(s)\n'
+            + "Failed in branch Matrix - TEST_GROUP = 'G00'\n"
+            + "ERROR: script returned exit code 1\n"
+        ),
+        build={"job_name": f"pingcap/tidb/{job_name}"},
+    )
+
+    assert classification is not None
+    assert (classification.l1_category, classification.l2_subcategory) == ("INFRA", "ZOT_NETWORK")
+
+
+@pytest.mark.parametrize(
+    "job_name",
+    [
+        "pull_dm_integration_test",
+        "pull_dm_integration_test_next_gen",
+        "pull_cdc_integration_storage_test",
+        "pull_cdc_mysql_integration_light",
+        "pull_cdc_storage_integration_heavy_next_gen",
+        "pull_cdc_storage_integration_light",
+    ],
+)
+@pytest.mark.parametrize(
+    "network_noise",
+    [
+        "",
+        "dial tcp 127.0.0.1:2379: connect: connection refused\n",
+        "dial tcp 127.0.0.1:2379: i/o timeout\n",
+    ],
+)
+def test_rule_engine_keeps_dm_cdc_matrix_wrappers_over_generic_network_noise(
+    job_name: str, network_noise: str,
+) -> None:
+    classification = RuleEngine.from_file().classify(
+        log_text=network_noise + "Failed in branch Matrix - TEST_GROUP = 'G00'\n",
+        build={"job_name": f"pingcap/tiflow/{job_name}"},
+    )
+
+    assert classification is not None
+    assert (classification.l1_category, classification.l2_subcategory) == ("IT", "TEST_FAILURE")
+    assert classification.source == "rule:dm_cdc_integration_matrix_failure"
+
+
+@pytest.mark.parametrize(
+    "log_text",
+    [
+        "Downloading cr-qcloud.pingcap.net/mirrors/hub/tikv/tikv/package:master_linux_amd64\n",
+        _zot_download_failure(error="unexpected status: 401 Unauthorized"),
+        _zot_download_failure(error="unexpected status: 403 Forbidden"),
+        _zot_download_failure(error="unexpected status: 404 Not Found"),
+        _zot_download_failure(error="unexpected status: 504 Gateway Time-out"),
+        _zot_download_failure(host="ghcr.io"),
+        _zot_download_failure(host="cr-qcloud.pingcap.net.example.com"),
+        _zot_download_failure().splitlines()[0] + "\nRetrying in 5s\nDownloaded tikv successfully\n",
+        _zot_download_failure().splitlines()[1] + "\n",
+        _zot_download_failure().replace(
+            "manifest fetch of cr-qcloud.pingcap.net/mirrors/hub/tikv/tikv/package:",
+            "manifest fetch of cr-qcloud.pingcap.net/mirrors/hub/tikv/pd/package:",
+        ),
+        _zot_download_failure().splitlines()[0] + "\n" +
+        _zot_download_failure(error="unexpected status: 401 Unauthorized"),
+    ],
+)
+def test_rule_engine_requires_correlated_fatal_zot_transport_evidence(log_text: str) -> None:
+    classification = RuleEngine.from_file().classify(
+        log_text=log_text + "Failed in branch Matrix - TEST_GROUP = 'G00'\n",
+        build={"job_name": "pingcap/tidb/pull_lightning_integration_test"},
+    )
+    assert classification is None or classification.l2_subcategory != "ZOT_NETWORK"
+
+
+@pytest.mark.parametrize(
+    "log_text",
+    [
+        *[_zot_download_failure(stage="blob", error=f"unexpected status: {status}")
+          for status in ("401 Unauthorized", "403 Forbidden", "404 Not Found", "500 Internal Server Error", "502 Bad Gateway", "503 Service Unavailable", "504 Gateway Time-out")],
+        _zot_download_failure(stage="blob", host="ghcr.io"),
+        _zot_download_failure(stage="blob", host="cr.pingcap.net.example.com"),
+        _zot_download_failure(stage="blob").splitlines()[0] + "\nRetrying\n✅ Downloaded, saved in tikv.tar.gz\n",
+        _zot_download_failure(stage="blob").splitlines()[1] + "\n",
+        _zot_download_failure(stage="blob").replace(
+            "blob fetch of cr-qcloud.pingcap.net/", "blob fetch of cr.pingcap.net/",
+        ),
+        _zot_download_failure(stage="blob").replace(
+            "/blobs/", "/other-repository/blobs/",
+        ),
+        _zot_download_failure(stage="blob").replace(
+            "@" + _ZOT_BLOB_DIGEST, "@sha256:" + "b" * 64,
+        ),
+        _zot_download_failure(stage="blob").replace(_ZOT_BLOB_DIGEST, "sha256:1234"),
+        _zot_download_failure(stage="blob").replace(
+            "Error: blob fetch", "Retrying\nError: blob fetch",
+        ),
+        _zot_download_failure(stage="blob").splitlines()[0] + "\n" +
+        _zot_download_failure(stage="blob", error="unexpected status: 401 Unauthorized"),
+    ],
+)
+def test_rule_engine_requires_correlated_final_raw_blob_transport_error(log_text: str) -> None:
+    classification = RuleEngine.from_file().classify(
+        log_text=log_text + "Failed in branch Matrix - TEST_GROUP = 'G00'\n",
+        build={"job_name": "pingcap/tidb/pull_lightning_integration_test"},
+    )
+
+    assert classification is not None
+    assert (classification.l1_category, classification.l2_subcategory) == ("IT", "TEST_FAILURE")
+
+
+@pytest.mark.parametrize(
+    ("job_name", "root_cause", "expected"),
+    [
+        ("pull_lightning_integration_test", "TEST FAILED: LIGHTNING LOG DOES NOT CONTAIN 'ready'\n", ("IT", "TEST_FAILURE")),
+        ("pull_br_integration_test", "TEST FAILED: OUTPUT DOES NOT CONTAIN 'ready'\n", ("IT", "TEST_FAILURE")),
+        ("pull_dm_integration_test", "make: *** [Makefile:529: dm_integration_test_in_group] Error 1\n", ("IT", "TEST_FAILURE")),
+        ("pull_dm_integration_test_next_gen", "make: *** [Makefile:528: dm_integration_test_in_group] Error 1\n", ("IT", "TEST_FAILURE")),
+        ("pull_cdc_integration_storage_test", "TEST FAILED: OUTPUT DOES NOT CONTAIN 'ready'\n", ("IT", "TEST_FAILURE")),
+        ("pull_cdc_mysql_integration_light", "TEST FAILED: OUTPUT CONTAINS 'unexpected'\n", ("IT", "TEST_FAILURE")),
+        ("pull_cdc_storage_integration_heavy_next_gen", "check diff failed 1-th time\n", ("IT", "TEST_FAILURE")),
+        ("pull_cdc_storage_integration_light", "run task failed 1-th time\n", ("IT", "TEST_FAILURE")),
+        ("ghpr_unit_test", "--- FAIL: TestDDL (0.00s)\n", ("UT", "TEST_FAILURE")),
+        ("pull_lightning_integration_test", "pkg/main.go:12:3: undefined: missing\n", ("BUILD", "COMPILE")),
+        ("pull_br_integration_test", "Aborted by operator\n", ("OTHERS", "ABORT_BY_ADMIN")),
+        ("pull_lightning_integration_test", "Container [golang] terminated [OOMKilled]\n", ("INFRA", "OOMKILLED")),
+    ],
+)
+def test_rule_engine_keeps_stronger_evidence_over_zot_retry_failure(
+    job_name: str, root_cause: str, expected: tuple[str, str],
+) -> None:
+    classification = RuleEngine.from_file().classify(
+        log_text=_zot_download_failure() + root_cause + "Failed in branch Matrix - TEST_GROUP = 'G00'\n",
+        build={"job_name": f"pingcap/tidb/{job_name}"},
+    )
+    assert classification is not None
+    assert (classification.l1_category, classification.l2_subcategory) == expected
+
+
 @pytest.mark.parametrize(
     "job_name",
     [
@@ -592,7 +831,7 @@ def test_rule_engine_classifies_cdc_mysql_integration_light_matrix_failure_as_in
     assert classification is not None
     assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
-    assert classification.source == "rule:cdc_mysql_integration_light_test_failure"
+    assert classification.source == "rule:dm_cdc_integration_matrix_failure"
 
 
 def test_rule_engine_classifies_cdc_mysql_integration_light_output_failure_as_integration_test_failure() -> None:
@@ -2747,7 +2986,7 @@ def test_rule_engine_classifies_lightning_matrix_failure_over_local_network_nois
     assert classification is not None
     assert classification.l1_category == "IT"
     assert classification.l2_subcategory == "TEST_FAILURE"
-    assert classification.source == "rule:lightning_integration_test_failure"
+    assert classification.source == "rule:lightning_integration_matrix_failure"
 
 
 def test_rule_engine_classifies_unit_testdata_load_error_as_ut_failure() -> None:

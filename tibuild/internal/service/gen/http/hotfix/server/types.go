@@ -65,6 +65,13 @@ type BumpTagForTidbxBadRequestResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// BumpTagForTidbxForbiddenResponseBody is the type of the "hotfix" service
+// "bump-tag-for-tidbx" endpoint HTTP response body for the "Forbidden" error.
+type BumpTagForTidbxForbiddenResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
 // BumpTagForTidbxInternalServerErrorResponseBody is the type of the "hotfix"
 // service "bump-tag-for-tidbx" endpoint HTTP response body for the
 // "InternalServerError" error.
@@ -76,6 +83,13 @@ type BumpTagForTidbxInternalServerErrorResponseBody struct {
 // QueryTagOfTidbxBadRequestResponseBody is the type of the "hotfix" service
 // "query-tag-of-tidbx" endpoint HTTP response body for the "BadRequest" error.
 type QueryTagOfTidbxBadRequestResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// QueryTagOfTidbxForbiddenResponseBody is the type of the "hotfix" service
+// "query-tag-of-tidbx" endpoint HTTP response body for the "Forbidden" error.
+type QueryTagOfTidbxForbiddenResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -146,10 +160,20 @@ func NewBumpTagForTidbxBadRequestResponseBody(res *hotfix.HTTPError) *BumpTagFor
 	return body
 }
 
+// NewBumpTagForTidbxForbiddenResponseBody builds the HTTP response body from
+// the result of the "bump-tag-for-tidbx" endpoint of the "hotfix" service.
+func NewBumpTagForTidbxForbiddenResponseBody(res *hotfix.HTTPErrorForbidden) *BumpTagForTidbxForbiddenResponseBody {
+	body := &BumpTagForTidbxForbiddenResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewBumpTagForTidbxInternalServerErrorResponseBody builds the HTTP response
 // body from the result of the "bump-tag-for-tidbx" endpoint of the "hotfix"
 // service.
-func NewBumpTagForTidbxInternalServerErrorResponseBody(res *hotfix.HTTPError) *BumpTagForTidbxInternalServerErrorResponseBody {
+func NewBumpTagForTidbxInternalServerErrorResponseBody(res *hotfix.HTTPErrorInternalServerError) *BumpTagForTidbxInternalServerErrorResponseBody {
 	body := &BumpTagForTidbxInternalServerErrorResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
@@ -167,10 +191,20 @@ func NewQueryTagOfTidbxBadRequestResponseBody(res *hotfix.HTTPError) *QueryTagOf
 	return body
 }
 
+// NewQueryTagOfTidbxForbiddenResponseBody builds the HTTP response body from
+// the result of the "query-tag-of-tidbx" endpoint of the "hotfix" service.
+func NewQueryTagOfTidbxForbiddenResponseBody(res *hotfix.HTTPErrorForbidden) *QueryTagOfTidbxForbiddenResponseBody {
+	body := &QueryTagOfTidbxForbiddenResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewQueryTagOfTidbxInternalServerErrorResponseBody builds the HTTP response
 // body from the result of the "query-tag-of-tidbx" endpoint of the "hotfix"
 // service.
-func NewQueryTagOfTidbxInternalServerErrorResponseBody(res *hotfix.HTTPError) *QueryTagOfTidbxInternalServerErrorResponseBody {
+func NewQueryTagOfTidbxInternalServerErrorResponseBody(res *hotfix.HTTPErrorInternalServerError) *QueryTagOfTidbxInternalServerErrorResponseBody {
 	body := &QueryTagOfTidbxInternalServerErrorResponseBody{
 		Code:    res.Code,
 		Message: res.Message,

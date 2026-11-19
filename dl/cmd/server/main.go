@@ -15,11 +15,9 @@ import (
 	"time"
 
 	gcs "github.com/PingCAP-QE/ee-apps/dl/gen/gcs"
-	ks3 "github.com/PingCAP-QE/ee-apps/dl/gen/ks3"
 	oci "github.com/PingCAP-QE/ee-apps/dl/gen/oci"
 	"github.com/PingCAP-QE/ee-apps/dl/internal/service/delivery"
 	gcssvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/gcs"
-	ks3svc "github.com/PingCAP-QE/ee-apps/dl/internal/service/ks3"
 	ocisvc "github.com/PingCAP-QE/ee-apps/dl/internal/service/oci"
 	"github.com/PingCAP-QE/ee-apps/dl/pkg/reload"
 )
@@ -28,14 +26,19 @@ func main() {
 	// Define command line flags, add any other flag required to configure the
 	// service.
 	var (
-		hostF               = flag.String("host", "localhost", "Server host (valid values: localhost)")
-		domainF             = flag.String("domain", "", "Host domain name (overrides host domain specified in service design)")
-		httpPortF           = flag.String("http-port", "", "HTTP port (overrides host HTTP port specified in service design)")
-		secureF             = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
-		dbgF                = flag.Bool("debug", false, "Log request and response bodies")
-		ks3CfgPathF         = flag.String("ks3-config", "ks3.yaml", "ks3 config yaml file path")
-		ociCfgPathF         = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
-		gcsCfgPathF         = flag.String("gcs-config", "", "gcs config file path (yaml or json, optional: uses ADC if not set)")
+		hostF       = flag.String("host", "localhost", "Server host (valid values: localhost)")
+		domainF     = flag.String("domain", "", "Host domain name (overrides host domain specified in service design)")
+		httpPortF   = flag.String("http-port", "", "HTTP port (overrides host HTTP port specified in service design)")
+		secureF     = flag.Bool("secure", false, "Use secure scheme (https or grpcs)")
+		dbgF        = flag.Bool("debug", false, "Log request and response bodies")
+		ociCfgPathF = flag.String("oci-config", "oci.yaml", "oci config yaml file path")
+		// Deprecated: the KS3 backend is gone. The flag stays accepted for one
+		// release so the new image can be rolled out while the deployment still
+		// passes it — `flag.Parse` exits on an unknown flag, so dropping it here
+		// would turn the rollout order into a crash loop instead of a no-op.
+		_           = flag.String("ks3-config", "ks3.yaml", "deprecated: the KS3 backend was removed, this flag is ignored")
+		gcsCfgPathF = flag.String("gcs-config", "", "gcs config file path (yaml or json, optional: uses ADC if not set)")
+
 		modeF               = flag.String("server-mode", "internal", "Server surface: internal, management, public, or delivery-migrate")
 		deliveryConfigF     = flag.String("delivery-config", "", "Delivery issuer policies and HTTPS public origin (YAML)")
 		deliveryHealthF     = flag.String("delivery-health-address", ":8001", "Separate private delivery probe listener; never expose through the public route")
@@ -81,12 +84,10 @@ func main() {
 	// Initialize the services.
 	var (
 		ociSvc oci.Service
-		ks3Svc ks3.Service
 		gcsSvc gcs.Service
 	)
 	{
 		ociSvc = ocisvc.New(logger, ociCfgPathF, splitCommaList(*ociAllowedRegistriesF))
-		ks3Svc = ks3svc.New(logger, *ks3CfgPathF)
 		gcsSvc = gcssvc.New(logger, *gcsCfgPathF, splitCommaList(*gcsAllowedBucketsF), splitCommaList(*gcsAllowedPrefixesF))
 	}
 
@@ -94,12 +95,10 @@ func main() {
 	// potentially running in different processes.
 	var (
 		ociEndpoints *oci.Endpoints
-		ks3Endpoints *ks3.Endpoints
 		gcsEndpoints *gcs.Endpoints
 	)
 	{
 		ociEndpoints = oci.NewEndpoints(ociSvc)
-		ks3Endpoints = ks3.NewEndpoints(ks3Svc)
 		gcsEndpoints = gcs.NewEndpoints(gcsSvc)
 	}
 
@@ -126,11 +125,6 @@ func main() {
 		if r, ok := gcsSvc.(reloader); ok {
 			go reload.WatchFile(ctx, *gcsCfgPathF, logger, func() error {
 				return r.Reload(ctx, *gcsCfgPathF)
-			})
-		}
-		if r, ok := ks3Svc.(reloader); ok {
-			go reload.WatchFile(ctx, *ks3CfgPathF, logger, func() error {
-				return r.Reload(ctx, *ks3CfgPathF)
 			})
 		}
 		if r, ok := ociSvc.(reloader); ok {
@@ -164,7 +158,7 @@ func main() {
 			} else if u.Port() == "" {
 				u.Host = net.JoinHostPort(u.Host, "80")
 			}
-			handleHTTPServer(ctx, u, ociEndpoints, ks3Endpoints, gcsEndpoints, &wg, errc, logger, *dbgF, ociSvc)
+			handleHTTPServer(ctx, u, ociEndpoints, gcsEndpoints, &wg, errc, logger, *dbgF, ociSvc)
 		}
 
 	default:

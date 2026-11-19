@@ -28,7 +28,6 @@ type Server struct {
 	RequestToPublish       http.Handler
 	RequestToPublishSingle http.Handler
 	QueryPublishingStatus  http.Handler
-	ResetRateLimit         http.Handler
 }
 
 // MountPoint holds information about the mounted endpoints.
@@ -66,7 +65,6 @@ func New(
 			{"RequestToPublish", "POST", "/api/v2/publish/tiup/publish-request"},
 			{"RequestToPublishSingle", "POST", "/api/v2/publish/tiup/publish-request-single"},
 			{"QueryPublishingStatus", "GET", "/api/v2/publish/tiup/publish-request/{request_id}"},
-			{"ResetRateLimit", "POST", "/api/v2/publish/tiup/reset-rate-limit"},
 		},
 		PublishImages:          NewPublishImagesHandler(e.PublishImages, mux, decoder, encoder, errhandler, formatter),
 		GetUnit:                NewGetUnitHandler(e.GetUnit, mux, decoder, encoder, errhandler, formatter),
@@ -76,7 +74,6 @@ func New(
 		RequestToPublish:       NewRequestToPublishHandler(e.RequestToPublish, mux, decoder, encoder, errhandler, formatter),
 		RequestToPublishSingle: NewRequestToPublishSingleHandler(e.RequestToPublishSingle, mux, decoder, encoder, errhandler, formatter),
 		QueryPublishingStatus:  NewQueryPublishingStatusHandler(e.QueryPublishingStatus, mux, decoder, encoder, errhandler, formatter),
-		ResetRateLimit:         NewResetRateLimitHandler(e.ResetRateLimit, mux, decoder, encoder, errhandler, formatter),
 	}
 }
 
@@ -93,7 +90,6 @@ func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.RequestToPublish = m(s.RequestToPublish)
 	s.RequestToPublishSingle = m(s.RequestToPublishSingle)
 	s.QueryPublishingStatus = m(s.QueryPublishingStatus)
-	s.ResetRateLimit = m(s.ResetRateLimit)
 }
 
 // MethodNames returns the methods served.
@@ -109,7 +105,6 @@ func Mount(mux goahttp.Muxer, h *Server) {
 	MountRequestToPublishHandler(mux, h.RequestToPublish)
 	MountRequestToPublishSingleHandler(mux, h.RequestToPublishSingle)
 	MountQueryPublishingStatusHandler(mux, h.QueryPublishingStatus)
-	MountResetRateLimitHandler(mux, h.ResetRateLimit)
 }
 
 // Mount configures the mux to serve the publish endpoints.
@@ -527,52 +522,6 @@ func NewQueryPublishingStatusHandler(
 			return
 		}
 		res, err := endpoint(ctx, payload)
-		if err != nil {
-			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-			return
-		}
-		if err := encodeResponse(ctx, w, res); err != nil {
-			if errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-		}
-	})
-}
-
-// MountResetRateLimitHandler configures the mux to serve the "publish" service
-// "resetRateLimit" endpoint.
-func MountResetRateLimitHandler(mux goahttp.Muxer, h http.Handler) {
-	f, ok := h.(http.HandlerFunc)
-	if !ok {
-		f = func(w http.ResponseWriter, r *http.Request) {
-			h.ServeHTTP(w, r)
-		}
-	}
-	mux.Handle("POST", "/api/v2/publish/tiup/reset-rate-limit", f)
-}
-
-// NewResetRateLimitHandler creates a HTTP handler which loads the HTTP request
-// and calls the "publish" service "resetRateLimit" endpoint.
-func NewResetRateLimitHandler(
-	endpoint goa.Endpoint,
-	mux goahttp.Muxer,
-	decoder func(*http.Request) goahttp.Decoder,
-	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
-	errhandler func(context.Context, http.ResponseWriter, error),
-	formatter func(ctx context.Context, err error) goahttp.Statuser,
-) http.Handler {
-	var (
-		encodeResponse = EncodeResetRateLimitResponse(encoder)
-		encodeError    = goahttp.ErrorEncoder(encoder, formatter)
-	)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
-		ctx = context.WithValue(ctx, goa.MethodKey, "resetRateLimit")
-		ctx = context.WithValue(ctx, goa.ServiceKey, "publish")
-		var err error
-		res, err := endpoint(ctx, nil)
 		if err != nil {
 			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
 				errhandler(ctx, w, err)

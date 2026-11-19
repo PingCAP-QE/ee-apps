@@ -10,7 +10,7 @@ func NewReader(auth Authentication, brokers []string, topic, consumerGroupID, cl
 	if err != nil {
 		return nil, err
 	}
-	dialer, err := NewDialer(mechanism, clientID)
+	dialer, err := NewDialer(auth, mechanism, clientID)
 	if err != nil {
 		return nil, err
 	}

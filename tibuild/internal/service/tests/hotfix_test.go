@@ -13,7 +13,16 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/hotfix"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
+
+// hotfixTestConfig allows the repositories the validation cases name; an unset
+// allowlist rejects every repository, which would mask the checks under test.
+func hotfixTestConfig() *config.Service {
+	return &config.Service{Hotfix: config.Hotfix{
+		GithubRepoAllowlist: []string{"owner/repo", "nonexistent/repo"},
+	}}
+}
 
 // TestBumpForTidbx_Integration tests the complete flow of creating a hotfix tag
 func TestBumpForTidbx_Integration(t *testing.T) {
@@ -32,7 +41,7 @@ func TestBumpForTidbx_Integration(t *testing.T) {
 		t.Skip("GITHUB_TOKEN environment variable not set")
 	}
 	ghClient := impl.NewGitHubClient(ghToken)
-	service := impl.NewHotfix(&logger, ghClient)
+	service := impl.NewHotfix(&logger, ghClient, hotfixTestConfig())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -59,7 +68,7 @@ func TestBumpTagForTidbx_Validation(t *testing.T) {
 	logger := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()
 	ghClient, clientErr := github.NewClient()
 	assert.NoError(t, clientErr)
-	service := impl.NewHotfix(&logger, ghClient)
+	service := impl.NewHotfix(&logger, ghClient, hotfixTestConfig())
 
 	ctx := context.Background()
 

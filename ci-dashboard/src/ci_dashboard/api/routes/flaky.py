@@ -12,6 +12,7 @@ from ci_dashboard.api.queries.flaky import (
     get_distinct_flaky_case_counts_by_branch,
     get_flaky_composition,
     get_flaky_period_comparison,
+    get_flaky_top_cases,
     get_flaky_top_jobs,
     get_flaky_trend,
     get_issue_filtered_weekly_case_rates,
@@ -64,6 +65,14 @@ def issue_weekly_rates(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_issue_filtered_weekly_case_rates(engine, filters)
+
+
+@router.get("/top-cases")
+def flaky_top_cases(
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    return get_flaky_top_cases(engine, filters)
 
 
 @router.get("/top-jobs")

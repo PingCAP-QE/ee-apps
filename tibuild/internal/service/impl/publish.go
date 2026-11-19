@@ -67,15 +67,22 @@ type publishsrvc struct {
 	desired *desiredStore
 	// metrics and nightlyAlerts expose the desired-state queue and alert on
 	// rows that wait longer than 1.5 windows.
-	metrics        *nightlyMetrics
-	nightlyAlerts  *nightlyAlertTracker
+	metrics       *nightlyMetrics
+	nightlyAlerts *nightlyAlertTracker
+	// failedNightly batches the nightly units that settled as a failure between
+	// two ticks so the whole batch becomes one alert.
+	failedNightly  *nightlyFailureAccumulator
 	conflictAlerts *conflictAlertTracker
 	alerter        AlertNotifier
 	// tiup publishes packages to a mirror.
 	tiup *tiupCLI
-	// fetchConfig reads an OCI artifact config and its manifest digest. It is
-	// a field so tests can replay a recorded artifact without a registry.
-	fetchConfig func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error)
+	// tiupMirror reads a TiUP mirror's own metadata to verify that a nightly
+	// package really is published there. It is not a registry client.
+	tiupMirror *tiupMirrorReader
+	// fetchConfig reads an OCI artifact: its config, its manifest digest, the
+	// build time and the sha256 of every file it carries. It is a field so
+	// tests can replay a recorded artifact without a registry.
+	fetchConfig func(ctx context.Context, artifactURL string) (tiupArtifact, error)
 
 	nowFn func() time.Time
 	newID func() string
@@ -123,12 +130,14 @@ func newPublishService(logger *zerolog.Logger, db *ent.Client, cfg *config.Servi
 		workerCfg:      workerCfg,
 		images:         craneImageOps{},
 		lane:           newPublishLane(db, PublishLaneTiUP),
-		desired:        newDesiredStore(db, cfg.Publish.Nightly),
+		desired:        newDesiredStore(db, cfg.Publish.Nightly, nightlyTargetsFor(cfg.Publish, workerCfg)...),
 		metrics:        newNightlyMetrics(),
 		nightlyAlerts:  newNightlyAlertTracker(time.Hour),
+		failedNightly:  newNightlyFailureAccumulator(),
 		conflictAlerts: newConflictAlertTracker(time.Hour),
 		alerter:        alerter,
 		tiup:           newTiupCLI(cfg.Publish.TiUPBinary),
+		tiupMirror:     newTiupMirrorReader(nightlyVerifyCacheTTL),
 		publishCfg:     cfg.Publish,
 		fetchConfig:    fetchTiUPArtifactConfig,
 		nowFn:          time.Now,
@@ -154,7 +163,7 @@ func (s *publishsrvc) Reload(cfg *config.Service) {
 	s.cfgMu.Unlock()
 
 	if s.desired != nil {
-		s.desired.setConfig(cfg.Publish.Nightly)
+		s.desired.setConfig(cfg.Publish.Nightly, s.nightlyTargets()...)
 	}
 	if s.planner != nil {
 		s.planner.setRulesPath(cfg.Publish.DeliveryConfigPathOrDefault())

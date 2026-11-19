@@ -107,7 +107,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     warehouse.add_argument("--vendor", choices=("aws", "azure"), required=True)
     warehouse.add_argument("--account-id", action="append", required=True,
-                           help="Explicit active ordinary source identity; repeat for sequential accounts")
+                           help="Explicit active source; F04 must run separately from ordinary accounts")
+    warehouse.add_argument("--start-date", type=_parse_date, default=None,
+                           help="F04 repair only: inclusive start of a 1..5-day historical window")
+    warehouse.add_argument("--end-date", type=_parse_date, default=None,
+                           help="F04 repair only: inclusive end; requires --start-date")
     warehouse.add_argument("--dry-run", action="store_true")
 
     sync_summary = subparsers.add_parser(
@@ -427,6 +431,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging(settings.log_level)
 
     if args.command == "sync-warehouse-billing-summary":
+        if (args.start_date is None) != (args.end_date is None):
+            raise ValueError("--start-date and --end-date must be set together")
+        if args.start_date is not None and not 0 <= (args.end_date - args.start_date).days <= 4:
+            raise ValueError("Warehouse repair requires 1..5 inclusive days")
         if not settings.billing_bigquery.project or not settings.billing_bigquery.location:
             raise ValueError("Warehouse sync requires explicit billing BigQuery project and location")
         engine = build_engine(settings)
@@ -437,6 +445,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 project=settings.billing_bigquery.project,
                 tcms_allocation_table=settings.tcms_allocation.allocation_table,
                 dry_run=args.dry_run,
+                start_date=args.start_date, end_date=args.end_date,
             )
             print(json.dumps(summary, default=str, indent=2, sort_keys=True))
             return 0

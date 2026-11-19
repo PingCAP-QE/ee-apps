@@ -9,6 +9,24 @@ publication is publishing, so it shares the service, the error types and the
 `publishsrvc` implementation with the image planner rather than living in a
 parallel service.
 
+## Vocabulary
+
+`publish` names the **domain**, not TiUP: a unit carries a `kind`, either `tiup`
+(packages to a TiUP mirror) or `image_copy` (one image digest to registries).
+The names below are TiUP-specific even where the prefix does not say so:
+
+| Name | Scope |
+| --- | --- |
+| `publish_desired` (table, `desiredStore`) | nightly **TiUP** desired state: one row per `(target, pkg, os, arch)` |
+| `publish_desired_*` metrics | row-level facts of that table, hence nightly-TiUP only |
+| `publish.nightly` (config) | the nightly **TiUP** schedule: window, anchor, jitter |
+| `publish.tiup_mirrors`, `publish.tiup_dependencies` | TiUP mirror URLs and the order of their steps |
+| `publish_lane` / `publish_lane_*` | the serial lane; one row per kind, so `tiup` and `image_copy` never block each other |
+| "mirror" | a **TiUP** mirror (`tiup.pingcap.net:8987/8988`). An OCI registry is always called a registry |
+
+A `publish_unit` of kind `image_copy` never touches `publish_desired`; that table
+exists only because nightly packages converge per channel.
+
 ## Model
 
 | Table | Meaning |
@@ -125,6 +143,18 @@ version. The per-package outcome is recorded in the step result's `action`:
 | `overwritten_nightly` | a nightly build replaced the previous package |
 | `overwritten_non_formal` | a pre/beta/rc/nextgen/rust/branch build replaced the previous package |
 | `refused_formal_overwrite` | failure log only: the replacement of a released `vX.Y.Z` was refused |
+
+The same rule applies per tag on the `image_copy` path, where the unit of
+immutability is the destination tag rather than a package:
+
+- the tag already serves the planned digest → skipped, the copy is a no-op;
+- the tag is a released `vX.Y.Z` and serves a different digest → refused
+  ("refusing to overwrite published release tag");
+- the tag is non-formal — nightly, nextgen, pre/beta/rc, branch — → replaced,
+  because re-publishing one of those means moving it forward.
+
+Replacing a released image tag on purpose therefore means deleting the tag
+first; a re-run does not do it silently.
 
 A package with an empty version is treated as non-formal (overwrite allowed) and
 logged as a warning: the planner always sets a version, so an empty one means a
@@ -243,13 +273,30 @@ failures wait for the next window. On success `last_succeeded_version` records
 what was actually published, even if a newer push replaced the desired version
 while the unit was running.
 
+A nightly unit publishes one row to one mirror, so it ends either `succeeded` or
+`failed`: `partial` needs a multi-step unit and cannot happen on this path. Every
+failed row keeps `desired_version` and retries, and the worker sends one
+aggregated `[tibuild] nightly publish failed` alert per tick — at most one every
+10 minutes — carrying the number of affected channels, a bounded sample of
+`target/pkg/os/arch` and the first error. Without it a refusing mirror (every
+channel of the window failing within minutes) would only surface through the lag
+alert, which waits 1.5 windows and compares version strings — constant for a
+nightly channel, so it cannot tell a stalled publication from a delivered one.
+
 Nightly convergence is **off by default**; enabling it on staging first keeps
 prod on the legacy "publish every push" path until the rollout reaches it.
 Deferred pushes create no step, so `POST /tiup/delivery-by-rules` returns an
 empty list when every selected target converges.
 
-`POST /tiup/reset-rate-limit` stays as a compatibility no-op; there is no Redis
-counter to reset.
+`POST /tiup/reset-rate-limit` is gone. It only existed to clear the legacy
+per-package Redis counters, and there is no counter to reset once nightly is a
+desired state: a caller that still sends it gets `404`. Republishing a package
+before its window is a scheduler change on `publish_desired`
+(`UPDATE publish_desired SET next_run_at = NOW(3) …`), not a rate limit reset.
+
+Day-two operations — reading the table, forcing a publication, re-arming a
+stale claim, changing the cadence, rolling the feature back, and the lag alert —
+are in [`nightly.md`](./nightly.md).
 
 ## Configuration
 
@@ -302,7 +349,10 @@ base path, `/api/v2/publish`:
 | `POST /tiup/publish-request` | one explicit mirror, optional version override |
 | `POST /tiup/publish-request-single` | one package from a tarball URL or an OCI layer |
 | `GET /tiup/publish-request/{id}` | unit or step id → `queued/processing/success/failed/canceled` |
-| `POST /tiup/reset-rate-limit` | no-op: the legacy Redis nightly throttle does not exist here; the convergence work is owned by the nightly track |
+
+`POST /tiup/reset-rate-limit` was removed with the Redis nightly throttle: it
+was a no-op after the publish domain migration, and nightly convergence now
+lives in `publish_desired`.
 
 Unit inspection and retry are **kind-agnostic** and live on the shared
 resource: `GET /publish/units`, `GET /publish/units/{id}` and
@@ -331,3 +381,21 @@ Reloading the configuration file re-reads both; a bad revision keeps the last
 good one. The ops file carries the per-stage base URL, key and the
 `base_image → component` catalogue; the test platforms file carries the TCMS
 base URL and token.
+
+### Commit metadata forwarded to TCMS
+
+`POST /api/v2/tidbcloud/tidbx-component-image-builds` also reads two optional
+labels from the image config and forwards them together with
+`repo`/`branch`/`sha`/`imageTag`:
+
+| Label | TCMS field | Rules |
+| --- | --- | --- |
+| `net.pingcap.tibuild.git-commit-title` | `commitTitle` | trimmed, truncated to 255 runes, omitted when empty |
+| `net.pingcap.tibuild.git-commit-time` | `commitTime` | must parse as RFC 3339; otherwise only this field is dropped and a warning is logged |
+
+Both fields are optional end to end. An image built before the labels existed
+(or without them) produces exactly the old request shape, and TCMS keeps the
+values it already stored when a later update omits the fields. The labels
+themselves are written by the QE artifact build scripts — see
+[`PingCAP-QE/artifacts`](https://github.com/PingCAP-QE/artifacts) — so the
+values describe the commit that produced the image, not the caller.

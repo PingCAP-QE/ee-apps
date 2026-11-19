@@ -20,6 +20,7 @@ import {
   ShareBars,
   StatCard,
   TrendChart,
+  TopFlakyCasesTable,
 } from "../components/charts";
 
 function formatCountDelta(value) {
@@ -151,6 +152,16 @@ function SnapshotProgressCard({ title, subtitle, tone = "default", items, loadin
 
 export default function FlakyPage({ filters }) {
   const page = useApiData("/api/v1/pages/flaky", filters);
+  const topCases = useApiData("/api/v1/flaky/top-cases", filters);
+  const topCasesMeta = topCases.data?.meta;
+  const topCasesTitle = topCasesMeta?.limit ? `Top ${topCasesMeta.limit} flaky cases` : "Top flaky cases";
+  const topCasesSubtitle = [
+    "Ranked by distinct builds affected by each flaky case, for the selected repo, branch and dates (UTC).",
+    "A build can still pass after retry, so this is not a failed-build count or a flaky rate.",
+    topCasesMeta?.build_links_per_case
+      ? `Expand a row for the latest ${topCasesMeta.build_links_per_case} build URLs on the reporting controller.`
+      : null,
+  ].filter(Boolean).join(" ");
   const [selectedBucketTime, setSelectedBucketTime] = useState(null);
   const showPanelActions = !page.loading && !page.error;
   const currentPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_a")?.values;
@@ -393,12 +404,19 @@ export default function FlakyPage({ filters }) {
           <div className="scope-note__block">
             <strong>Issue-tracked panels</strong>
             <span>
-              The progress cards, lifecycle chart, and filtered case table use tracked flaky
-              issues and linked fix PRs. The snapshot cards are repo and branch scoped, as of
-              the selected end date. Case evidence includes PR and postsubmit CI builds from any
-              trigger repository, scoped by the tested repository and branch. Job and cloud filters
-              still apply to the running build. The case table ignores the branch filter and uses
-              each issue's own branch.
+              The progress cards, lifecycle chart, and weekly case table use tracked flaky
+              issues and ignore the branch filter. Weekly case evidence includes cross-repository
+              CI, using each issue's own tested branch. Job and cloud filters still apply to
+              the running build.
+            </span>
+          </div>
+          <div className="scope-note__block">
+            <strong>Top case ranking</strong>
+            <span>
+              Uses the tested repo and branch (all repos/branches when unset) with the selected
+              UTC report-time window.
+              Counts distinct builds affected by each flaky case, independently of issue branch
+              or status. Job and cloud filters apply; bucket granularity does not change the total.
             </span>
           </div>
           <div className="scope-note__block">
@@ -410,6 +428,20 @@ export default function FlakyPage({ filters }) {
           </div>
         </div>
       </div>
+
+      <Panel
+        title={topCasesTitle}
+        subtitle={topCasesSubtitle}
+        loading={topCases.loading}
+        error={topCases.error}
+      >
+        <TopFlakyCasesTable rows={topCases.data?.rows} />
+        <p className="top-cases__note">
+          Issues match by repo + case, regardless of issue branch or status; this does not confirm
+          the same failure cause. No linked issue means no match in tracked issues, not proof
+          that no relevant GitHub issue exists.
+        </p>
+      </Panel>
 
       <div className="flaky-highlight-row">
         <div className="flaky-highlight-stack">

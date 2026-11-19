@@ -119,6 +119,14 @@ type tidbcloudsrvc struct {
 	// can replay recorded labels without a registry.
 	readImageConfig func(context.Context, string) ([]byte, error)
 
+	// kernelImageAllowedRepositories limits which repositories a kernel-image
+	// sync may name; empty means "none", not "any".
+	kernelImageAllowedRepositories []string
+
+	// resolveImageTag returns the digest of an image reference. It exists so a
+	// rollout can refuse a tag nobody published; tests replace it.
+	resolveImageTag func(context.Context, string) (string, error)
+
 	// kernelImageMetaReader overrides the default OCI label reader (tests).
 	kernelImageMetaReader kernelImageMetaReader
 	// resolveTagMetadata resolves git tag metadata in process; nil skips it.
@@ -134,6 +142,9 @@ func NewTidbcloud(logger *zerolog.Logger, cfg *config.Service, resolveTagMetadat
 		readFile:           os.ReadFile,
 		readImageConfig: func(ctx context.Context, image string) ([]byte, error) {
 			return crane.Config(image, crane.WithContext(ctx))
+		},
+		resolveImageTag: func(ctx context.Context, image string) (string, error) {
+			return crane.Digest(image, crane.WithContext(ctx))
 		},
 	}
 	if err := s.applyConfig(cfg); err != nil {
@@ -189,6 +200,7 @@ func (s *tidbcloudsrvc) applyConfig(cfg *config.Service) error {
 	s.mu.Lock()
 	s.opsCfg = opsCfg
 	s.tpsCfg = tpsCfg
+	s.kernelImageAllowedRepositories = cfg.Tidbcloud.KernelImageAllowedRepositories
 	s.mu.Unlock()
 	return nil
 }
@@ -197,6 +209,12 @@ func (s *tidbcloudsrvc) opsConfig() *OpsConfig {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.opsCfg
+}
+
+func (s *tidbcloudsrvc) kernelImageAllowlist() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.kernelImageAllowedRepositories
 }
 
 func (s *tidbcloudsrvc) testPlatformsConfig() *TestPlatformsConfig {

@@ -24,7 +24,6 @@ type Endpoints struct {
 	RequestToPublish       goa.Endpoint
 	RequestToPublishSingle goa.Endpoint
 	QueryPublishingStatus  goa.Endpoint
-	ResetRateLimit         goa.Endpoint
 }
 
 // NewEndpoints wraps the methods of the "publish" service with endpoints.
@@ -38,7 +37,6 @@ func NewEndpoints(s Service) *Endpoints {
 		RequestToPublish:       NewRequestToPublishEndpoint(s),
 		RequestToPublishSingle: NewRequestToPublishSingleEndpoint(s),
 		QueryPublishingStatus:  NewQueryPublishingStatusEndpoint(s),
-		ResetRateLimit:         NewResetRateLimitEndpoint(s),
 	}
 }
 
@@ -52,7 +50,6 @@ func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.RequestToPublish = m(e.RequestToPublish)
 	e.RequestToPublishSingle = m(e.RequestToPublishSingle)
 	e.QueryPublishingStatus = m(e.QueryPublishingStatus)
-	e.ResetRateLimit = m(e.ResetRateLimit)
 }
 
 // NewPublishImagesEndpoint returns an endpoint function that calls the method
@@ -124,13 +121,5 @@ func NewQueryPublishingStatusEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*QueryPublishingStatusPayload)
 		return s.QueryPublishingStatus(ctx, p)
-	}
-}
-
-// NewResetRateLimitEndpoint returns an endpoint function that calls the method
-// "resetRateLimit" of service "publish".
-func NewResetRateLimitEndpoint(s Service) goa.Endpoint {
-	return func(ctx context.Context, req any) (any, error) {
-		return nil, s.ResetRateLimit(ctx)
 	}
 }

@@ -730,9 +730,14 @@ def _weekly_cost_purpose_expr(connection: Connection, *, table_alias: str = "s")
     return f"TRIM({prefix}purpose)" if _table_has_column(connection, "cost_sources", "purpose") else "''"
 
 
+def _weekly_cost_week_start(day: date) -> date:
+    """Sunday-based UTC billing week; other dashboard weekly buckets stay unchanged."""
+    return day - timedelta(days=(day.weekday() + 1) % 7)
+
+
 def get_weekly_cost_report(engine: Engine, *, include_trend: bool = True) -> dict[str, Any]:
     today = _today()
-    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_start = _weekly_cost_week_start(today) - timedelta(days=7)
     last_week_end = last_week_start + timedelta(days=6)
     previous_week_end = last_week_start - timedelta(days=1)
     previous_week_start = previous_week_end - timedelta(days=6)
@@ -909,7 +914,7 @@ def get_ci_weekly_cost_report(
 ) -> dict[str, Any]:
     """Query only the requested panels; keep the full report as the default."""
     today = _today()
-    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_start = _weekly_cost_week_start(today) - timedelta(days=7)
     last_week_end = last_week_start + timedelta(days=6)
     previous_week_end = last_week_start - timedelta(days=1)
     previous_week_start = previous_week_end - timedelta(days=6)
@@ -1357,13 +1362,13 @@ def _ci_weekly_cost_account_period_cost(
         for (fact_source, usage_date), amounts in cost_values.items():
             if fact_source != source or not plan["period_start_date"] <= usage_date <= plan["period_end_date"]:
                 continue
-            week_start = usage_date - timedelta(days=usage_date.weekday())
+            week_start = _weekly_cost_week_start(usage_date)
             weekly_costs[week_start] = weekly_costs.get(week_start, Decimal(0)) + amounts[
                 str(plan["cost_basis"])
             ]
 
-    week_start = start_date - timedelta(days=start_date.weekday())
-    current_week_start = today - timedelta(days=today.weekday())
+    week_start = _weekly_cost_week_start(start_date)
+    current_week_start = _weekly_cost_week_start(today)
     cumulative_cost = Decimal(0)
     points = []
     while week_start <= current_week_start:
@@ -1389,7 +1394,7 @@ def _ci_weekly_cost_account_period_cost(
 
 def get_weekly_cost_trend(engine: Engine) -> dict[str, Any]:
     today = _today()
-    last_week_start = today - timedelta(days=today.weekday() + 7)
+    last_week_start = _weekly_cost_week_start(today) - timedelta(days=7)
     last_week_end = last_week_start + timedelta(days=6)
     history_start = last_week_start - timedelta(days=49)
     history_weeks = [
@@ -1529,7 +1534,7 @@ def _weekly_cost_list_cost_history(
         if row["usage_date"] is None:
             continue
         usage_date = date.fromisoformat(str(row["usage_date"]))
-        week_start = usage_date - timedelta(days=usage_date.weekday())
+        week_start = _weekly_cost_week_start(usage_date)
         source = _cost_source_value(str(row["vendor"]), str(row["account_id"]))
         if source in history_values:
             history_values[source][week_start.isoformat()] += Decimal(str(row["list_cost"] or 0))
@@ -1608,11 +1613,11 @@ def _weekly_cost_budget_period_cost(
             project,
             budget_scopes,
         ):
-            week_start = usage_date - timedelta(days=usage_date.weekday())
+            week_start = _weekly_cost_week_start(usage_date)
             weekly_costs[week_start] = weekly_costs.get(week_start, Decimal(0)) + amount
 
-    week_start = start_date - timedelta(days=start_date.weekday())
-    current_week_start = today - timedelta(days=today.weekday())
+    week_start = _weekly_cost_week_start(start_date)
+    current_week_start = _weekly_cost_week_start(today)
     cumulative_cost = Decimal(0)
     points = []
     while week_start <= current_week_start:
@@ -1638,7 +1643,7 @@ def _weekly_cost_budget_period_cost(
 def get_weekly_cost_allocation(engine: Engine, period: str = "week") -> dict[str, Any]:
     today = _today()
     if period == "week":
-        start_date = today - timedelta(days=today.weekday() + 7)
+        start_date = _weekly_cost_week_start(today) - timedelta(days=7)
         end_date = start_date + timedelta(days=6)
     elif period == "month":
         end_date = today.replace(day=1) - timedelta(days=1)

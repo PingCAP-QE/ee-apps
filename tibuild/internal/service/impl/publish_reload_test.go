@@ -43,6 +43,10 @@ func TestReloadAppliesNightlySchedule(t *testing.T) {
 	require.Equal(t, "01:00", window.Anchor)
 	require.Equal(t, []string{delivery.TiUPTargetStaging}, svc.nightlyTargets())
 	require.True(t, svc.nightlyEnabled())
+	// The desired store shards the same target list, so a reload also decides
+	// which rows this process may reschedule.
+	require.True(t, svc.desired.ownsTarget(delivery.TiUPTargetStaging))
+	require.False(t, svc.desired.ownsTarget(delivery.TiUPTargetProd))
 }
 
 // TestReloadChangesNightlyRouting is the behavioural acceptance check: with

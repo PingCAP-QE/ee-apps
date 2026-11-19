@@ -24,7 +24,6 @@ type Server struct {
 	Capabilities http.Handler
 	Create       http.Handler
 	Get          http.Handler
-	Update       http.Handler
 	Rerun        http.Handler
 }
 
@@ -59,14 +58,12 @@ func New(
 			{"Capabilities", "GET", "/api/v2/devbuilds/capabilities"},
 			{"Create", "POST", "/api/v2/devbuilds"},
 			{"Get", "GET", "/api/v2/devbuilds/{id}"},
-			{"Update", "PUT", "/api/v2/devbuilds/{id}"},
 			{"Rerun", "POST", "/api/v2/devbuilds/{id}/rerun"},
 		},
 		List:         NewListHandler(e.List, mux, decoder, encoder, errhandler, formatter),
 		Capabilities: NewCapabilitiesHandler(e.Capabilities, mux, decoder, encoder, errhandler, formatter),
 		Create:       NewCreateHandler(e.Create, mux, decoder, encoder, errhandler, formatter),
 		Get:          NewGetHandler(e.Get, mux, decoder, encoder, errhandler, formatter),
-		Update:       NewUpdateHandler(e.Update, mux, decoder, encoder, errhandler, formatter),
 		Rerun:        NewRerunHandler(e.Rerun, mux, decoder, encoder, errhandler, formatter),
 	}
 }
@@ -80,7 +77,6 @@ func (s *Server) Use(m func(http.Handler) http.Handler) {
 	s.Capabilities = m(s.Capabilities)
 	s.Create = m(s.Create)
 	s.Get = m(s.Get)
-	s.Update = m(s.Update)
 	s.Rerun = m(s.Rerun)
 }
 
@@ -93,7 +89,6 @@ func Mount(mux goahttp.Muxer, h *Server) {
 	MountCapabilitiesHandler(mux, h.Capabilities)
 	MountCreateHandler(mux, h.Create)
 	MountGetHandler(mux, h.Get)
-	MountUpdateHandler(mux, h.Update)
 	MountRerunHandler(mux, h.Rerun)
 }
 
@@ -284,59 +279,6 @@ func NewGetHandler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
 		ctx = context.WithValue(ctx, goa.MethodKey, "get")
-		ctx = context.WithValue(ctx, goa.ServiceKey, "devbuild")
-		payload, err := decodeRequest(r)
-		if err != nil {
-			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-			return
-		}
-		res, err := endpoint(ctx, payload)
-		if err != nil {
-			if err := encodeError(ctx, w, err); err != nil && errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-			return
-		}
-		if err := encodeResponse(ctx, w, res); err != nil {
-			if errhandler != nil {
-				errhandler(ctx, w, err)
-			}
-		}
-	})
-}
-
-// MountUpdateHandler configures the mux to serve the "devbuild" service
-// "update" endpoint.
-func MountUpdateHandler(mux goahttp.Muxer, h http.Handler) {
-	f, ok := h.(http.HandlerFunc)
-	if !ok {
-		f = func(w http.ResponseWriter, r *http.Request) {
-			h.ServeHTTP(w, r)
-		}
-	}
-	mux.Handle("PUT", "/api/v2/devbuilds/{id}", f)
-}
-
-// NewUpdateHandler creates a HTTP handler which loads the HTTP request and
-// calls the "devbuild" service "update" endpoint.
-func NewUpdateHandler(
-	endpoint goa.Endpoint,
-	mux goahttp.Muxer,
-	decoder func(*http.Request) goahttp.Decoder,
-	encoder func(context.Context, http.ResponseWriter) goahttp.Encoder,
-	errhandler func(context.Context, http.ResponseWriter, error),
-	formatter func(ctx context.Context, err error) goahttp.Statuser,
-) http.Handler {
-	var (
-		decodeRequest  = DecodeUpdateRequest(mux, decoder)
-		encodeResponse = EncodeUpdateResponse(encoder)
-		encodeError    = EncodeUpdateError(encoder, formatter)
-	)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), goahttp.AcceptTypeKey, r.Header.Get("Accept"))
-		ctx = context.WithValue(ctx, goa.MethodKey, "update")
 		ctx = context.WithValue(ctx, goa.ServiceKey, "devbuild")
 		payload, err := decodeRequest(r)
 		if err != nil {

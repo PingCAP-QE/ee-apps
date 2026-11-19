@@ -57,28 +57,35 @@ type desiredStore struct {
 	nowFn func() time.Time
 	newID func() string
 
-	// mu guards the schedule copied from the current configuration revision.
-	mu    sync.RWMutex
-	cfg   config.NightlyPublish
-	batch int
+	// mu guards the schedule and the target shard copied from the current
+	// configuration revision.
+	mu      sync.RWMutex
+	cfg     config.NightlyPublish
+	targets []string
+	batch   int
 }
 
-func newDesiredStore(db *ent.Client, cfg config.NightlyPublish) *desiredStore {
+// newDesiredStore builds the store from the current configuration revision.
+// targets lists the publish targets this process runs; it shards the schedule,
+// so a row of another target is never rescheduled here (see ownsTarget).
+func newDesiredStore(db *ent.Client, cfg config.NightlyPublish, targets ...string) *desiredStore {
 	return &desiredStore{
-		db:    db,
-		nowFn: time.Now,
-		newID: newUUID,
-		cfg:   cfg,
-		batch: cfg.BatchSize(),
+		db:      db,
+		nowFn:   time.Now,
+		newID:   newUUID,
+		cfg:     cfg,
+		targets: append([]string(nil), targets...),
+		batch:   cfg.BatchSize(),
 	}
 }
 
-// setConfig applies a new nightly schedule: windows, retry backoff and the tick
-// batch size all follow the current revision.
-func (s *desiredStore) setConfig(cfg config.NightlyPublish) {
+// setConfig applies a new nightly schedule: windows, retry backoff, the tick
+// batch size and the target shard all follow the current revision.
+func (s *desiredStore) setConfig(cfg config.NightlyPublish, targets ...string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cfg = cfg
+	s.targets = append([]string(nil), targets...)
 	s.batch = cfg.BatchSize()
 }
 
@@ -86,6 +93,32 @@ func (s *desiredStore) schedule() (config.NightlyPublish, int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.cfg, s.batch
+}
+
+// ownsTarget reports whether this process runs the target's schedule.
+//
+// The unit aggregator and the lease reaper both see units of every target, so a
+// worker is regularly handed a terminal unit that belongs to another worker. Only
+// the owning worker knows the target's window, so rescheduling a foreign row
+// would write a schedule derived from this process's configuration: a prod
+// worker (12h window) settling a staging row (1h window) parks it until the next
+// prod boundary. Rows of a target this process does not shard are left alone.
+//
+// An empty shard keeps the legacy behaviour of owning everything: it is the
+// state before nightly convergence has a target list, and every caller that can
+// reach Settle is nightly-enabled with an explicit list.
+func (s *desiredStore) ownsTarget(target string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.targets) == 0 {
+		return true
+	}
+	for _, candidate := range s.targets {
+		if candidate == target || candidate == "*" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *desiredStore) now() time.Time {
@@ -249,6 +282,11 @@ func (s *desiredStore) Release(ctx context.Context, key desiredKey, unitID strin
 // from the unit aggregator and, as a safety sweep, from every tick. The count
 // is used to emit one outcome metric per unit, even when the callback and the
 // sweep race.
+//
+// Rows of a target this process does not shard are skipped: the unit may have
+// been executed by the owning worker (or reaped here), but the schedule must be
+// advanced by the worker that knows the target's window. The owning worker's own
+// sweep picks the rows up on its next tick.
 func (s *desiredStore) Settle(ctx context.Context, unitID, state, version, detail string, now time.Time) (int, error) {
 	rows, err := s.db.PublishDesired.Query().
 		Where(entpublishdesired.RunningUnitID(unitID)).
@@ -258,6 +296,9 @@ func (s *desiredStore) Settle(ctx context.Context, unitID, state, version, detai
 	}
 	settled := 0
 	for _, row := range rows {
+		if !s.ownsTarget(row.Target) {
+			continue
+		}
 		key := desiredKey{Target: row.Target, Pkg: row.Pkg, OS: row.Os, Arch: row.Arch}
 		if err := s.completeRow(ctx, row, key, unitID, state, version, detail, now); err != nil {
 			return settled, err
@@ -337,9 +378,16 @@ func (s *publishsrvc) nightlyTargets() []string {
 		s.publishConfig().PublicationTargets(s.workerConfig().Targets))
 }
 
+// nightlyTargetsFor resolves the converging targets of one configuration
+// revision. newPublishService needs them before the service exists, so the
+// desired store can be built with the same shard the reconciler uses.
+func nightlyTargetsFor(publish config.Publish, worker config.Worker) []string {
+	return publish.Nightly.DesiredTargets(publish.PublicationTargets(worker.Targets))
+}
+
 // enqueueNightlyPlans records the newest artifact for every nightly plan. It
 // creates no unit: the window-aligned tick does that later.
-func (s *publishsrvc) enqueueNightlyPlans(ctx context.Context, artifactURL, digest string, plans []delivery.TiUPPlan) error {
+func (s *publishsrvc) enqueueNightlyPlans(ctx context.Context, artifactURL, digest string, fileSHA256 map[string]string, plans []delivery.TiUPPlan) error {
 	mirrors, err := s.mirrorURLs()
 	if err != nil {
 		return err
@@ -356,6 +404,7 @@ func (s *publishsrvc) enqueueNightlyPlans(ctx context.Context, artifactURL, dige
 				MirrorURL:      mirrors[plan.Mirror],
 				ArtifactURL:    artifactURL,
 				Digest:         digest,
+				FileDigest:     fileSHA256[pkg.File],
 				Nightly:        true,
 				NightlyVersion: plan.Version,
 				Packages:       []delivery.TiUPPackage{pkg},
@@ -412,6 +461,7 @@ func (s *publishsrvc) runNightlyReconciler(ctx context.Context) {
 			} else if created > 0 {
 				s.logger.Info().Int("units", created).Msg("nightly reconcile queued publication units")
 			}
+			s.flushNightlyFailureAlert(ctx)
 		}
 
 		if next := s.nightlyInterval(); next != interval {
@@ -533,11 +583,18 @@ func (s *publishsrvc) reconcileNightlyOnce(ctx context.Context) (int, error) {
 
 // settleNightlyClaims closes rows whose unit already finished but whose
 // completion callback was missed (worker restart, crash after the step write).
+// Only this worker's targets are swept: another target's row must be advanced by
+// the worker that owns its schedule, otherwise the window of the wrong target
+// is applied to it.
 func (s *publishsrvc) settleNightlyClaims(ctx context.Context) {
-	rows, err := s.db.PublishDesired.Query().
+	targets := s.nightlyTargets()
+	query := s.db.PublishDesired.Query().
 		Where(entpublishdesired.RunningUnitIDNEQ("")).
-		Limit(100).
-		All(ctx)
+		Limit(100)
+	if !hasWildcardTarget(targets) {
+		query = query.Where(entpublishdesired.TargetIn(targets...))
+	}
+	rows, err := query.All(ctx)
 	if err != nil {
 		s.logger.Err(err).Msg("failed to scan nightlies with a running unit")
 		return
@@ -582,11 +639,32 @@ func (s *publishsrvc) settleNightlyUnit(ctx context.Context, unitID string) {
 		}
 	}
 
+	// A unit that failed (or, defensively, only partially succeeded) keeps the
+	// schedule retrying, but nothing else surfaces it: capture the rows before
+	// settling clears running_unit_id, so the tick alert can name them.
+	var settledRows []string
+	if unit.State != PublishStateSucceeded {
+		rows, err := s.db.PublishDesired.Query().
+			Where(entpublishdesired.RunningUnitID(unitID)).
+			All(ctx)
+		if err != nil {
+			s.logger.Err(err).Str("unit_id", unitID).Msg("failed to load the rows of a failed nightly unit")
+		}
+		for _, row := range rows {
+			settledRows = append(settledRows, fmt.Sprintf("%s/%s/%s/%s", row.Target, row.Pkg, row.Os, row.Arch))
+		}
+	}
+
 	settled, err := s.desired.Settle(ctx, unitID, unit.State, version, detail, s.now())
 	if err != nil {
 		s.logger.Err(err).Str("unit_id", unitID).Msg("failed to settle the nightly desired rows")
 	}
 	if settled > 0 && s.metrics != nil {
 		s.metrics.recordPublished(unit.State)
+	}
+	if settled > 0 && s.failedNightly != nil {
+		for _, row := range settledRows {
+			s.failedNightly.add(row, version, detail)
+		}
 	}
 }

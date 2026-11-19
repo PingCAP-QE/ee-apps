@@ -56,6 +56,16 @@ type HTTPError struct {
 	Message string
 }
 
+type HTTPErrorForbidden struct {
+	Code    int
+	Message string
+}
+
+type HTTPErrorInternalServerError struct {
+	Code    int
+	Message string
+}
+
 // HotfixTagResult is the result type of the hotfix service bump-tag-for-tidbx
 // method.
 type HotfixTagResult struct {
@@ -103,4 +113,38 @@ func (e *HTTPError) ErrorName() string {
 // GoaErrorName returns the error name.
 func (e *HTTPError) GoaErrorName() string {
 	return "BadRequest"
+}
+
+// Error returns an error description.
+func (e *HTTPErrorForbidden) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *HTTPErrorForbidden) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *HTTPErrorForbidden) GoaErrorName() string {
+	return "Forbidden"
+}
+
+// Error returns an error description.
+func (e *HTTPErrorInternalServerError) Error() string {
+	return ""
+}
+
+// ErrorName returns the error name.
+//
+// Deprecated: Use GoaErrorName - https://github.com/goadesign/goa/issues/3105
+func (e *HTTPErrorInternalServerError) ErrorName() string {
+	return e.GoaErrorName()
+}
+
+// GoaErrorName returns the error name.
+func (e *HTTPErrorInternalServerError) GoaErrorName() string {
+	return "InternalServerError"
 }

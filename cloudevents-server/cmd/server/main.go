@@ -25,7 +25,7 @@ func main() {
 		configFile string
 	)
 
-	flag.StringVar(&ginMode, "mode", gin.DebugMode, "server run mode")
+	flag.StringVar(&ginMode, "mode", gin.ReleaseMode, "server run mode (release|test|debug)")
 	flag.StringVar(&serveAddr, "addr", "0.0.0.0:80", "server run addr")
 	flag.StringVar(&configFile, "config", "config.yaml", "Path to the config yaml file")
 	flag.Parse()

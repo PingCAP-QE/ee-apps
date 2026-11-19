@@ -18,14 +18,23 @@ import (
 func newTiUPServiceForTest(t *testing.T, cfg config.Publish) *publishsrvc {
 	t.Helper()
 	svc, _ := newFlowTestService(t)
+	// The OCI publish source fails closed; cases here are about the planner, so
+	// the fixture allows the registries its golden artifacts live in.
+	if len(cfg.OCISourceAllowedHosts) == 0 {
+		cfg.OCISourceAllowedHosts = []string{"us-docker.pkg.dev", "hub.pingcap.net", "docker.io"}
+	}
 	svc.publishCfg = cfg
 	cases := loadGoldenCases(t)
-	svc.fetchConfig = func(ctx context.Context, artifactURL string) (map[string]any, string, time.Time, error) {
+	svc.fetchConfig = func(ctx context.Context, artifactURL string) (tiupArtifact, error) {
 		c, ok := cases[artifactURL]
 		if !ok {
-			return nil, "", time.Time{}, errors.New("unexpected artifact " + artifactURL)
+			return tiupArtifact{}, errors.New("unexpected artifact " + artifactURL)
 		}
-		return c.ArtifactConfig, "sha256:1111111111111111111111111111111111111111111111111111111111111111", time.Time{}, nil
+		return tiupArtifact{
+			Config:    c.ArtifactConfig,
+			Digest:    "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			CreatedAt: time.Time{},
+		}, nil
 	}
 	return svc
 }

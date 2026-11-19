@@ -160,19 +160,20 @@ func TestIssueUnauthorized(t *testing.T) {
 	}
 }
 
-func TestIssueFallbackPAT(t *testing.T) {
+// A configured fallback_pat must not answer a narrowed request. The payload
+// asks for one repository and one permission level; a static PAT is neither
+// narrowed nor scoped, so returning it would be a privilege escalation dressed
+// up as availability.
+func TestIssueIgnoresFallbackPAT(t *testing.T) {
 	minter := &fakeMinter{err: githubapp.ErrNoInstallation}
 	svc := newService(testConfig(t, "read", "pat-token"), minter, nil)
 
-	result, err := svc.Issue(callerContext(), &tokenapi.TokenPayload{Repo: "example-org/example-repo"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	_, err := svc.Issue(callerContext(), &tokenapi.TokenPayload{Repo: "example-org/example-repo"})
+	if err == nil {
+		t.Fatal("want an error, got a fallback token")
 	}
-	if result.Token != "pat-token" || result.Source != "pat" {
-		t.Fatalf("unexpected result: %#v", result)
-	}
-	if result.ExpiresAt == nil {
-		t.Fatal("expected an expiry for the PAT fallback")
+	if gerr := serviceError(t, err); gerr.Name != "not_found" {
+		t.Fatalf("error name = %q, want not_found", gerr.Name)
 	}
 }
 

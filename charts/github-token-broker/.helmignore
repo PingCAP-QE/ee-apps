@@ -21,3 +21,5 @@
 .idea/
 *.tmproj
 .vscode/
+# Local Go rendering checks are not Helm resources.
+tests/

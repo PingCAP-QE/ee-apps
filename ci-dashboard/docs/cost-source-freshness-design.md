@@ -61,11 +61,30 @@ all importer dimensions or identical monetary facts.
 `aws_split_cost_v1`, `aws_tidb_cloud_f04_v1` and other unverified profiles retain
 account-wide source dates **only as diagnostics**. The mart lacks split lineage
 and F04's `usedby=prod-us-west-2-f04` tenant boundary. These rows are
-`scope_unverified` (diagnostic only, neither failed nor healthy), pending an
-authorized stable source with that exact scope. Account-wide date differences
-must not trigger import-delay alerts for these profiles. Local
-summary-to-attribution mismatches can still be reported
-as real failures. Expiring `_stage_*` tables are never scheduled sources.
+`scope_unverified` (diagnostic only, neither failed nor healthy) **only when
+local data is recent and summary/attribution agree**, pending an authorized
+stable source with that exact scope. Account-wide date differences must not
+trigger import-delay alerts for these profiles. Independent local safeguards
+still fail at MEDIUM severity:
+
+- `local_data_stale`: the account's local summary usage date is more than **7 UTC
+  calendar days** old, even if attribution has caught up to that same old date.
+  Exactly seven days is within the allowance.
+- `local_data_missing`: no local summary exists in the bounded observation
+  window, including when an old latest date rolls out of the 14-day window.
+  A recent attribution without summary also fails; it is not a new-source grace case.
+- Existing summary-to-attribution missing/mismatched dates remain failures.
+
+For a never-imported profile with neither local summary nor attribution, an
+explicit `source_available_from` in the future or within the past seven days
+gets `waiting_import_lag`. At day eight it must alert; a missing availability
+date does not authorize indefinite silence. Inactive sources and explicit
+confirmed-dormancy exclusions retain their existing behavior. The messages
+state local staleness/absence and unverified upstream scope, not a proven
+F04-specific source-to-import delay; operators must confirm stalled ingestion
+versus legitimate no consumption. No additional DB/cloud queries, broader scan
+windows, or automatic repairs are introduced. Expiring `_stage_*` tables are
+never scheduled sources.
 
 Tencent uses its billing API, not BigQuery. Its row is explicitly `non_bigquery`
 and is not added to the healthy comparison count. Unknown vendors/profiles
@@ -157,8 +176,10 @@ empty query or changing `cost_sources.is_active` from this job.
 The Lark notifier sends only when an evaluated check fails, whether or not
 BigQuery comparison is enabled. Messages contain one summary and one short line
 per failure, with the affected account, delay and allowance/excess where known.
-Healthy accounts, exclusions, pending eligibility and scope diagnostics are not
-sent; full watermarks, profiles, date windows and errors remain in job logs.
+Healthy accounts, exclusions, pending eligibility and recent scope diagnostics
+are not sent. An unverified profile's stale/empty local data is an evaluated
+failure and is sent; full watermarks, profiles, date windows and errors remain
+in job logs.
 Structured rows exist only in the returned in-process `Report.cost_sources`;
 the CLI does not persist or expose them. Use job logs for rollout verification.
 `FRESHNESS_DRY_RUN` still performs the bounded reads, prints the concise alert

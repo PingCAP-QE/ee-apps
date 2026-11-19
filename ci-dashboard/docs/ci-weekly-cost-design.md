@@ -45,6 +45,33 @@ cumulative series uses its account's active plan basis and is labeled
 Cost values are normalized to USD before comparison. This keeps GCP list cost
 and Tencent net cost comparable to their USD budget amounts.
 
+## Weekly calendar and billing delay
+
+CI and QA Weekly share the [Sunday-through-Saturday UTC report calendar](weekly-cost-design.md#calendar-and-data-contract).
+The previous complete week is the seven dates immediately before the current
+Sunday, and the preceding week is its WoW baseline. On Sunday the report advances
+to the week ending the day before; on Saturday the current week remains excluded.
+For UTC Tuesday `2026-11-17`, the report week is `2026-11-08`–`2026-11-14`, the
+baseline is `2026-11-01`–`2026-11-07`, and the previous natural month stays
+`2026-10-01`–`2026-10-31`.
+
+Use these boundaries for account actuals and prorated budgets, utilization,
+eight-week spend/budget history, team/repository shares, and categories in every
+progressive section. Budget-period cumulative charts group their existing
+plan-start-through-today data into Sunday-based weeks, keeping partial edge
+buckets. Monthly/daily scopes, source selection, currency conversion, cost bases,
+API field names, and generic Cost/CI analytics weekly buckets remain unchanged.
+No schema migration, fact rewrite, backfill, or stored snapshot is needed;
+historical weeks regroup existing daily facts at read time. Deploy/rollback the
+app as usual; old and new weekly aggregates use different date ranges.
+
+The earlier cutoff adds one day of billing-arrival buffer for Tuesday Beijing
+time review. T+3 is not a finality guarantee, especially before Tuesday 08:00
+Beijing time (still Monday UTC) or before the next import. Both Weekly pages
+show the UTC week and a delayed-billing notice; retain the category panel's
+missing-date warnings. Never claim missing dates are verified zero spend or
+shift/shorten a fixed report week based on available data.
+
 ## Progressive loading
 
 The UI requests `GET /api/v1/pages/ci-weekly-cost` in three stages:
@@ -71,7 +98,7 @@ for measurements and post-deployment checks.
 ## Presentation contract
 
 The Overall panel has a GCP list cost block and a Tencent net cost block.
-Each contains one equal-height row of **Previous calendar week** and
+Each contains one equal-height row of **Previous reporting week** and
 **Previous calendar month** spend cards, **Last week's budget utilization** and
 **Previous month's budget utilization** gauges, and a cumulative chart that
 fills the remaining row width. The cost basis appears only in the block title.
@@ -110,7 +137,7 @@ lifetime has not been established.
 
 Category grouping is a deterministic, mutually exclusive SQL CASE on
 `cost_attribution_daily`, scoped to the two fixed accounts and the report's
-last complete calendar week. It is not team attribution or a pure label-based
+last complete Sunday-through-Saturday UTC week. It is not team attribution or a pure label-based
 classification:
 
 - GCP native `gke_direct` / `gke_residual` allocation scopes identify GKE first;
@@ -166,6 +193,10 @@ Focused checks cover that:
 - progressive request ordering, visible top panels while lower requests are
   pending, independent errors, and request cancellation on navigation;
 - section queries skip unrelated work and match the full report's amounts;
+- CI/QA/report/trend/allocation dates agree across Saturday/Sunday rollover and
+  month/year transitions; Sunday and Saturday facts reconcile the latest history
+  bucket with summary/account/share/category totals, the following Sunday is
+  excluded, and natural-month totals retain their existing scope;
 - category classification precedence, fixed account/date scope, USD conversion,
   reconciliation, small/negative amounts, and missing billing dates;
 - two category pies appear at the bottom, the strict >1% cutoff retains the

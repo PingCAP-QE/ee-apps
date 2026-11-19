@@ -39,12 +39,22 @@ securityContext:
 service:
   type: ClusterIP
   port: 80
+  # Additional Service port, exposed only when server.tls.enabled is true.
+  httpsPort: 443
 
 server:
   address: ":8080"
   readTimeout: 10s
   writeTimeout: 30s
   shutdownTimeout: 10s
+  # Optional additional HTTPS listener. HTTP/probes/metrics remain unchanged.
+  tls:
+    enabled: false
+    port: 8443
+    # Required when enabled; mount an existing TLS Secret as a directory.
+    existingSecret: ""
+    certKey: tls.crt
+    keyKey: tls.key
 
 logLevel: info
 

@@ -9,8 +9,6 @@
 package server
 
 import (
-	"unicode/utf8"
-
 	devbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -22,13 +20,6 @@ type CreateRequestBody struct {
 	CreatedBy *string `form:"createdBy,omitempty" json:"createdBy,omitempty" xml:"createdBy,omitempty"`
 	// Build to create, only spec field is required, others are ignored
 	Request *DevBuildSpecRequestBody `form:"request,omitempty" json:"request,omitempty" xml:"request,omitempty"`
-}
-
-// UpdateRequestBody is the type of the "devbuild" service "update" endpoint
-// HTTP request body.
-type UpdateRequestBody struct {
-	// Status to update
-	Status *DevBuildStatusRequestBody `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
 }
 
 // ListResponseBody is the type of the "devbuild" service "list" endpoint HTTP
@@ -56,16 +47,6 @@ type CreateResponseBody struct {
 // GetResponseBody is the type of the "devbuild" service "get" endpoint HTTP
 // response body.
 type GetResponseBody struct {
-	ID          int                              `form:"id" json:"id" xml:"id"`
-	Meta        *DevBuildMetaResponseBody        `form:"meta" json:"meta" xml:"meta"`
-	Spec        *DevBuildSpecResponseBody        `form:"spec" json:"spec" xml:"spec"`
-	Status      *DevBuildStatusResponseBody      `form:"status" json:"status" xml:"status"`
-	Permissions *DevBuildPermissionsResponseBody `form:"permissions,omitempty" json:"permissions,omitempty" xml:"permissions,omitempty"`
-}
-
-// UpdateResponseBody is the type of the "devbuild" service "update" endpoint
-// HTTP response body.
-type UpdateResponseBody struct {
 	ID          int                              `form:"id" json:"id" xml:"id"`
 	Meta        *DevBuildMetaResponseBody        `form:"meta" json:"meta" xml:"meta"`
 	Spec        *DevBuildSpecResponseBody        `form:"spec" json:"spec" xml:"spec"`
@@ -111,6 +92,13 @@ type CreateBadRequestResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// CreateForbiddenResponseBody is the type of the "devbuild" service "create"
+// endpoint HTTP response body for the "Forbidden" error.
+type CreateForbiddenResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
 // CreateInternalServerErrorResponseBody is the type of the "devbuild" service
 // "create" endpoint HTTP response body for the "InternalServerError" error.
 type CreateInternalServerErrorResponseBody struct {
@@ -135,20 +123,6 @@ type GetInternalServerErrorResponseBody struct {
 // GetNotFoundResponseBody is the type of the "devbuild" service "get" endpoint
 // HTTP response body for the "NotFound" error.
 type GetNotFoundResponseBody struct {
-	Code    int    `form:"code" json:"code" xml:"code"`
-	Message string `form:"message" json:"message" xml:"message"`
-}
-
-// UpdateInternalServerErrorResponseBody is the type of the "devbuild" service
-// "update" endpoint HTTP response body for the "InternalServerError" error.
-type UpdateInternalServerErrorResponseBody struct {
-	Code    int    `form:"code" json:"code" xml:"code"`
-	Message string `form:"message" json:"message" xml:"message"`
-}
-
-// UpdateNotFoundResponseBody is the type of the "devbuild" service "update"
-// endpoint HTTP response body for the "NotFound" error.
-type UpdateNotFoundResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -436,78 +410,6 @@ type DevBuildSpecRequestBody struct {
 	Version           *string `form:"version,omitempty" json:"version,omitempty" xml:"version,omitempty"`
 }
 
-// DevBuildStatusRequestBody is used to define fields on request body types.
-type DevBuildStatusRequestBody struct {
-	BuildReport      *BuildReportRequestBody  `form:"buildReport,omitempty" json:"buildReport,omitempty" xml:"buildReport,omitempty"`
-	ErrMsg           *string                  `form:"errMsg,omitempty" json:"errMsg,omitempty" xml:"errMsg,omitempty"`
-	PipelineBuildID  *int                     `form:"pipelineBuildID,omitempty" json:"pipelineBuildID,omitempty" xml:"pipelineBuildID,omitempty"`
-	PipelineStartAt  *string                  `form:"pipelineStartAt,omitempty" json:"pipelineStartAt,omitempty" xml:"pipelineStartAt,omitempty"`
-	PipelineEndAt    *string                  `form:"pipelineEndAt,omitempty" json:"pipelineEndAt,omitempty" xml:"pipelineEndAt,omitempty"`
-	PipelineViewURL  *string                  `form:"pipelineViewURL,omitempty" json:"pipelineViewURL,omitempty" xml:"pipelineViewURL,omitempty"`
-	PipelineViewURLs []string                 `form:"pipelineViewURLs,omitempty" json:"pipelineViewURLs,omitempty" xml:"pipelineViewURLs,omitempty"`
-	Status           *string                  `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
-	TektonStatus     *TektonStatusRequestBody `form:"tektonStatus,omitempty" json:"tektonStatus,omitempty" xml:"tektonStatus,omitempty"`
-}
-
-// BuildReportRequestBody is used to define fields on request body types.
-type BuildReportRequestBody struct {
-	Binaries       []*BinArtifactRequestBody   `form:"binaries,omitempty" json:"binaries,omitempty" xml:"binaries,omitempty"`
-	GitHash        *string                     `form:"gitHash,omitempty" json:"gitHash,omitempty" xml:"gitHash,omitempty"`
-	Images         []*ImageArtifactRequestBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	PluginGitHash  *string                     `form:"pluginGitHash,omitempty" json:"pluginGitHash,omitempty" xml:"pluginGitHash,omitempty"`
-	PrintedVersion *string                     `form:"printedVersion,omitempty" json:"printedVersion,omitempty" xml:"printedVersion,omitempty"`
-}
-
-// BinArtifactRequestBody is used to define fields on request body types.
-type BinArtifactRequestBody struct {
-	Component     *string             `form:"component,omitempty" json:"component,omitempty" xml:"component,omitempty"`
-	OciFile       *OciFileRequestBody `form:"ociFile,omitempty" json:"ociFile,omitempty" xml:"ociFile,omitempty"`
-	Platform      *string             `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	Sha256OCIFile *OciFileRequestBody `form:"sha256OCIFile,omitempty" json:"sha256OCIFile,omitempty" xml:"sha256OCIFile,omitempty"`
-	Sha256URL     *string             `form:"sha256URL,omitempty" json:"sha256URL,omitempty" xml:"sha256URL,omitempty"`
-	URL           *string             `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
-}
-
-// OciFileRequestBody is used to define fields on request body types.
-type OciFileRequestBody struct {
-	File *string `form:"file,omitempty" json:"file,omitempty" xml:"file,omitempty"`
-	Repo *string `form:"repo,omitempty" json:"repo,omitempty" xml:"repo,omitempty"`
-	Tag  *string `form:"tag,omitempty" json:"tag,omitempty" xml:"tag,omitempty"`
-}
-
-// ImageArtifactRequestBody is used to define fields on request body types.
-type ImageArtifactRequestBody struct {
-	Platform    *string `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	URL         *string `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
-	InternalURL *string `form:"internalURL,omitempty" json:"internalURL,omitempty" xml:"internalURL,omitempty"`
-}
-
-// TektonStatusRequestBody is used to define fields on request body types.
-type TektonStatusRequestBody struct {
-	Pipelines        []*TektonPipelineRequestBody `form:"pipelines,omitempty" json:"pipelines,omitempty" xml:"pipelines,omitempty"`
-	TriggersEventIDs []string                     `form:"triggersEventIDs,omitempty" json:"triggersEventIDs,omitempty" xml:"triggersEventIDs,omitempty"`
-}
-
-// TektonPipelineRequestBody is used to define fields on request body types.
-type TektonPipelineRequestBody struct {
-	Name         *string                     `form:"name,omitempty" json:"name,omitempty" xml:"name,omitempty"`
-	Namespace    *string                     `form:"namespace,omitempty" json:"namespace,omitempty" xml:"namespace,omitempty"`
-	Status       *string                     `form:"status,omitempty" json:"status,omitempty" xml:"status,omitempty"`
-	StartAt      *string                     `form:"startAt,omitempty" json:"startAt,omitempty" xml:"startAt,omitempty"`
-	EndAt        *string                     `form:"endAt,omitempty" json:"endAt,omitempty" xml:"endAt,omitempty"`
-	Images       []*ImageArtifactRequestBody `form:"images,omitempty" json:"images,omitempty" xml:"images,omitempty"`
-	OciArtifacts []*OciArtifactRequestBody   `form:"ociArtifacts,omitempty" json:"ociArtifacts,omitempty" xml:"ociArtifacts,omitempty"`
-	Platform     *string                     `form:"platform,omitempty" json:"platform,omitempty" xml:"platform,omitempty"`
-	URL          *string                     `form:"url,omitempty" json:"url,omitempty" xml:"url,omitempty"`
-}
-
-// OciArtifactRequestBody is used to define fields on request body types.
-type OciArtifactRequestBody struct {
-	Files []string `form:"files,omitempty" json:"files,omitempty" xml:"files,omitempty"`
-	Repo  *string  `form:"repo,omitempty" json:"repo,omitempty" xml:"repo,omitempty"`
-	Tag   *string  `form:"tag,omitempty" json:"tag,omitempty" xml:"tag,omitempty"`
-}
-
 // NewListResponseBody builds the HTTP response body from the result of the
 // "list" endpoint of the "devbuild" service.
 func NewListResponseBody(res []*devbuild.DevBuild) ListResponseBody {
@@ -593,27 +495,6 @@ func NewGetResponseBody(res *devbuild.DevBuild) *GetResponseBody {
 	return body
 }
 
-// NewUpdateResponseBody builds the HTTP response body from the result of the
-// "update" endpoint of the "devbuild" service.
-func NewUpdateResponseBody(res *devbuild.DevBuild) *UpdateResponseBody {
-	body := &UpdateResponseBody{
-		ID: res.ID,
-	}
-	if res.Meta != nil {
-		body.Meta = marshalDevbuildDevBuildMetaToDevBuildMetaResponseBody(res.Meta)
-	}
-	if res.Spec != nil {
-		body.Spec = marshalDevbuildDevBuildSpecToDevBuildSpecResponseBody(res.Spec)
-	}
-	if res.Status != nil {
-		body.Status = marshalDevbuildDevBuildStatusToDevBuildStatusResponseBody(res.Status)
-	}
-	if res.Permissions != nil {
-		body.Permissions = marshalDevbuildDevBuildPermissionsToDevBuildPermissionsResponseBody(res.Permissions)
-	}
-	return body
-}
-
 // NewRerunResponseBody builds the HTTP response body from the result of the
 // "rerun" endpoint of the "devbuild" service.
 func NewRerunResponseBody(res *devbuild.DevBuild) *RerunResponseBody {
@@ -675,6 +556,16 @@ func NewCreateBadRequestResponseBody(res *devbuild.DevBuildBadRequestError) *Cre
 	return body
 }
 
+// NewCreateForbiddenResponseBody builds the HTTP response body from the result
+// of the "create" endpoint of the "devbuild" service.
+func NewCreateForbiddenResponseBody(res *devbuild.DevBuildForbiddenError) *CreateForbiddenResponseBody {
+	body := &CreateForbiddenResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewCreateInternalServerErrorResponseBody builds the HTTP response body from
 // the result of the "create" endpoint of the "devbuild" service.
 func NewCreateInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerError) *CreateInternalServerErrorResponseBody {
@@ -709,26 +600,6 @@ func NewGetInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerE
 // the "get" endpoint of the "devbuild" service.
 func NewGetNotFoundResponseBody(res *devbuild.DevBuildNotFoundError) *GetNotFoundResponseBody {
 	body := &GetNotFoundResponseBody{
-		Code:    res.Code,
-		Message: res.Message,
-	}
-	return body
-}
-
-// NewUpdateInternalServerErrorResponseBody builds the HTTP response body from
-// the result of the "update" endpoint of the "devbuild" service.
-func NewUpdateInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerError) *UpdateInternalServerErrorResponseBody {
-	body := &UpdateInternalServerErrorResponseBody{
-		Code:    res.Code,
-		Message: res.Message,
-	}
-	return body
-}
-
-// NewUpdateNotFoundResponseBody builds the HTTP response body from the result
-// of the "update" endpoint of the "devbuild" service.
-func NewUpdateNotFoundResponseBody(res *devbuild.DevBuildNotFoundError) *UpdateNotFoundResponseBody {
-	body := &UpdateNotFoundResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}
@@ -814,16 +685,6 @@ func NewGetPayload(id int) *devbuild.GetPayload {
 	return v
 }
 
-// NewUpdatePayload builds a devbuild service update endpoint payload.
-func NewUpdatePayload(body *UpdateRequestBody, id int, dryrun bool) *devbuild.UpdatePayload {
-	v := &devbuild.UpdatePayload{}
-	v.Status = unmarshalDevBuildStatusRequestBodyToDevbuildDevBuildStatus(body.Status)
-	v.ID = id
-	v.Dryrun = dryrun
-
-	return v
-}
-
 // NewRerunPayload builds a devbuild service rerun endpoint payload.
 func NewRerunPayload(id int, dryrun bool) *devbuild.RerunPayload {
 	v := &devbuild.RerunPayload{}
@@ -843,19 +704,6 @@ func ValidateCreateRequestBody(body *CreateRequestBody) (err error) {
 	}
 	if body.Request != nil {
 		if err2 := ValidateDevBuildSpecRequestBody(body.Request); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	return
-}
-
-// ValidateUpdateRequestBody runs the validations defined on UpdateRequestBody
-func ValidateUpdateRequestBody(body *UpdateRequestBody) (err error) {
-	if body.Status == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
-	}
-	if body.Status != nil {
-		if err2 := ValidateDevBuildStatusRequestBody(body.Status); err2 != nil {
 			err = goa.MergeErrors(err, err2)
 		}
 	}
@@ -893,197 +741,6 @@ func ValidateDevBuildSpecRequestBody(body *DevBuildSpecRequestBody) (err error) 
 		if !(*body.Product == "dm" || *body.Product == "enterprise-plugin" || *body.Product == "ng-monitoring" || *body.Product == "pd" || *body.Product == "ticdc" || *body.Product == "ticdc-newarch" || *body.Product == "tici" || *body.Product == "tidb" || *body.Product == "br" || *body.Product == "dumpling" || *body.Product == "tidb-lightning" || *body.Product == "tidb-binlog" || *body.Product == "drainer" || *body.Product == "pump" || *body.Product == "tidb-dashboard" || *body.Product == "tidb-operator" || *body.Product == "tidb-tools" || *body.Product == "tiflash" || *body.Product == "tikv" || *body.Product == "tiproxy" || *body.Product == "tidb-cse" || *body.Product == "pd-cse" || *body.Product == "tidb-operator-cse" || *body.Product == "cassandra-on-mysql" || *body.Product == "qdrant-on-tidb") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.product", *body.Product, []any{"dm", "enterprise-plugin", "ng-monitoring", "pd", "ticdc", "ticdc-newarch", "tici", "tidb", "br", "dumpling", "tidb-lightning", "tidb-binlog", "drainer", "pump", "tidb-dashboard", "tidb-operator", "tidb-tools", "tiflash", "tikv", "tiproxy", "tidb-cse", "pd-cse", "tidb-operator-cse", "cassandra-on-mysql", "qdrant-on-tidb"}))
 		}
-	}
-	return
-}
-
-// ValidateDevBuildStatusRequestBody runs the validations defined on
-// DevBuildStatusRequestBody
-func ValidateDevBuildStatusRequestBody(body *DevBuildStatusRequestBody) (err error) {
-	if body.Status == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
-	}
-	if body.BuildReport != nil {
-		if err2 := ValidateBuildReportRequestBody(body.BuildReport); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	if body.PipelineStartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineStartAt", *body.PipelineStartAt, goa.FormatDateTime))
-	}
-	if body.PipelineEndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineEndAt", *body.PipelineEndAt, goa.FormatDateTime))
-	}
-	if body.PipelineViewURL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURL", *body.PipelineViewURL, goa.FormatURI))
-	}
-	for _, e := range body.PipelineViewURLs {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.pipelineViewURLs[*]", e, goa.FormatURI))
-	}
-	if body.Status != nil {
-		if !(*body.Status == "PENDING" || *body.Status == "PROCESSING" || *body.Status == "ABORTED" || *body.Status == "SUCCESS" || *body.Status == "FAILURE" || *body.Status == "ERROR") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"PENDING", "PROCESSING", "ABORTED", "SUCCESS", "FAILURE", "ERROR"}))
-		}
-	}
-	if body.TektonStatus != nil {
-		if err2 := ValidateTektonStatusRequestBody(body.TektonStatus); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	return
-}
-
-// ValidateBuildReportRequestBody runs the validations defined on
-// BuildReportRequestBody
-func ValidateBuildReportRequestBody(body *BuildReportRequestBody) (err error) {
-	for _, e := range body.Binaries {
-		if e != nil {
-			if err2 := ValidateBinArtifactRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
-	if body.GitHash != nil {
-		if utf8.RuneCountInString(*body.GitHash) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.gitHash", *body.GitHash, utf8.RuneCountInString(*body.GitHash), 40, false))
-		}
-	}
-	for _, e := range body.Images {
-		if e != nil {
-			if err2 := ValidateImageArtifactRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
-	if body.PluginGitHash != nil {
-		if utf8.RuneCountInString(*body.PluginGitHash) > 40 {
-			err = goa.MergeErrors(err, goa.InvalidLengthError("body.pluginGitHash", *body.PluginGitHash, utf8.RuneCountInString(*body.PluginGitHash), 40, false))
-		}
-	}
-	return
-}
-
-// ValidateBinArtifactRequestBody runs the validations defined on
-// BinArtifactRequestBody
-func ValidateBinArtifactRequestBody(body *BinArtifactRequestBody) (err error) {
-	if body.OciFile != nil {
-		if err2 := ValidateOciFileRequestBody(body.OciFile); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	if body.Sha256OCIFile != nil {
-		if err2 := ValidateOciFileRequestBody(body.Sha256OCIFile); err2 != nil {
-			err = goa.MergeErrors(err, err2)
-		}
-	}
-	if body.Sha256URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.sha256URL", *body.Sha256URL, goa.FormatURI))
-	}
-	if body.URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
-	}
-	return
-}
-
-// ValidateOciFileRequestBody runs the validations defined on OciFileRequestBody
-func ValidateOciFileRequestBody(body *OciFileRequestBody) (err error) {
-	if body.File == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("file", "body"))
-	}
-	if body.Repo == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("repo", "body"))
-	}
-	if body.Tag == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("tag", "body"))
-	}
-	return
-}
-
-// ValidateImageArtifactRequestBody runs the validations defined on
-// ImageArtifactRequestBody
-func ValidateImageArtifactRequestBody(body *ImageArtifactRequestBody) (err error) {
-	if body.Platform == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("platform", "body"))
-	}
-	if body.URL == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("url", "body"))
-	}
-	return
-}
-
-// ValidateTektonStatusRequestBody runs the validations defined on
-// TektonStatusRequestBody
-func ValidateTektonStatusRequestBody(body *TektonStatusRequestBody) (err error) {
-	if body.Pipelines == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("pipelines", "body"))
-	}
-	for _, e := range body.Pipelines {
-		if e != nil {
-			if err2 := ValidateTektonPipelineRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
-	for _, e := range body.TriggersEventIDs {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.triggersEventIDs[*]", e, goa.FormatUUID))
-	}
-	return
-}
-
-// ValidateTektonPipelineRequestBody runs the validations defined on
-// TektonPipelineRequestBody
-func ValidateTektonPipelineRequestBody(body *TektonPipelineRequestBody) (err error) {
-	if body.Name == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("name", "body"))
-	}
-	if body.Namespace == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("namespace", "body"))
-	}
-	if body.Status == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("status", "body"))
-	}
-	if body.Status != nil {
-		if !(*body.Status == "Started" || *body.Status == "Running" || *body.Status == "Succeeded" || *body.Status == "Failed" || *body.Status == "Cancelled" || *body.Status == "Skipped" || *body.Status == "TimedOut" || *body.Status == "ExceededNodeResources") {
-			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.status", *body.Status, []any{"Started", "Running", "Succeeded", "Failed", "Cancelled", "Skipped", "TimedOut", "ExceededNodeResources"}))
-		}
-	}
-	if body.StartAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.startAt", *body.StartAt, goa.FormatDateTime))
-	}
-	if body.EndAt != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.endAt", *body.EndAt, goa.FormatDateTime))
-	}
-	for _, e := range body.Images {
-		if e != nil {
-			if err2 := ValidateImageArtifactRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
-	for _, e := range body.OciArtifacts {
-		if e != nil {
-			if err2 := ValidateOciArtifactRequestBody(e); err2 != nil {
-				err = goa.MergeErrors(err, err2)
-			}
-		}
-	}
-	if body.URL != nil {
-		err = goa.MergeErrors(err, goa.ValidateFormat("body.url", *body.URL, goa.FormatURI))
-	}
-	return
-}
-
-// ValidateOciArtifactRequestBody runs the validations defined on
-// OciArtifactRequestBody
-func ValidateOciArtifactRequestBody(body *OciArtifactRequestBody) (err error) {
-	if body.Files == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("files", "body"))
-	}
-	if body.Repo == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("repo", "body"))
-	}
-	if body.Tag == nil {
-		err = goa.MergeErrors(err, goa.MissingFieldError("tag", "body"))
 	}
 	return
 }

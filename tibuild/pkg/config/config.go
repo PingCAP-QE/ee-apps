@@ -24,6 +24,58 @@ type Service struct {
 	DevBuild DevBuild `yaml:"devbuild,omitempty" json:"devbuild,omitempty"`
 	// Tidbcloud holds the TiDB Cloud ops and TCMS integration configuration.
 	Tidbcloud Tidbcloud `yaml:"tidbcloud,omitempty" json:"tidbcloud,omitempty"`
+	// Hotfix configures the hot-fix tag endpoints.
+	Hotfix Hotfix `yaml:"hotfix,omitempty" json:"hotfix,omitempty"`
+	// Identity configures how a request gets a principal.
+	Identity Identity `yaml:"identity,omitempty" json:"identity,omitempty"`
+	// Authorization configures whether mutations are authorized.
+	Authorization Authorization `yaml:"authorization,omitempty" json:"authorization,omitempty"`
+}
+
+// Hotfix configures the hot-fix tag endpoints.
+type Hotfix struct {
+	// GithubRepoAllowlist lists the repositories a hot-fix git tag may be
+	// created in, as "<owner>/<repo>" or "<owner>/*"; matching is
+	// case-insensitive.
+	//
+	// A tag is a write into a repository consumers release from, and the
+	// repository comes from the request, so an unset list denies every
+	// repository rather than allowing any. Hot-reloadable.
+	GithubRepoAllowlist []string `yaml:"github_repo_allowlist,omitempty" json:"github_repo_allowlist,omitempty"`
+}
+
+// Identity configures how the service derives a principal from a request.
+//
+// Authentication is the Gateway's job. What the service has to decide is
+// whether it may believe the X-User-* headers. It may not until the Gateway
+// strips client values and injects verified claims, so TrustedHeaders stays
+// false by default and the service uses ServiceIdentity for requests that carry
+// no trusted user.
+type Identity struct {
+	// TrustedHeaders accepts the identity headers as a principal. Turn this on
+	// only once nothing but the Gateway can reach the service and it writes
+	// those headers from claims it verified; otherwise any pod can choose which
+	// colleague it claims to be.
+	TrustedHeaders bool `yaml:"trusted_headers,omitempty" json:"trusted_headers,omitempty"`
+	// ServiceIdentity is the principal used when no trusted user is present.
+	// It keeps automation working without letting a caller impersonate a
+	// person, and it is what a build's createdBy becomes until trusted headers
+	// are available.
+	ServiceIdentity string `yaml:"service_identity,omitempty" json:"service_identity,omitempty"`
+	// ServiceName is the display name recorded alongside ServiceIdentity.
+	ServiceName string `yaml:"service_name,omitempty" json:"service_name,omitempty"`
+}
+
+// Authorization configures whether mutations are authorized.
+type Authorization struct {
+	// Mode is "off", "observe" or "enforce". Observe records what would be
+	// denied and lets the request through; enforce denies it. The rollout is
+	// observe in the cluster, then enforce.
+	Mode string `yaml:"mode,omitempty" json:"mode,omitempty"`
+	// AllowPrincipals lists who may mutate: exact email addresses or
+	// "*@domain" patterns. An empty list allows nobody, so the check is
+	// fail-closed.
+	AllowPrincipals []string `yaml:"allow_principals,omitempty" json:"allow_principals,omitempty"`
 }
 
 // DevBuild configures the devbuild request policy.
@@ -34,9 +86,10 @@ type DevBuild struct {
 	// matched: tags and digests are not restricted. A trailing slash is
 	// optional and matching is case-insensitive.
 	//
-	// Empty (the default) disables the check, which keeps the previous
-	// behaviour: any valid image reference is accepted. Hot-reloadable:
-	// changes take effect without a restart.
+	// The check is fail-closed: an empty list (the default) rejects every
+	// caller-supplied builderImg, so only the image the artifacts config pins
+	// for the component is used. Listing a namespace enables overrides inside
+	// it. Hot-reloadable: changes take effect without a restart.
 	BuilderImageAllowedRepositories []string `yaml:"builder_image_allowed_repositories,omitempty" json:"builder_image_allowed_repositories,omitempty"`
 
 	// GithubRepoAllowlist lists the GitHub repositories an explicit devbuild
@@ -56,6 +109,13 @@ type DevBuild struct {
 
 // Tidbcloud configures the TiDB Cloud ops and TCMS integrations.
 type Tidbcloud struct {
+	// KernelImageAllowedRepositories lists the repositories a kernel-image sync
+	// may name, as "host/path" with an optional "/*" suffix (for example
+	// "hub.pingcap.net/pingcap/*"). The ops platform pulls whatever repository
+	// it is given, so an unset list rejects every sync rather than allowing any
+	// registry. Hot-reloadable.
+	KernelImageAllowedRepositories []string `yaml:"kernel_image_allowed_repositories,omitempty" json:"kernel_image_allowed_repositories,omitempty"`
+
 	// OpsConfigFile points at the ops platform config (stages, API keys and
 	// the component catalogue). The file is mounted from a Secret, so the
 	// keys never appear in this document.
@@ -94,6 +154,20 @@ type Publish struct {
 	// PingCAP-QE/artifacts), mounted by the deployment. The rules are reloaded
 	// when the file changes, so a Flux sync takes effect without a restart.
 	DeliveryConfigPath string `yaml:"delivery_config_path,omitempty" json:"delivery_config_path,omitempty"`
+	// OCISourceAllowedHosts is the registry-host allowlist for a TiUP publish
+	// source that is an OCI reference (`artifact_url` of
+	// POST /publish/tiup/publish-request).
+	//
+	// Pinning a tag or digest fixes *what* is published, not *where it is read
+	// from*: the worker pulls the artifact with its own registry credentials, so
+	// an unvalidated host is a fetch primitive against any registry the process
+	// can reach. The list therefore fails closed — unset rejects every OCI
+	// source.
+	//
+	// Entries are registry hosts ("hub.pingcap.net"); a leading "*." also allows
+	// subdomains. Matching is case-insensitive.
+	OCISourceAllowedHosts []string `yaml:"oci_source_allowed_hosts,omitempty" json:"oci_source_allowed_hosts,omitempty"`
+
 	// Targets restricts which publish targets this worker claims, for example
 	// ["gcr.io", "docker.io"] in GCP and ["uhub.service.ucloud.cn"] in TKE.
 	// Empty falls back to worker.targets.
