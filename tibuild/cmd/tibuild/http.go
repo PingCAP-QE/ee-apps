@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -22,13 +23,15 @@ import (
 	tidbcloudsvr "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/http/tidbcloud/server"
 	publish "github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/publish"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/tidbcloud"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/authz"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/identity"
+	"github.com/rs/zerolog"
 )
 
 // handleHTTPServer starts configures and starts a HTTP server on the given
 // URL. It shuts down the server if any error is received in the error channel.
-func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifact.Endpoints, devbuildEndpoints *devbuild.Endpoints, hotfixEndpoints *hotfix.Endpoints, publishEndpoints *publish.Endpoints, tidbcloudEndpoints *tidbcloud.Endpoints, identityHeaders config.IdentityHeaders, wg *sync.WaitGroup, errc chan error, dbg bool) {
+func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifact.Endpoints, devbuildEndpoints *devbuild.Endpoints, hotfixEndpoints *hotfix.Endpoints, publishEndpoints *publish.Endpoints, tidbcloudEndpoints *tidbcloud.Endpoints, identityHeaders config.IdentityHeaders, identityCfg config.Identity, authorizationCfg config.Authorization, wg *sync.WaitGroup, errc chan error, dbg bool) {
 
 	// Provide the transport specific request decoder and response encoder.
 	// The goa http package has built-in support for JSON, XML and gob.
@@ -85,10 +88,25 @@ func handleHTTPServer(ctx context.Context, u *url.URL, artifactEndpoints *artifa
 	mux.Handle("GET", "/livez", check)
 
 	var handler http.Handler = mux
-	handler = identity.Middleware(identity.Headers{
+
+	// Authorization runs inside identity so that it sees the principal the
+	// middleware resolved. Both sit inside the Gateway, which remains the only
+	// authentication layer: this pair decides what a request may do here, not
+	// who it is.
+	authzLogger := zerolog.New(os.Stderr).With().Timestamp().Str("component", "authz").Logger()
+	handler = authz.Policy{
+		Mode:            authz.Mode(authorizationCfg.Mode),
+		AllowPrincipals: authorizationCfg.AllowPrincipals,
+		Logger:          &authzLogger,
+	}.Middleware(handler)
+	handler = identity.NewMiddleware(identity.Headers{
 		UserID:    identityHeaders.UserID,
 		UserEmail: identityHeaders.UserEmail,
 		UserName:  identityHeaders.UserName,
+	}, identity.Policy{
+		TrustHeaders:    identityCfg.TrustedHeaders,
+		ServiceIdentity: identityCfg.ServiceIdentity,
+		ServiceName:     identityCfg.ServiceName,
 	})(handler)
 	if dbg {
 		// Log query and response bodies if debug logs are enabled.

@@ -26,6 +26,30 @@ identity_headers:
   user_email: "X-User-Email"
   user_name: "X-User-Name"
 
+# Authentication belongs to the Gateway. These two blocks decide whether this
+# process believes the identity headers and whether it authorizes mutations.
+identity:
+  # Only enable after the Gateway strips client-supplied X-User-* headers and
+  # injects verified claims. While false a header value is recorded for audit
+  # and never becomes a principal, so nobody can pick which colleague to be.
+  trusted_headers: false
+  # Principal assumed for a request that carries no trusted user. Leave it empty
+  # unless you accept that every anonymous request acts as this identity: with a
+  # value here, authorization can no longer tell automation from an untrusted
+  # caller, because both look the same. It is a transitional convenience for a
+  # cluster whose callers are all automation, not a substitute for the Gateway
+  # identity normalizer.
+  service_identity: ""
+  service_name: ""
+
+authorization:
+  # off: legacy behaviour; observe: log what would be denied; enforce: deny it.
+  # Roll out as observe, watch the logs, then enforce.
+  mode: "observe"
+  # Who may mutate: exact addresses or "*@domain" patterns. Empty allows nobody.
+  allow_principals:
+    - "*@pingcap.com"
+
 jenkins:
   url: "https://<jenkins-url>"
   username: "your-jenkins-account"
