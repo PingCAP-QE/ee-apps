@@ -213,28 +213,6 @@ var _ = Service("devbuild", func() {
 		})
 	})
 
-	Method("update", func() {
-		Description("Update devbuild status")
-		Payload(func() {
-			Attribute("id", Int, "ID of build", func() {
-				Example(1)
-			})
-			Attribute("status", DevBuildStatus, "Status to update")
-			Attribute("dryrun", Boolean, "Dry run", func() {
-				Default(false)
-			})
-			Required("id", "status")
-		})
-		Result(DevBuild)
-		HTTP(func() {
-			PUT("/{id}")
-			Param("dryrun")
-			Response(StatusOK)
-			Response("NotFound", StatusNotFound)
-			Response("InternalServerError", StatusInternalServerError)
-		})
-	})
-
 	Method("rerun", func() {
 		Description("Rerun devbuild")
 		Payload(func() {

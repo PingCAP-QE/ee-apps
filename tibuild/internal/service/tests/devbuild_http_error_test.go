@@ -37,6 +37,21 @@ func newDevbuildHTTPHandler(svc devbuild.Service) http.Handler {
 	return mux
 }
 
+// Build state is written by the reconciler, not by callers: the update route
+// must not exist at all. A 401/403 would mean the route is still mounted.
+func TestDevbuildHTTP_UpdateRouteIsGone(t *testing.T) {
+	env := setupTestEnv(t)
+	defer teardownTestEnv(env)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v2/devbuilds/123", strings.NewReader(`{"status":{"status":"SUCCESS"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	newDevbuildHTTPHandler(env.service).ServeHTTP(rec, req)
+
+	assert.Contains(t, []int{http.StatusNotFound, http.StatusMethodNotAllowed}, rec.Code,
+		"body: %s", rec.Body.String())
+}
+
 func postJSON(handler http.Handler, target, body string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	var req *http.Request
@@ -108,12 +123,7 @@ func TestDevbuildHTTP_DeniedRerunIsForbidden(t *testing.T) {
 
 	// Only terminal builds can be rerun; the deny check must be reached instead
 	// of the earlier "not terminal" guard.
-	terminal := devbuild.BuildStatus("FAILURE")
-	_, err = env.service.Update(context.Background(), &devbuild.UpdatePayload{
-		ID:     created.ID,
-		Status: &devbuild.DevBuildStatus{Status: terminal},
-	})
-	require.NoError(t, err)
+	setBuildStatus(t, env, created.ID, "FAILURE")
 
 	// The repository is removed from the allowlist afterwards.
 	env.cfg.DevBuild.GithubRepoAllowlist = []string{"pingcap/pd"}

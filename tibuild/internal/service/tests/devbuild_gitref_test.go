@@ -177,12 +177,7 @@ func TestRerunReusesStoredGitHash(t *testing.T) {
 	require.NotNil(t, created.Spec.GitHash)
 	require.Equal(t, expectedSHA, *created.Spec.GitHash)
 
-	terminal := devbuild.BuildStatus("SUCCESS")
-	_, err = env.service.Update(ctx, &devbuild.UpdatePayload{
-		ID:     created.ID,
-		Status: &devbuild.DevBuildStatus{Status: terminal},
-	})
-	require.NoError(t, err)
+	setBuildStatus(t, env, created.ID, "SUCCESS")
 
 	// Make GitHub unavailable: rerun must not need it when the SHA is stored.
 	env.github.setFailStatus(500)
@@ -311,12 +306,7 @@ func TestRerunReportsTriggerFailure(t *testing.T) {
 	created, err := env.service.Create(ctx, gitRefCreatePayload(creator, "branch/master", false))
 	require.NoError(t, err)
 
-	terminal := devbuild.BuildStatus("SUCCESS")
-	_, err = env.service.Update(ctx, &devbuild.UpdatePayload{
-		ID:     created.ID,
-		Status: &devbuild.DevBuildStatus{Status: terminal},
-	})
-	require.NoError(t, err)
+	setBuildStatus(t, env, created.ID, "SUCCESS")
 
 	// A closed listener forces the CloudEvent delivery to fail.
 	env.cloudEventServer.Close()

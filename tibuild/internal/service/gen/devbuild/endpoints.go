@@ -20,7 +20,6 @@ type Endpoints struct {
 	Capabilities goa.Endpoint
 	Create       goa.Endpoint
 	Get          goa.Endpoint
-	Update       goa.Endpoint
 	Rerun        goa.Endpoint
 }
 
@@ -31,7 +30,6 @@ func NewEndpoints(s Service) *Endpoints {
 		Capabilities: NewCapabilitiesEndpoint(s),
 		Create:       NewCreateEndpoint(s),
 		Get:          NewGetEndpoint(s),
-		Update:       NewUpdateEndpoint(s),
 		Rerun:        NewRerunEndpoint(s),
 	}
 }
@@ -42,7 +40,6 @@ func (e *Endpoints) Use(m func(goa.Endpoint) goa.Endpoint) {
 	e.Capabilities = m(e.Capabilities)
 	e.Create = m(e.Create)
 	e.Get = m(e.Get)
-	e.Update = m(e.Update)
 	e.Rerun = m(e.Rerun)
 }
 
@@ -78,15 +75,6 @@ func NewGetEndpoint(s Service) goa.Endpoint {
 	return func(ctx context.Context, req any) (any, error) {
 		p := req.(*GetPayload)
 		return s.Get(ctx, p)
-	}
-}
-
-// NewUpdateEndpoint returns an endpoint function that calls the method
-// "update" of service "devbuild".
-func NewUpdateEndpoint(s Service) goa.Endpoint {
-	return func(ctx context.Context, req any) (any, error) {
-		p := req.(*UpdatePayload)
-		return s.Update(ctx, p)
 	}
 }
 
