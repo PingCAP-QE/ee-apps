@@ -24,7 +24,7 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	// Reload, so a bad list here is a construction bug: keep the previous
 	// snapshot rather than widening the policy to "allow everything".
 	if policy, err := newDevbuildPolicy(cfg); err != nil {
-		s.logger.Err(err).Msg("invalid devbuild github_repo_allowlist on reload, keeping the previous policy")
+		s.logger.Err(err).Msg("invalid devbuild policy on reload, keeping the previous policy")
 	} else {
 		s.policy.Store(policy)
 	}

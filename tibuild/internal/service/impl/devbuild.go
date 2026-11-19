@@ -91,7 +91,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service, registerer prometh
 	// silently accepting them.
 	policy, err := newDevbuildPolicy(cfg)
 	if err != nil {
-		logger.Err(err).Msg("invalid devbuild github_repo_allowlist, explicit githubRepo values will be rejected")
+		logger.Err(err).Msg("invalid devbuild policy, the affected allowlist rejects explicit values")
 	}
 	srvc.policy.Store(policy)
 

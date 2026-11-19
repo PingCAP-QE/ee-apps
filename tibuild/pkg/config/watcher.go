@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -322,6 +324,11 @@ func (w *Watcher) reloadLocked(initial bool) (ReloadResult, []ReloadHandler) {
 		w.observe(res, initial)
 		return res, nil
 	}
+	if unknown := unknownConfigKeys(data); unknown != "" {
+		w.opts.Logger.Warn().
+			Str("unknown_keys", unknown).
+			Msg("config has keys this build does not define; they are ignored")
+	}
 	values := flattenDocument(data)
 
 	if previous != nil {
@@ -496,6 +503,25 @@ func diffDocuments(previous, next map[string]string) []string {
 	}
 	sort.Strings(changed)
 	return changed
+}
+
+// unknownConfigKeys names the keys a document carries that the Service schema
+// does not define. The normal decode stays lenient, because a new deployment
+// must not fail to start over an extra key; but a typo in a security knob
+// silently turning a policy off is worse than a log line, so surface it.
+func unknownConfigKeys(data []byte) string {
+	var strict Service
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	err := decoder.Decode(&strict)
+	if err == nil {
+		return ""
+	}
+	var typeErr *yaml.TypeError
+	if errors.As(err, &typeErr) {
+		return strings.Join(typeErr.Errors, "; ")
+	}
+	return err.Error()
 }
 
 // flattenDocument maps every leaf of the raw YAML to its dotted path. It is used

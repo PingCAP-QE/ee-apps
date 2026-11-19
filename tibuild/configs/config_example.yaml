@@ -72,9 +72,12 @@ devbuild:
   #   - ghcr.io/pingcap-qe
   #   - hub.pingcap.net/pingcap
   #   - us-docker.pkg.dev/pingcap-testing-account
-  # Only the repository is matched; tags and digests are not restricted. A
-  # trailing slash is optional and matching is case-insensitive. Empty
-  # disables the check: any valid image reference is accepted.
+  # Only the repository is matched; tags and digests are not restricted.
+  # Entries are validated on load and rejected when they can never match: use
+  # a registry-qualified namespace (write `docker.io/pingcap`, not `pingcap`),
+  # with no tag, digest or wildcard. A trailing slash is optional and matching
+  # is case-insensitive. Empty disables the check: any valid image reference is
+  # accepted.
   # Hot-reloadable: changes take effect without a restart.
   builder_image_allowed_repositories: []
 

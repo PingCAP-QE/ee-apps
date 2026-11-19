@@ -115,8 +115,10 @@ func (e *allowlistTestEnv) count(t *testing.T) int {
 // what a config reload does.
 func (e *allowlistTestEnv) setBuilderImages(t *testing.T, images []string) {
 	t.Helper()
+	allow, err := config.NewBuilderImageAllowlist(images)
+	require.NoError(t, err)
 	current := *e.service.currentPolicy()
-	current.builderImageAllowlist = images
+	current.builderImageAllowlist = allow
 	e.service.policy.Store(&current)
 }
 

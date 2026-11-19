@@ -6,17 +6,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
 func TestValidateBuilderImage(t *testing.T) {
-	configured := []string{
-		"ghcr.io/pingcap-qe",
-		"hub.pingcap.net/pingcap/",
-		"us-docker.pkg.dev/pingcap-testing-account",
-	}
+	configured := mustBuilderImageAllow(t, "ghcr.io/pingcap-qe", "hub.pingcap.net/pingcap/", "us-docker.pkg.dev/pingcap-testing-account")
+	empty := config.BuilderImageAllowlist{}
 
 	t.Run("an empty image keeps meaning the artifacts config decides", func(t *testing.T) {
-		require.NoError(t, validateBuilderImage(nil, ""))
+		require.NoError(t, validateBuilderImage(empty, ""))
 		require.NoError(t, validateBuilderImage(configured, ""))
 	})
 
@@ -33,7 +31,7 @@ func TestValidateBuilderImage(t *testing.T) {
 			"GHCR.IO/PINGCAP-QE/cd/utils/release:v1",
 			"ghcr.io/pingcap-qe/x@sha256:short",
 		} {
-			for _, allowed := range [][]string{nil, configured} {
+			for _, allowed := range []config.BuilderImageAllowlist{empty, configured} {
 				err := validateBuilderImage(allowed, image)
 				require.Error(t, err, "image %q should be rejected", image)
 				var badRequest *devbuild.DevBuildBadRequestError
@@ -52,8 +50,8 @@ func TestValidateBuilderImage(t *testing.T) {
 			"example.com/anything:v1",
 			"golang:1.24.2",
 		} {
-			require.NoError(t, validateBuilderImage(nil, image), "image %q should be accepted", image)
-			require.NoError(t, validateBuilderImage([]string{}, image), "image %q should be accepted", image)
+			require.NoError(t, validateBuilderImage(empty, image), "image %q should be accepted", image)
+			require.NoError(t, validateBuilderImage(config.BuilderImageAllowlist{}, image), "image %q should be accepted", image)
 		}
 	})
 
@@ -95,4 +93,13 @@ func TestValidateBuilderImage(t *testing.T) {
 			require.Equal(t, 400, badRequest.Code)
 		}
 	})
+}
+
+// mustBuilderImageAllow builds an allowlist for the table tests and fails when
+// an entry is invalid, which is what the config loader guarantees.
+func mustBuilderImageAllow(t *testing.T, entries ...string) config.BuilderImageAllowlist {
+	t.Helper()
+	allow, err := config.NewBuilderImageAllowlist(entries)
+	require.NoError(t, err)
+	return allow
 }
