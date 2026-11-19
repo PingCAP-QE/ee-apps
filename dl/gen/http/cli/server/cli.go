@@ -15,6 +15,7 @@ import (
 
 	gcsc "github.com/PingCAP-QE/ee-apps/dl/gen/http/gcs/client"
 	ocic "github.com/PingCAP-QE/ee-apps/dl/gen/http/oci/client"
+	sharesc "github.com/PingCAP-QE/ee-apps/dl/gen/http/shares/client"
 	goahttp "goa.design/goa/v3/http"
 	goa "goa.design/goa/v3/pkg"
 )
@@ -26,13 +27,25 @@ func UsageCommands() []string {
 	return []string{
 		"oci (list-files|download-file|head-file|download-file-sha256)",
 		"gcs (download-object|head-object)",
+		"shares (create|show|revoke)",
 	}
 }
 
 // UsageExamples produces an example of a valid invocation of the CLI tool.
 func UsageExamples() string {
-	return os.Args[0] + ` oci list-files --repository "Nam quibusdam recusandae dolor voluptas." --tag "Ex nisi dolor itaque ullam eum."` + "\n" +
-		os.Args[0] + ` gcs download-object --bucket "Tenetur minima." --key "Nemo sint perferendis quam repudiandae."` + "\n" +
+	return os.Args[0] + ` oci list-files --repository "Dolorum ex et ipsam consequuntur." --tag "Qui dolorum sit ea."` + "\n" +
+		os.Args[0] + ` gcs download-object --bucket "Velit odio sapiente et." --key "Et eum inventore deleniti et."` + "\n" +
+		os.Args[0] + ` shares create --body '{
+      "artifact": {
+         "file": "leg",
+         "repository": "phc",
+         "tag": "ujw"
+      },
+      "customer_id": "nyw",
+      "expires_in_seconds": 86400,
+      "max_sessions": 5,
+      "purpose": "customer-delivery"
+   }' --authorization "Velit quia saepe."` + "\n" +
 		""
 }
 
@@ -78,6 +91,20 @@ func ParseEndpoint(
 		gcsHeadObjectFlags      = flag.NewFlagSet("head-object", flag.ExitOnError)
 		gcsHeadObjectBucketFlag = gcsHeadObjectFlags.String("bucket", "REQUIRED", "bucket name")
 		gcsHeadObjectKeyFlag    = gcsHeadObjectFlags.String("key", "REQUIRED", "object key")
+
+		sharesFlags = flag.NewFlagSet("shares", flag.ContinueOnError)
+
+		sharesCreateFlags             = flag.NewFlagSet("create", flag.ExitOnError)
+		sharesCreateBodyFlag          = sharesCreateFlags.String("body", "REQUIRED", "")
+		sharesCreateAuthorizationFlag = sharesCreateFlags.String("authorization", "REQUIRED", "")
+
+		sharesShowFlags             = flag.NewFlagSet("show", flag.ExitOnError)
+		sharesShowIDFlag            = sharesShowFlags.String("id", "REQUIRED", "")
+		sharesShowAuthorizationFlag = sharesShowFlags.String("authorization", "REQUIRED", "")
+
+		sharesRevokeFlags             = flag.NewFlagSet("revoke", flag.ExitOnError)
+		sharesRevokeIDFlag            = sharesRevokeFlags.String("id", "REQUIRED", "")
+		sharesRevokeAuthorizationFlag = sharesRevokeFlags.String("authorization", "REQUIRED", "")
 	)
 	ociFlags.Usage = ociUsage
 	ociListFilesFlags.Usage = ociListFilesUsage
@@ -88,6 +115,11 @@ func ParseEndpoint(
 	gcsFlags.Usage = gcsUsage
 	gcsDownloadObjectFlags.Usage = gcsDownloadObjectUsage
 	gcsHeadObjectFlags.Usage = gcsHeadObjectUsage
+
+	sharesFlags.Usage = sharesUsage
+	sharesCreateFlags.Usage = sharesCreateUsage
+	sharesShowFlags.Usage = sharesShowUsage
+	sharesRevokeFlags.Usage = sharesRevokeUsage
 
 	if err := flag.CommandLine.Parse(os.Args[1:]); err != nil {
 		return nil, nil, err
@@ -108,6 +140,8 @@ func ParseEndpoint(
 			svcf = ociFlags
 		case "gcs":
 			svcf = gcsFlags
+		case "shares":
+			svcf = sharesFlags
 		default:
 			return nil, nil, fmt.Errorf("unknown service %q", svcn)
 		}
@@ -146,6 +180,19 @@ func ParseEndpoint(
 
 			case "head-object":
 				epf = gcsHeadObjectFlags
+
+			}
+
+		case "shares":
+			switch epn {
+			case "create":
+				epf = sharesCreateFlags
+
+			case "show":
+				epf = sharesShowFlags
+
+			case "revoke":
+				epf = sharesRevokeFlags
 
 			}
 
@@ -195,6 +242,19 @@ func ParseEndpoint(
 				endpoint = c.HeadObject()
 				data, err = gcsc.BuildHeadObjectPayload(*gcsHeadObjectBucketFlag, *gcsHeadObjectKeyFlag)
 			}
+		case "shares":
+			c := sharesc.NewClient(scheme, host, doer, enc, dec, restore)
+			switch epn {
+			case "create":
+				endpoint = c.Create()
+				data, err = sharesc.BuildCreatePayload(*sharesCreateBodyFlag, *sharesCreateAuthorizationFlag)
+			case "show":
+				endpoint = c.Show()
+				data, err = sharesc.BuildShowPayload(*sharesShowIDFlag, *sharesShowAuthorizationFlag)
+			case "revoke":
+				endpoint = c.Revoke()
+				data, err = sharesc.BuildRevokePayload(*sharesRevokeIDFlag, *sharesRevokeAuthorizationFlag)
+			}
 		}
 	}
 	if err != nil {
@@ -235,7 +295,7 @@ func ociListFilesUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "Nam quibusdam recusandae dolor voluptas." --tag "Ex nisi dolor itaque ullam eum."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci list-files --repository "Dolorum ex et ipsam consequuntur." --tag "Qui dolorum sit ea."`)
 }
 
 func ociDownloadFileUsage() {
@@ -285,7 +345,7 @@ func ociHeadFileUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci head-file --repository "Eligendi aut vero et neque odit." --tag "At aperiam laboriosam odio ut quam." --file "Assumenda aliquam est et aut." --file-regex "en4.*"`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci head-file --repository "Est sunt a architecto." --tag "Modi molestias accusamus ullam incidunt velit corrupti." --file "Incidunt molestiae ut atque maxime." --file-regex "l6i.*"`)
 }
 
 func ociDownloadFileSha256Usage() {
@@ -308,7 +368,7 @@ func ociDownloadFileSha256Usage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file-sha256 --repository "Iste dolorem quasi eos." --file "Quo hic." --tag "Qui perferendis non."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `oci download-file-sha256 --repository "Asperiores qui placeat." --file "Numquam velit quibusdam." --tag "Quis ullam."`)
 }
 
 // gcsUsage displays the usage of the gcs command and its subcommands.
@@ -340,7 +400,7 @@ func gcsDownloadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs download-object --bucket "Tenetur minima." --key "Nemo sint perferendis quam repudiandae."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs download-object --bucket "Velit odio sapiente et." --key "Et eum inventore deleniti et."`)
 }
 
 func gcsHeadObjectUsage() {
@@ -361,5 +421,90 @@ func gcsHeadObjectUsage() {
 	// Example block: pass example as parameter to avoid format parsing of % characters
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs head-object --bucket "Et eveniet magni quasi consequatur esse et." --key "Quas alias recusandae nulla minus ea dolorem."`)
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `gcs head-object --bucket "Rerum laborum in." --key "Qui sint nihil tenetur natus."`)
+}
+
+// sharesUsage displays the usage of the shares command and its subcommands.
+func sharesUsage() {
+	fmt.Fprintln(os.Stderr, `Trusted delivery grant management; mount only in management mode`)
+	fmt.Fprintf(os.Stderr, "Usage:\n    %s [globalflags] shares COMMAND [flags]\n\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "COMMAND:")
+	fmt.Fprintln(os.Stderr, `    create: Create implements create.`)
+	fmt.Fprintln(os.Stderr, `    show: Show implements show.`)
+	fmt.Fprintln(os.Stderr, `    revoke: Revoke implements revoke.`)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Additional help:")
+	fmt.Fprintf(os.Stderr, "    %s shares COMMAND --help\n", os.Args[0])
+}
+func sharesCreateUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] shares create", os.Args[0])
+	fmt.Fprint(os.Stderr, " -body JSON")
+	fmt.Fprint(os.Stderr, " -authorization STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Create implements create.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -body JSON: `)
+	fmt.Fprintln(os.Stderr, `    -authorization STRING: `)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `shares create --body '{
+      "artifact": {
+         "file": "leg",
+         "repository": "phc",
+         "tag": "ujw"
+      },
+      "customer_id": "nyw",
+      "expires_in_seconds": 86400,
+      "max_sessions": 5,
+      "purpose": "customer-delivery"
+   }' --authorization "Velit quia saepe."`)
+}
+
+func sharesShowUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] shares show", os.Args[0])
+	fmt.Fprint(os.Stderr, " -id STRING")
+	fmt.Fprint(os.Stderr, " -authorization STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Show implements show.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -id STRING: `)
+	fmt.Fprintln(os.Stderr, `    -authorization STRING: `)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `shares show --id "f2ff6f94-8736-437a-8ff8-90867a9f7996" --authorization "Nam voluptates illum nesciunt officiis voluptas laudantium."`)
+}
+
+func sharesRevokeUsage() {
+	// Header with flags
+	fmt.Fprintf(os.Stderr, "%s [flags] shares revoke", os.Args[0])
+	fmt.Fprint(os.Stderr, " -id STRING")
+	fmt.Fprint(os.Stderr, " -authorization STRING")
+	fmt.Fprintln(os.Stderr)
+
+	// Description
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, `Revoke implements revoke.`)
+
+	// Flags list
+	fmt.Fprintln(os.Stderr, `    -id STRING: `)
+	fmt.Fprintln(os.Stderr, `    -authorization STRING: `)
+
+	// Example block: pass example as parameter to avoid format parsing of % characters
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Example:")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], `shares revoke --id "e8dfa7f4-cfbf-4aa9-be19-921888551caa" --authorization "Et nam illum rem fugiat."`)
 }
