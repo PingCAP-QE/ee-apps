@@ -68,7 +68,7 @@ func Public(s *share.Service, limits Limits) http.Handler {
 			fail(w, http.StatusServiceUnavailable)
 			return
 		}
-		issuer := s.Config.Issuer(g.IssuedBy)
+		issuer := s.Policy().Issuer(g.IssuedBy)
 		if issuer == nil || !issuer.Allows(g.Repository, g.SourceTag) {
 			s.Metrics.Denied.Add(1)
 			s.Record(g.ID, "authorize", "denied", 0)

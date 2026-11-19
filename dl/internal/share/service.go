@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -29,12 +30,36 @@ type Service struct {
 	Config  *Config
 	Logger  *log.Logger
 	Metrics Metrics
+
+	configMu sync.RWMutex
+}
+
+// Policy returns the currently loaded policy. The result is immutable:
+// ReloadConfig swaps the pointer instead of mutating it.
+func (s *Service) Policy() *Config {
+	s.configMu.RLock()
+	defer s.configMu.RUnlock()
+	return s.Config
+}
+
+// ReloadConfig re-reads the policy file and swaps it in. An invalid document is
+// rejected without touching the running configuration, so a bad edit cannot
+// break issuance. In-flight calls keep using the policy they started with.
+func (s *Service) ReloadConfig(filename string) error {
+	cfg, err := LoadConfig(filename)
+	if err != nil {
+		return err
+	}
+	s.configMu.Lock()
+	s.Config = cfg
+	s.configMu.Unlock()
+	return nil
 }
 
 type principalKey struct{}
 
 func (s *Service) APIKeyAuth(ctx context.Context, key string, _ *security.APIKeyScheme) (context.Context, error) {
-	p := s.Config.Authenticate(key)
+	p := s.Policy().Authenticate(key)
 	if p == nil {
 		s.Metrics.Denied.Add(1)
 		return ctx, api.MakeUnauthorized(errors.New("invalid issuer credentials"))
@@ -95,7 +120,7 @@ func (s *Service) Create(ctx context.Context, p *api.CreatePayload) (*api.Share,
 	}
 	s.Metrics.Issued.Add(1)
 	result := result(g)
-	downloadURL := s.Config.PublicURL + "/d/" + token
+	downloadURL := s.Policy().PublicURL + "/d/" + token
 	result.DownloadURL = &downloadURL
 	return result, nil
 }
