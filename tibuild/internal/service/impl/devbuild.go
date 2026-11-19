@@ -401,6 +401,14 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		}
 	}
 
+	// The builder image is replayed verbatim from the record, so it needs the
+	// same treatment as the repository: an image that has since left the
+	// allowlist, or that predates the policy, must not run again. An empty
+	// value keeps meaning "the artifacts config pins the image".
+	if err := validateBuilderImage(s.builderImageAllowlist, existingBuild.BuilderImg); err != nil {
+		return nil, err
+	}
+
 	// Reuse the stored SHA when possible; legacy rows with an empty gitHash are
 	// resolved once here so a rerun never triggers an empty revision.
 	refInfo := gitRefInfoFromRecord(existingBuild)
