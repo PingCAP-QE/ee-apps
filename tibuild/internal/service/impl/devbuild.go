@@ -35,8 +35,8 @@ type devbuildsrvc struct {
 	// the whole snapshot so handlers read one consistent revision without a
 	// lock.
 	policy atomic.Pointer[devbuildPolicy]
-	// repoMetrics counts githubRepo policy denials by surface.
-	repoMetrics            *devbuildRepoMetrics
+	// policyMetrics counts githubRepo policy denials by surface.
+	policyMetrics          *devbuildPolicyMetrics
 	ghClient               *github.Client
 	tektonCloudEventClient cloudevents.Client
 	dashboardAPIURL        string
@@ -83,7 +83,7 @@ func NewDevbuild(logger *zerolog.Logger, cfg *config.Service, registerer prometh
 		ociFileDownloadURL:     strings.TrimRight(cfg.Tekton.OciFileDownloadURL, "/"),
 		reconcilerSince:        reconcilerSince,
 		httpClient:             &http.Client{Timeout: 30 * time.Second},
-		repoMetrics:            newDevbuildRepoMetrics(registerer),
+		policyMetrics:          newDevbuildPolicyMetrics(registerer),
 	}
 	// The configuration watcher validates the list before any revision is
 	// applied, so an unbuildable list here means a programmatic construction
@@ -404,6 +404,9 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 	// allowlist, or that predates the policy, must not run again. An empty
 	// value keeps meaning "the artifacts config pins the image".
 	if err := validateBuilderImage(policy.builderImageAllowlist, existingBuild.BuilderImg); err != nil {
+		if isAllowlistDenied(err) {
+			s.recordBuilderImageDenied("rerun", existingBuild.BuilderImg, existingBuild.Product, existingBuild.CreatedBy)
+		}
 		return nil, err
 	}
 
