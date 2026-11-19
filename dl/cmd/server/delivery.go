@@ -61,6 +61,10 @@ func runDelivery(mode, address, healthAddress, configFile string, ociFile *strin
 		go reload.WatchFile(ctx, *ociFile, logger, func() error { return reloader.Reload(ctx, *ociFile) })
 	}
 	svc := &share.Service{Store: store, Backend: share.OCIBackend{Provider: provider}, Config: cfg, Logger: logger}
+	// Policy edits (issuer rotation, scope and TTL changes) are picked up without
+	// a rollout: the mounted file is refreshed by the secret projection, and this
+	// watcher swaps the policy atomically. A bad edit keeps the running policy.
+	go reload.WatchFile(ctx, configFile, logger, func() error { return svc.ReloadConfig(configFile) })
 	var handler http.Handler
 	if mode == "public" {
 		handler = delivery.Public(svc, limits)
