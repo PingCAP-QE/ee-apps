@@ -77,12 +77,16 @@ func TestCredentialForArtifactRegistry(t *testing.T) {
 	}
 }
 
-func TestCredentialForArtifactRegistryError(t *testing.T) {
+func TestCredentialForArtifactRegistryFallsBackToAnonymous(t *testing.T) {
 	minter := &fakeMinter{err: errors.New("no identity")}
 	svc := newTestService(auth.EmptyCredential, true, minter)
 
-	if _, err := svc.credentialFor(context.Background(), "us-docker.pkg.dev"); err == nil {
-		t.Fatal("want error when the token source is unavailable")
+	cred, err := svc.credentialFor(context.Background(), "us-docker.pkg.dev")
+	if err != nil {
+		t.Fatalf("a broken identity must not fail the request: %v", err)
+	}
+	if cred != auth.EmptyCredential {
+		t.Fatalf("want anonymous fallback, got %+v", cred)
 	}
 }
 

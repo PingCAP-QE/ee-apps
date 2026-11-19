@@ -80,8 +80,12 @@ func (s *ocisrvc) credentialFor(ctx context.Context, registry string) (auth.Cred
 	}
 	cred, err := tokens.credential(ctx)
 	if err != nil {
-		s.logger.Printf("oci: artifact registry credential: %v", err)
-		return auth.EmptyCredential, err
+		// Degrade to anonymous instead of failing the request: public
+		// repositories still work, and a private repository answers 401, which
+		// the registry itself enforces. A misconfigured identity must not take
+		// every target down.
+		s.logger.Printf("oci: artifact registry credential unavailable, falling back to anonymous: %v", err)
+		return auth.EmptyCredential, nil
 	}
 	return cred, nil
 }
