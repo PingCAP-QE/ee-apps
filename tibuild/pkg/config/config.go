@@ -48,9 +48,10 @@ type DevBuild struct {
 	// matched: tags and digests are not restricted. A trailing slash is
 	// optional and matching is case-insensitive.
 	//
-	// Empty (the default) disables the check, which keeps the previous
-	// behaviour: any valid image reference is accepted. Hot-reloadable:
-	// changes take effect without a restart.
+	// The check is fail-closed: an empty list (the default) rejects every
+	// caller-supplied builderImg, so only the image the artifacts config pins
+	// for the component is used. Listing a namespace enables overrides inside
+	// it. Hot-reloadable: changes take effect without a restart.
 	BuilderImageAllowedRepositories []string `yaml:"builder_image_allowed_repositories,omitempty" json:"builder_image_allowed_repositories,omitempty"`
 
 	// GithubRepoAllowlist lists the GitHub repositories an explicit devbuild

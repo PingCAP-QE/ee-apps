@@ -43,17 +43,23 @@ func TestValidateBuilderImage(t *testing.T) {
 		}
 	})
 
-	t.Run("unconfigured allowlist accepts any valid reference", func(t *testing.T) {
-		// Backward compatibility: without a configured allowlist the request
-		// value is used as given.
+	t.Run("unconfigured allowlist rejects every override", func(t *testing.T) {
+		// Fail-closed: without a configured allowlist the caller may not replace
+		// the builder image at all, so a missing config key cannot hand an
+		// arbitrary image to the build step.
 		for _, image := range []string{
 			"docker.io/library/golang:1.24.2-bullseye",
 			"public.ecr.aws/amazonlinux/amazonlinux:2023.5.20240805.0",
 			"example.com/anything:v1",
 			"golang:1.24.2",
 		} {
-			require.NoError(t, validateBuilderImage(nil, image), "image %q should be accepted", image)
-			require.NoError(t, validateBuilderImage([]string{}, image), "image %q should be accepted", image)
+			for _, allowed := range [][]string{nil, {}} {
+				err := validateBuilderImage(allowed, image)
+				require.Error(t, err, "image %q should be rejected", image)
+				var forbidden *devbuild.DevBuildForbiddenError
+				require.ErrorAs(t, err, &forbidden)
+				require.Equal(t, 403, forbidden.Code)
+			}
 		}
 	})
 
@@ -90,9 +96,9 @@ func TestValidateBuilderImage(t *testing.T) {
 		} {
 			err := validateBuilderImage(configured, image)
 			require.Error(t, err, "image %q should be rejected", image)
-			var badRequest *devbuild.DevBuildBadRequestError
-			require.ErrorAs(t, err, &badRequest)
-			require.Equal(t, 400, badRequest.Code)
+			var forbidden *devbuild.DevBuildForbiddenError
+			require.ErrorAs(t, err, &forbidden)
+			require.Equal(t, 403, forbidden.Code)
 		}
 	})
 }

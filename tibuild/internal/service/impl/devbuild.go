@@ -401,6 +401,15 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		}
 	}
 
+	// The stored builder image goes back to the build step as well. Re-check it
+	// against the current allowlist: legacy rows predate the check, and an
+	// override that is no longer allowed must not run again.
+	if existingBuild.BuilderImg != "" {
+		if err := validateBuilderImage(s.builderImageAllowlist, existingBuild.BuilderImg); err != nil {
+			return nil, err
+		}
+	}
+
 	// Reuse the stored SHA when possible; legacy rows with an empty gitHash are
 	// resolved once here so a rerun never triggers an empty revision.
 	refInfo := gitRefInfoFromRecord(existingBuild)
