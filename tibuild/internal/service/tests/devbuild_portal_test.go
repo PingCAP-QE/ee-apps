@@ -29,8 +29,9 @@ func TestPortalDevBuildIdentityAndCapabilities(t *testing.T) {
 	assert.Equal(t, "alice@pingcap.com", created.Meta.CreatedBy)
 	assert.Nil(t, created.Spec.Version)
 
-	// An explicitly provided createdBy takes precedence over the authenticated
-	// identity, allowing a caller to attribute a build to another user.
+	// A payload createdBy never overrides the authenticated person: the value
+	// every ownership check compares against must not be attacker-controlled.
+	// Automation can still attribute a build because it carries no person.
 	explicit := "bob@pingcap.com"
 	delegated, err := env.service.Create(aliceCtx, &devbuild.CreatePayload{
 		CreatedBy: &explicit,
@@ -40,7 +41,7 @@ func TestPortalDevBuildIdentityAndCapabilities(t *testing.T) {
 		Dryrun: true,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, explicit, delegated.Meta.CreatedBy)
+	assert.Equal(t, "alice@pingcap.com", delegated.Meta.CreatedBy)
 
 	bobCtx := identity.WithUser(context.Background(), identity.User{Email: "bob@pingcap.com"})
 
@@ -48,8 +49,9 @@ func TestPortalDevBuildIdentityAndCapabilities(t *testing.T) {
 		Page: 1, PageSize: 20, Scope: "mine", Sort: "createdAt", Direction: "desc",
 	})
 	require.NoError(t, err)
-	require.Len(t, mine, 1)
+	require.Len(t, mine, 2)
 	assert.Equal(t, "alice@pingcap.com", mine[0].Meta.CreatedBy)
+	assert.Equal(t, "alice@pingcap.com", mine[1].Meta.CreatedBy)
 
 	status := devbuild.BuildStatus("SUCCESS")
 	_, err = env.service.Update(aliceCtx, &devbuild.UpdatePayload{
