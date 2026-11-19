@@ -20,18 +20,16 @@ type Client struct {
 	CapabilitiesEndpoint goa.Endpoint
 	CreateEndpoint       goa.Endpoint
 	GetEndpoint          goa.Endpoint
-	UpdateEndpoint       goa.Endpoint
 	RerunEndpoint        goa.Endpoint
 }
 
 // NewClient initializes a "devbuild" service client given the endpoints.
-func NewClient(list, capabilities, create, get, update, rerun goa.Endpoint) *Client {
+func NewClient(list, capabilities, create, get, rerun goa.Endpoint) *Client {
 	return &Client{
 		ListEndpoint:         list,
 		CapabilitiesEndpoint: capabilities,
 		CreateEndpoint:       create,
 		GetEndpoint:          get,
-		UpdateEndpoint:       update,
 		RerunEndpoint:        rerun,
 	}
 }
@@ -98,23 +96,6 @@ func (c *Client) Create(ctx context.Context, p *CreatePayload) (res *DevBuild, e
 func (c *Client) Get(ctx context.Context, p *GetPayload) (res *DevBuild, err error) {
 	var ires any
 	ires, err = c.GetEndpoint(ctx, p)
-	if err != nil {
-		return
-	}
-	return ires.(*DevBuild), nil
-}
-
-// Update calls the "update" endpoint of the "devbuild" service.
-// Update may return the following errors:
-//   - "BadRequest" (type *DevBuildBadRequestError): Bad Request
-//   - "Unauthorized" (type *DevBuildUnauthorizedError): Unauthorized
-//   - "Forbidden" (type *DevBuildForbiddenError): Forbidden
-//   - "NotFound" (type *DevBuildNotFoundError): Not Found
-//   - "InternalServerError" (type *DevBuildInternalServerError): Internal Server Error
-//   - error: internal error
-func (c *Client) Update(ctx context.Context, p *UpdatePayload) (res *DevBuild, err error) {
-	var ires any
-	ires, err = c.UpdateEndpoint(ctx, p)
 	if err != nil {
 		return
 	}

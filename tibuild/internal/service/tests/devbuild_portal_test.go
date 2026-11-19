@@ -51,11 +51,7 @@ func TestPortalDevBuildIdentityAndCapabilities(t *testing.T) {
 	require.Len(t, mine, 1)
 	assert.Equal(t, "alice@pingcap.com", mine[0].Meta.CreatedBy)
 
-	status := devbuild.BuildStatus("SUCCESS")
-	_, err = env.service.Update(aliceCtx, &devbuild.UpdatePayload{
-		ID: created.ID, Status: &devbuild.DevBuildStatus{Status: status},
-	})
-	require.NoError(t, err)
+	setBuildStatus(t, env, created.ID, "SUCCESS")
 	owned, err := env.service.Get(aliceCtx, &devbuild.GetPayload{ID: created.ID})
 	require.NoError(t, err)
 	require.NotNil(t, owned.Permissions)

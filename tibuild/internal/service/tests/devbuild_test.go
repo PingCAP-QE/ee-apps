@@ -6,11 +6,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
@@ -26,6 +28,18 @@ type testEnv struct {
 	jenkinsServer    *httptest.Server
 	github           *fakeGithub
 	service          devbuild.Service
+}
+
+// setBuildStatus writes a status straight to the store, the way the in-process
+// reconciler does. There is no HTTP update method any more, so tests that need a
+// terminal build set it through the same path production uses.
+func setBuildStatus(t *testing.T, env *testEnv, id int, status string) {
+	t.Helper()
+	db, err := ent.Open(env.cfg.Store.Driver, env.cfg.Store.DSN)
+	require.NoError(t, err)
+	defer db.Close()
+	_, err = db.DevBuild.UpdateOneID(id).SetStatus(status).SetUpdatedAt(time.Now()).Save(context.Background())
+	require.NoError(t, err)
 }
 
 func setupTestEnv(t *testing.T, configure ...func(*config.Service)) *testEnv {
@@ -180,35 +194,6 @@ func TestDevBuildCRUD(t *testing.T) {
 		assert.Equal(t, created.ID, build.ID)
 	})
 
-	t.Run("Update", func(t *testing.T) {
-		// First create a build
-		createPayload := &devbuild.CreatePayload{
-			CreatedBy: stringPtr("test-user"),
-			Request: &devbuild.DevBuildSpec{
-				Product: "pd",
-				Edition: "community",
-				Version: stringPtr("v6.1.0"),
-				GitRef:  "branch/master",
-			},
-			Dryrun: true,
-		}
-
-		created, err := env.service.Create(ctx, createPayload)
-		require.NoError(t, err)
-
-		// Then update it
-		status := devbuild.BuildStatus("SUCCESS")
-		updatePayload := &devbuild.UpdatePayload{
-			ID: created.ID,
-			Status: &devbuild.DevBuildStatus{
-				Status: status,
-			},
-		}
-
-		updated, err := env.service.Update(ctx, updatePayload)
-		require.NoError(t, err)
-		assert.Equal(t, status, updated.Status.Status)
-	})
 }
 
 func TestTriggerBuild(t *testing.T) {
@@ -400,12 +385,7 @@ func TestDevBuildRerun(t *testing.T) {
 
 		created, err := env.service.Create(ctx, createPayload)
 		require.NoError(t, err)
-		terminal := devbuild.BuildStatus("SUCCESS")
-		_, err = env.service.Update(ctx, &devbuild.UpdatePayload{
-			ID:     created.ID,
-			Status: &devbuild.DevBuildStatus{Status: terminal},
-		})
-		require.NoError(t, err)
+		setBuildStatus(t, env, created.ID, "SUCCESS")
 
 		// Then rerun it
 		rerunPayload := &devbuild.RerunPayload{
@@ -448,12 +428,7 @@ func TestDevBuildRerun(t *testing.T) {
 
 		created, err := env.service.Create(ctx, createPayload)
 		require.NoError(t, err)
-		terminal := devbuild.BuildStatus("SUCCESS")
-		_, err = env.service.Update(ctx, &devbuild.UpdatePayload{
-			ID:     created.ID,
-			Status: &devbuild.DevBuildStatus{Status: terminal},
-		})
-		require.NoError(t, err)
+		setBuildStatus(t, env, created.ID, "SUCCESS")
 
 		// Then rerun it
 		rerunPayload := &devbuild.RerunPayload{

@@ -31,9 +31,6 @@ type Client struct {
 	// Get Doer is the HTTP client used to make requests to the get endpoint.
 	GetDoer goahttp.Doer
 
-	// Update Doer is the HTTP client used to make requests to the update endpoint.
-	UpdateDoer goahttp.Doer
-
 	// Rerun Doer is the HTTP client used to make requests to the rerun endpoint.
 	RerunDoer goahttp.Doer
 
@@ -61,7 +58,6 @@ func NewClient(
 		CapabilitiesDoer:    doer,
 		CreateDoer:          doer,
 		GetDoer:             doer,
-		UpdateDoer:          doer,
 		RerunDoer:           doer,
 		RestoreResponseBody: restoreBody,
 		scheme:              scheme,
@@ -152,30 +148,6 @@ func (c *Client) Get() goa.Endpoint {
 		resp, err := c.GetDoer.Do(req)
 		if err != nil {
 			return nil, goahttp.ErrRequestError("devbuild", "get", err)
-		}
-		return decodeResponse(resp)
-	}
-}
-
-// Update returns an endpoint that makes HTTP requests to the devbuild service
-// update server.
-func (c *Client) Update() goa.Endpoint {
-	var (
-		encodeRequest  = EncodeUpdateRequest(c.encoder)
-		decodeResponse = DecodeUpdateResponse(c.decoder, c.RestoreResponseBody)
-	)
-	return func(ctx context.Context, v any) (any, error) {
-		req, err := c.BuildUpdateRequest(ctx, v)
-		if err != nil {
-			return nil, err
-		}
-		err = encodeRequest(req, v)
-		if err != nil {
-			return nil, err
-		}
-		resp, err := c.UpdateDoer.Do(req)
-		if err != nil {
-			return nil, goahttp.ErrRequestError("devbuild", "update", err)
 		}
 		return decodeResponse(resp)
 	}

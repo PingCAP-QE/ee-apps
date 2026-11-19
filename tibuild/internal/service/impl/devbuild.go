@@ -20,7 +20,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	entdevbuild "github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent/predicate"
-	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/schema"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/identity"
@@ -306,62 +305,6 @@ func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (*devbui
 	}
 
 	return res, nil
-}
-
-// Update devbuild status
-func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (res *devbuild.DevBuild, err error) {
-	s.logger.Info().Msgf("devbuild.update")
-
-	updater := s.dbClient.DevBuild.UpdateOneID(p.ID)
-	if p.Status != nil {
-		updater.SetStatus(string(p.Status.Status))
-	}
-	if p.Status.TektonStatus != nil {
-		// Convert Goa TektonStatus to schema TektonStatus
-		tektonStatus := schema.TektonStatus{
-			TriggersEventIds: p.Status.TektonStatus.TriggersEventIDs,
-		}
-		// Convert pipelines if present
-		if len(p.Status.TektonStatus.Pipelines) > 0 {
-			pipelines := make([]schema.TektonPipeline, 0, len(p.Status.TektonStatus.Pipelines))
-			for _, p := range p.Status.TektonStatus.Pipelines {
-				pipeline := schema.TektonPipeline{
-					Name:     p.Name,
-					Status:   string(p.Status),
-					Platform: derefString(p.Platform),
-					URL:      derefString(p.URL),
-				}
-				if p.StartAt != nil {
-					t, err := time.Parse(time.RFC3339, *p.StartAt)
-					if err == nil {
-						pipeline.StartAt = &t
-					}
-				}
-				if p.EndAt != nil {
-					t, err := time.Parse(time.RFC3339, *p.EndAt)
-					if err == nil {
-						pipeline.EndAt = &t
-					}
-				}
-				pipelines = append(pipelines, pipeline)
-			}
-			tektonStatus.Pipelines = pipelines
-		}
-		updater.SetTektonStatus(tektonStatus)
-	}
-	updater.SetUpdatedAt(time.Now())
-
-	build, err := updater.Save(ctx)
-
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, &devbuild.DevBuildNotFoundError{Code: http.StatusNotFound, Message: "build not found"}
-		}
-		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to update build")
-		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to update build"}
-	}
-
-	return transformDevBuild(build), nil
 }
 
 // Rerun devbuild
