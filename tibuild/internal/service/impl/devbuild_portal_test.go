@@ -34,7 +34,8 @@ func TestSafeErrorSummary(t *testing.T) {
 }
 
 func TestCapabilitiesAdvertiseDarwinPlatforms(t *testing.T) {
-	srv := &devbuildsrvc{productRepoMap: map[string]string{"pd": "tikv/pd", "tidb": "pingcap/tidb"}}
+	srv := &devbuildsrvc{}
+	srv.policy.Store(&devbuildPolicy{productRepoMap: map[string]string{"pd": "tikv/pd", "tidb": "pingcap/tidb"}})
 
 	got, err := srv.Capabilities(context.Background())
 	assert.NoError(t, err)

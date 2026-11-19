@@ -18,19 +18,15 @@ func (s *devbuildsrvc) Reload(cfg *config.Service) {
 	// Update GitHub client with new token.
 	s.ghClient = NewGitHubClientWithConfig(cfg.Github)
 
-	// Update product repo and image mirror maps.
-	s.productRepoMap = cfg.ProductRepoMap
-	s.imageMirrorURLMap = cfg.ImageMirrorURLMap
-	// Update the builder image allowlist (empty disables the check).
-	s.builderImageAllowlist = cfg.DevBuild.BuilderImageAllowedRepositories
-
-	// Update the githubRepo allowlist. The watcher validates the revision before
-	// calling Reload, so a bad list here is a construction bug: keep the previous
-	// list rather than widening the policy to "allow everything".
-	if allowlist, err := config.NewRepoAllowlist(cfg.DevBuild.GithubRepoAllowlist); err != nil {
-		s.logger.Err(err).Msg("invalid devbuild github_repo_allowlist on reload, keeping the previous list")
+	// Update the request policy as one immutable snapshot. A request must never
+	// combine the new allowlist with the old maps, so the whole snapshot is
+	// replaced at once. The watcher validates the revision before calling
+	// Reload, so a bad list here is a construction bug: keep the previous
+	// snapshot rather than widening the policy to "allow everything".
+	if policy, err := newDevbuildPolicy(cfg); err != nil {
+		s.logger.Err(err).Msg("invalid devbuild github_repo_allowlist on reload, keeping the previous policy")
 	} else {
-		s.repoAllowlist.Store(&allowlist)
+		s.policy.Store(policy)
 	}
 
 	// Update Tekton dashboard URLs used for server-side API calls and user-facing links.

@@ -12,16 +12,6 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
 )
 
-// currentAllowlist returns the repository allowlist of the configuration
-// revision the service is serving. The pointer is replaced by Reload, so a
-// request never needs a lock and never sees a partially built list.
-func (s *devbuildsrvc) currentAllowlist() config.RepoAllowlist {
-	if allow := s.repoAllowlist.Load(); allow != nil {
-		return *allow
-	}
-	return config.RepoAllowlist{}
-}
-
 // checkExplicitRepo decides whether a caller-supplied repository may be used.
 //
 // A non-empty allowlist is the only judgement. An empty allowlist is still
