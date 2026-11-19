@@ -10,7 +10,10 @@ public-only server modes preserve the default internal download endpoints.
 
 ## How to design
 
-Edit [design/design.go](./design/design.go), then regenerate code:
+The Goa design lives in the [design](./design) package, one file per service:
+[design.go](./design/design.go) holds the `oci` and `gcs` download services,
+[shares.go](./design/shares.go) holds the `shares` delivery-grant management
+service. Edit the matching file, then regenerate code:
 
 ```bash
 go generate ./...
