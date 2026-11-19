@@ -13,6 +13,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/database/ent"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/identity"
 )
 
 func gitRefCreatePayload(creator, ref string, dryrun bool) *devbuild.CreatePayload {
@@ -168,8 +169,8 @@ func TestRerunReusesStoredGitHash(t *testing.T) {
 	env := setupTestEnv(t)
 	defer teardownTestEnv(env)
 
-	ctx := context.Background()
 	creator := "rerun@test"
+	ctx := identity.WithUser(context.Background(), identity.User{Email: creator})
 	expectedSHA := fakeSHA("pingcap/pd|branch/master")
 
 	created, err := env.service.Create(ctx, gitRefCreatePayload(creator, "branch/master", false))
@@ -201,8 +202,8 @@ func TestRerunResolvesLegacyEmptyGitHash(t *testing.T) {
 	env := setupTestEnv(t)
 	defer teardownTestEnv(env)
 
-	ctx := context.Background()
 	creator := "legacy@test"
+	ctx := identity.WithUser(context.Background(), identity.User{Email: creator})
 
 	db, err := ent.Open("sqlite3", env.cfg.Store.DSN)
 	require.NoError(t, err)
@@ -239,8 +240,8 @@ func TestRerunRejectsNonTerminalBuild(t *testing.T) {
 	env := setupTestEnv(t)
 	defer teardownTestEnv(env)
 
-	ctx := context.Background()
 	creator := "rerun-pending@test"
+	ctx := identity.WithUser(context.Background(), identity.User{Email: creator})
 
 	created, err := env.service.Create(ctx, gitRefCreatePayload(creator, "branch/master", false))
 	require.NoError(t, err)
@@ -257,8 +258,8 @@ func TestRerunLegacyRefUpstreamFailure(t *testing.T) {
 	env := setupTestEnv(t)
 	defer teardownTestEnv(env)
 
-	ctx := context.Background()
 	creator := "legacy-upstream@test"
+	ctx := identity.WithUser(context.Background(), identity.User{Email: creator})
 
 	db, err := ent.Open("sqlite3", env.cfg.Store.DSN)
 	require.NoError(t, err)
@@ -305,8 +306,8 @@ func TestRerunReportsTriggerFailure(t *testing.T) {
 	env := setupTestEnv(t)
 	defer teardownTestEnv(env)
 
-	ctx := context.Background()
 	creator := "rerun-trigger-failure@test"
+	ctx := identity.WithUser(context.Background(), identity.User{Email: creator})
 
 	created, err := env.service.Create(ctx, gitRefCreatePayload(creator, "branch/master", false))
 	require.NoError(t, err)

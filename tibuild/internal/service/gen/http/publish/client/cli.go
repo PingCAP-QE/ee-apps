@@ -25,7 +25,7 @@ func BuildPublishImagesPayload(publishPublishImagesBody string) (*publish.Publis
 	{
 		err = json.Unmarshal([]byte(publishPublishImagesBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifactUrl\": \"Est incidunt natus reprehenderit quaerat fuga.\",\n      \"image\": \"Aspernatur aspernatur qui esse praesentium.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifactUrl\": \"Minus voluptas consequatur labore et non eos.\",\n      \"image\": \"Ut molestias tempora quia repellat voluptate.\"\n   }'")
 		}
 	}
 	v := &publish.PublishImagesPayload{
@@ -111,7 +111,7 @@ func BuildDeliveryByRulesPayload(publishDeliveryByRulesBody string) (*publish.De
 	{
 		err = json.Unmarshal([]byte(publishDeliveryByRulesBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Ut ea sequi molestiae dolor commodi qui.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Necessitatibus magnam quis ut.\"\n   }'")
 		}
 	}
 	v := &publish.DeliveryByRulesPayload{
@@ -129,7 +129,7 @@ func BuildRequestToPublishPayload(publishRequestToPublishBody string) (*publish.
 	{
 		err = json.Unmarshal([]byte(publishRequestToPublishBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Quaerat unde voluptatem explicabo.\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"Autem exercitationem eos voluptatem.\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"artifact_url\": \"Et culpa officia dolor illum quia cum.\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"Qui repudiandae tempore necessitatibus beatae.\"\n   }'")
 		}
 		if !(body.TiupMirror == "staging" || body.TiupMirror == "prod") {
 			err = goa.MergeErrors(err, goa.InvalidEnumValueError("body.tiup_mirror", body.TiupMirror, []any{"staging", "prod"}))
@@ -155,7 +155,7 @@ func BuildRequestToPublishSinglePayload(publishRequestToPublishSingleBody string
 	{
 		err = json.Unmarshal([]byte(publishRequestToPublishSingleBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Officia repellendus quod non non.\"\n         },\n         \"oci\": {\n            \"file\": \"Soluta ducimus et minima et inventore eaque.\",\n            \"repo\": \"Debitis voluptas architecto.\",\n            \"tag\": \"Repellendus accusantium quae beatae impedit a.\"\n         },\n         \"type\": \"oci\"\n      },\n      \"publish\": {\n         \"arch\": \"Velit debitis dolorem omnis dolores culpa.\",\n         \"description\": \"Quos tempora rem ea soluta esse dolorem.\",\n         \"entry_point\": \"Qui porro iusto animi.\",\n         \"name\": \"Sit explicabo velit odio repudiandae eveniet asperiores.\",\n         \"os\": \"Impedit dicta labore.\",\n         \"standalone\": true,\n         \"version\": \"Exercitationem blanditiis ut sunt.\"\n      },\n      \"tiup_mirror\": \"staging\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Dolores culpa tempora exercitationem blanditiis ut sunt.\"\n         },\n         \"oci\": {\n            \"file\": \"Et cumque molestias provident accusantium.\",\n            \"repo\": \"Quos tempora rem ea soluta esse dolorem.\",\n            \"tag\": \"Qui porro iusto animi.\"\n         },\n         \"type\": \"oci\"\n      },\n      \"publish\": {\n         \"arch\": \"Consectetur quibusdam et soluta.\",\n         \"description\": \"Sit omnis.\",\n         \"entry_point\": \"Et et commodi eos debitis incidunt aut.\",\n         \"name\": \"Odit officiis ut veritatis.\",\n         \"os\": \"Ea voluptatem doloribus sit.\",\n         \"standalone\": true,\n         \"version\": \"Consequatur recusandae dolores vel.\"\n      },\n      \"tiup_mirror\": \"prod\"\n   }'")
 		}
 		if body.From == nil {
 			err = goa.MergeErrors(err, goa.MissingFieldError("from", "body"))

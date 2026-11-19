@@ -14,6 +14,7 @@ import (
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/gen/devbuild"
 	"github.com/PingCAP-QE/ee-apps/tibuild/internal/service/impl"
 	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/config"
+	"github.com/PingCAP-QE/ee-apps/tibuild/pkg/identity"
 
 	// Import SQLite driver
 	_ "github.com/mattn/go-sqlite3"
@@ -181,6 +182,9 @@ func TestDevBuildCRUD(t *testing.T) {
 	})
 
 	t.Run("Update", func(t *testing.T) {
+		// The build is created explicitly for test-user, so act as them.
+		ctx := identity.WithUser(ctx, identity.User{Email: "test-user"})
+
 		// First create a build
 		createPayload := &devbuild.CreatePayload{
 			CreatedBy: stringPtr("test-user"),
@@ -383,7 +387,7 @@ func TestDevBuildRerun(t *testing.T) {
 		env := setupTestEnv(t)
 		defer teardownTestEnv(env)
 
-		ctx := context.Background()
+		ctx := identity.WithUser(context.Background(), identity.User{Email: "test-user"})
 
 		// First create a build
 		createPayload := &devbuild.CreatePayload{
@@ -431,7 +435,7 @@ func TestDevBuildRerun(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 		})
 
-		ctx := context.Background()
+		ctx := identity.WithUser(context.Background(), identity.User{Email: "test-user"})
 
 		// First create a build
 		createPayload := &devbuild.CreatePayload{

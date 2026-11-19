@@ -142,6 +142,20 @@ type GetNotFoundResponseBody struct {
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
 
+// UpdateBadRequestResponseBody is the type of the "devbuild" service "update"
+// endpoint HTTP response body for the "BadRequest" error.
+type UpdateBadRequestResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// UpdateForbiddenResponseBody is the type of the "devbuild" service "update"
+// endpoint HTTP response body for the "Forbidden" error.
+type UpdateForbiddenResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
 // UpdateInternalServerErrorResponseBody is the type of the "devbuild" service
 // "update" endpoint HTTP response body for the "InternalServerError" error.
 type UpdateInternalServerErrorResponseBody struct {
@@ -152,6 +166,13 @@ type UpdateInternalServerErrorResponseBody struct {
 // UpdateNotFoundResponseBody is the type of the "devbuild" service "update"
 // endpoint HTTP response body for the "NotFound" error.
 type UpdateNotFoundResponseBody struct {
+	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
+	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
+}
+
+// UpdateUnauthorizedResponseBody is the type of the "devbuild" service
+// "update" endpoint HTTP response body for the "Unauthorized" error.
+type UpdateUnauthorizedResponseBody struct {
 	Code    *int    `form:"code,omitempty" json:"code,omitempty" xml:"code,omitempty"`
 	Message *string `form:"message,omitempty" json:"message,omitempty" xml:"message,omitempty"`
 }
@@ -714,6 +735,27 @@ func NewUpdateDevBuildOK(body *UpdateResponseBody) *devbuild.DevBuild {
 	return v
 }
 
+// NewUpdateBadRequest builds a devbuild service update endpoint BadRequest
+// error.
+func NewUpdateBadRequest(body *UpdateBadRequestResponseBody) *devbuild.DevBuildBadRequestError {
+	v := &devbuild.DevBuildBadRequestError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewUpdateForbidden builds a devbuild service update endpoint Forbidden error.
+func NewUpdateForbidden(body *UpdateForbiddenResponseBody) *devbuild.DevBuildForbiddenError {
+	v := &devbuild.DevBuildForbiddenError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
 // NewUpdateInternalServerError builds a devbuild service update endpoint
 // InternalServerError error.
 func NewUpdateInternalServerError(body *UpdateInternalServerErrorResponseBody) *devbuild.DevBuildInternalServerError {
@@ -728,6 +770,17 @@ func NewUpdateInternalServerError(body *UpdateInternalServerErrorResponseBody) *
 // NewUpdateNotFound builds a devbuild service update endpoint NotFound error.
 func NewUpdateNotFound(body *UpdateNotFoundResponseBody) *devbuild.DevBuildNotFoundError {
 	v := &devbuild.DevBuildNotFoundError{
+		Code:    *body.Code,
+		Message: *body.Message,
+	}
+
+	return v
+}
+
+// NewUpdateUnauthorized builds a devbuild service update endpoint Unauthorized
+// error.
+func NewUpdateUnauthorized(body *UpdateUnauthorizedResponseBody) *devbuild.DevBuildUnauthorizedError {
+	v := &devbuild.DevBuildUnauthorizedError{
 		Code:    *body.Code,
 		Message: *body.Message,
 	}
@@ -1071,6 +1124,30 @@ func ValidateGetNotFoundResponseBody(body *GetNotFoundResponseBody) (err error) 
 	return
 }
 
+// ValidateUpdateBadRequestResponseBody runs the validations defined on
+// update_BadRequest_response_body
+func ValidateUpdateBadRequestResponseBody(body *UpdateBadRequestResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateUpdateForbiddenResponseBody runs the validations defined on
+// update_Forbidden_response_body
+func ValidateUpdateForbiddenResponseBody(body *UpdateForbiddenResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
 // ValidateUpdateInternalServerErrorResponseBody runs the validations defined
 // on update_InternalServerError_response_body
 func ValidateUpdateInternalServerErrorResponseBody(body *UpdateInternalServerErrorResponseBody) (err error) {
@@ -1086,6 +1163,18 @@ func ValidateUpdateInternalServerErrorResponseBody(body *UpdateInternalServerErr
 // ValidateUpdateNotFoundResponseBody runs the validations defined on
 // update_NotFound_response_body
 func ValidateUpdateNotFoundResponseBody(body *UpdateNotFoundResponseBody) (err error) {
+	if body.Code == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
+	}
+	if body.Message == nil {
+		err = goa.MergeErrors(err, goa.MissingFieldError("message", "body"))
+	}
+	return
+}
+
+// ValidateUpdateUnauthorizedResponseBody runs the validations defined on
+// update_Unauthorized_response_body
+func ValidateUpdateUnauthorizedResponseBody(body *UpdateUnauthorizedResponseBody) (err error) {
 	if body.Code == nil {
 		err = goa.MergeErrors(err, goa.MissingFieldError("code", "body"))
 	}

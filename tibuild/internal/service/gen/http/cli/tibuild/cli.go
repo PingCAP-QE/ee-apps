@@ -41,7 +41,7 @@ func UsageExamples() string {
 	return os.Args[0] + " " + "artifact sync-image --body '{\n      \"source\": \"Quis quis voluptate fugit ab.\",\n      \"target\": \"Animi architecto quae maiores sapiente nihil.\"\n   }'" + "\n" +
 		os.Args[0] + " " + "devbuild list --page 2368176844041435035 --page-size 8833669981050828915 --hotfix true --sort \"updatedAt\" --direction \"asc\" --created-by \"Impedit occaecati.\" --scope \"all\" --status \"PENDING\" --product \"Earum possimus accusamus fugit et dolorum natus.\" --q \"Quidem asperiores neque.\"" + "\n" +
 		os.Args[0] + " " + "hotfix bump-tag-for-tidbx --body '{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'" + "\n" +
-		os.Args[0] + " " + "publish publish-images --body '{\n      \"artifactUrl\": \"Est incidunt natus reprehenderit quaerat fuga.\",\n      \"image\": \"Aspernatur aspernatur qui esse praesentium.\"\n   }'" + "\n" +
+		os.Args[0] + " " + "publish publish-images --body '{\n      \"artifactUrl\": \"Minus voluptas consequatur labore et non eos.\",\n      \"image\": \"Ut molestias tempora quia repellat voluptate.\"\n   }'" + "\n" +
 		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
 		""
 }
@@ -725,7 +725,7 @@ func publishPublishImagesUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish publish-images --body '{\n      \"artifactUrl\": \"Est incidunt natus reprehenderit quaerat fuga.\",\n      \"image\": \"Aspernatur aspernatur qui esse praesentium.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish publish-images --body '{\n      \"artifactUrl\": \"Minus voluptas consequatur labore et non eos.\",\n      \"image\": \"Ut molestias tempora quia repellat voluptate.\"\n   }'")
 }
 
 func publishGetUnitUsage() {
@@ -743,7 +743,7 @@ func publishGetUnitUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish get-unit --id \"Consequatur possimus et ea et cupiditate commodi.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish get-unit --id \"Incidunt reprehenderit recusandae nihil unde.\"")
 }
 
 func publishListUnitsUsage() {
@@ -765,7 +765,7 @@ func publishListUnitsUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish list-units --status \"partial\" --kind \"Inventore autem eius.\" --limit 6808007764656287842")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish list-units --status \"succeeded\" --kind \"Perferendis in facilis occaecati odit reiciendis.\" --limit 8688377150636627809")
 }
 
 func publishRetryUnitUsage() {
@@ -783,7 +783,7 @@ func publishRetryUnitUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish retry-unit --id \"Non omnis molestiae atque.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish retry-unit --id \"Aut quo aut facere architecto natus.\"")
 }
 
 func publishDeliveryByRulesUsage() {
@@ -801,7 +801,7 @@ func publishDeliveryByRulesUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish delivery-by-rules --body '{\n      \"artifact_url\": \"Ut ea sequi molestiae dolor commodi qui.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish delivery-by-rules --body '{\n      \"artifact_url\": \"Necessitatibus magnam quis ut.\"\n   }'")
 }
 
 func publishRequestToPublishUsage() {
@@ -819,7 +819,7 @@ func publishRequestToPublishUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish --body '{\n      \"artifact_url\": \"Quaerat unde voluptatem explicabo.\",\n      \"tiup_mirror\": \"staging\",\n      \"version\": \"Autem exercitationem eos voluptatem.\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish --body '{\n      \"artifact_url\": \"Et culpa officia dolor illum quia cum.\",\n      \"tiup_mirror\": \"prod\",\n      \"version\": \"Qui repudiandae tempore necessitatibus beatae.\"\n   }'")
 }
 
 func publishRequestToPublishSingleUsage() {
@@ -837,7 +837,7 @@ func publishRequestToPublishSingleUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish-single --body '{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Officia repellendus quod non non.\"\n         },\n         \"oci\": {\n            \"file\": \"Soluta ducimus et minima et inventore eaque.\",\n            \"repo\": \"Debitis voluptas architecto.\",\n            \"tag\": \"Repellendus accusantium quae beatae impedit a.\"\n         },\n         \"type\": \"oci\"\n      },\n      \"publish\": {\n         \"arch\": \"Velit debitis dolorem omnis dolores culpa.\",\n         \"description\": \"Quos tempora rem ea soluta esse dolorem.\",\n         \"entry_point\": \"Qui porro iusto animi.\",\n         \"name\": \"Sit explicabo velit odio repudiandae eveniet asperiores.\",\n         \"os\": \"Impedit dicta labore.\",\n         \"standalone\": true,\n         \"version\": \"Exercitationem blanditiis ut sunt.\"\n      },\n      \"tiup_mirror\": \"staging\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish request-to-publish-single --body '{\n      \"from\": {\n         \"http\": {\n            \"url\": \"Dolores culpa tempora exercitationem blanditiis ut sunt.\"\n         },\n         \"oci\": {\n            \"file\": \"Et cumque molestias provident accusantium.\",\n            \"repo\": \"Quos tempora rem ea soluta esse dolorem.\",\n            \"tag\": \"Qui porro iusto animi.\"\n         },\n         \"type\": \"oci\"\n      },\n      \"publish\": {\n         \"arch\": \"Consectetur quibusdam et soluta.\",\n         \"description\": \"Sit omnis.\",\n         \"entry_point\": \"Et et commodi eos debitis incidunt aut.\",\n         \"name\": \"Odit officiis ut veritatis.\",\n         \"os\": \"Ea voluptatem doloribus sit.\",\n         \"standalone\": true,\n         \"version\": \"Consequatur recusandae dolores vel.\"\n      },\n      \"tiup_mirror\": \"prod\"\n   }'")
 }
 
 func publishQueryPublishingStatusUsage() {
@@ -855,7 +855,7 @@ func publishQueryPublishingStatusUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish query-publishing-status --request-id \"Saepe in.\"")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "publish query-publishing-status --request-id \"Voluptas nam voluptatum modi enim mollitia.\"")
 }
 
 // tidbcloudUsage displays the usage of the tidbcloud command and its

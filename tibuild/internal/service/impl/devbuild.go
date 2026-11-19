@@ -308,9 +308,32 @@ func (s *devbuildsrvc) Get(ctx context.Context, p *devbuild.GetPayload) (*devbui
 	return res, nil
 }
 
-// Update devbuild status
+// Update devbuild status.
+//
+// The status this writes is what the history page, the Lark cards and the
+// rerun precondition treat as authoritative, so it is not a free-form field: the
+// caller must be the build's creator or a machine principal. The Gateway
+// authenticates both; the object-level check is what it cannot make for us.
 func (s *devbuildsrvc) Update(ctx context.Context, p *devbuild.UpdatePayload) (res *devbuild.DevBuild, err error) {
 	s.logger.Info().Msgf("devbuild.update")
+
+	// The payload carries no creator, so read the row to authorize against it.
+	existing, err := s.dbClient.DevBuild.Get(ctx, p.ID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return nil, &devbuild.DevBuildNotFoundError{Code: http.StatusNotFound, Message: "build not found"}
+		}
+		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to get build for update")
+		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to update build"}
+	}
+	if err := s.authorizeBuildMutation(ctx, existing, "update"); err != nil {
+		return nil, err
+	}
+	// A finished build is a record of what happened; moving it back out of a
+	// terminal state would also re-open the rerun precondition.
+	if isTerminalStatus(existing.Status) && p.Status != nil && !strings.EqualFold(existing.Status, string(p.Status.Status)) {
+		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "the status of a finished build cannot be changed"}
+	}
 
 	updater := s.dbClient.DevBuild.UpdateOneID(p.ID)
 	if p.Status != nil {
@@ -377,8 +400,8 @@ func (s *devbuildsrvc) Rerun(ctx context.Context, p *devbuild.RerunPayload) (res
 		s.logger.Err(err).Int("build_id", p.ID).Msg("failed to get build for rerun")
 		return nil, &devbuild.DevBuildInternalServerError{Code: http.StatusInternalServerError, Message: "unable to rerun build"}
 	}
-	if user, ok := identity.FromContext(ctx); ok && !strings.EqualFold(user.Email, existingBuild.CreatedBy) {
-		return nil, &devbuild.DevBuildForbiddenError{Code: http.StatusForbidden, Message: "only the build creator can rerun this build"}
+	if err := s.authorizeBuildMutation(ctx, existingBuild, "rerun"); err != nil {
+		return nil, err
 	}
 	if !isTerminalStatus(existingBuild.Status) {
 		return nil, &devbuild.DevBuildBadRequestError{Code: http.StatusBadRequest, Message: "only terminal builds can be rerun"}
@@ -449,6 +472,61 @@ func (s *devbuildsrvc) applyPermissions(ctx context.Context, build *devbuild.Dev
 		canRerun = strings.EqualFold(user.Email, build.Meta.CreatedBy) && isTerminalStatus(string(build.Status.Status))
 	}
 	build.Permissions = &devbuild.DevBuildPermissions{CanRerun: canRerun}
+}
+
+// authorizeBuildMutation decides whether the caller may write this build's
+// state. The Gateway authenticates the request and injects the verified
+// principal; this answers whether that principal may touch this row.
+//
+//   - a machine principal may update or rerun any build: that is how CI and the
+//     release tooling drive a build on behalf of its creator;
+//   - a person may only touch a build recorded under their own address;
+//   - a request with no principal did not come through the Gateway, so it is
+//     refused instead of skipping the check.
+func (s *devbuildsrvc) authorizeBuildMutation(ctx context.Context, build *ent.DevBuild, op string) error {
+	principal, ok := identity.FromContext(ctx)
+	if !ok || (principal.Email == "" && principal.ID == "") {
+		s.logger.Warn().
+			Str("op", op).
+			Int("build_id", build.ID).
+			Msg("rejected a build mutation without an authenticated principal")
+		return &devbuild.DevBuildUnauthorizedError{
+			Code:    http.StatusUnauthorized,
+			Message: "authenticated identity required to modify a build",
+		}
+	}
+
+	if isMachinePrincipal(principal.Email) {
+		s.logger.Info().
+			Str("op", op).
+			Int("build_id", build.ID).
+			Str("principal", principal.Email).
+			Msg("machine principal mutating a build")
+		return nil
+	}
+
+	if strings.EqualFold(principal.Email, build.CreatedBy) {
+		return nil
+	}
+
+	s.logger.Warn().
+		Str("op", op).
+		Int("build_id", build.ID).
+		Str("principal", principal.Email).
+		Str("created_by", build.CreatedBy).
+		Msg("rejected a build mutation by a non-owner")
+	return &devbuild.DevBuildForbiddenError{
+		Code:    http.StatusForbidden,
+		Message: "only the build creator can modify this build",
+	}
+}
+
+// isMachinePrincipal reports whether an authenticated identity is automation
+// rather than a person. Machine clients authenticate to the Gateway with Google
+// service-account ID tokens (the tibuild machine route allowlists them in
+// ee-ops), so their verified email claim is a service-account address.
+func isMachinePrincipal(email string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(email)), ".gserviceaccount.com")
 }
 
 func productLabel(product string) string {

@@ -497,8 +497,11 @@ func EncodeUpdateRequest(encoder func(*http.Request) goahttp.Encoder) func(*http
 // devbuild update endpoint. restoreBody controls whether the response body
 // should be restored after having been read.
 // DecodeUpdateResponse may return the following errors:
+//   - "BadRequest" (type *devbuild.DevBuildBadRequestError): http.StatusBadRequest
+//   - "Forbidden" (type *devbuild.DevBuildForbiddenError): http.StatusForbidden
 //   - "InternalServerError" (type *devbuild.DevBuildInternalServerError): http.StatusInternalServerError
 //   - "NotFound" (type *devbuild.DevBuildNotFoundError): http.StatusNotFound
+//   - "Unauthorized" (type *devbuild.DevBuildUnauthorizedError): http.StatusUnauthorized
 //   - error: internal error
 func DecodeUpdateResponse(decoder func(*http.Response) goahttp.Decoder, restoreBody bool) func(*http.Response) (any, error) {
 	return func(resp *http.Response) (any, error) {
@@ -530,6 +533,34 @@ func DecodeUpdateResponse(decoder func(*http.Response) goahttp.Decoder, restoreB
 			}
 			res := NewUpdateDevBuildOK(&body)
 			return res, nil
+		case http.StatusBadRequest:
+			var (
+				body UpdateBadRequestResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "update", err)
+			}
+			err = ValidateUpdateBadRequestResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "update", err)
+			}
+			return nil, NewUpdateBadRequest(&body)
+		case http.StatusForbidden:
+			var (
+				body UpdateForbiddenResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "update", err)
+			}
+			err = ValidateUpdateForbiddenResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "update", err)
+			}
+			return nil, NewUpdateForbidden(&body)
 		case http.StatusInternalServerError:
 			var (
 				body UpdateInternalServerErrorResponseBody
@@ -558,6 +589,20 @@ func DecodeUpdateResponse(decoder func(*http.Response) goahttp.Decoder, restoreB
 				return nil, goahttp.ErrValidationError("devbuild", "update", err)
 			}
 			return nil, NewUpdateNotFound(&body)
+		case http.StatusUnauthorized:
+			var (
+				body UpdateUnauthorizedResponseBody
+				err  error
+			)
+			err = decoder(resp).Decode(&body)
+			if err != nil {
+				return nil, goahttp.ErrDecodingError("devbuild", "update", err)
+			}
+			err = ValidateUpdateUnauthorizedResponseBody(&body)
+			if err != nil {
+				return nil, goahttp.ErrValidationError("devbuild", "update", err)
+			}
+			return nil, NewUpdateUnauthorized(&body)
 		default:
 			body, _ := io.ReadAll(resp.Body)
 			return nil, goahttp.ErrInvalidResponse("devbuild", "update", resp.StatusCode, string(body))

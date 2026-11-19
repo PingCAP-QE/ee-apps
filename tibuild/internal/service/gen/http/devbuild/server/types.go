@@ -146,6 +146,20 @@ type GetNotFoundResponseBody struct {
 	Message string `form:"message" json:"message" xml:"message"`
 }
 
+// UpdateBadRequestResponseBody is the type of the "devbuild" service "update"
+// endpoint HTTP response body for the "BadRequest" error.
+type UpdateBadRequestResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// UpdateForbiddenResponseBody is the type of the "devbuild" service "update"
+// endpoint HTTP response body for the "Forbidden" error.
+type UpdateForbiddenResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
 // UpdateInternalServerErrorResponseBody is the type of the "devbuild" service
 // "update" endpoint HTTP response body for the "InternalServerError" error.
 type UpdateInternalServerErrorResponseBody struct {
@@ -156,6 +170,13 @@ type UpdateInternalServerErrorResponseBody struct {
 // UpdateNotFoundResponseBody is the type of the "devbuild" service "update"
 // endpoint HTTP response body for the "NotFound" error.
 type UpdateNotFoundResponseBody struct {
+	Code    int    `form:"code" json:"code" xml:"code"`
+	Message string `form:"message" json:"message" xml:"message"`
+}
+
+// UpdateUnauthorizedResponseBody is the type of the "devbuild" service
+// "update" endpoint HTTP response body for the "Unauthorized" error.
+type UpdateUnauthorizedResponseBody struct {
 	Code    int    `form:"code" json:"code" xml:"code"`
 	Message string `form:"message" json:"message" xml:"message"`
 }
@@ -732,6 +753,26 @@ func NewGetNotFoundResponseBody(res *devbuild.DevBuildNotFoundError) *GetNotFoun
 	return body
 }
 
+// NewUpdateBadRequestResponseBody builds the HTTP response body from the
+// result of the "update" endpoint of the "devbuild" service.
+func NewUpdateBadRequestResponseBody(res *devbuild.DevBuildBadRequestError) *UpdateBadRequestResponseBody {
+	body := &UpdateBadRequestResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewUpdateForbiddenResponseBody builds the HTTP response body from the result
+// of the "update" endpoint of the "devbuild" service.
+func NewUpdateForbiddenResponseBody(res *devbuild.DevBuildForbiddenError) *UpdateForbiddenResponseBody {
+	body := &UpdateForbiddenResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
 // NewUpdateInternalServerErrorResponseBody builds the HTTP response body from
 // the result of the "update" endpoint of the "devbuild" service.
 func NewUpdateInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServerError) *UpdateInternalServerErrorResponseBody {
@@ -746,6 +787,16 @@ func NewUpdateInternalServerErrorResponseBody(res *devbuild.DevBuildInternalServ
 // of the "update" endpoint of the "devbuild" service.
 func NewUpdateNotFoundResponseBody(res *devbuild.DevBuildNotFoundError) *UpdateNotFoundResponseBody {
 	body := &UpdateNotFoundResponseBody{
+		Code:    res.Code,
+		Message: res.Message,
+	}
+	return body
+}
+
+// NewUpdateUnauthorizedResponseBody builds the HTTP response body from the
+// result of the "update" endpoint of the "devbuild" service.
+func NewUpdateUnauthorizedResponseBody(res *devbuild.DevBuildUnauthorizedError) *UpdateUnauthorizedResponseBody {
+	body := &UpdateUnauthorizedResponseBody{
 		Code:    res.Code,
 		Message: res.Message,
 	}
