@@ -71,7 +71,7 @@ func (h *taskRunHandler) Handle(event cloudevents.Event) cloudevents.Result {
 			return cloudevents.ResultACK
 		}
 
-		infos, err := extractLarkInfosFromEvent(event, h.DashboardBaseURL, h.FailedStepTailLines)
+		infos, err := extractLarkInfosFromEvent(event, h.DashboardBaseURL)
 		if err != nil {
 			handlerLog.Err(err).
 				Bytes("ce-data", event.Data()).

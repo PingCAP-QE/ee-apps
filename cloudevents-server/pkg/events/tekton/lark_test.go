@@ -14,19 +14,16 @@ func Test_newLarkCardWithGoTemplate(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "step log contains control characters",
+			name: "failed task renders its step name and reason",
 			infos: &cardMessageInfos{
 				Title: "title",
-				FailedTasks: map[string][]stepInfo{
+				FailedTasks: map[string][]v1beta1.StepState{
 					"hello": {
 						{
-							StepState: v1beta1.StepState{
-								Name: "Step 1",
-								ContainerState: corev1.ContainerState{
-									Terminated: &corev1.ContainerStateTerminated{Reason: "hello"},
-								},
+							Name: "Step 1",
+							ContainerState: corev1.ContainerState{
+								Terminated: &corev1.ContainerStateTerminated{Reason: "hello"},
 							},
-							Logs: "\x1b[31mError\x1b[0m occurred\nDetails: \x07\x08",
 						},
 					},
 				},

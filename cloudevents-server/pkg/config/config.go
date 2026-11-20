@@ -51,10 +51,9 @@ func (c *TektonNotification) IsMatched(typ, subject string) bool {
 }
 
 type Tekton struct {
-	DashboardBaseURL    string               `yaml:"dashboard_base_url,omitempty" json:"dashboard_base_url,omitempty"`
-	Lark                LarkBotApp           `yaml:"lark" json:"lark"`
-	Notifications       []TektonNotification `yaml:"notifications,omitempty" json:"notifications,omitempty"`
-	FailedStepTailLines int                  `yaml:"failed_step_tail_lines,omitempty" json:"failed_step_tail_lines,omitempty"`
+	DashboardBaseURL string               `yaml:"dashboard_base_url,omitempty" json:"dashboard_base_url,omitempty"`
+	Lark             LarkBotApp           `yaml:"lark" json:"lark"`
+	Notifications    []TektonNotification `yaml:"notifications,omitempty" json:"notifications,omitempty"`
 }
 
 type Kafka struct {
