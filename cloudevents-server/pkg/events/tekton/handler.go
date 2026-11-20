@@ -182,8 +182,12 @@ func fillInfosWithTaskRun(data *v1beta1.TaskRun, ret *cardMessageInfos) bool {
 		}
 
 		ret.FailedMessage = succeededCondition.Message
-		ret.RerunURL = fmt.Sprintf("tkn -n %s task start %s --use-taskrun %s",
-			data.Namespace, data.Spec.TaskRef.Name, data.Name)
+		// A run declared with an inline taskSpec has no TaskRef, so there is no
+		// task name to re-run; the card still carries the failure itself.
+		if data.Spec.TaskRef != nil {
+			ret.RerunURL = fmt.Sprintf("tkn -n %s task start %s --use-taskrun %s",
+				data.Namespace, data.Spec.TaskRef.Name, data.Name)
+		}
 	}
 	if results := data.Status.TaskRunResults; len(results) > 0 {
 		for _, r := range results {
@@ -209,8 +213,12 @@ func fillInfosWithPipelineRun(data *v1beta1.PipelineRun, ret *cardMessageInfos) 
 		}
 
 		ret.FailedMessage = succeededCondition.Message
-		ret.RerunURL = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
-			data.Namespace, data.Spec.PipelineRef.Name, data.Name)
+		// A run declared with an inline pipelineSpec has no PipelineRef, so there
+		// is no pipeline name to re-run; the card still carries the failure itself.
+		if data.Spec.PipelineRef != nil {
+			ret.RerunURL = fmt.Sprintf("tkn -n %s pipeline start %s --use-pipelinerun %s",
+				data.Namespace, data.Spec.PipelineRef.Name, data.Name)
+		}
 	}
 	if results := data.Status.PipelineResults; len(results) > 0 {
 		for _, r := range results {
