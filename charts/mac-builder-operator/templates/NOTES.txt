@@ -12,6 +12,17 @@ Controllers enabled in this release:
 {{- end }}
 
 MacBuild objects are created in namespace: {{ include "mac-builder-operator.macBuildNamespace" . }}
+{{- if and .Values.controller.customRun (not .Values.customRun.namespaces) }}
+
+WARNING: controller.customRun is enabled but customRun.namespaces is empty.
+The CustomRun reconciler will stay disabled until you list the namespaces
+allowed to submit MacBuilds, for example:
+
+  --set customRun.namespaces={ee-cd}
+{{- else if .Values.controller.customRun }}
+
+CustomRuns may submit MacBuilds from namespaces: {{ join ", " .Values.customRun.namespaces }}
+{{- end }}
 
 Check the controller pods:
 

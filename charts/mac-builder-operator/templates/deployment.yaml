@@ -102,6 +102,7 @@ spec:
             {{- if .Values.controller.customRun }}
             - --enable-customrun
             - --customrun-poll-interval={{ .Values.customRun.pollInterval }}
+            - --customrun-namespaces={{ join "," .Values.customRun.namespaces }}
             {{- end }}
             {{- if .Values.logServer.enabled }}
             - --enable-log-server

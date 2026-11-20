@@ -92,9 +92,10 @@ func newTestCustomRunReconciler(t *testing.T, objs ...client.Object) (*MacBuildC
 		WithStatusSubresource(&tektonv1beta1.CustomRun{}).
 		Build()
 	return &MacBuildCustomRunReconciler{
-		Client:            c,
-		Scheme:            scheme,
-		MacBuildNamespace: testMacBuildNamespace,
+		Client:              c,
+		Scheme:              scheme,
+		MacBuildNamespace:   testMacBuildNamespace,
+		CustomRunNamespaces: []string{testCustomRunNS},
 	}, c
 }
 
@@ -471,6 +472,85 @@ func TestReconcileMissingCustomRunIsNoop(t *testing.T) {
 	r, _ := newTestCustomRunReconciler(t)
 	if _, err := r.Reconcile(context.Background(), customRunRequest(cr)); err != nil {
 		t.Fatalf("reconciling a missing CustomRun should be a no-op, got %v", err)
+	}
+}
+
+func TestReconcileIgnoresCustomRunOutsideAllowedNamespaces(t *testing.T) {
+	t.Parallel()
+
+	cr := newTestMacBuildCustomRun("cr-foreign", map[string]string{
+		paramGitURL:    testGitURL,
+		paramComponent: testComponent,
+	})
+	cr.Namespace = "someone-elses-ns"
+
+	r, c := newTestCustomRunReconciler(t, cr)
+	r.CustomRunNamespaces = []string{testCustomRunNS}
+
+	result, err := r.Reconcile(context.Background(), customRunRequest(cr))
+	if err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+	if result.RequeueAfter != 0 {
+		t.Fatalf("expected no requeue for a foreign CustomRun, got %s", result.RequeueAfter)
+	}
+
+	var mb buildv1alpha1.MacBuild
+	err = c.Get(context.Background(), types.NamespacedName{Namespace: testMacBuildNamespace, Name: cr.Name}, &mb)
+	if !apierrors.IsNotFound(err) {
+		t.Fatalf("expected no MacBuild for a CustomRun outside the allowlist, got err=%v", err)
+	}
+}
+
+func TestReconcileIgnoresCustomRunWhenAllowlistIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	cr := newTestMacBuildCustomRun("cr-unlisted", map[string]string{
+		paramGitURL:    testGitURL,
+		paramComponent: testComponent,
+	})
+
+	r, c := newTestCustomRunReconciler(t, cr)
+	r.CustomRunNamespaces = nil
+
+	if _, err := r.Reconcile(context.Background(), customRunRequest(cr)); err != nil {
+		t.Fatalf("reconcile failed: %v", err)
+	}
+
+	var mb buildv1alpha1.MacBuild
+	err := c.Get(context.Background(), types.NamespacedName{Namespace: testMacBuildNamespace, Name: cr.Name}, &mb)
+	if !apierrors.IsNotFound(err) {
+		t.Fatalf("expected no MacBuild while the allowlist is empty, got err=%v", err)
+	}
+}
+
+func TestNamespaceAllowed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		allowed   []string
+		namespace string
+		wantAllow bool
+	}{
+		{name: "empty allowlist denies", allowed: nil, namespace: "ee-cd", wantAllow: false},
+		{name: "empty allowlist denies empty namespace", allowed: nil, namespace: "", wantAllow: false},
+		{name: "listed namespace", allowed: []string{"ee-cd"}, namespace: "ee-cd", wantAllow: true},
+		{name: "unlisted namespace", allowed: []string{"ee-cd"}, namespace: "default", wantAllow: false},
+		{name: "whitespace is trimmed", allowed: []string{" ee-cd ", ""}, namespace: " ee-cd ", wantAllow: true},
+		{name: "one of several", allowed: []string{"ci", "ee-cd"}, namespace: "ci", wantAllow: true},
+		{name: "empty namespace never matches", allowed: []string{""}, namespace: "", wantAllow: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := &MacBuildCustomRunReconciler{CustomRunNamespaces: tc.allowed}
+			if got := r.namespaceAllowed(tc.namespace); got != tc.wantAllow {
+				t.Fatalf("namespaceAllowed(%q) with %#v = %v, want %v",
+					tc.namespace, tc.allowed, got, tc.wantAllow)
+			}
+		})
 	}
 }
 

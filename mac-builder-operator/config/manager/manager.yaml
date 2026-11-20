@@ -66,6 +66,7 @@ spec:
           - --enable-macagent
           - --enable-scheduler
           - --macbuild-namespace=default
+          - --customrun-namespaces=default
         image: controller:latest
         name: manager
         ports: []
