@@ -14,52 +14,21 @@ go run --tags sqlite3 . -config=configs/example-config-sqlite3.yaml
 go run . -config=configs/example-config.yaml
 ```
 
-## Tekton failed-step log fetching
+## Tekton step-log fetching was removed
 
-The notifier treats CloudEvent namespace/pod/container fields as untrusted input,
-not as Kubernetes-admission-validated objects. Before requesting logs it validates
-namespace/container DNS labels and the pod DNS subdomain, then constructs only:
+Tekton failure notifications no longer read pod logs. The fetched target used to
+come from the CloudEvent payload (`namespace`, `podName`, `containerName`), and
+`POST /events` is unauthenticated, so any producer could turn the notifier into
+an arbitrary pod-log reader and have the text delivered to a Lark recipient of
+its choosing. The capability was also already dead in production: the Tekton
+Dashboard sits behind Envoy Gateway's Google OIDC policy, and the fetch carried
+no credentials and refused redirects, so it received a 302 and treated it as an
+error.
 
-```text
-<dashboard_base_url>/api/v1/namespaces/<namespace>/pods/<pod>/log
-    ?container=<encoded-container>&tailLines=<configured-integer>
-```
-
-The configured dashboard path prefix is preserved. The base URL must be an
-absolute HTTP(S) URL without userinfo, query or fragment. Invalid metadata causes
-no HTTP request. Failed log retrieval remains best-effort: the failure notification
-still contains its existing status information, but no fetched log text.
-
-HTTPS uses Go's normal CA and hostname verification; there is no insecure TLS
-fallback. Install any required private CA in the container's trusted certificate
-bundle (or configure Go's `SSL_CERT_FILE`/`SSL_CERT_DIR`) before rollout. Plain HTTP
-remains supported for existing internal dashboard configurations; it does **not**
-provide TLS authentication or encryption. This transport change is specific to
-step-log fetching, not other outbound clients.
-
-Log requests do not follow redirects, have a 10-second total client timeout, and
-read at most 1 MiB plus one lookahead byte. Non-2xx, oversized or failed responses
-are errors, not content for notification cards; response bodies are always closed.
-Ordinary names, dashboard prefixes, tail-line settings, and #781's notification
-receiver rules are unchanged. No new configuration field or dependency is needed.
-
-This is path/query/TLS hardening, **not event authentication or authorization**.
-A syntactically valid namespace/pod/container is not proof of a trusted producer
-or ownership of that pod. The configured dashboard's read permissions, `/events`
-producer authentication and notification-recipient authorization need separate
-controls; do not claim that this change prevents every forged-event log read.
-Deployment and security re-verification are still required after code merge.
-
-Hermetic regression tests use local HTTP/TLS servers and existing PipelineRun /
-standalone TaskRun fixtures, without fetching real logs or sending Lark messages:
-
-```bash
-cd cloudevents-server
-go test ./...
-go test -race ./pkg/events/tekton
-go build ./...
-go vet ./...
-```
+Cards keep the failed step names and `Terminated.Reason`, the dashboard view
+link built from `tekton.dashboard_base_url`, and the rerun command; read the
+logs on the Dashboard. The `tekton.failed_step_tail_lines` setting is gone from
+the config schema.
 
 ## How to release
 
