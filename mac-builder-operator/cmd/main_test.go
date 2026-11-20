@@ -59,6 +59,28 @@ func TestValidateAgentIdentity(t *testing.T) {
 	}
 }
 
+func TestParseNamespaceList(t *testing.T) {
+	t.Parallel()
+
+	if got := parseNamespaceList(""); len(got) != 0 {
+		t.Fatalf("expected no namespaces, got %#v", got)
+	}
+	if got := parseNamespaceList(" , ,"); len(got) != 0 {
+		t.Fatalf("expected no namespaces, got %#v", got)
+	}
+
+	got := parseNamespaceList(" ee-cd , tekton-pipelines ,ee-cd,,")
+	want := []string{"ee-cd", "tekton-pipelines"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %#v, got %#v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("expected %#v, got %#v", want, got)
+		}
+	}
+}
+
 func TestParseLabels(t *testing.T) {
 	t.Parallel()
 

@@ -96,7 +96,7 @@ func main() {
 	var logServicePort, logServerPort int
 	var logUpload bool
 	var artifactsRepoURL, artifactsRepoRevision, artifactsRepoCommit string
-	var macBuildNamespace string
+	var macBuildNamespace, customRunNamespacesFlag string
 	var workerName, legacyWorkerName, workerArch, labelsFlag, agentVersion, stateFile string
 	var capacity int
 	var heartbeatInterval, staticRefreshInterval time.Duration
@@ -120,6 +120,9 @@ func main() {
 		"Enable the MacBuild CustomRun reconciler (Tekton custom task backed by MacBuild). Runs in the cluster.")
 	flag.StringVar(&macBuildNamespace, "macbuild-namespace", "default",
 		"Namespace where the CustomRun reconciler creates MacBuild objects.")
+	flag.StringVar(&customRunNamespacesFlag, "customrun-namespaces", "",
+		"Comma-separated namespaces whose CustomRuns may submit MacBuilds. "+
+			"The CustomRun reconciler stays disabled while this is empty.")
 	flag.DurationVar(&customRunPollInterval, "customrun-poll-interval", 30*time.Second,
 		"How often running CustomRuns are re-checked for MacBuild status changes.")
 	flag.DurationVar(&buildTimeout, "build-timeout", 24*time.Hour,
@@ -221,6 +224,7 @@ func main() {
 		setupLog.Error(err, "invalid --labels")
 		os.Exit(1)
 	}
+	customRunNamespaces := parseNamespaceList(customRunNamespacesFlag)
 
 	if !enableAgent && !enableGC && !enableCustomRun && !enableMacAgent && !enableScheduler && !enableLogServer {
 		setupLog.Info("No controllers enabled. " +
@@ -560,16 +564,25 @@ func main() {
 	}
 
 	if enableCustomRun {
-		if err := (&controller.MacBuildCustomRunReconciler{
-			Client:            mgr.GetClient(),
-			Scheme:            mgr.GetScheme(),
-			MacBuildNamespace: macBuildNamespace,
-			PollInterval:      customRunPollInterval,
+		if len(customRunNamespaces) == 0 {
+			// Fail closed: never fall back to reconciling CustomRuns from every
+			// namespace, because that lets any namespace place its own git
+			// parameters on the shared build fleet.
+			setupLog.Error(nil, "CustomRun reconciler disabled: --customrun-namespaces is empty",
+				"hint", "set it to the namespaces allowed to submit MacBuild CustomRuns, e.g. --customrun-namespaces=ee-cd")
+		} else if err := (&controller.MacBuildCustomRunReconciler{
+			Client:              mgr.GetClient(),
+			Scheme:              mgr.GetScheme(),
+			MacBuildNamespace:   macBuildNamespace,
+			CustomRunNamespaces: customRunNamespaces,
+			PollInterval:        customRunPollInterval,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "MacBuildCustomRun")
 			os.Exit(1)
+		} else {
+			setupLog.Info("MacBuild CustomRun controller enabled.",
+				"macBuildNamespace", macBuildNamespace, "customRunNamespaces", customRunNamespaces)
 		}
-		setupLog.Info("MacBuild CustomRun controller enabled.", "macBuildNamespace", macBuildNamespace)
 	}
 
 	if enableLogServer {
@@ -626,6 +639,25 @@ func validateAgentIdentity(agentName string, agentArch string) (string, string, 
 	}
 
 	return normalizedAgentName, normalizedAgentArch, nil
+}
+
+// parseNamespaceList parses a comma-separated namespace list, trimming
+// whitespace and dropping empty and duplicate entries.
+func parseNamespaceList(value string) []string {
+	seen := make(map[string]struct{})
+	namespaces := make([]string, 0, 4)
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		namespaces = append(namespaces, item)
+	}
+	return namespaces
 }
 
 func parseLabels(value string) (map[string]string, error) {

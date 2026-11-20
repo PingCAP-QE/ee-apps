@@ -32,8 +32,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	"knative.dev/pkg/apis"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	buildv1alpha1 "github.com/PingCAP-QE/ee-apps/mac-builder-operator/api/v1alpha1"
 )
@@ -59,6 +61,13 @@ type MacBuildCustomRunReconciler struct {
 
 	// MacBuildNamespace is the namespace where MacBuild objects are created.
 	MacBuildNamespace string
+	// CustomRunNamespaces lists the namespaces whose CustomRuns may be turned
+	// into MacBuilds. The reconciler creates MacBuilds in the privileged build
+	// namespace, so a CustomRun coming from anywhere else would let that
+	// namespace place its own parameters (git repository, git credential
+	// Secret name, ...) on the shared macOS fleet. An empty list allows
+	// nothing: there is no "watch every namespace" fallback.
+	CustomRunNamespaces []string
 	// PollInterval is how often running CustomRuns are re-checked.
 	PollInterval time.Duration
 
@@ -84,6 +93,14 @@ func (r *MacBuildCustomRunReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	if !isMacBuildCustomRun(&cr) {
 		// Not ours: ignore so other Custom Task controllers can handle it.
+		return ctrl.Result{}, nil
+	}
+
+	if !r.namespaceAllowed(cr.GetNamespace()) {
+		// Only the configured namespaces may hand work to the shared build
+		// namespace. Everything else is ignored without touching the fleet.
+		logger.V(1).Info("Ignoring CustomRun: namespace is not allowed to submit MacBuilds",
+			"namespace", cr.GetNamespace(), "customRun", cr.GetName())
 		return ctrl.Result{}, nil
 	}
 
@@ -242,10 +259,32 @@ func (r *MacBuildCustomRunReconciler) updateCustomRunStatus(
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *MacBuildCustomRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if len(r.CustomRunNamespaces) == 0 {
+		return fmt.Errorf("no namespaces allowed to submit CustomRuns: set --customrun-namespaces")
+	}
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&tektonv1beta1.CustomRun{}).
+		// Filter at the watch level too: CustomRuns from namespaces that are
+		// not allowed never reach Reconcile at all.
+		For(&tektonv1beta1.CustomRun{}, builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+			return r.namespaceAllowed(obj.GetNamespace())
+		}))).
 		Named("macbuild-customrun").
 		Complete(r)
+}
+
+// namespaceAllowed reports whether a CustomRun from ns may be turned into a
+// MacBuild. An empty allowlist denies everything.
+func (r *MacBuildCustomRunReconciler) namespaceAllowed(namespace string) bool {
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" {
+		return false
+	}
+	for _, allowed := range r.CustomRunNamespaces {
+		if strings.TrimSpace(allowed) == namespace {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *MacBuildCustomRunReconciler) macBuildNamespace() string {

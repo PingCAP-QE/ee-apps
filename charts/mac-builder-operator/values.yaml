@@ -83,6 +83,12 @@ artifactsRepo:
 
 customRun:
   pollInterval: 30s
+  # Namespaces whose CustomRuns may submit MacBuilds. Required while
+  # controller.customRun is enabled: the reconciler creates MacBuilds in the
+  # privileged build namespace, so any other namespace could otherwise place
+  # its own git repository / credential Secret on the shared fleet. An empty
+  # list keeps the CustomRun reconciler disabled.
+  namespaces: []
 
 serviceAccount:
   create: true

@@ -12,8 +12,15 @@ Cluster mode (scheduler + MacAgent inventory + GC + Tekton CustomRun):
 
 ```sh
 go run ./cmd/main.go --enable-gc --enable-customrun --enable-macagent --enable-scheduler \
-  --macbuild-namespace=ee-cd
+  --macbuild-namespace=ee-cd --customrun-namespaces=ee-cd
 ```
+
+`--customrun-namespaces` is required for the CustomRun reconciler: only
+CustomRuns from the listed namespaces are turned into MacBuilds. The reconciler
+creates MacBuilds in the privileged build namespace, so without the allowlist a
+CustomRun from any namespace could place its own git repository and credential
+Secret name on the shared macOS fleet. An empty list keeps the reconciler
+disabled (fail closed).
 
 Mac worker agent:
 
