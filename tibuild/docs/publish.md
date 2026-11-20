@@ -117,7 +117,10 @@ lease derived from these is 9m (never shorter than the step lease, and at least
   ```
 
   Retry re-queues only the failed and skipped steps and re-promotes the ones
-  whose dependency is satisfied; succeeded steps are left alone.
+  whose dependency is satisfied; succeeded steps are left alone. A `CANCELED`
+  unit is never re-queued: it exists only as the audit record of a supersession,
+  its skipped steps carry the `superseded by <unit>` trail, and the retry
+  endpoint refuses it with `400`.
 
 ## Idempotency
 

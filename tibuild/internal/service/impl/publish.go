@@ -443,6 +443,15 @@ func (s *publishsrvc) RetryUnit(ctx context.Context, p *publish.RetryUnitPayload
 		return nil, internalError(err)
 	}
 
+	// A canceled unit is a terminal audit record: something newer superseded it
+	// and the skipped steps carry the only trace of that. Re-queuing them would
+	// resurrect the unit and republish the older artifact over the newer one.
+	if unit.State == PublishStateCanceled {
+		return nil, badRequest(fmt.Sprintf(
+			"publish unit %s is canceled (superseded by a newer unit) and cannot be retried", unit.ID,
+		))
+	}
+
 	retryable := 0
 	for _, step := range steps {
 		if step.State == PublishStepStateFailed || step.State == PublishStepStateSkipped {

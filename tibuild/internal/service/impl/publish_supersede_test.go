@@ -351,3 +351,72 @@ func TestPublishOneSkipsDownloadWhenLayerMatchesRemote(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, true, result[tiupResultSkipped])
 }
+
+// A canceled (superseded) unit is a terminal audit record: retrying it is
+// refused, and its skipped steps keep the supersession trail.
+func TestRetrySupersededUnitIsRefused(t *testing.T) {
+	cases := loadGoldenCases(t)
+	artifact := &supersedeArtifact{
+		config:  cases[nightlyArtifact].ArtifactConfig,
+		digest:  "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		created: time.Date(2026, 10, 30, 11, 0, 0, 0, time.UTC),
+	}
+	svc, clock := newSupersedeService(t, map[string]*supersedeArtifact{nightlyArtifact: artifact})
+	ctx := context.Background()
+
+	first, err := svc.DeliveryByRules(ctx, &publish.DeliveryByRulesPayload{ArtifactURL: nightlyArtifact})
+	require.NoError(t, err)
+	require.Len(t, first, 2)
+
+	*clock = clock.Add(time.Minute)
+	artifact.digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	artifact.created = *clock
+	_, err = svc.DeliveryByRules(ctx, &publish.DeliveryByRulesPayload{ArtifactURL: nightlyArtifact})
+	require.NoError(t, err)
+
+	units, err := svc.db.PublishUnit.Query().
+		Order(ent.Asc(entpublishunit.FieldCreatedAt)).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, units, 2)
+
+	superseded := units[0]
+	require.Equal(t, PublishStateCanceled, superseded.State)
+
+	_, err = svc.RetryUnit(ctx, &publish.RetryUnitPayload{ID: superseded.ID})
+	require.Equal(t, http.StatusBadRequest, httpStatus(t, err))
+
+	// Nothing moved: still canceled, and the supersession trail is intact.
+	require.Equal(t, PublishStateCanceled, unitByID(t, svc, superseded.ID).State)
+	oldSteps, err := svc.db.PublishStep.Query().
+		Where(entpublishstep.IDIn(first...)).
+		All(ctx)
+	require.NoError(t, err)
+	require.Len(t, oldSteps, 2)
+	for _, step := range oldSteps {
+		require.Equal(t, PublishStepStateSkipped, step.State)
+		require.Contains(t, step.LastError, "superseded by "+units[1].ID)
+	}
+}
+
+// Even a stray pending step under a canceled unit is never claimed: the older
+// artifact must not be published over the newer one that superseded it.
+func TestClaimStepIgnoresCanceledUnit(t *testing.T) {
+	svc, _ := newFlowTestService(t)
+	ctx := context.Background()
+
+	unit, step := createTiUPStep(t, svc, delivery.TiUPTargetStaging, TiUPStepPayload{
+		Mirror:      delivery.TiUPMirrorStaging,
+		MirrorURL:   "http://mirror.invalid",
+		ArtifactURL: "example.com/hub/pingcap/tidb/package:v8.5.6_linux_amd64",
+		Packages:    []delivery.TiUPPackage{tiupTestPackage},
+	})
+	require.NoError(t, svc.db.PublishUnit.UpdateOneID(unit.ID).
+		SetState(PublishStateCanceled).
+		Exec(ctx))
+
+	claimed, err := svc.claimStep(ctx)
+	require.NoError(t, err)
+	require.Nil(t, claimed)
+	require.Equal(t, PublishStepStatePending, stepByID(t, svc, step.ID).State)
+}

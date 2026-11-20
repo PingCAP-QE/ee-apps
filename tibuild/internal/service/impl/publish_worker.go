@@ -150,6 +150,10 @@ func (s *publishsrvc) claimStep(ctx context.Context) (*ent.PublishStep, error) {
 		if err != nil {
 			return nil, err
 		}
+		candidates, err = s.claimableCandidates(ctx, candidates)
+		if err != nil {
+			return nil, err
+		}
 		if len(candidates) == 0 {
 			return nil, nil
 		}
@@ -187,6 +191,44 @@ func (s *publishsrvc) claimStep(ctx context.Context) (*ent.PublishStep, error) {
 		}
 	}
 	return nil, nil
+}
+
+// claimableCandidates drops the steps whose unit no longer accepts work. A
+// canceled unit is a terminal audit record (see supersedeTiUPUnit): even if one
+// of its steps is found pending, running it would republish the older artifact
+// the cancellation was meant to keep out, so the claim loop asks the owning
+// unit's state as well.
+func (s *publishsrvc) claimableCandidates(ctx context.Context, candidates []*ent.PublishStep) ([]*ent.PublishStep, error) {
+	ids := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		ids = append(ids, candidate.UnitID)
+	}
+
+	liveIDs, err := s.db.PublishUnit.Query().
+		Where(
+			entpublishunit.IDIn(ids...),
+			entpublishunit.StateNEQ(PublishStateCanceled),
+		).
+		Select(entpublishunit.FieldID).
+		Strings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(liveIDs) == len(candidates) {
+		return candidates, nil
+	}
+
+	live := make(map[string]struct{}, len(liveIDs))
+	for _, id := range liveIDs {
+		live[id] = struct{}{}
+	}
+	claimable := make([]*ent.PublishStep, 0, len(candidates))
+	for _, candidate := range candidates {
+		if _, ok := live[candidate.UnitID]; ok {
+			claimable = append(claimable, candidate)
+		}
+	}
+	return claimable, nil
 }
 
 // pickClaimCandidate returns the highest effective priority, oldest first.
