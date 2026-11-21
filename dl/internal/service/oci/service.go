@@ -22,10 +22,12 @@ import (
 
 // ocisrvc implements the OCI service.
 type ocisrvc struct {
-	logger            *log.Logger
-	credential        *auth.Credential
-	allowedRegistries []string
-	mu                sync.RWMutex
+	logger              *log.Logger
+	credential          *auth.Credential
+	artifactRegistryADC bool
+	allowedRegistries   []string
+	tokens              tokenMinter
+	mu                  sync.RWMutex
 }
 
 // New returns the oci service implementation. allowedRegistries is an explicit
@@ -33,7 +35,7 @@ type ocisrvc struct {
 func New(logger *log.Logger, cfgFile *string, allowedRegistries []string) oci.Service {
 	var cfg pkgoci.Config
 	if cfgFile == nil {
-		return &ocisrvc{logger: logger, credential: &auth.EmptyCredential, allowedRegistries: allowedRegistries}
+		return &ocisrvc{logger: logger, credential: &auth.EmptyCredential, allowedRegistries: allowedRegistries, tokens: &garTokenSource{}}
 	}
 
 	cfgBytes, err := os.ReadFile(*cfgFile)
@@ -45,9 +47,11 @@ func New(logger *log.Logger, cfgFile *string, allowedRegistries []string) oci.Se
 	}
 
 	return &ocisrvc{
-		logger:            logger,
-		credential:        &auth.Credential{Username: cfg.Username, Password: cfg.Password},
-		allowedRegistries: allowedRegistries,
+		logger:              logger,
+		credential:          &auth.Credential{Username: cfg.Username, Password: cfg.Password},
+		artifactRegistryADC: cfg.ArtifactRegistryADC,
+		allowedRegistries:   allowedRegistries,
+		tokens:              &garTokenSource{},
 	}
 }
 
@@ -107,6 +111,7 @@ func (s *ocisrvc) Reload(ctx context.Context, cfgFile string) error {
 
 	s.mu.Lock()
 	s.credential = cred
+	s.artifactRegistryADC = cfg.ArtifactRegistryADC
 	s.mu.Unlock()
 
 	s.logger.Printf("OCI credentials reloaded from %q", cfgFile)
@@ -128,7 +133,7 @@ func (s *ocisrvc) GetTargetRepo(repo string) (*remote.Repository, error) {
 	repository.Client = &auth.Client{
 		Client:     retry.DefaultClient,
 		Cache:      auth.DefaultCache,
-		Credential: auth.StaticCredential(reg, *s.getCredential()),
+		Credential: func(ctx context.Context, _ string) (auth.Credential, error) { return s.credentialFor(ctx, reg) },
 	}
 
 	return repository, nil
