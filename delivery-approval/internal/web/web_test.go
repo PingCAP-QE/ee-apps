@@ -596,3 +596,46 @@ func TestCreateNotifiesApprover(t *testing.T) {
 		t.Fatal("approval notification not triggered")
 	}
 }
+
+type fakeDecisionNotifier struct {
+	ch       chan string
+	decision string
+}
+
+func (f *fakeDecisionNotifier) NotifyDecision(_ context.Context, _ *store.Request, decision, _ string) error {
+	f.decision = decision
+	f.ch <- decision
+	return nil
+}
+
+func TestRejectAndRevokeNotify(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	n := &fakeDecisionNotifier{ch: make(chan string, 2)}
+	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "approver@example.com"}}, DecisionNotifier: n, Metrics: &metrics.Metrics{}})
+	if w := postDecision(t, h, "req-1", "reject", "no", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("reject = %d", w.Code)
+	}
+	select {
+	case got := <-n.ch:
+		if got != "rejected" {
+			t.Fatalf("decision = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("reject did not notify")
+	}
+
+	st.requests["req-2"] = &store.Request{ID: "req-2", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	requester := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, DecisionNotifier: n, Metrics: &metrics.Metrics{}})
+	if w := postDecision(t, requester, "req-2", "revoke", "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("revoke = %d", w.Code)
+	}
+	select {
+	case got := <-n.ch:
+		if got != "revoked" {
+			t.Fatalf("decision = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("revoke did not notify")
+	}
+}

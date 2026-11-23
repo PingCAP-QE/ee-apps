@@ -104,14 +104,17 @@ func main() {
 		deliveryHandler = deliverySvc
 	}
 	var approvalHandler web.ApprovalNotifier
+	var decisionHandler web.DecisionNotifier
 	if notifier != nil {
 		approvalHandler = notifier
+		decisionHandler = notifier
 	}
 	appServer := &http.Server{
 		Addr: manager.Current().Listen,
 		Handler: server.Application(server.Options{
 			Store: st, Config: manager, Auth: authn, Revoker: revoker,
-			Delivery: deliveryHandler, ApprovalNotifier: approvalHandler, Metrics: m, Logger: logger,
+			Delivery: deliveryHandler, ApprovalNotifier: approvalHandler,
+			DecisionNotifier: decisionHandler, Metrics: m, Logger: logger,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       time.Minute,

@@ -225,3 +225,38 @@ func fileNames(req *store.Request) string {
 	}
 	return strings.Join(names, ", ")
 }
+
+// NotifyDecision tells the requester that a request was rejected or revoked.
+// Delivery success uses Notify with links; delivery failure uses NotifyFailure.
+func (c *Client) NotifyDecision(ctx context.Context, req *store.Request, decision, note string) error {
+	openID, err := c.openID(ctx, req.RequesterEmail)
+	if err != nil {
+		return err
+	}
+	text := fmt.Sprintf("Request %s was %s.", req.ID, decision)
+	if note != "" {
+		text += "\nNote: " + note
+	}
+	content, err := json.Marshal(map[string]string{"text": text})
+	if err != nil {
+		return err
+	}
+	_, err = c.send(ctx, larkim.ReceiveIdTypeOpenId, openID, "text", string(content))
+	return err
+}
+
+// NotifyFailure tells the requester that delivery failed. The class is a fixed
+// error label, never an upstream response body or token.
+func (c *Client) NotifyFailure(ctx context.Context, req *store.Request, class string) error {
+	openID, err := c.openID(ctx, req.RequesterEmail)
+	if err != nil {
+		return err
+	}
+	text := fmt.Sprintf("Delivery for request %s failed (%s). Please contact the delivery owner.", req.ID, class)
+	content, err := json.Marshal(map[string]string{"text": text})
+	if err != nil {
+		return err
+	}
+	_, err = c.send(ctx, larkim.ReceiveIdTypeOpenId, openID, "text", string(content))
+	return err
+}

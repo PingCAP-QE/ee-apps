@@ -24,6 +24,7 @@ type Options struct {
 	Revoker          approval.Revoker
 	Delivery         web.Deliverer
 	ApprovalNotifier web.ApprovalNotifier
+	DecisionNotifier web.DecisionNotifier
 	Metrics          *metrics.Metrics
 	Logger           *log.Logger
 }
@@ -37,6 +38,7 @@ func Application(opts Options) http.Handler {
 		Revoker:          opts.Revoker,
 		Delivery:         opts.Delivery,
 		ApprovalNotifier: opts.ApprovalNotifier,
+		DecisionNotifier: opts.DecisionNotifier,
 		Metrics:          opts.Metrics,
 		Logger:           opts.Logger,
 	})

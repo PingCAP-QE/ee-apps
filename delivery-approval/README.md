@@ -70,7 +70,9 @@ This phase adds the service skeleton, configuration and storage:
     no download token;
   - optional app-level urgent (`lark_buzz`) to the configured approvers, with
     email → open_id lookup and a cache;
-  - private text message with the one-time delivery links.
+  - private text message with the one-time delivery links;
+  - private rejection/revocation messages and a fixed-class delivery-failure
+    message (no upstream error body or token).
 - Server wiring enables delivery only when `DL_APPROVAL_LARK_APP_ID`,
   `DL_APPROVAL_LARK_APP_SECRET`, `lark_notification_chat_id`,
   `DL_APPROVAL_DL_ISSUER_SECRET` and `DL_APPROVAL_URL_ENCRYPTION_KEY` are all

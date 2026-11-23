@@ -53,6 +53,10 @@ type ApprovalNotifier interface {
 	NotifyApproval(ctx context.Context, req *store.Request) error
 }
 
+type DecisionNotifier interface {
+	NotifyDecision(ctx context.Context, req *store.Request, decision, note string) error
+}
+
 type Options struct {
 	Store            store.Store
 	Config           *config.Manager
@@ -60,6 +64,7 @@ type Options struct {
 	Revoker          approval.Revoker
 	Delivery         Deliverer
 	ApprovalNotifier ApprovalNotifier
+	DecisionNotifier DecisionNotifier
 	Metrics          *metrics.Metrics
 	Logger           *log.Logger
 }
@@ -72,6 +77,7 @@ type handler struct {
 	revoker          approval.Revoker
 	delivery         Deliverer
 	approvalNotifier ApprovalNotifier
+	decisionNotifier DecisionNotifier
 	logger           *log.Logger
 	tmpl             *template.Template
 	mux              *http.ServeMux
@@ -90,6 +96,7 @@ func New(opts Options) http.Handler {
 		revoker:          opts.Revoker,
 		delivery:         opts.Delivery,
 		approvalNotifier: opts.ApprovalNotifier,
+		decisionNotifier: opts.DecisionNotifier,
 		logger:           logger,
 		tmpl:             template.Must(template.ParseFS(templateFS, "templates/*.html")),
 	}
@@ -366,6 +373,15 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 			h.metrics.Rejected.Add(1)
 		}
 	}
+	if to == store.StatusRejected && h.decisionNotifier != nil {
+		go func(req *store.Request) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := h.decisionNotifier.NotifyDecision(ctx, req, "rejected", note); err != nil {
+				h.logger.Printf("rejection notification failed request=%s", req.ID)
+			}
+		}(req)
+	}
 	if to == store.StatusApproved && h.delivery != nil {
 		go func(id string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -429,6 +445,15 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 				h.logger.Printf("approval share revoke failed request=%s", req.ID)
 			}
 		}
+	}
+	if h.decisionNotifier != nil {
+		go func(req *store.Request) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := h.decisionNotifier.NotifyDecision(ctx, req, "revoked", ""); err != nil {
+				h.logger.Printf("revoke notification failed request=%s", req.ID)
+			}
+		}(req)
 	}
 	http.Redirect(w, r, "/requests/"+req.ID, http.StatusSeeOther)
 }

@@ -30,6 +30,12 @@ type Notifier interface {
 	Notify(ctx context.Context, req *store.Request, links []Link) error
 }
 
+// FailureNotifier is optional; when the notifier implements it, an aborted
+// delivery also sends a fixed-class failure message to the requester.
+type FailureNotifier interface {
+	NotifyFailure(ctx context.Context, req *store.Request, class string) error
+}
+
 type Link struct {
 	File store.File
 	URL  string
@@ -204,6 +210,11 @@ func (s *Service) abort(ctx context.Context, req *store.Request, attempts int, c
 	}
 	if err := s.Store.SetDelivery(ctx, req.ID, store.DeliveryFailed, attempts, class); err != nil {
 		s.Logger.Printf("delivery status update failed request=%s", req.ID)
+	}
+	if notifier, ok := s.Notifier.(FailureNotifier); ok {
+		if err := notifier.NotifyFailure(ctx, req, class); err != nil {
+			s.Logger.Printf("delivery failure notification failed request=%s", req.ID)
+		}
 	}
 	s.event(ctx, req.ID, "", "delivery_failed", "error", class)
 }

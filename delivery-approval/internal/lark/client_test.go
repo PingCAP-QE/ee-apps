@@ -188,3 +188,23 @@ func TestNewValidation(t *testing.T) {
 		t.Fatal("missing chat accepted")
 	}
 }
+
+func TestNotifyDecisionAndFailure(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	if err := c.NotifyDecision(context.Background(), sampleRequest(), "rejected", "not eligible"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.NotifyFailure(context.Background(), sampleRequest(), "notify_failed"); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.messages) != 2 {
+		t.Fatalf("messages = %+v", s.messages)
+	}
+	if !strings.Contains(s.messages[0].content, "rejected") || !strings.Contains(s.messages[0].content, "not eligible") {
+		t.Fatalf("decision message = %s", s.messages[0].content)
+	}
+	if !strings.Contains(s.messages[1].content, "delivery failed") && !strings.Contains(s.messages[1].content, "Delivery for request") {
+		t.Fatalf("failure message = %s", s.messages[1].content)
+	}
+}
