@@ -11,10 +11,11 @@ import hashlib
 import json
 import logging
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from itertools import islice
 from typing import Any
 
 from sqlalchemy import text
@@ -122,11 +123,14 @@ def run_materialize_resource_serving(
                 materialization_version=version,
                 calculated_at=(now or datetime.now(UTC)).replace(tzinfo=None),
             )
-            _assert_conserved(source_rows, serving_rows)
-            if not dry_run:
-                _replace_staged_window(
+            totals: dict[str, dict[str, Any]] = {}
+            checked_rows = _checked_serving_rows(source_rows, serving_rows, totals)
+            if dry_run:
+                row_count = sum(1 for _ in checked_rows)
+            else:
+                row_count = _replace_staged_window(
                     engine,
-                    serving_rows,
+                    checked_rows,
                     materialization_version=version,
                     basis_key=basis_key,
                     batch_size=batch_size,
@@ -136,12 +140,12 @@ def run_materialize_resource_serving(
                     engine,
                     basis_key=basis_key,
                     materialization_version=version,
-                    rows=serving_rows,
+                    rows=tuple(totals.values()),
                     source_rows=source_rows,
                     **params,
                 )
             windows_published += 0 if dry_run else 1
-            rows_written += 0 if dry_run else len(serving_rows)
+            rows_written += 0 if dry_run else row_count
 
     return MaterializeResourceServingSummary(
         start_date=start_date,
@@ -194,8 +198,8 @@ def build_tencent_resource_serving_rows(
     basis_key: str,
     materialization_version: str,
     calculated_at: datetime,
-) -> tuple[dict[str, Any], ...]:
-    """Project Tencent build-weighted attribution back onto provider resources."""
+) -> Iterator[dict[str, Any]]:
+    """Project and aggregate one provider resource at a time, not a day's product."""
     sources = tuple(dict(row) for row in source_rows)
     summaries = tuple(dict(row) for row in summary_rows)
     summaries_by_hash = {str(row["source_row_hash"]): row for row in summaries}
@@ -207,18 +211,13 @@ def build_tencent_resource_serving_rows(
     missing_hashes = direct_hashes - summaries_by_hash.keys()
     if missing_hashes:
         raise RuntimeError(f"Tencent source-summary hash is missing: {sorted(missing_hashes)[0]}")
-    contributions = [
-        _tencent_resource_contribution(
-            source,
-            summaries_by_hash[str(source["source_summary_row_hash"])],
-            {name: _decimal_or_none(source.get(name)) for name in _AMOUNTS},
-            basis_key=basis_key,
-            materialization_version=materialization_version,
-            calculated_at=calculated_at,
-        )
-        for source in sources
-        if source.get("source_summary_row_hash")
-    ]
+    # Include direct rows and all pools for the same resource in one aggregation:
+    # different pools/labels can still share the database's serving identity.
+    direct_by_resource: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for source in sources:
+        if source.get("source_summary_row_hash"):
+            summary = summaries_by_hash[str(source["source_summary_row_hash"])]
+            direct_by_resource[_tencent_resource_identity(summary)].append(source)
 
     shared_sources: dict[tuple[str, str, str, str], list[dict[str, Any]]] = defaultdict(list)
     for source in sources:
@@ -250,6 +249,8 @@ def build_tencent_resource_serving_rows(
             if value is not None:
                 resource[name] = _decimal(resource.get(name)) + value
 
+    shared_by_resource: dict[tuple[str, str], list[tuple[Any, dict[str, Any]]]] = defaultdict(list)
+    allocations = {}
     for pool_key, pool_sources in shared_sources.items():
         pool_resources = tuple(resources.get(pool_key, {}).values())
         if not pool_resources:
@@ -263,7 +264,22 @@ def build_tencent_resource_serving_rows(
         reference_total = sum(
             (_decimal(row.get(reference_field)) for row in pool_sources), Decimal()
         )
+        allocations[pool_key] = participants, reference_amounts, reference_total
         for resource in pool_resources:
+            shared_by_resource[_tencent_resource_identity(resource)].append((pool_key, resource))
+
+    def contributions(identity: tuple[str, str]) -> Iterator[dict[str, Any]]:
+        for source in direct_by_resource.get(identity, ()):
+            yield _tencent_resource_contribution(
+                source,
+                summaries_by_hash[str(source["source_summary_row_hash"])],
+                {name: _decimal_or_none(source.get(name)) for name in _AMOUNTS},
+                basis_key=basis_key,
+                materialization_version=materialization_version,
+                calculated_at=calculated_at,
+            )
+        for pool_key, resource in shared_by_resource.get(identity, ()):
+            participants, reference_amounts, reference_total = allocations[pool_key]
             remaining = {name: _decimal_or_none(resource.get(name)) for name in _AMOUNTS}
             for index, source in enumerate(participants):
                 last = index == len(participants) - 1
@@ -282,19 +298,22 @@ def build_tencent_resource_serving_rows(
                             / reference_total
                         ).quantize(_AMOUNT_QUANTUM, rounding=ROUND_HALF_UP)
                         remaining[name] -= amounts[name]
-                contributions.append(
-                    _tencent_resource_contribution(
-                        source,
-                        resource,
-                        amounts,
-                        basis_key=basis_key,
-                        materialization_version=materialization_version,
-                        calculated_at=calculated_at,
-                    )
+                yield _tencent_resource_contribution(
+                    source,
+                    resource,
+                    amounts,
+                    basis_key=basis_key,
+                    materialization_version=materialization_version,
+                    calculated_at=calculated_at,
                 )
 
-    return _aggregate_contributions(contributions)
+    for identity in dict.fromkeys((*direct_by_resource, *shared_by_resource)):
+        yield from _aggregate_contributions(contributions(identity))
 
+
+def _tencent_resource_identity(row: Mapping[str, Any]) -> tuple[str, str]:
+    resource_name = str(row.get("resource_name") or "")
+    return resource_name, "" if resource_name else str(row["source_row_hash"])
 
 
 def _tencent_reference_field(rows: Sequence[Mapping[str, Any]]) -> str:
@@ -720,7 +739,7 @@ def _load_tencent_summary_rows(
 
 def _replace_staged_window(
     engine: Engine,
-    rows: Sequence[Mapping[str, Any]],
+    rows: Iterable[Mapping[str, Any]],
     *,
     materialization_version: str,
     basis_key: str,
@@ -728,18 +747,37 @@ def _replace_staged_window(
     vendor: str,
     account_id: str,
     batch_size: int,
-) -> None:
+) -> int:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    row_count = 0
+    iterator = iter(rows)
     with engine.begin() as connection:
         connection.execute(_DELETE_STAGED, {
             "materialization_version": materialization_version, "basis_key": basis_key,
             "usage_date": usage_date, "vendor": vendor, "account_id": account_id,
         })
-        for offset in range(0, len(rows), batch_size):
-            batch = [dict(row) for row in rows[offset : offset + batch_size]]
+        while batch := [dict(row) for row in islice(iterator, batch_size)]:
+            row_count += len(batch)
             if connection.dialect.name == "sqlite":
                 batch = bind_decimal_rows(batch)
-            if batch:
-                connection.execute(_INSERT_SERVING, batch)
+            connection.execute(_INSERT_SERVING, batch)
+    return row_count
+
+
+def _checked_serving_rows(
+    source_rows: Sequence[Mapping[str, Any]],
+    rows: Iterable[Mapping[str, Any]],
+    totals: dict[str, dict[str, Any]],
+) -> Iterator[Mapping[str, Any]]:
+    for row in rows:
+        currency = _currency(row)
+        total = totals.setdefault(currency, {"currency": currency})
+        for name in (*_AMOUNTS, "detail_list_cost", "fallback_list_cost"):
+            total[name] = _decimal(total.get(name)) + _decimal(row.get(name))
+        yield row
+    # Exhaustion validates inside the staging transaction, before commit/publication.
+    _assert_conserved(source_rows, totals.values())
 
 
 def _publish_window(
