@@ -21,6 +21,34 @@ func TestStatusValid(t *testing.T) {
 	}
 }
 
+func TestCanTransition(t *testing.T) {
+	allowed := []struct{ from, to Status }{
+		{StatusPending, StatusApproved},
+		{StatusPending, StatusRejected},
+		{StatusPending, StatusRevoked},
+		{StatusPending, StatusExpired},
+		{StatusApproved, StatusRevoked},
+		{StatusApproved, StatusExpired},
+	}
+	for _, tt := range allowed {
+		if !canTransition(tt.from, tt.to) {
+			t.Fatalf("%s -> %s should be allowed", tt.from, tt.to)
+		}
+	}
+	denied := []struct{ from, to Status }{
+		{StatusPending, StatusPending},
+		{StatusApproved, StatusPending},
+		{StatusRejected, StatusApproved},
+		{StatusRevoked, StatusApproved},
+		{StatusExpired, StatusApproved},
+	}
+	for _, tt := range denied {
+		if canTransition(tt.from, tt.to) {
+			t.Fatalf("%s -> %s should be denied", tt.from, tt.to)
+		}
+	}
+}
+
 func TestClampLimit(t *testing.T) {
 	for _, tt := range []struct{ in, want int }{{0, 50}, {-1, 50}, {10, 10}, {201, 200}} {
 		if got := clampLimit(tt.in); got != tt.want {

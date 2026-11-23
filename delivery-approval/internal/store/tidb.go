@@ -174,7 +174,7 @@ func (s *TiDB) ListPending(ctx context.Context, limit int) ([]*Request, error) {
 }
 
 func (s *TiDB) Transition(ctx context.Context, id string, from, to Status, actor, note string, decidedAt time.Time) (bool, error) {
-	if !from.Valid() || !to.Valid() {
+	if !canTransition(from, to) {
 		return false, errors.New("invalid approval transition")
 	}
 	if decidedAt.IsZero() {
@@ -289,6 +289,17 @@ func requestsFromEnt(rows []*dbent.Request) []*Request {
 func withOrderedFiles() func(*dbent.RequestFileQuery) {
 	return func(q *dbent.RequestFileQuery) {
 		q.Order(dbent.Asc(requestfile.FieldFilename))
+	}
+}
+
+func canTransition(from, to Status) bool {
+	switch from {
+	case StatusPending:
+		return to == StatusApproved || to == StatusRejected || to == StatusRevoked || to == StatusExpired
+	case StatusApproved:
+		return to == StatusRevoked || to == StatusExpired
+	default:
+		return false
 	}
 }
 
