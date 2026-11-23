@@ -696,6 +696,35 @@ def main(argv: Sequence[str] | None = None) -> int:
                             batch_size=settings.aws_billing.page_size,
                         )
                     )
+                    # Keep split resource identities in step with the complete
+                    # daily summary refresh, rather than the lagged weekly job.
+                    if args.limit is None and not args.replace_existing_partitions:
+                        try:
+                            summaries.append(
+                                run_sync_aws_unmatched_resources(
+                                    engine,
+                                    settings=settings.aws_billing,
+                                    account_id=source.account_id,
+                                    usage_start_date=min(split_usage_dates),
+                                    usage_end_date=max(split_usage_dates),
+                                    export_partition_start=summary.export_partition_start,
+                                    export_partition_end=summary.export_partition_end,
+                                    dry_run=args.dry_run,
+                                    replace_existing_usage_dates=True,
+                                    validate_guardrail=False,
+                                    source=source,
+                                )
+                            )
+                        except Exception:
+                            # The summary is committed. Keep the shell's subsequent
+                            # attribution refresh from being gated on resource details.
+                            logging.getLogger(__name__).exception(
+                                "AWS resource detail refresh failed for %s (%s..%s); "
+                                "summary import succeeded and attribution refresh can continue",
+                                source.account_id,
+                                min(split_usage_dates),
+                                max(split_usage_dates),
+                            )
             print(json.dumps(_summaries_to_json(summaries), indent=2, sort_keys=True))
             return 0
         finally:

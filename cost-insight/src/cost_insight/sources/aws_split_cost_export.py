@@ -248,6 +248,7 @@ WITH raw AS (
     DATE(line_item_usage_start_date) AS usage_date,
     NULLIF(line_item_resource_id, '') AS resource_name,
     NULLIF(split_line_item_parent_resource_id, '') AS parent_resource_name,
+    COALESCE(NULLIF(product_servicecode, ''), NULLIF(line_item_product_code, '')) AS service_name,
     CASE
       WHEN line_item_line_item_type IN ({_AWS_CE_UNBLENDED_LINE_ITEM_TYPES})
         THEN COALESCE(line_item_unblended_cost, 0)
@@ -283,6 +284,7 @@ parent_direct AS (
    AND parent_keys.usage_date = raw.usage_date
    AND parent_keys.parent_resource_name = raw.resource_name
   WHERE raw.parent_resource_name IS NULL
+    AND raw.service_name = 'AmazonEC2'
   GROUP BY raw.account_id, raw.usage_date, raw.resource_name
 ),
 child_split AS (
@@ -336,6 +338,7 @@ WITH raw AS (
     DATE(line_item_usage_start_date) AS usage_date,
     NULLIF(line_item_resource_id, '') AS resource_name,
     NULLIF(split_line_item_parent_resource_id, '') AS parent_resource_name,
+    COALESCE(NULLIF(product_servicecode, ''), NULLIF(line_item_product_code, '')) AS service_name,
     NULLIF(TRIM(resource_tags_aws_eks_namespace), '') AS namespace,
     NULLIF(TRIM(resource_tags_aws_eks_workload_name), '') AS workload_name,
     NULLIF(TRIM(resource_tags_aws_eks_workload_type), '') AS workload_type,
@@ -375,6 +378,7 @@ parent_direct AS (
    AND parent_keys.usage_date = raw.usage_date
    AND parent_keys.parent_resource_name = raw.resource_name
   WHERE raw.parent_resource_name IS NULL
+    AND raw.service_name = 'AmazonEC2'
   GROUP BY raw.account_id, raw.usage_date, raw.resource_name
 ),
 all_child_split AS (
@@ -613,6 +617,8 @@ parent_direct AS (
    AND parent_keys.usage_date = raw.usage_date
    AND parent_keys.parent_resource_name = raw.resource_name
   WHERE raw.parent_resource_name IS NULL
+    -- Sharing an instance ID does not make network charges EC2 compute.
+    AND raw.service_name = 'AmazonEC2'
   GROUP BY raw.account_id, raw.usage_date, raw.resource_name
 ),
 child_split AS (
@@ -714,6 +720,7 @@ branch_rows AS (
     ON parent_keys.account_id = raw.account_id
    AND parent_keys.usage_date = raw.usage_date
    AND parent_keys.parent_resource_name = raw.resource_name
+   AND raw.service_name = 'AmazonEC2'
   WHERE raw.parent_resource_name IS NULL
     AND parent_keys.parent_resource_name IS NULL
 
