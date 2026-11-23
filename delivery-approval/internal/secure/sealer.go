@@ -59,7 +59,7 @@ func (s *Sealer) Seal(plaintext string) ([]byte, error) {
 
 func (s *Sealer) Open(ciphertext []byte) (string, error) {
 	if len(ciphertext) < 1+s.aead.NonceSize()+s.aead.Overhead() {
-		return "", errors.New("invalid sealed URL")
+		return "", errors.New("sealed URL too short")
 	}
 	if ciphertext[0] != s.version {
 		return "", errors.New("unsupported sealed URL version")

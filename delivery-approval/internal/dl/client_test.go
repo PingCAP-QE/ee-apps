@@ -132,3 +132,37 @@ func TestNewValidation(t *testing.T) {
 		t.Fatal("empty secret accepted")
 	}
 }
+
+func TestRevokeRetriesServerErrors(t *testing.T) {
+	calls := 0
+	c := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	c.retries = 2
+	if err := c.Revoke(context.Background(), "share-1"); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 3 {
+		t.Fatalf("calls = %d, want 3", calls)
+	}
+}
+
+func TestRevokeUnauthorizedIsNotRetried(t *testing.T) {
+	calls := 0
+	c := newClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	c.retries = 2
+	if err := c.Revoke(context.Background(), "share-1"); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("error = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("calls = %d, want 1", calls)
+	}
+}

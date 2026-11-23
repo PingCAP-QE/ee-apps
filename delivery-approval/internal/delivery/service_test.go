@@ -295,3 +295,17 @@ func TestDeliverShareStoreError(t *testing.T) {
 		t.Fatalf("class = %s", st.class)
 	}
 }
+
+func TestZeroNotifyAttemptsClampsToOne(t *testing.T) {
+	st := &fakeStore{req: approvedRequest()}
+	notifier := &fakeNotifier{}
+	s := New(st, &fakeIssuer{}, testSealer(t), notifier, nil)
+	s.NotifyAttempts = 0
+	s.Sleep = func(time.Duration) {}
+	if err := s.Deliver(context.Background(), st.req.ID); err != nil {
+		t.Fatal(err)
+	}
+	if notifier.calls != 1 {
+		t.Fatalf("notify calls = %d, want 1", notifier.calls)
+	}
+}

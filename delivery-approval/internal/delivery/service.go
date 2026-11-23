@@ -43,6 +43,7 @@ type Service struct {
 	Logger   *log.Logger
 
 	NotifyAttempts int
+	NotifyBackoff  time.Duration
 	Sleep          func(time.Duration)
 }
 
@@ -53,10 +54,13 @@ func New(st store.Store, issuer Issuer, sealer *secure.Sealer, notifier Notifier
 	return &Service{
 		Store: st, Issuer: issuer, Sealer: sealer, Notifier: notifier, Logger: logger,
 		NotifyAttempts: 5,
+		NotifyBackoff:  500 * time.Millisecond,
 		Sleep:          time.Sleep,
 	}
 }
 
+// Deliver issues one share per file, seals each URL at rest, and notifies the
+// requester. Any failure revokes every issued share and records delivery_failed.
 func (s *Service) Deliver(ctx context.Context, requestID string) error {
 	if s.Issuer == nil || s.Sealer == nil {
 		return errors.New("delivery is not configured")
@@ -162,12 +166,17 @@ func (s *Service) links(req *store.Request) ([]Link, error) {
 func (s *Service) notify(ctx context.Context, req *store.Request, links []Link) error {
 	attempts := s.NotifyAttempts
 	if attempts < 1 {
+		// Clamp instead of looping forever; a zero value means one attempt.
 		attempts = 1
+	}
+	backoff := s.NotifyBackoff
+	if backoff < 0 {
+		backoff = 0
 	}
 	var last error
 	for i := 0; i < attempts; i++ {
 		if i > 0 {
-			s.Sleep(time.Duration(i) * 500 * time.Millisecond)
+			s.Sleep(time.Duration(i) * backoff)
 		}
 		if err := s.Notifier.Notify(ctx, req, links); err == nil {
 			return nil
@@ -188,7 +197,7 @@ func (s *Service) abort(ctx context.Context, req *store.Request, attempts int, c
 	for _, f := range req.Files {
 		if f.ShareID != "" && s.Issuer != nil {
 			if err := s.Issuer.Revoke(ctx, f.ShareID); err != nil {
-				s.Logger.Printf("delivery share revoke failed request=%s", req.ID)
+				s.Logger.Printf("delivery share revoke failed request=%s share=%s", req.ID, f.ShareID)
 			}
 		}
 		_ = s.Store.ClearFileCiphertext(ctx, f.ID)
