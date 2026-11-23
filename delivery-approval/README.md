@@ -79,3 +79,27 @@ internal/store/      domain model, Store interface, TiDB implementation
 internal/metrics/    aggregate counters on the private listener
 internal/server/     HTTP surface wiring (form/API placeholder in Phase 1)
 ```
+
+## Design notes
+
+- **Why `internal/store` instead of using Ent types in handlers:** Ent is the
+  persistence layer; the store is the transaction/invariant boundary. It owns
+  the atomic "request + files + created event" transaction, the conditional
+  `UPDATE ... WHERE status='pending'`, the append-only event insert, and the
+  encrypted URL lifecycle. Keeping generated Ent types out of the HTTP layer
+  also lets the form/approval tests use a fake store instead of a database.
+  Later phases will put the approval state machine in a service package that depends
+  on this interface.
+- **Why not Goa:** the approval surface is server-rendered HTML (form, detail,
+  approve/reject) plus a handful of JSON endpoints. Goa's design-first
+  server/client codegen is a good fit for the machine APIs in `dl/` and
+  `tibuild/`, but adds generated transport code and a DSL without a client here.
+  If the service later exposes a stable API for other callers, adding a Goa
+  service (or a separate API package) is straightforward.
+- **Go and Ent versions:** `go.mod` keeps the language minimum at Go 1.25.8
+  because Ent v0.14.6 (the latest release, 2026-03-17) has no newer version and
+  its code generator is not compatible with Go 1.27 export data. The
+  `toolchain go1.27.3` line makes normal builds/tests use Go 1.27.3; only
+  `go generate` pins `GOTOOLCHAIN=go1.25.8` for the Ent loader. When Ent ships a
+  generator compatible with Go 1.27, the minimum can be raised and the pin
+  removed.

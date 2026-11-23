@@ -16,8 +16,8 @@ import (
 const (
 	DefaultListen        = ":8080"
 	DefaultHealthAddress = ":8081"
-	DefaultPublicURL     = "https://prow.tidb.net/dl/grants"
-	DefaultDLBaseURL     = "http://dl-management.dl.svc.cluster.local"
+	DefaultPublicURL     = "https://approvals.example.com"
+	DefaultDLBaseURL     = "http://dl-management:80"
 	MaxTTLSeconds        = int64(7 * 24 * 60 * 60)
 )
 
@@ -50,7 +50,7 @@ func Default() *Config {
 		HealthAddress:          DefaultHealthAddress,
 		PublicURL:              DefaultPublicURL,
 		DLBaseURL:              DefaultDLBaseURL,
-		AllowedEmailDomains:    []string{"pingcap.com"},
+		AllowedEmailDomains:    []string{"example.com"},
 		MaxPendingPerRequester: 5,
 		MaxRequestsPerDay:      20,
 		DefaultTTLSeconds:      24 * 60 * 60,

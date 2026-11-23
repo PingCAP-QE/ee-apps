@@ -20,10 +20,10 @@ func validConfig() *Config {
 	return &Config{
 		Listen:                 ":8080",
 		HealthAddress:          ":8081",
-		PublicURL:              "https://prow.tidb.net/dl/grants",
-		DLBaseURL:              "http://dl-management.dl.svc.cluster.local",
-		AllowedEmailDomains:    []string{"pingcap.com"},
-		ApproverEmails:         []string{"approver@pingcap.com"},
+		PublicURL:              "https://approvals.example.com",
+		DLBaseURL:              "http://dl-management:80",
+		AllowedEmailDomains:    []string{"example.com"},
+		ApproverEmails:         []string{"approver@example.com"},
 		MaxPendingPerRequester: 5,
 		MaxRequestsPerDay:      20,
 		DefaultTTLSeconds:      86400,
@@ -53,10 +53,10 @@ func TestLoadConfigNormalizes(t *testing.T) {
 	path := writeConfig(t, `
 listen: ":8080"
 health_address: ":8081"
-public_url: https://prow.tidb.net/dl/grants/
-dl_base_url: http://dl-management.dl.svc.cluster.local/
-allowed_email_domains: [PingCAP.com, pingcap.com]
-approver_emails: [Approver@PingCAP.com, approver@pingcap.com, second@pingcap.com]
+public_url: https://approvals.example.com/
+dl_base_url: http://dl-management:80/
+allowed_email_domains: [Example.com, example.com]
+approver_emails: [Approver@Example.com, approver@example.com, second@example.com]
 max_pending_per_requester: 3
 max_requests_per_day: 10
 default_ttl_seconds: 3600
@@ -66,30 +66,30 @@ max_ttl_seconds: 7200
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.PublicURL != "https://prow.tidb.net/dl/grants" {
+	if cfg.PublicURL != "https://approvals.example.com" {
 		t.Fatalf("public url not normalized: %q", cfg.PublicURL)
 	}
-	if cfg.DLBaseURL != "http://dl-management.dl.svc.cluster.local" {
+	if cfg.DLBaseURL != "http://dl-management:80" {
 		t.Fatalf("dl base not normalized: %q", cfg.DLBaseURL)
 	}
-	if len(cfg.AllowedEmailDomains) != 1 || cfg.AllowedEmailDomains[0] != "pingcap.com" {
+	if len(cfg.AllowedEmailDomains) != 1 || cfg.AllowedEmailDomains[0] != "example.com" {
 		t.Fatalf("domains not deduplicated: %v", cfg.AllowedEmailDomains)
 	}
-	if len(cfg.ApproverEmails) != 2 || cfg.ApproverEmails[0] != "approver@pingcap.com" {
+	if len(cfg.ApproverEmails) != 2 || cfg.ApproverEmails[0] != "approver@example.com" {
 		t.Fatalf("approvers not normalized: %v", cfg.ApproverEmails)
 	}
 }
 
 func TestInvalidConfigs(t *testing.T) {
 	mutations := map[string]func(*Config){
-		"http public url":     func(c *Config) { c.PublicURL = "http://prow.tidb.net/dl/grants" },
-		"public query":        func(c *Config) { c.PublicURL = "https://prow.tidb.net/dl/grants?x=1" },
-		"dl base path":        func(c *Config) { c.DLBaseURL = "http://dl-management.dl.svc/api" },
+		"http public url":     func(c *Config) { c.PublicURL = "http://approvals.example.com" },
+		"public query":        func(c *Config) { c.PublicURL = "https://approvals.example.com?x=1" },
+		"dl base path":        func(c *Config) { c.DLBaseURL = "http://dl-management/api" },
 		"empty domains":       func(c *Config) { c.AllowedEmailDomains = nil },
-		"bad domain":          func(c *Config) { c.AllowedEmailDomains = []string{"pingcap"} },
+		"bad domain":          func(c *Config) { c.AllowedEmailDomains = []string{"example"} },
 		"empty approvers":     func(c *Config) { c.ApproverEmails = nil },
 		"bad approver":        func(c *Config) { c.ApproverEmails = []string{"not-an-email"} },
-		"display name":        func(c *Config) { c.ApproverEmails = []string{"A <a@pingcap.com>"} },
+		"display name":        func(c *Config) { c.ApproverEmails = []string{"A <a@example.com>"} },
 		"zero pending limit":  func(c *Config) { c.MaxPendingPerRequester = 0 },
 		"zero daily limit":    func(c *Config) { c.MaxRequestsPerDay = 0 },
 		"default ttl zero":    func(c *Config) { c.DefaultTTLSeconds = 0 },
@@ -111,10 +111,10 @@ func TestInvalidConfigs(t *testing.T) {
 
 func TestUnknownFieldRejected(t *testing.T) {
 	path := writeConfig(t, `
-public_url: https://prow.tidb.net/dl/grants
-dl_base_url: http://dl-management.dl.svc.cluster.local
-allowed_email_domains: [pingcap.com]
-approver_emails: [approver@pingcap.com]
+public_url: https://approvals.example.com
+dl_base_url: http://dl-management:80
+allowed_email_domains: [example.com]
+approver_emails: [approver@example.com]
 max_pending_per_requester: 5
 max_requests_per_day: 20
 default_ttl_seconds: 3600
@@ -128,10 +128,10 @@ typo_field: true
 
 func TestReloadSwapsAndKeepsOnError(t *testing.T) {
 	path := writeConfig(t, `
-public_url: https://prow.tidb.net/dl/grants
-dl_base_url: http://dl-management.dl.svc.cluster.local
-allowed_email_domains: [pingcap.com]
-approver_emails: [first@pingcap.com]
+public_url: https://approvals.example.com
+dl_base_url: http://dl-management:80
+allowed_email_domains: [example.com]
+approver_emails: [first@example.com]
 max_pending_per_requester: 5
 max_requests_per_day: 20
 default_ttl_seconds: 3600
@@ -142,7 +142,7 @@ max_ttl_seconds: 7200
 		t.Fatal(err)
 	}
 	m := NewManager(cfg)
-	if !m.IsApprover("first@pingcap.com") {
+	if !m.IsApprover("first@example.com") {
 		t.Fatal("initial approver not loaded")
 	}
 
@@ -152,15 +152,15 @@ max_ttl_seconds: 7200
 	if err := m.Reload(path); err == nil {
 		t.Fatal("invalid reload accepted")
 	}
-	if !m.IsApprover("first@pingcap.com") {
+	if !m.IsApprover("first@example.com") {
 		t.Fatal("invalid reload replaced the running config")
 	}
 
 	writeConfig := `
-public_url: https://prow.tidb.net/dl/grants
-dl_base_url: http://dl-management.dl.svc.cluster.local
-allowed_email_domains: [pingcap.com]
-approver_emails: [second@pingcap.com]
+public_url: https://approvals.example.com
+dl_base_url: http://dl-management:80
+allowed_email_domains: [example.com]
+approver_emails: [second@example.com]
 max_pending_per_requester: 5
 max_requests_per_day: 20
 default_ttl_seconds: 3600
@@ -172,17 +172,17 @@ max_ttl_seconds: 7200
 	if err := m.Reload(path); err != nil {
 		t.Fatal(err)
 	}
-	if m.IsApprover("first@pingcap.com") || !m.IsApprover("second@pingcap.com") {
+	if m.IsApprover("first@example.com") || !m.IsApprover("second@example.com") {
 		t.Fatal("reload did not swap the approver list")
 	}
 }
 
 func TestConcurrentReadsDuringReload(t *testing.T) {
 	path := writeConfig(t, `
-public_url: https://prow.tidb.net/dl/grants
-dl_base_url: http://dl-management.dl.svc.cluster.local
-allowed_email_domains: [pingcap.com]
-approver_emails: [approver@pingcap.com]
+public_url: https://approvals.example.com
+dl_base_url: http://dl-management:80
+allowed_email_domains: [example.com]
+approver_emails: [approver@example.com]
 max_pending_per_requester: 5
 max_requests_per_day: 20
 default_ttl_seconds: 3600

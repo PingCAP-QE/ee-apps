@@ -2,6 +2,8 @@ module github.com/PingCAP-QE/ee-apps/delivery-approval
 
 go 1.25.8
 
+toolchain go1.27.3
+
 require (
 	entgo.io/ent v0.14.6
 	github.com/go-sql-driver/mysql v1.9.3
