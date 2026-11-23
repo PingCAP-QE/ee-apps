@@ -12,6 +12,7 @@ import (
 	dbent "github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/migrate"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/request"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestfile"
 	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 )
@@ -135,7 +136,7 @@ func (s *TiDB) CreateRequest(ctx context.Context, req *Request) error {
 func (s *TiDB) GetRequest(ctx context.Context, id string) (*Request, error) {
 	row, err := s.client.Request.Query().
 		Where(request.IDEQ(id)).
-		WithFiles().
+		WithFiles(withOrderedFiles()).
 		Only(ctx)
 	if dbent.IsNotFound(err) {
 		return nil, ErrNotFound
@@ -149,7 +150,7 @@ func (s *TiDB) GetRequest(ctx context.Context, id string) (*Request, error) {
 func (s *TiDB) ListByRequester(ctx context.Context, email string, limit int) ([]*Request, error) {
 	rows, err := s.client.Request.Query().
 		Where(request.RequesterEmailEQ(email)).
-		WithFiles().
+		WithFiles(withOrderedFiles()).
 		Order(dbent.Desc(request.FieldCreatedAt)).
 		Limit(clampLimit(limit)).
 		All(ctx)
@@ -162,7 +163,7 @@ func (s *TiDB) ListByRequester(ctx context.Context, email string, limit int) ([]
 func (s *TiDB) ListPending(ctx context.Context, limit int) ([]*Request, error) {
 	rows, err := s.client.Request.Query().
 		Where(request.StatusEQ(request.StatusPending)).
-		WithFiles().
+		WithFiles(withOrderedFiles()).
 		Order(dbent.Asc(request.FieldCreatedAt)).
 		Limit(clampLimit(limit)).
 		All(ctx)
@@ -283,6 +284,12 @@ func requestsFromEnt(rows []*dbent.Request) []*Request {
 		out = append(out, requestFromEnt(row))
 	}
 	return out
+}
+
+func withOrderedFiles() func(*dbent.RequestFileQuery) {
+	return func(q *dbent.RequestFileQuery) {
+		q.Order(dbent.Asc(requestfile.FieldFilename))
+	}
 }
 
 func clampLimit(limit int) int {
