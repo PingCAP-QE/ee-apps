@@ -50,6 +50,18 @@ This phase adds the service skeleton, configuration and storage:
 - Self-approval and non-approver decisions are rejected in the app, not by the
   route config.
 
+## Phase 4 scope
+
+- `internal/dl`: client for `POST /api/v1/shares` and `DELETE /api/v1/shares/{id}` with
+  issuer bearer auth, fixed error classes and retries for 429/5xx/timeouts.
+- `internal/secure`: AES-256-GCM sealing for the one-time `download_url`.
+- `internal/delivery`: issues one share per file, stores `share_id` + sealed URL,
+  builds links by decrypting in memory, retries notification up to 5 times, and
+  revokes every issued share + clears sealed URLs on failure.
+- Approval now triggers delivery asynchronously (5-minute budget); the Lark
+  notifier is added in Phase 5. Until then `Delivery` is nil in the server wiring,
+  so this phase does not change runtime behavior.
+
 ## Configuration
 
 ```bash
@@ -102,6 +114,9 @@ go generate ./internal/database/...
 cmd/server/          application + private probe listeners
 cmd/migrate/         one-shot Ent schema migration
 internal/approval/   Expiry sweeper and share-revoker interface
+internal/delivery/   dl issuance + sealed URL delivery orchestration
+internal/dl/         dl capability API client
+internal/secure/     AES-256-GCM sealed URL
 internal/auth/       Google ID-token validation and identity context
 internal/config/     YAML defaults, validation, hot reload
 internal/web/        HTML form/list/detail/pending, approval actions, CSRF, CSP, rate limits

@@ -42,10 +42,11 @@ func (f *fakeStore) Transition(_ context.Context, id string, from, to store.Stat
 func (f *fakeStore) SetDelivery(context.Context, string, store.DeliveryStatus, int, string) error {
 	return nil
 }
-func (f *fakeStore) AppendEvent(context.Context, *store.Event) error          { return nil }
-func (f *fakeStore) SaveFileCiphertext(context.Context, string, []byte) error { return nil }
-func (f *fakeStore) ClearFileCiphertext(context.Context, string) error        { return nil }
-func (f *fakeStore) Close() error                                             { return nil }
+func (f *fakeStore) AppendEvent(context.Context, *store.Event) error            { return nil }
+func (f *fakeStore) SetFileShare(context.Context, string, string, []byte) error { return nil }
+func (f *fakeStore) SaveFileCiphertext(context.Context, string, []byte) error   { return nil }
+func (f *fakeStore) ClearFileCiphertext(context.Context, string) error          { return nil }
+func (f *fakeStore) Close() error                                               { return nil }
 
 type fakeRevoker struct {
 	shares []string

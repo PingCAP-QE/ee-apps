@@ -97,10 +97,11 @@ func (f *fakeStore) Transition(_ context.Context, id string, from, to store.Stat
 func (f *fakeStore) SetDelivery(context.Context, string, store.DeliveryStatus, int, string) error {
 	return nil
 }
-func (f *fakeStore) AppendEvent(context.Context, *store.Event) error          { return nil }
-func (f *fakeStore) SaveFileCiphertext(context.Context, string, []byte) error { return nil }
-func (f *fakeStore) ClearFileCiphertext(context.Context, string) error        { return nil }
-func (f *fakeStore) Close() error                                             { return nil }
+func (f *fakeStore) AppendEvent(context.Context, *store.Event) error            { return nil }
+func (f *fakeStore) SetFileShare(context.Context, string, string, []byte) error { return nil }
+func (f *fakeStore) SaveFileCiphertext(context.Context, string, []byte) error   { return nil }
+func (f *fakeStore) ClearFileCiphertext(context.Context, string) error          { return nil }
+func (f *fakeStore) Close() error                                               { return nil }
 
 func testConfig(t *testing.T) *config.Manager {
 	t.Helper()
@@ -528,5 +529,34 @@ func TestRevokeRejectsMissingCSRF(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("revoke missing csrf = %d, want 403", w.Code)
+	}
+}
+
+type fakeDeliverer struct {
+	ch  chan string
+	err error
+}
+
+func (f *fakeDeliverer) Deliver(_ context.Context, id string) error {
+	f.ch <- id
+	return f.err
+}
+
+func TestApproveTriggersDelivery(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	d := &fakeDeliverer{ch: make(chan string, 1)}
+	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "approver@example.com"}}, Delivery: d, Metrics: &metrics.Metrics{}})
+
+	if w := postDecision(t, h, "req-1", "approve", "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("approve = %d", w.Code)
+	}
+	select {
+	case id := <-d.ch:
+		if id != "req-1" {
+			t.Fatalf("delivered id = %q", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("approval did not trigger delivery")
 	}
 }

@@ -18,23 +18,25 @@ import (
 )
 
 type Options struct {
-	Store   store.Store
-	Config  *config.Manager
-	Auth    auth.Validator
-	Revoker approval.Revoker
-	Metrics *metrics.Metrics
-	Logger  *log.Logger
+	Store    store.Store
+	Config   *config.Manager
+	Auth     auth.Validator
+	Revoker  approval.Revoker
+	Delivery web.Deliverer
+	Metrics  *metrics.Metrics
+	Logger   *log.Logger
 }
 
 // Application is the OIDC-protected form/detail surface.
 func Application(opts Options) http.Handler {
 	return web.New(web.Options{
-		Store:   opts.Store,
-		Config:  opts.Config,
-		Auth:    opts.Auth,
-		Revoker: opts.Revoker,
-		Metrics: opts.Metrics,
-		Logger:  opts.Logger,
+		Store:    opts.Store,
+		Config:   opts.Config,
+		Auth:     opts.Auth,
+		Revoker:  opts.Revoker,
+		Delivery: opts.Delivery,
+		Metrics:  opts.Metrics,
+		Logger:   opts.Logger,
 	})
 }
 
