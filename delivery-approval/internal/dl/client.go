@@ -119,6 +119,11 @@ func (c *Client) Revoke(ctx context.Context, shareID string) error {
 	})
 }
 
+// RevokeShare satisfies the approval sweeper's revoker interface.
+func (c *Client) RevokeShare(ctx context.Context, shareID string) error {
+	return c.Revoke(ctx, shareID)
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body []byte, handle func(*http.Response) error) error {
 	var last error
 	for attempt := 0; attempt <= c.retries; attempt++ {

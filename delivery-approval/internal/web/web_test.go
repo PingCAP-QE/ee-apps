@@ -560,3 +560,39 @@ func TestApproveTriggersDelivery(t *testing.T) {
 		t.Fatal("approval did not trigger delivery")
 	}
 }
+
+type fakeApprovalNotifier struct {
+	ch  chan string
+	err error
+}
+
+func (f *fakeApprovalNotifier) NotifyApproval(_ context.Context, req *store.Request) error {
+	f.ch <- req.ID
+	return f.err
+}
+
+func TestCreateNotifiesApprover(t *testing.T) {
+	st := newFakeStore()
+	n := &fakeApprovalNotifier{ch: make(chan string, 1)}
+	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, ApprovalNotifier: n, Metrics: &metrics.Metrics{}})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d", w.Code)
+	}
+	select {
+	case id := <-n.ch:
+		if id != "req-1" {
+			t.Fatalf("notified id = %q", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("approval notification not triggered")
+	}
+}
