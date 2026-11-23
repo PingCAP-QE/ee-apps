@@ -16,7 +16,6 @@ original layout under `archived/<project>/`.
 
 | Project | Archived | Reason |
 |---------|----------|--------|
-| [`change-insight/`](change-insight/) | 2026-10-31 | Dormant configuration-change analysis service; no chart, CI build, or deployment. |
 | [`mcp-servers/`](mcp-servers/) | 2026-11-06 | Experimental MCP servers (knowledge base search, PR analysis); no chart, CI build, or deployment. |
 
 To revive an archived project, move it back to the repository root, restore its
