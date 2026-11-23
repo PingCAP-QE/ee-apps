@@ -58,7 +58,7 @@ func sampleRequest(requester string) *Request {
 func TestCreateGetAndList(t *testing.T) {
 	st := testTiDB(t)
 	ctx := context.Background()
-	req := sampleRequest("requester@pingcap.com")
+	req := sampleRequest("requester@example.com")
 	if err := st.CreateRequest(ctx, req); err != nil {
 		t.Fatal(err)
 	}
@@ -87,11 +87,11 @@ func TestCreateGetAndList(t *testing.T) {
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("pending = %d, err = %v", len(pending), err)
 	}
-	mine, err := st.ListByRequester(ctx, "requester@pingcap.com", 10)
+	mine, err := st.ListByRequester(ctx, "requester@example.com", 10)
 	if err != nil || len(mine) != 1 {
 		t.Fatalf("by requester = %d, err = %v", len(mine), err)
 	}
-	other, err := st.ListByRequester(ctx, "other@pingcap.com", 10)
+	other, err := st.ListByRequester(ctx, "other@example.com", 10)
 	if err != nil || len(other) != 0 {
 		t.Fatalf("other requester = %d, err = %v", len(other), err)
 	}
@@ -103,7 +103,7 @@ func TestCreateGetAndList(t *testing.T) {
 func TestTransitionIsConditional(t *testing.T) {
 	st := testTiDB(t)
 	ctx := context.Background()
-	req := sampleRequest("approver-test@pingcap.com")
+	req := sampleRequest("approver-test@example.com")
 	if err := st.CreateRequest(ctx, req); err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestTransitionIsConditional(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ok, err := st.Transition(ctx, req.ID, StatusPending, StatusApproved, "approver@pingcap.com", "ok", time.Now().UTC())
+			ok, err := st.Transition(ctx, req.ID, StatusPending, StatusApproved, "approver@example.com", "ok", time.Now().UTC())
 			if err != nil {
 				t.Errorf("transition: %v", err)
 				return
@@ -138,10 +138,10 @@ func TestTransitionIsConditional(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != StatusApproved || got.ApproverEmail != "approver@pingcap.com" || got.DecidedAt == nil {
+	if got.Status != StatusApproved || got.ApproverEmail != "approver@example.com" || got.DecidedAt == nil {
 		t.Fatalf("unexpected approved request: %+v", got)
 	}
-	if ok, err := st.Transition(ctx, req.ID, StatusPending, StatusRejected, "approver@pingcap.com", "", time.Now().UTC()); err != nil || ok {
+	if ok, err := st.Transition(ctx, req.ID, StatusPending, StatusRejected, "approver@example.com", "", time.Now().UTC()); err != nil || ok {
 		t.Fatalf("second transition = %v, %v; want false, nil", ok, err)
 	}
 }
@@ -149,7 +149,7 @@ func TestTransitionIsConditional(t *testing.T) {
 func TestCiphertextAndDelivery(t *testing.T) {
 	st := testTiDB(t)
 	ctx := context.Background()
-	req := sampleRequest("delivery-test@pingcap.com")
+	req := sampleRequest("delivery-test@example.com")
 	if err := st.CreateRequest(ctx, req); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestCiphertextAndDelivery(t *testing.T) {
 		t.Fatalf("delivery = %+v", got)
 	}
 
-	if err := st.AppendEvent(ctx, &Event{RequestID: req.ID, FileID: fileID, ActorEmail: "approver@pingcap.com", Action: "delivered", Outcome: "ok"}); err != nil {
+	if err := st.AppendEvent(ctx, &Event{RequestID: req.ID, FileID: fileID, ActorEmail: "approver@example.com", Action: "delivered", Outcome: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	count, err := st.client.RequestEvent.Query().Count(ctx)
