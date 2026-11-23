@@ -1,9 +1,10 @@
 import json
+import weakref
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 
 from cost_insight.jobs import materialize_resource_serving as job
 from cost_insight.jobs.materialize_resource_serving import (
@@ -583,6 +584,174 @@ def test_tencent_serving_keeps_same_project_services_separate() -> None:
     assert by_resource_owner["bucket-a", ""]["net_cost"] == Decimal("5")
     assert by_resource_owner["bucket-b", "bob@example.com"]["net_cost"] == Decimal("15")
     assert by_resource_owner["bucket-b", ""]["net_cost"] == Decimal("15")
+
+
+def _tencent_shared_window(resource_count=40, participant_count=12):
+    sources = tuple(
+        _source(
+            vendor="tencent", account_id="100050658403", currency="CNY",
+            service_name="CBS", service="cicd", project="cicd",
+            source_allocation_scope="tencent_ci_shared", source_summary_row_hash=None,
+            employee_id=index, owner=f"owner-{index}", org="pingcap", repo="tidb",
+            source_fact_hash=f"participant-{index}",
+            list_cost=Decimal(resource_count) / participant_count,
+            effective_cost=Decimal(resource_count) / participant_count,
+            credit_amount=None, net_cost=Decimal(resource_count) / participant_count,
+        )
+        for index in range(participant_count)
+    )
+    summaries = tuple(
+        {
+            "source_row_hash": f"summary-{index}", "currency": "CNY",
+            "service_name": "CBS", "service": "cicd", "project": "cicd",
+            "resource_name": f"disk-{index}", "vendor_tags_json": '{"service":"cicd"}',
+            "list_cost": Decimal(1), "effective_cost": Decimal(1),
+            "credit_amount": None, "net_cost": Decimal(1),
+        }
+        for index in range(resource_count)
+    )
+    return sources, summaries
+
+
+def test_tencent_serving_does_not_retain_the_resource_participant_product(monkeypatch) -> None:
+    sources, summaries = _tencent_shared_window()
+    original = job._tencent_resource_contribution
+    live = weakref.WeakValueDictionary()
+    peak = 0
+    created = 0
+
+    class Contribution(dict):
+        pass
+
+    def track(*args, **kwargs):
+        nonlocal peak, created
+        row = Contribution(original(*args, **kwargs))
+        created += 1
+        live[created] = row
+        peak = max(peak, len(live))
+        return row
+
+    monkeypatch.setattr(job, "_tencent_resource_contribution", track)
+    count = 0
+    totals = {amount: Decimal() for amount in job._AMOUNTS}
+    for row in build_tencent_resource_serving_rows(
+        source_rows=sources, summary_rows=summaries, basis_key="native",
+        materialization_version="v1", calculated_at=datetime(2026, 8, 11, tzinfo=UTC),
+    ):
+        count += 1
+        for amount in totals:
+            totals[amount] += row[amount] or Decimal()
+    assert count == created == 40 * 12
+    assert totals == {
+        "list_cost": Decimal(40), "effective_cost": Decimal(40),
+        "credit_amount": Decimal(), "net_cost": Decimal(40),
+    }
+    # A single resource's participants may be live, never the whole day's product.
+    assert peak <= 24
+
+
+@pytest.mark.parametrize("resource_name", ("disk-0", None))
+def test_tencent_streaming_merges_labels_and_pools_before_yielding(resource_name) -> None:
+    sources, summaries = _tencent_shared_window(resource_count=1, participant_count=1)
+    sources = (
+        sources[0],
+        {**sources[0], "service": "other", "source_fact_hash": "other"},
+        {
+            **sources[0], "source_allocation_scope": "direct",
+            "source_summary_row_hash": "direct", "source_fact_hash": "direct",
+        },
+    )
+    summaries = (
+        {**summaries[0], "resource_name": resource_name},
+        {
+            **summaries[0], "source_row_hash": "other", "service": "other",
+            "resource_name": resource_name, "vendor_tags_json": '{"label":"other"}',
+        },
+        {
+            **summaries[0], "source_row_hash": "direct", "resource_name": resource_name,
+            "vendor_tags_json": '{"label":"direct"}',
+        },
+    )
+    rows = tuple(build_tencent_resource_serving_rows(
+        source_rows=sources, summary_rows=summaries, basis_key="native",
+        materialization_version="v1", calculated_at=datetime(2026, 8, 11, tzinfo=UTC),
+    ))
+    job._assert_conserved(sources, rows)
+    assert sum(row["net_cost"] for row in rows) == 3
+    if resource_name:
+        assert len(rows) == 1
+        assert rows[0]["metadata_variant_count"] == 3
+        assert rows[0]["source_row_count"] == 3
+        assert rows[0]["representative_labels_json"] == '{"service":"cicd"}'
+    else:
+        assert len(rows) == 3
+        assert len({row["resource_key"] for row in rows}) == 3
+        assert all(row["resource_identity_kind"] == "attribution_fallback" for row in rows)
+
+
+@pytest.mark.parametrize("failure", (None, "conservation", "iteration", "insert", "dry_run"))
+def test_streamed_staging_validates_before_publication(monkeypatch, failure) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    sources, summaries = _tencent_shared_window(resource_count=4, participant_count=3)
+    window = {"usage_date": sources[0]["usage_date"], "vendor": "tencent", "account_id": "100050658403"}
+    with engine.begin() as connection:
+        for statement in _SCHEMA:
+            connection.execute(text(statement))
+    monkeypatch.setattr(job, "_source_windows", lambda *args, **kwargs: (window,))
+    monkeypatch.setattr(job, "_load_source_rows", lambda *args, **kwargs: sources)
+    monkeypatch.setattr(job, "_load_tencent_summary_rows", lambda *args, **kwargs: summaries)
+    options = {
+        "start_date": window["usage_date"], "end_date": window["usage_date"],
+        "vendor": "tencent", "account_id": window["account_id"], "batch_size": 2,
+    }
+    try:
+        run_materialize_resource_serving(engine, materialization_version="old", **options)
+        original = job.build_tencent_resource_serving_rows
+        produced = 0
+        inserts = 0
+
+        def stream(**kwargs):
+            nonlocal produced
+            for row in original(**kwargs):
+                produced += 1
+                if failure == "conservation":
+                    row["net_cost"] += 1
+                yield row
+            if failure == "iteration":
+                raise RuntimeError("generation failed after the last row")
+
+        def observe_insert(connection, cursor, statement, parameters, context, executemany):
+            nonlocal inserts
+            if statement.lstrip().startswith("INSERT INTO cost_resource_serving_daily"):
+                inserts += 1
+                # The first batch must reach SQL before the remaining product is built.
+                assert produced == inserts * 2
+                if failure == "insert" and inserts == 2:
+                    raise RuntimeError("insert failed")
+
+        monkeypatch.setattr(job, "build_tencent_resource_serving_rows", stream)
+        event.listen(engine, "before_cursor_execute", observe_insert)
+        if failure in ("conservation", "iteration", "insert"):
+            with pytest.raises(RuntimeError):
+                run_materialize_resource_serving(engine, materialization_version="new", **options)
+        else:
+            result = run_materialize_resource_serving(
+                engine, materialization_version="new", dry_run=failure == "dry_run", **options,
+            )
+            assert result.rows_written == (0 if failure else 12)
+            assert result.windows_published == (0 if failure else 1)
+        with engine.connect() as connection:
+            version = connection.execute(text(
+                "SELECT active_materialization_version FROM cost_resource_serving_publication"
+            )).scalar_one()
+            staged_count = connection.execute(text(
+                "SELECT COUNT(*) FROM cost_resource_serving_daily WHERE materialization_version='new'"
+            )).scalar_one()
+        assert version == ("old" if failure else "new")
+        assert staged_count == (0 if failure else 12)
+        assert inserts == (0 if failure == "dry_run" else 2 if failure == "insert" else 6)
+    finally:
+        engine.dispose()
 
 
 def test_serving_rejects_detail_currency_mismatch() -> None:
