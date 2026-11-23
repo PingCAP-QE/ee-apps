@@ -77,6 +77,12 @@ func TestCreateGetAndList(t *testing.T) {
 		t.Fatalf("unexpected files: %+v", got.Files)
 	}
 
+	if n, err := st.CountPendingByRequester(ctx, "requester@example.com"); err != nil || n != 1 {
+		t.Fatalf("count pending = %d, err = %v", n, err)
+	}
+	if n, err := st.CountRequestsSince(ctx, "requester@example.com", time.Now().UTC().Add(-time.Hour)); err != nil || n != 1 {
+		t.Fatalf("count recent = %d, err = %v", n, err)
+	}
 	pending, err := st.ListPending(ctx, 10)
 	if err != nil || len(pending) != 1 {
 		t.Fatalf("pending = %d, err = %v", len(pending), err)

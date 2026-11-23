@@ -22,6 +22,7 @@ func validConfig() *Config {
 		HealthAddress:          ":8081",
 		PublicURL:              "https://approvals.example.com",
 		DLBaseURL:              "http://dl-management:80",
+		OIDCClientID:           "client-id.apps.googleusercontent.com",
 		AllowedEmailDomains:    []string{"example.com"},
 		ApproverEmails:         []string{"approver@example.com"},
 		MaxPendingPerRequester: 5,
@@ -55,6 +56,7 @@ listen: ":8080"
 health_address: ":8081"
 public_url: https://approvals.example.com/
 dl_base_url: http://dl-management:80/
+oidc_client_id: client-id.apps.googleusercontent.com
 allowed_email_domains: [Example.com, example.com]
 approver_emails: [Approver@Example.com, approver@example.com, second@example.com]
 max_pending_per_requester: 3
@@ -85,6 +87,7 @@ func TestInvalidConfigs(t *testing.T) {
 		"http public url":     func(c *Config) { c.PublicURL = "http://approvals.example.com" },
 		"public query":        func(c *Config) { c.PublicURL = "https://approvals.example.com?x=1" },
 		"dl base path":        func(c *Config) { c.DLBaseURL = "http://dl-management/api" },
+		"empty oidc client":   func(c *Config) { c.OIDCClientID = "" },
 		"empty domains":       func(c *Config) { c.AllowedEmailDomains = nil },
 		"bad domain":          func(c *Config) { c.AllowedEmailDomains = []string{"example"} },
 		"empty approvers":     func(c *Config) { c.ApproverEmails = nil },
@@ -113,6 +116,7 @@ func TestUnknownFieldRejected(t *testing.T) {
 	path := writeConfig(t, `
 public_url: https://approvals.example.com
 dl_base_url: http://dl-management:80
+oidc_client_id: client-id.apps.googleusercontent.com
 allowed_email_domains: [example.com]
 approver_emails: [approver@example.com]
 max_pending_per_requester: 5
@@ -130,6 +134,7 @@ func TestReloadSwapsAndKeepsOnError(t *testing.T) {
 	path := writeConfig(t, `
 public_url: https://approvals.example.com
 dl_base_url: http://dl-management:80
+oidc_client_id: client-id.apps.googleusercontent.com
 allowed_email_domains: [example.com]
 approver_emails: [first@example.com]
 max_pending_per_requester: 5
@@ -159,6 +164,7 @@ max_ttl_seconds: 7200
 	writeConfig := `
 public_url: https://approvals.example.com
 dl_base_url: http://dl-management:80
+oidc_client_id: client-id.apps.googleusercontent.com
 allowed_email_domains: [example.com]
 approver_emails: [second@example.com]
 max_pending_per_requester: 5
@@ -181,6 +187,7 @@ func TestConcurrentReadsDuringReload(t *testing.T) {
 	path := writeConfig(t, `
 public_url: https://approvals.example.com
 dl_base_url: http://dl-management:80
+oidc_client_id: client-id.apps.googleusercontent.com
 allowed_email_domains: [example.com]
 approver_emails: [approver@example.com]
 max_pending_per_requester: 5

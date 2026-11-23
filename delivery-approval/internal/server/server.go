@@ -1,5 +1,5 @@
-// Package server wires the HTTP surfaces. The application surface is a
-// placeholder in this phase; the probe listener is independent and never
+// Package server wires the HTTP surfaces. The application surface is the
+// OIDC-protected approval UI; the probe listener is independent and never
 // exposed through the Gateway.
 package server
 
@@ -9,21 +9,29 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/auth"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/config"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/metrics"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/store"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/web"
 )
 
 type Options struct {
 	Store   store.Store
+	Config  *config.Manager
+	Auth    auth.Validator
 	Metrics *metrics.Metrics
 	Logger  *log.Logger
 }
 
-// Application is the future OIDC-protected form/API surface. Until the form
-// lands, everything is a 404 so there is no route with accidental semantics.
-func Application(_ Options) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.NotFound(w, r)
+// Application is the OIDC-protected form/detail surface.
+func Application(opts Options) http.Handler {
+	return web.New(web.Options{
+		Store:   opts.Store,
+		Config:  opts.Config,
+		Auth:    opts.Auth,
+		Metrics: opts.Metrics,
+		Logger:  opts.Logger,
 	})
 }
 

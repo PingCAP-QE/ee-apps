@@ -5,6 +5,8 @@ listen: ":8080"
 health_address: ":8081"
 public_url: https://approvals.example.com
 dl_base_url: http://dl-management:80
+# Google OAuth client ID used as the ID-token audience.
+oidc_client_id: example-client-id.apps.googleusercontent.com
 
 allowed_email_domains:
   - example.com

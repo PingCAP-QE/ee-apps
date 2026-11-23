@@ -32,6 +32,9 @@ type Config struct {
 	PublicURL string `yaml:"public_url"`
 	// DLBaseURL is the in-cluster dl-management origin.
 	DLBaseURL string `yaml:"dl_base_url"`
+	// OIDCClientID is the Google OAuth client ID (the token audience). The
+	// client secret belongs to the Gateway SecurityPolicy, not this service.
+	OIDCClientID string `yaml:"oidc_client_id"`
 
 	AllowedEmailDomains []string `yaml:"allowed_email_domains"`
 	ApproverEmails      []string `yaml:"approver_emails"`
@@ -91,6 +94,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("approval dl_base_url: %w", err)
 	}
 	c.DLBaseURL = strings.TrimSuffix(c.DLBaseURL, "/")
+	if strings.TrimSpace(c.OIDCClientID) == "" {
+		return errors.New("approval requires oidc_client_id")
+	}
+	c.OIDCClientID = strings.TrimSpace(c.OIDCClientID)
 
 	if len(c.AllowedEmailDomains) == 0 {
 		return errors.New("approval requires allowed_email_domains")

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Request {{.Request.ID}}</title>
+</head>
+<body>
+  <main>
+    <h1>Request {{.Request.ID}}</h1>
+    <p><a href="/requests">Back to my requests</a></p>
+
+    <dl>
+      <dt>Status</dt><dd>{{.Request.Status}}</dd>
+      <dt>Requester</dt><dd>{{.Request.RequesterEmail}}</dd>
+      <dt>Created</dt><dd>{{.Request.CreatedAt.Format "2006-01-02 15:04 UTC"}}</dd>
+      <dt>Expires</dt><dd>{{.Request.ExpiresAt.Format "2006-01-02 15:04 UTC"}}</dd>
+      <dt>TTL</dt><dd>{{.Request.TTLSeconds}} seconds</dd>
+      {{if .Request.ApproverEmail}}<dt>Approver</dt><dd>{{.Request.ApproverEmail}}</dd>{{end}}
+      {{if .Request.DecisionNote}}<dt>Decision note</dt><dd>{{.Request.DecisionNote}}</dd>{{end}}
+      {{if .Request.Note}}<dt>Purpose / note</dt><dd>{{.Request.Note}}</dd>{{end}}
+      <dt>Delivery</dt><dd>{{.Request.DeliveryStatus}}</dd>
+    </dl>
+
+    <h2>Files</h2>
+    <table>
+      <thead><tr><th>Repository</th><th>Tag</th><th>File</th></tr></thead>
+      <tbody>
+      {{range .Request.Files}}
+        <tr><td>{{.Repository}}</td><td>{{.Tag}}</td><td>{{.Filename}}</td></tr>
+      {{end}}
+      </tbody>
+    </table>
+
+    {{if and .Approver .Request.IsPending}}
+      <p>Approval actions are available on the <a href="/requests">pending list</a>.</p>
+    {{end}}
+  </main>
+</body>
+</html>
