@@ -85,6 +85,11 @@ func Filename(v string) predicate.RequestFile {
 	return predicate.RequestFile(sql.FieldEQ(FieldFilename, v))
 }
 
+// DedupeHash applies equality check predicate on the "dedupe_hash" field. It's identical to DedupeHashEQ.
+func DedupeHash(v []byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldEQ(FieldDedupeHash, v))
+}
+
 // ShareID applies equality check predicate on the "share_id" field. It's identical to ShareIDEQ.
 func ShareID(v string) predicate.RequestFile {
 	return predicate.RequestFile(sql.FieldEQ(FieldShareID, v))
@@ -363,6 +368,46 @@ func FilenameEqualFold(v string) predicate.RequestFile {
 // FilenameContainsFold applies the ContainsFold predicate on the "filename" field.
 func FilenameContainsFold(v string) predicate.RequestFile {
 	return predicate.RequestFile(sql.FieldContainsFold(FieldFilename, v))
+}
+
+// DedupeHashEQ applies the EQ predicate on the "dedupe_hash" field.
+func DedupeHashEQ(v []byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldEQ(FieldDedupeHash, v))
+}
+
+// DedupeHashNEQ applies the NEQ predicate on the "dedupe_hash" field.
+func DedupeHashNEQ(v []byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldNEQ(FieldDedupeHash, v))
+}
+
+// DedupeHashIn applies the In predicate on the "dedupe_hash" field.
+func DedupeHashIn(vs ...[]byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldIn(FieldDedupeHash, vs...))
+}
+
+// DedupeHashNotIn applies the NotIn predicate on the "dedupe_hash" field.
+func DedupeHashNotIn(vs ...[]byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldNotIn(FieldDedupeHash, vs...))
+}
+
+// DedupeHashGT applies the GT predicate on the "dedupe_hash" field.
+func DedupeHashGT(v []byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldGT(FieldDedupeHash, v))
+}
+
+// DedupeHashGTE applies the GTE predicate on the "dedupe_hash" field.
+func DedupeHashGTE(v []byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldGTE(FieldDedupeHash, v))
+}
+
+// DedupeHashLT applies the LT predicate on the "dedupe_hash" field.
+func DedupeHashLT(v []byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldLT(FieldDedupeHash, v))
+}
+
+// DedupeHashLTE applies the LTE predicate on the "dedupe_hash" field.
+func DedupeHashLTE(v []byte) predicate.RequestFile {
+	return predicate.RequestFile(sql.FieldLTE(FieldDedupeHash, v))
 }
 
 // ShareIDEQ applies the EQ predicate on the "share_id" field.

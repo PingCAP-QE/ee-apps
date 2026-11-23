@@ -45,6 +45,12 @@ func (_c *RequestFileCreate) SetFilename(v string) *RequestFileCreate {
 	return _c
 }
 
+// SetDedupeHash sets the "dedupe_hash" field.
+func (_c *RequestFileCreate) SetDedupeHash(v []byte) *RequestFileCreate {
+	_c.mutation.SetDedupeHash(v)
+	return _c
+}
+
 // SetShareID sets the "share_id" field.
 func (_c *RequestFileCreate) SetShareID(v string) *RequestFileCreate {
 	_c.mutation.SetShareID(v)
@@ -183,6 +189,9 @@ func (_c *RequestFileCreate) check() error {
 			return &ValidationError{Name: "filename", err: fmt.Errorf(`ent: validator failed for field "RequestFile.filename": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.DedupeHash(); !ok {
+		return &ValidationError{Name: "dedupe_hash", err: errors.New(`ent: missing required field "RequestFile.dedupe_hash"`)}
+	}
 	if _, ok := _c.mutation.ShareID(); !ok {
 		return &ValidationError{Name: "share_id", err: errors.New(`ent: missing required field "RequestFile.share_id"`)}
 	}
@@ -248,6 +257,10 @@ func (_c *RequestFileCreate) createSpec() (*RequestFile, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Filename(); ok {
 		_spec.SetField(requestfile.FieldFilename, field.TypeString, value)
 		_node.Filename = value
+	}
+	if value, ok := _c.mutation.DedupeHash(); ok {
+		_spec.SetField(requestfile.FieldDedupeHash, field.TypeBytes, value)
+		_node.DedupeHash = value
 	}
 	if value, ok := _c.mutation.ShareID(); ok {
 		_spec.SetField(requestfile.FieldShareID, field.TypeString, value)

@@ -26,6 +26,8 @@ type RequestFile struct {
 	Tag string `json:"tag,omitempty"`
 	// Filename holds the value of the "filename" field.
 	Filename string `json:"filename,omitempty"`
+	// DedupeHash holds the value of the "dedupe_hash" field.
+	DedupeHash []byte `json:"dedupe_hash,omitempty"`
 	// ShareID holds the value of the "share_id" field.
 	ShareID string `json:"share_id,omitempty"`
 	// DownloadURLCiphertext holds the value of the "download_url_ciphertext" field.
@@ -65,7 +67,7 @@ func (*RequestFile) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case requestfile.FieldDownloadURLCiphertext:
+		case requestfile.FieldDedupeHash, requestfile.FieldDownloadURLCiphertext:
 			values[i] = new([]byte)
 		case requestfile.FieldID, requestfile.FieldRequestID, requestfile.FieldRepository, requestfile.FieldTag, requestfile.FieldFilename, requestfile.FieldShareID:
 			values[i] = new(sql.NullString)
@@ -115,6 +117,12 @@ func (_m *RequestFile) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field filename", values[i])
 			} else if value.Valid {
 				_m.Filename = value.String
+			}
+		case requestfile.FieldDedupeHash:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field dedupe_hash", values[i])
+			} else if value != nil {
+				_m.DedupeHash = *value
 			}
 		case requestfile.FieldShareID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -193,6 +201,9 @@ func (_m *RequestFile) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("filename=")
 	builder.WriteString(_m.Filename)
+	builder.WriteString(", ")
+	builder.WriteString("dedupe_hash=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DedupeHash))
 	builder.WriteString(", ")
 	builder.WriteString("share_id=")
 	builder.WriteString(_m.ShareID)

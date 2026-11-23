@@ -22,6 +22,8 @@ const (
 	FieldTag = "tag"
 	// FieldFilename holds the string denoting the filename field in the database.
 	FieldFilename = "filename"
+	// FieldDedupeHash holds the string denoting the dedupe_hash field in the database.
+	FieldDedupeHash = "dedupe_hash"
 	// FieldShareID holds the string denoting the share_id field in the database.
 	FieldShareID = "share_id"
 	// FieldDownloadURLCiphertext holds the string denoting the download_url_ciphertext field in the database.
@@ -50,6 +52,7 @@ var Columns = []string{
 	FieldRepository,
 	FieldTag,
 	FieldFilename,
+	FieldDedupeHash,
 	FieldShareID,
 	FieldDownloadURLCiphertext,
 	FieldDeliveredAt,

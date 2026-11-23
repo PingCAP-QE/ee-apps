@@ -34,6 +34,12 @@ func (RequestFile) Fields() []ent.Field {
 		field.String("filename").
 			MaxLen(255).
 			Immutable(),
+		// dedupe_hash is SHA-256(repository NUL tag NUL filename). It keeps the
+		// unique index within TiDB's 3072-byte key limit while still rejecting
+		// duplicate targets inside one request.
+		field.Bytes("dedupe_hash").
+			SchemaType(map[string]string{dialect.MySQL: "binary(32)"}).
+			Immutable(),
 		field.String("share_id").
 			MaxLen(36).
 			Default(""),
@@ -64,7 +70,7 @@ func (RequestFile) Edges() []ent.Edge {
 func (RequestFile) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("request_id"),
-		index.Fields("request_id", "repository", "tag", "filename").Unique(),
+		index.Fields("request_id", "dedupe_hash").Unique(),
 	}
 }
 

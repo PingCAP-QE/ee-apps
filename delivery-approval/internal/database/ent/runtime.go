@@ -126,13 +126,13 @@ func init() {
 	// requestfile.FilenameValidator is a validator for the "filename" field. It is called by the builders before save.
 	requestfile.FilenameValidator = requestfileDescFilename.Validators[0].(func(string) error)
 	// requestfileDescShareID is the schema descriptor for share_id field.
-	requestfileDescShareID := requestfileFields[5].Descriptor()
+	requestfileDescShareID := requestfileFields[6].Descriptor()
 	// requestfile.DefaultShareID holds the default value on creation for the share_id field.
 	requestfile.DefaultShareID = requestfileDescShareID.Default.(string)
 	// requestfile.ShareIDValidator is a validator for the "share_id" field. It is called by the builders before save.
 	requestfile.ShareIDValidator = requestfileDescShareID.Validators[0].(func(string) error)
 	// requestfileDescCreatedAt is the schema descriptor for created_at field.
-	requestfileDescCreatedAt := requestfileFields[8].Descriptor()
+	requestfileDescCreatedAt := requestfileFields[9].Descriptor()
 	// requestfile.DefaultCreatedAt holds the default value on creation for the created_at field.
 	requestfile.DefaultCreatedAt = requestfileDescCreatedAt.Default.(func() time.Time)
 	// requestfileDescID is the schema descriptor for id field.

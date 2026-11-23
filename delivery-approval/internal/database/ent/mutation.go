@@ -2051,6 +2051,7 @@ type RequestFileMutation struct {
 	repository              *string
 	tag                     *string
 	filename                *string
+	dedupe_hash             *[]byte
 	share_id                *string
 	download_url_ciphertext *[]byte
 	delivered_at            *time.Time
@@ -2311,6 +2312,42 @@ func (m *RequestFileMutation) ResetFilename() {
 	m.filename = nil
 }
 
+// SetDedupeHash sets the "dedupe_hash" field.
+func (m *RequestFileMutation) SetDedupeHash(b []byte) {
+	m.dedupe_hash = &b
+}
+
+// DedupeHash returns the value of the "dedupe_hash" field in the mutation.
+func (m *RequestFileMutation) DedupeHash() (r []byte, exists bool) {
+	v := m.dedupe_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDedupeHash returns the old "dedupe_hash" field's value of the RequestFile entity.
+// If the RequestFile object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RequestFileMutation) OldDedupeHash(ctx context.Context) (v []byte, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDedupeHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDedupeHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDedupeHash: %w", err)
+	}
+	return oldValue.DedupeHash, nil
+}
+
+// ResetDedupeHash resets all changes to the "dedupe_hash" field.
+func (m *RequestFileMutation) ResetDedupeHash() {
+	m.dedupe_hash = nil
+}
+
 // SetShareID sets the "share_id" field.
 func (m *RequestFileMutation) SetShareID(s string) {
 	m.share_id = &s
@@ -2542,7 +2579,7 @@ func (m *RequestFileMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RequestFileMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.request != nil {
 		fields = append(fields, requestfile.FieldRequestID)
 	}
@@ -2554,6 +2591,9 @@ func (m *RequestFileMutation) Fields() []string {
 	}
 	if m.filename != nil {
 		fields = append(fields, requestfile.FieldFilename)
+	}
+	if m.dedupe_hash != nil {
+		fields = append(fields, requestfile.FieldDedupeHash)
 	}
 	if m.share_id != nil {
 		fields = append(fields, requestfile.FieldShareID)
@@ -2583,6 +2623,8 @@ func (m *RequestFileMutation) Field(name string) (ent.Value, bool) {
 		return m.Tag()
 	case requestfile.FieldFilename:
 		return m.Filename()
+	case requestfile.FieldDedupeHash:
+		return m.DedupeHash()
 	case requestfile.FieldShareID:
 		return m.ShareID()
 	case requestfile.FieldDownloadURLCiphertext:
@@ -2608,6 +2650,8 @@ func (m *RequestFileMutation) OldField(ctx context.Context, name string) (ent.Va
 		return m.OldTag(ctx)
 	case requestfile.FieldFilename:
 		return m.OldFilename(ctx)
+	case requestfile.FieldDedupeHash:
+		return m.OldDedupeHash(ctx)
 	case requestfile.FieldShareID:
 		return m.OldShareID(ctx)
 	case requestfile.FieldDownloadURLCiphertext:
@@ -2652,6 +2696,13 @@ func (m *RequestFileMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFilename(v)
+		return nil
+	case requestfile.FieldDedupeHash:
+		v, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDedupeHash(v)
 		return nil
 	case requestfile.FieldShareID:
 		v, ok := value.(string)
@@ -2756,6 +2807,9 @@ func (m *RequestFileMutation) ResetField(name string) error {
 		return nil
 	case requestfile.FieldFilename:
 		m.ResetFilename()
+		return nil
+	case requestfile.FieldDedupeHash:
+		m.ResetDedupeHash()
 		return nil
 	case requestfile.FieldShareID:
 		m.ResetShareID()

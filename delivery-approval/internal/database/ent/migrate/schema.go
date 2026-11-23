@@ -93,6 +93,7 @@ var (
 		{Name: "repository", Type: field.TypeString, Size: 512},
 		{Name: "tag", Type: field.TypeString, Size: 128},
 		{Name: "filename", Type: field.TypeString, Size: 255},
+		{Name: "dedupe_hash", Type: field.TypeBytes, SchemaType: map[string]string{"mysql": "binary(32)"}},
 		{Name: "share_id", Type: field.TypeString, Size: 36, Default: ""},
 		{Name: "download_url_ciphertext", Type: field.TypeBytes, Nullable: true},
 		{Name: "delivered_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
@@ -107,7 +108,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "request_files_requests_files",
-				Columns:    []*schema.Column{RequestFilesColumns[8]},
+				Columns:    []*schema.Column{RequestFilesColumns[9]},
 				RefColumns: []*schema.Column{RequestsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -116,12 +117,12 @@ var (
 			{
 				Name:    "requestfile_request_id",
 				Unique:  false,
-				Columns: []*schema.Column{RequestFilesColumns[8]},
+				Columns: []*schema.Column{RequestFilesColumns[9]},
 			},
 			{
-				Name:    "requestfile_request_id_repository_tag_filename",
+				Name:    "requestfile_request_id_dedupe_hash",
 				Unique:  true,
-				Columns: []*schema.Column{RequestFilesColumns[8], RequestFilesColumns[1], RequestFilesColumns[2], RequestFilesColumns[3]},
+				Columns: []*schema.Column{RequestFilesColumns[9], RequestFilesColumns[4]},
 			},
 		},
 	}

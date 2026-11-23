@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"time"
@@ -106,12 +107,14 @@ func (s *TiDB) CreateRequest(ctx context.Context, req *Request) error {
 		if f.CreatedAt.IsZero() {
 			f.CreatedAt = req.CreatedAt
 		}
+		dedupe := sha256.Sum256([]byte(f.Repository + "\x00" + f.Tag + "\x00" + f.Filename))
 		if _, err = tx.RequestFile.Create().
 			SetID(f.ID).
 			SetRequestID(req.ID).
 			SetRepository(f.Repository).
 			SetTag(f.Tag).
 			SetFilename(f.Filename).
+			SetDedupeHash(dedupe[:]).
 			SetCreatedAt(f.CreatedAt).
 			Save(ctx); err != nil {
 			return err
