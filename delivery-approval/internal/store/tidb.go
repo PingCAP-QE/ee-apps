@@ -160,6 +160,18 @@ func (s *TiDB) ListByRequester(ctx context.Context, email string, limit int) ([]
 	return requestsFromEnt(rows), nil
 }
 
+func (s *TiDB) CountPendingByRequester(ctx context.Context, email string) (int, error) {
+	return s.client.Request.Query().
+		Where(request.RequesterEmailEQ(email), request.StatusEQ(request.StatusPending)).
+		Count(ctx)
+}
+
+func (s *TiDB) CountRequestsSince(ctx context.Context, email string, since time.Time) (int, error) {
+	return s.client.Request.Query().
+		Where(request.RequesterEmailEQ(email), request.CreatedAtGTE(since)).
+		Count(ctx)
+}
+
 func (s *TiDB) ListPending(ctx context.Context, limit int) ([]*Request, error) {
 	rows, err := s.client.Request.Query().
 		Where(request.StatusEQ(request.StatusPending)).

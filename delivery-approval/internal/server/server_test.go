@@ -25,6 +25,12 @@ func (f *fakeStore) GetRequest(context.Context, string) (*store.Request, error) 
 func (f *fakeStore) ListByRequester(context.Context, string, int) ([]*store.Request, error) {
 	return nil, nil
 }
+func (f *fakeStore) CountPendingByRequester(context.Context, string) (int, error) {
+	return 0, nil
+}
+func (f *fakeStore) CountRequestsSince(context.Context, string, time.Time) (int, error) {
+	return 0, nil
+}
 func (f *fakeStore) ListPending(context.Context, int) ([]*store.Request, error) { return nil, nil }
 func (f *fakeStore) Transition(context.Context, string, store.Status, store.Status, string, string, time.Time) (bool, error) {
 	return false, nil
@@ -69,16 +75,5 @@ func TestHealthFailsWhenStoreUnavailable(t *testing.T) {
 	Probes(Options{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("nil store health = %d, want 503", rec.Code)
-	}
-}
-
-func TestApplicationHasNoAccidentalRoutes(t *testing.T) {
-	h := Application(Options{})
-	for _, path := range []string{"/", "/requests", "/api/v1/shares"} {
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf("%s = %d, want 404", path, rec.Code)
-		}
 	}
 }

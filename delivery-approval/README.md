@@ -2,7 +2,7 @@
 
 Delivery approval service for the `dl` capability links. It owns:
 
-- the OIDC-protected request form and approval pages (later phases),
+- the OIDC-protected request form and approval pages (Phase 2),
 - the request/approval state machine and audit trail (Ent + TiDB),
 - per-file calls to `dl`'s `POST /api/v1/shares` and `DELETE /api/v1/shares/{id}`,
 - encrypted, one-time `download_url` storage and Lark delivery (later phases).
@@ -21,6 +21,19 @@ This phase adds the service skeleton, configuration and storage:
 - Ent schemas for `requests`, `request_files` and `request_events`;
 - TiDB store with conditional status transitions and an append-only event table;
 - a separate migration command.
+
+## Phase 2 scope
+
+- Validate the Google ID token forwarded in `X-Approval-Id-Token` (signature,
+  audience, `email_verified`, allowed domain) and never trust other identity
+  headers.
+- Server-rendered request form (`GET /`), request creation (`POST /requests`),
+  my-request list (`GET /requests`) and detail (`GET /requests/{id}`).
+- CSRF double-submit cookie plus strict same-origin form action, CSP
+  `default-src 'self'`, no inline scripts, `X-Frame-Options: DENY`.
+- Per-requester limits: pending count and requests in the last 24 hours.
+- Exact, unambiguous artifact input: one repository/tag and 1–10 filenames per
+  request; the store keeps one `request_file` per filename.
 
 ## Configuration
 
@@ -73,7 +86,9 @@ go generate ./internal/database/...
 ```text
 cmd/server/          application + private probe listeners
 cmd/migrate/         one-shot Ent schema migration
+internal/auth/       Google ID-token validation and identity context
 internal/config/     YAML defaults, validation, hot reload
+internal/web/        HTML form/list/detail, CSRF, CSP, rate limits
 internal/database/   Ent schemas and generated client
 internal/store/      domain model, Store interface, TiDB implementation
 internal/metrics/    aggregate counters on the private listener

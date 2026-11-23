@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/auth"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/config"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/metrics"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/server"
@@ -48,9 +49,10 @@ func main() {
 	}
 
 	m := &metrics.Metrics{}
+	authn := auth.NewGoogleValidator(manager, manager.Current().OIDCClientID)
 	appServer := &http.Server{
 		Addr:              manager.Current().Listen,
-		Handler:           server.Application(server.Options{Store: st, Metrics: m, Logger: logger}),
+		Handler:           server.Application(server.Options{Store: st, Config: manager, Auth: authn, Metrics: m, Logger: logger}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       time.Minute,
 		MaxHeaderBytes:    16 * 1024,

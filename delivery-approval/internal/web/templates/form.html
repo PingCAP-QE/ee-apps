@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Request a delivery link</title>
+</head>
+<body>
+  <main>
+    <h1>Request a delivery link</h1>
+    <p>Signed in as <strong>{{.Identity.Email}}</strong>.</p>
+
+    {{if .Error}}<p role="alert"><strong>Error:</strong> {{.Error}}</p>{{end}}
+
+    <form method="post" action="/requests" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+
+      <p>
+        <label for="repository">OCI repository</label><br>
+        <input id="repository" name="repository" maxlength="512" required
+               value="{{.Form.Repository}}" placeholder="us-docker.pkg.dev/project/hub/package">
+      </p>
+
+      <p>
+        <label for="tag">Tag</label><br>
+        <input id="tag" name="tag" maxlength="128" required
+               value="{{.Form.Tag}}" placeholder="v8.1.0_linux_amd64">
+      </p>
+
+      <p>
+        <label for="files">Files (one filename per line, 1–10)</label><br>
+        <textarea id="files" name="files" rows="5" cols="60" required
+                  placeholder="tidb.tar.gz">{{.Form.Files}}</textarea>
+      </p>
+
+      <p>
+        <label for="ttl">TTL (seconds)</label><br>
+        <input id="ttl" name="ttl" type="number" min="1" max="604800" required value="{{.Form.TTL}}">
+      </p>
+
+      <p>
+        <label for="note">Purpose / customer note (optional)</label><br>
+        <textarea id="note" name="note" rows="3" cols="60" maxlength="1024">{{.Form.Note}}</textarea>
+      </p>
+
+      <button type="submit">Submit for approval</button>
+    </form>
+
+    <p><a href="/requests">My requests</a></p>
+  </main>
+</body>
+</html>
