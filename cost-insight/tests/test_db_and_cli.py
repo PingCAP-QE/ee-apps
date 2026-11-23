@@ -1131,12 +1131,26 @@ def test_cli_rejects_unsafe_aws_summary_usage_windows(monkeypatch, arguments, me
         cli.main(["sync-aws-billing-summary", *arguments])
 
 
-def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, capsys) -> None:
+@pytest.mark.parametrize(
+    ("arguments", "refresh_detail", "resource_error"),
+    (
+        ([], True, False),
+        (["--limit", "1"], False, False),
+        (["--dry-run"], False, False),
+        (["--replace-existing-partitions", "--export-partition-start", "2026-08-01",
+          "--export-partition-end", "2026-08-01"], False, False),
+        ([], True, True),
+    ),
+)
+def test_cli_sync_aws_summary_refreshes_ledger_and_details_for_split_source(
+    monkeypatch, capsys, caplog, arguments, refresh_detail, resource_error
+) -> None:
     captured: dict[str, object] = {}
+    disposed = []
 
     class Engine:
         def dispose(self):
-            pass
+            disposed.append(True)
 
     settings = SimpleNamespace(
         aws_billing=AwsBillingSettings(account_id="946646677266", page_size=123),
@@ -1154,7 +1168,9 @@ def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, cap
     )
 
     def fake_summary(_engine, **kwargs):
-        if kwargs["account_id"] == legacy_source.account_id:
+        if kwargs["dry_run"]:
+            touched_usage_dates = ()  # The importer does not report writes during dry-run.
+        elif kwargs["account_id"] == legacy_source.account_id:
             touched_usage_dates = (date(2026, 8, 1),)
         else:
             touched_usage_dates = (date(2026, 8, 1), date(2026, 8, 2), date(2026, 8, 3))
@@ -1192,17 +1208,42 @@ def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, cap
             dry_run=kwargs["dry_run"],
         )
 
+    def fake_resources(_engine, **kwargs):
+        assert "kubernetes" in captured
+        assert "resources" not in captured  # Never called for the legacy source.
+        captured["resources"] = kwargs
+        if resource_error:
+            raise RuntimeError("resource import failed")
+        return SyncGcpUnmatchedResourcesSummary(
+            account_id=kwargs["account_id"],
+            usage_start_date=kwargs["usage_start_date"],
+            usage_end_date=kwargs["usage_end_date"],
+            export_partition_start=kwargs["export_partition_start"],
+            export_partition_end=kwargs["export_partition_end"],
+            rows_seen=2, rows_written=2, dry_run=kwargs["dry_run"],
+        )
+
     monkeypatch.setattr(cli, "get_settings", lambda require_database=True: settings)
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
     monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
     monkeypatch.setattr(
-        cli, "_resolve_aws_sources", lambda *_args, **_kwargs: (legacy_source, split_source)
+        cli, "_resolve_aws_sources", lambda *_args, **_kwargs: (split_source, legacy_source)
     )
     monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_summary)
     monkeypatch.setattr(cli, "run_sync_aws_parent_residual_allocations", fake_residual)
     monkeypatch.setattr(cli, "run_sync_aws_kubernetes_workload_allocations", fake_kubernetes_allocations)
+    monkeypatch.setattr(cli, "run_sync_aws_unmatched_resources", fake_resources)
 
-    assert cli.main(["sync-aws-billing-summary"]) == 0
+    # Detail-only failure must not stop the shell's subsequent attribution refresh
+    # or prevent other source summaries from being imported and emitted.
+    assert cli.main(["sync-aws-billing-summary", *arguments]) == 0
+    assert disposed == [True]
+    if resource_error:
+        assert "resource import failed" in caplog.text
+        assert "attribution refresh can continue" in caplog.text
+    if "--dry-run" in arguments:
+        assert captured == {}  # Empty touched dates never trigger follow-up writes.
+        return
 
     assert captured["source"] == split_source
     assert captured["usage_start_date"] == date(2026, 8, 2)
@@ -1210,7 +1251,21 @@ def test_cli_sync_aws_summary_refreshes_ledger_for_split_source(monkeypatch, cap
     assert captured["page_size"] == 123
     assert captured["validate_guardrail"] is False
     assert captured["kubernetes"]["batch_size"] == 123
-    assert '"parent_days": 1' in capsys.readouterr().out
+    assert ("resources" in captured) == refresh_detail
+    if refresh_detail:
+        assert captured["resources"] == {
+            "settings": settings.aws_billing, "account_id": split_source.account_id,
+            "usage_start_date": date(2026, 8, 2), "usage_end_date": date(2026, 8, 3),
+            "export_partition_start": date(2026, 8, 1),
+            "export_partition_end": date(2026, 8, 1),
+            "dry_run": False, "replace_existing_usage_dates": True,
+            "validate_guardrail": False, "source": split_source,
+        }
+    output = capsys.readouterr().out
+    assert '"parent_days": 1' in output
+    assert '"residual_allocation_rows_seen": 1' in output
+    assert f'"account_id": "{legacy_source.account_id}"' in output
+    assert output.count('"rows_seen": 2') == int(refresh_detail and not resource_error)
 
 
 def test_cli_runs_sync_aws_unmatched_resources_command(monkeypatch, capsys) -> None:

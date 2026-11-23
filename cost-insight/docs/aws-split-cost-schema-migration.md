@@ -392,9 +392,11 @@ split rows.
 
 2. **EKS parent residual**
 
-   Aggregate all direct parent cost for every resource/day referenced by a
+   Aggregate direct `AmazonEC2` parent cost for every resource/day referenced by a
    split child, then subtract all matching child split costs. The parent side
-   includes every direct line-item type. Emit exactly one residual record per
+   includes every EC2 direct line-item type. Other services on the same instance,
+   including `AWSDataTransfer`, remain direct charges and do not enter the parent
+   pool, its guardrail, or the residual allocation ledger. Emit one residual record per
    parent/day with the parent tags and
    `source_allocation_scope = eks_parent_residual`.
 

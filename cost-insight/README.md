@@ -398,6 +398,22 @@ deploying a binary without its CLI, apply
 AWS unmatched resources use the same investigation table. Successful resource imports and
 attribution refreshes automatically republish their affected source/date resource-serving
 windows; `materialize-resource-serving` remains available for standalone repair/backfill.
+Complete `aws_split_cost_v1` summary syncs also attempt to replace resource details
+for the same source, export partitions, and touched usage dates before returning.
+This keeps QA resource drilldown aligned with daily billing instead of waiting for
+the weekly resource job. Detail-refresh failures are logged without failing the
+summary command, so the scheduled attribution refresh can still publish current
+costs. Failed details can be retried by a later complete summary sync or an explicit
+`sync-aws-unmatched-resources --replace-existing-dates` repair.
+Limited/partition-replacement runs do not trigger this replacement; dry-runs retain
+their existing no-follow-up behavior. The scheduled attribution refresh must still
+run after the summary command succeeds to publish current costs.
+
+This adds a resource-level BigQuery scan of the same overlap partitions (one billing
+month by default, two with `COST_INSIGHT_AWS_EXPORT_OVERLAP_MONTHS=2`) and rewrites
+resource serving for every touched day, not just recent days. Shortening only the
+detail window while replacing older summary dates would break source-hash/lineage
+parity; reducing this work requires narrowing the summary replacement window too.
 
 ```bash
 cost-insight sync-aws-unmatched-resources \

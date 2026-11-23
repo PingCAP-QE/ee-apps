@@ -100,8 +100,8 @@ def _execute_split_branches(
     if not aggregate:
         sql = sql.split("\nSELECT\n  'aws' AS vendor,", maxsplit=1)[0]
         sql += " SELECT * FROM branch_rows"
-    sql = sql.replace("r'(^|:)pod/'", "'(^|:)pod/'")
-    columns = sorted(set(re.findall(r"\braw\.(\w+)", sql)))
+    sql = sql.replace("r'(^|:)pod/'", "'(^|:)pod/'").replace("ANY_VALUE(", "MIN(")
+    columns = sorted(set(re.findall(r"\braw\.(\w+)", sql)) | {key for row in rows for key in row})
 
     class CountIf:
         def __init__(self):
@@ -118,6 +118,7 @@ def _execute_split_branches(
         connection.create_function("STARTS_WITH", 2, lambda value, prefix: value.startswith(prefix))
         connection.create_function("REGEXP_CONTAINS", 2, lambda value, pattern: bool(re.search(pattern, value)))
         connection.create_function("GREATEST", 2, max)
+        connection.create_function("CONCAT", -1, lambda *values: "".join(values))
         connection.create_aggregate("COUNTIF", 1, CountIf)
         connection.create_function("TO_JSON_STRING", 1, lambda value: value)
         connection.create_function(
@@ -220,6 +221,88 @@ def test_split_child_tenant_lineage_preserves_costs_and_business_labels(
     assert sum(row["list_cost"] for row in result) == 100 * len(parent_orgs) + 7
     assert sum(row["effective_cost"] for row in result) == 80 * len(parent_orgs) + 5
     assert sum(row["net_cost"] for row in result) == 80 * len(parent_orgs) + 5
+
+
+@pytest.mark.parametrize(
+    "query_builder",
+    (build_aws_split_cost_summary_query, build_aws_split_cost_unmatched_resource_query),
+    ids=("summary", "resource"),
+)
+def test_split_parent_only_allocates_ec2_and_retains_real_transfer(query_builder) -> None:
+    common = {
+        "account_id": "946646677266", "billing_account_id": "payer",
+        "export_partition_date": "2026-11-01", "usage_date": "2026-11-20",
+        "source_export_time": "2026-11-21", "region": "us-west-2",
+        "service_name": "AmazonEC2", "sku_name": "compute-sku",
+        "usage_type": "USW2-BoxUsage:c6a.4xlarge", "pricing_unit": "hour",
+        "namespace": None, "workload_name": None, "workload_type": None,
+        "service": None, "project": None, "service_exec_id": None,
+        "direct_list_cost": 0, "direct_effective_cost": 0,
+        "split_list_cost": 0, "split_effective_cost": 0,
+    }
+    parent = {
+        **common, "resource_id": "i-parent", "resource_name": "i-parent",
+        "owner": "node@example.com", "direct_list_cost": 100, "direct_effective_cost": 80,
+    }
+    transfer = {
+        **parent, "service_name": "AWSDataTransfer", "sku_name": "a-transfer-sku",
+        "usage_type": "USW2-DataTransfer-Regional-Bytes", "pricing_unit": "gb",
+        "direct_list_cost": 0.2, "direct_effective_cost": 0.2,
+    }
+    raw = [parent, transfer, {
+        **common, "service_name": "AmazonEKS", "resource_id": "arn:aws:eks:pod/child",
+        "resource_name": "arn:aws:eks:pod/child", "parent_resource_name": "i-parent",
+        "owner": "pod@example.com", "split_list_cost": 30, "split_effective_cost": 20,
+    }, {
+        **transfer, "resource_id": "i-unrelated", "resource_name": "i-unrelated",
+        "direct_list_cost": 2, "direct_effective_cost": 2,
+    }]
+    result = _execute_split_branches(query_builder(billing_table="p.d.t"), raw)
+    assert len(result) == 4
+    compute = {r["source_allocation_scope"]: r for r in result if r["service_name"] == "AmazonEC2"}
+    assert set(compute) == {"eks_pod", "eks_parent_residual"}
+    assert compute["eks_pod"]["list_cost"] == 30
+    assert compute["eks_pod"]["effective_cost"] == 20
+    assert compute["eks_pod"]["sku_name"] == "compute-sku"
+    assert compute["eks_pod"]["usage_type"] == common["usage_type"]
+    assert compute["eks_pod"]["owner"] == "pod@example.com"
+    assert compute["eks_parent_residual"]["list_cost"] == 70
+    assert compute["eks_parent_residual"]["effective_cost"] == 60
+    assert compute["eks_parent_residual"]["owner"] == "node@example.com"
+    transfers = [r for r in result if r["service_name"] == "AWSDataTransfer"]
+    assert len(transfers) == 2
+    assert all(r["source_allocation_scope"] == "direct" for r in transfers)
+    assert sum(r["list_cost"] for r in transfers) == pytest.approx(2.2)
+    assert sum(r["list_cost"] for r in result) == pytest.approx(102.2)
+    assert sum(r["effective_cost"] for r in result) == pytest.approx(82.2)
+    assert sum(r["net_cost"] for r in result) == pytest.approx(82.2)
+    summaries = [_normalize_summary_row(row) for row in _execute_split_branches(
+        build_aws_split_cost_summary_query(billing_table="p.d.t"), raw, aggregate=True,
+    )]
+    resources = [_normalize_resource_row(row) for row in _execute_split_branches(
+        build_aws_split_cost_unmatched_resource_query(billing_table="p.d.t"), raw, aggregate=True,
+    )]
+    serving = build_resource_serving_rows(
+        source_rows=[{**row, "source_summary_row_hash": row["source_row_hash"],
+                      "source_fact_hash": row["source_row_hash"]} for row in summaries],
+        detail_rows=resources, basis_key="native", materialization_version="test",
+        calculated_at=datetime(2026, 11, 21, tzinfo=UTC),
+    )
+    assert sum(row["fallback_list_cost"] for row in serving) == 0
+    assert sum(row["list_cost"] for row in serving) == Decimal("102.2")
+
+    ledger_query = build_aws_split_cost_parent_residual_allocation_query(billing_table="p.d.t")
+    ledger = _execute_split_branches(ledger_query, raw, aggregate=True)
+    assert len(ledger) == 1
+    assert ledger[0]["parent_direct_list_cost"] == 100
+    assert ledger[0]["parent_residual_list_cost"] == 70
+    guardrail = build_aws_split_cost_guardrail_query(billing_table="p.d.t")
+    assert _execute_split_branches(guardrail, raw, aggregate=True) == []
+    # Network charges cannot conceal a split allocation larger than compute cost.
+    raw[2]["split_list_cost"] = 100.1
+    violations = _execute_split_branches(guardrail, raw, aggregate=True)
+    assert len(violations) == 1
+    assert violations[0]["parent_direct_list_cost"] == 100
 
 
 def _resource_label_snapshots(scope: str, amounts: tuple[str, str]) -> list[dict]:
