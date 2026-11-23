@@ -1,0 +1,28 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: delivery-approval
+
+build:
+  platforms: ["linux/amd64", "linux/arm64"]
+  artifacts:
+    - image: delivery-approval
+      ko:
+        # Run as UID 65532 by default so Kubernetes runAsNonRoot checks pass.
+        fromImage: gcr.io/distroless/static:nonroot
+        main: ./cmd/server
+        dependencies:
+          paths:
+            - "**/*.go"
+            - go.mod
+            - go.sum
+        flags:
+          - -trimpath
+        labels:
+          org.opencontainers.image.description: Delivery request and approval service for dl capability links
+          org.opencontainers.image.licenses: MIT
+          org.opencontainers.image.source: https://github.com/PingCAP-QE/ee-apps
+  local:
+    useDockerCLI: true
+    useBuildkit: true
+    concurrency: 0
