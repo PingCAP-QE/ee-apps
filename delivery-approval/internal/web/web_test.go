@@ -131,6 +131,9 @@ func TestFormRequiresIdentityAndRendersCSRF(t *testing.T) {
 	if got := w.Header().Get("Content-Security-Policy"); !strings.Contains(got, "default-src 'self'") {
 		t.Fatalf("CSP = %q", got)
 	}
+	if strings.Contains(w.Body.String(), "<script") {
+		t.Fatalf("form must not contain inline scripts")
+	}
 	m := csrfPattern.FindStringSubmatch(w.Body.String())
 	if len(m) != 2 || m[1] == "" {
 		t.Fatalf("CSRF token missing from form: %s", w.Body.String())
@@ -305,6 +308,7 @@ func TestInvalidFilenameAndTTL(t *testing.T) {
 		{"filename", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"../secret"}, "ttl": {"60"}}, "invalid filename"},
 		{"ttl", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"0"}}, "TTL must be"},
 		{"too many", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk"}, "ttl": {"60"}}, "provide 1-10 files"},
+		{"long note", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "note": {strings.Repeat("x", 1025)}}, "note is too long"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
