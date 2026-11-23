@@ -12,6 +12,7 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 | `cloudevents-server/` | Go | Gin + Kafka + Ent | `cmd/server/` |
 | `dl/` | Go | Goa | `cmd/server/`, `cmd/server-cli/` |
 | `chatops-lark/` | Go | Lark WebSocket | `cmd/server/` |
+| `delivery-approval/` | Go | net/http + Ent ORM | `cmd/server/`, `cmd/migrate/` |
 | `ci-dashboard/` | Python | FastAPI + React | uvicorn + npm |
 | `cost-insight/` | Python | BigQuery/GCS | jobs only |
 | `roster/` | Python | Lark API sync | jobs only |
@@ -22,7 +23,7 @@ Monorepo for PingCAP Engineering Effectiveness (EE) tools. Each subdirectory is 
 
 **Always `cd` into the subproject directory first.** There are no root-level build commands.
 
-### Go projects (cloudevents-server, dl, chatops-lark)
+### Go projects (cloudevents-server, dl, chatops-lark, delivery-approval)
 ```bash
 go test ./...
 go build ./...

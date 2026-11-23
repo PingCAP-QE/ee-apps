@@ -1,0 +1,17 @@
+# Approval service configuration. Secrets (database DSN, Lark app secret, URL
+# encryption key, dl issuer secret) are injected as environment/Secret values,
+# never in this file.
+listen: ":8080"
+health_address: ":8081"
+public_url: https://prow.tidb.net/dl/grants
+dl_base_url: http://dl-management.dl.svc.cluster.local
+
+allowed_email_domains:
+  - pingcap.com
+approver_emails:
+  - approver@pingcap.com
+
+max_pending_per_requester: 5
+max_requests_per_day: 20
+default_ttl_seconds: 86400
+max_ttl_seconds: 604800
