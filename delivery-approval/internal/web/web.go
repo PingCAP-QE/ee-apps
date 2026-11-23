@@ -4,6 +4,7 @@
 package web
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"embed"
@@ -44,24 +45,30 @@ var now = func() time.Time { return time.Now().UTC() }
 //go:embed templates/*.html
 var templateFS embed.FS
 
+type Deliverer interface {
+	Deliver(ctx context.Context, requestID string) error
+}
+
 type Options struct {
-	Store   store.Store
-	Config  *config.Manager
-	Auth    auth.Validator
-	Revoker approval.Revoker
-	Metrics *metrics.Metrics
-	Logger  *log.Logger
+	Store    store.Store
+	Config   *config.Manager
+	Auth     auth.Validator
+	Revoker  approval.Revoker
+	Delivery Deliverer
+	Metrics  *metrics.Metrics
+	Logger   *log.Logger
 }
 
 type handler struct {
-	store   store.Store
-	config  *config.Manager
-	auth    auth.Validator
-	metrics *metrics.Metrics
-	revoker approval.Revoker
-	logger  *log.Logger
-	tmpl    *template.Template
-	mux     *http.ServeMux
+	store    store.Store
+	config   *config.Manager
+	auth     auth.Validator
+	metrics  *metrics.Metrics
+	revoker  approval.Revoker
+	delivery Deliverer
+	logger   *log.Logger
+	tmpl     *template.Template
+	mux      *http.ServeMux
 }
 
 func New(opts Options) http.Handler {
@@ -70,13 +77,14 @@ func New(opts Options) http.Handler {
 		logger = log.Default()
 	}
 	h := &handler{
-		store:   opts.Store,
-		config:  opts.Config,
-		auth:    opts.Auth,
-		metrics: opts.Metrics,
-		revoker: opts.Revoker,
-		logger:  logger,
-		tmpl:    template.Must(template.ParseFS(templateFS, "templates/*.html")),
+		store:    opts.Store,
+		config:   opts.Config,
+		auth:     opts.Auth,
+		metrics:  opts.Metrics,
+		revoker:  opts.Revoker,
+		delivery: opts.Delivery,
+		logger:   logger,
+		tmpl:     template.Must(template.ParseFS(templateFS, "templates/*.html")),
 	}
 	h.mux = http.NewServeMux()
 	h.mux.HandleFunc("GET /{$}", h.form)
@@ -341,6 +349,15 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 		} else {
 			h.metrics.Rejected.Add(1)
 		}
+	}
+	if to == store.StatusApproved && h.delivery != nil {
+		go func(id string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			if err := h.delivery.Deliver(ctx, id); err != nil {
+				h.logger.Printf("delivery failed request=%s", id)
+			}
+		}(req.ID)
 	}
 	http.Redirect(w, r, "/requests/"+req.ID, http.StatusSeeOther)
 }

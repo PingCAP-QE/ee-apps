@@ -294,6 +294,14 @@ func (s *TiDB) AppendEvent(ctx context.Context, event *Event) error {
 	return err
 }
 
+func (s *TiDB) SetFileShare(ctx context.Context, fileID, shareID string, ciphertext []byte) error {
+	_, err := s.client.RequestFile.UpdateOneID(fileID).
+		SetShareID(shareID).
+		SetDownloadURLCiphertext(ciphertext).
+		Save(ctx)
+	return err
+}
+
 func (s *TiDB) SaveFileCiphertext(ctx context.Context, fileID string, ciphertext []byte) error {
 	_, err := s.client.RequestFile.UpdateOneID(fileID).
 		SetDownloadURLCiphertext(ciphertext).
