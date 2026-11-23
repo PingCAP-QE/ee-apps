@@ -172,6 +172,22 @@ func (s *TiDB) CountRequestsSince(ctx context.Context, email string, since time.
 		Count(ctx)
 }
 
+func (s *TiDB) ListExpired(ctx context.Context, before time.Time, limit int) ([]*Request, error) {
+	rows, err := s.client.Request.Query().
+		Where(
+			request.StatusIn(request.StatusPending, request.StatusApproved),
+			request.ExpiresAtLT(before),
+		).
+		WithFiles(withOrderedFiles()).
+		Order(dbent.Asc(request.FieldExpiresAt)).
+		Limit(clampLimit(limit)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return requestsFromEnt(rows), nil
+}
+
 func (s *TiDB) ListPending(ctx context.Context, limit int) ([]*Request, error) {
 	rows, err := s.client.Request.Query().
 		Where(request.StatusEQ(request.StatusPending)).
@@ -192,7 +208,13 @@ func (s *TiDB) Transition(ctx context.Context, id string, from, to Status, actor
 	if decidedAt.IsZero() {
 		decidedAt = time.Now().UTC()
 	}
-	update := s.client.Request.Update().
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	update := tx.Request.Update().
 		Where(
 			request.IDEQ(id),
 			request.StatusEQ(request.Status(from)),
@@ -208,7 +230,37 @@ func (s *TiDB) Transition(ctx context.Context, id string, from, to Status, actor
 	if err != nil {
 		return false, err
 	}
-	return n > 0, nil
+	if n == 0 {
+		return false, nil
+	}
+	if _, err = tx.RequestEvent.Create().
+		SetRequestID(id).
+		SetActorEmail(actor).
+		SetAction(transitionAction(to)).
+		SetOutcome("ok").
+		SetCreatedAt(decidedAt).
+		Save(ctx); err != nil {
+		return false, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func transitionAction(to Status) string {
+	switch to {
+	case StatusApproved:
+		return "approved"
+	case StatusRejected:
+		return "rejected"
+	case StatusRevoked:
+		return "revoked"
+	case StatusExpired:
+		return "expired"
+	default:
+		return "unknown"
+	}
 }
 
 func (s *TiDB) SetDelivery(ctx context.Context, id string, status DeliveryStatus, attempts int, errorClass string) error {

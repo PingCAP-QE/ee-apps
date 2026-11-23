@@ -35,6 +35,21 @@ This phase adds the service skeleton, configuration and storage:
 - Exact, unambiguous artifact input: one repository/tag and 1–10 filenames per
   request; the store keeps one `request_file` per filename.
 
+## Phase 3 scope
+
+- Approver actions on the detail page: approve / reject with a note, and revoke
+  for the requester or an approver.
+- `GET /pending` for approvers, plus the pending section on `GET /requests`.
+- Every approval decision is an atomic store transition: conditional
+  `UPDATE ... WHERE status='pending'` plus an append-only `request_event` in the
+  same transaction.
+- A 60s expiry sweeper moves `pending`/`approved` requests past `expires_at` to
+  `expired`; approved requests also revoke their issued shares best-effort.
+  The revoker is nil until the dl client phase, so today it only expires the
+  request.
+- Self-approval and non-approver decisions are rejected in the app, not by the
+  route config.
+
 ## Configuration
 
 ```bash
@@ -86,9 +101,10 @@ go generate ./internal/database/...
 ```text
 cmd/server/          application + private probe listeners
 cmd/migrate/         one-shot Ent schema migration
+internal/approval/   Expiry sweeper and share-revoker interface
 internal/auth/       Google ID-token validation and identity context
 internal/config/     YAML defaults, validation, hot reload
-internal/web/        HTML form/list/detail, CSRF, CSP, rate limits
+internal/web/        HTML form/list/detail/pending, approval actions, CSRF, CSP, rate limits
 internal/database/   Ent schemas and generated client
 internal/store/      domain model, Store interface, TiDB implementation
 internal/metrics/    aggregate counters on the private listener

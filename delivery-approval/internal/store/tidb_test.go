@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestevent"
 )
 
 func testTiDB(t *testing.T) *TiDB {
@@ -203,5 +205,48 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 	if err := st.Ready(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func expiredRequest(requester string, status Status) *Request {
+	req := sampleRequest(requester)
+	req.Status = status
+	req.CreatedAt = time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Microsecond)
+	req.ExpiresAt = time.Now().UTC().Add(-time.Hour).Truncate(time.Microsecond)
+	req.TTLSeconds = 3600
+	return req
+}
+
+func TestListExpiredAndTransitionEvent(t *testing.T) {
+	st := testTiDB(t)
+	ctx := context.Background()
+	pending := expiredRequest("pending@example.com", StatusPending)
+	approved := expiredRequest("approved@example.com", StatusApproved)
+	rejected := expiredRequest("rejected@example.com", StatusRejected)
+	for _, req := range []*Request{pending, approved, rejected} {
+		if err := st.CreateRequest(ctx, req); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expired, err := st.ListExpired(ctx, time.Now().UTC(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expired) != 2 {
+		t.Fatalf("expired = %d, want 2", len(expired))
+	}
+	ok, err := st.Transition(ctx, pending.ID, StatusPending, StatusExpired, "", "", time.Now().UTC())
+	if err != nil || !ok {
+		t.Fatalf("expire pending = %v, %v", ok, err)
+	}
+	ok, err = st.Transition(ctx, pending.ID, StatusPending, StatusExpired, "", "", time.Now().UTC())
+	if err != nil || ok {
+		t.Fatalf("second expire = %v, %v; want false, nil", ok, err)
+	}
+	count, err := st.client.RequestEvent.Query().
+		Where(requestevent.RequestIDEQ(pending.ID), requestevent.ActionEQ("expired")).
+		Count(ctx)
+	if err != nil || count != 1 {
+		t.Fatalf("expired events = %d, err = %v", count, err)
 	}
 }

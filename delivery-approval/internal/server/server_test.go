@@ -31,6 +31,9 @@ func (f *fakeStore) CountPendingByRequester(context.Context, string) (int, error
 func (f *fakeStore) CountRequestsSince(context.Context, string, time.Time) (int, error) {
 	return 0, nil
 }
+func (f *fakeStore) ListExpired(context.Context, time.Time, int) ([]*store.Request, error) {
+	return nil, nil
+}
 func (f *fakeStore) ListPending(context.Context, int) ([]*store.Request, error) { return nil, nil }
 func (f *fakeStore) Transition(context.Context, string, store.Status, store.Status, string, string, time.Time) (bool, error) {
 	return false, nil

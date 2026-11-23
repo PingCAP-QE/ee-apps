@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/approval"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/auth"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/config"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/metrics"
@@ -20,6 +21,7 @@ type Options struct {
 	Store   store.Store
 	Config  *config.Manager
 	Auth    auth.Validator
+	Revoker approval.Revoker
 	Metrics *metrics.Metrics
 	Logger  *log.Logger
 }
@@ -30,6 +32,7 @@ func Application(opts Options) http.Handler {
 		Store:   opts.Store,
 		Config:  opts.Config,
 		Auth:    opts.Auth,
+		Revoker: opts.Revoker,
 		Metrics: opts.Metrics,
 		Logger:  opts.Logger,
 	})

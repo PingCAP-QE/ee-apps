@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -27,11 +28,14 @@ func (f fakeAuth) Validate(context.Context, string) (*auth.Identity, error) {
 }
 
 type fakeStore struct {
-	requests     map[string]*store.Request
-	pending      []*store.Request
-	pendingCount int
-	recentCount  int
-	created      *store.Request
+	requests      map[string]*store.Request
+	pending       []*store.Request
+	pendingCount  int
+	recentCount   int
+	created       *store.Request
+	transitions   []string
+	getErr        error
+	transitionErr error
 }
 
 func newFakeStore() *fakeStore {
@@ -48,6 +52,9 @@ func (f *fakeStore) CreateRequest(_ context.Context, req *store.Request) error {
 	return nil
 }
 func (f *fakeStore) GetRequest(_ context.Context, id string) (*store.Request, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
 	req, ok := f.requests[id]
 	if !ok {
 		return nil, store.ErrNotFound
@@ -67,11 +74,25 @@ func (f *fakeStore) CountPendingByRequester(context.Context, string) (int, error
 func (f *fakeStore) CountRequestsSince(context.Context, string, time.Time) (int, error) {
 	return f.recentCount, nil
 }
+func (f *fakeStore) ListExpired(context.Context, time.Time, int) ([]*store.Request, error) {
+	return nil, nil
+}
 func (f *fakeStore) ListPending(context.Context, int) ([]*store.Request, error) {
 	return f.pending, nil
 }
-func (f *fakeStore) Transition(context.Context, string, store.Status, store.Status, string, string, time.Time) (bool, error) {
-	return false, nil
+func (f *fakeStore) Transition(_ context.Context, id string, from, to store.Status, actor, note string, _ time.Time) (bool, error) {
+	req, ok := f.requests[id]
+	if !ok || req.Status != from {
+		return false, nil
+	}
+	req.Status = to
+	if f.transitionErr != nil {
+		return false, f.transitionErr
+	}
+	req.ApproverEmail = actor
+	req.DecisionNote = note
+	f.transitions = append(f.transitions, id+"->"+string(to))
+	return true, nil
 }
 func (f *fakeStore) SetDelivery(context.Context, string, store.DeliveryStatus, int, string) error {
 	return nil
@@ -331,5 +352,181 @@ func TestMethodNotAllowed(t *testing.T) {
 	h.ServeHTTP(w, requestWithToken(http.MethodPost, "/", strings.NewReader("")))
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST / = %d, want 405", w.Code)
+	}
+}
+
+type fakeRevoker struct {
+	shares []string
+}
+
+func (f *fakeRevoker) RevokeShare(_ context.Context, shareID string) error {
+	f.shares = append(f.shares, shareID)
+	return nil
+}
+
+func postDecision(t *testing.T, h http.Handler, id, action, note string, identity *auth.Identity) *httptest.ResponseRecorder {
+	t.Helper()
+	csrf, cookie := obtainCSRFFor(t, h)
+	form := url.Values{"csrf": {csrf}, "note": {note}}
+	r := requestWithToken(http.MethodPost, "/requests/"+id+"/"+action, strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+func obtainCSRFFor(t *testing.T, h http.Handler) (string, *http.Cookie) {
+	return obtainCSRF(t, h)
+}
+
+func TestApproveReject(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	h := testHandler(t, st, &auth.Identity{Email: "approver@example.com"})
+
+	w := postDecision(t, h, "req-1", "approve", "looks good", nil)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("approve = %d, body=%s", w.Code, w.Body.String())
+	}
+	if st.requests["req-1"].Status != store.StatusApproved {
+		t.Fatalf("status = %s", st.requests["req-1"].Status)
+	}
+	if len(st.transitions) != 1 || st.transitions[0] != "req-1->approved" {
+		t.Fatalf("transitions = %v", st.transitions)
+	}
+
+	w = postDecision(t, h, "req-1", "reject", "too late", nil)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("second decision = %d, want 409", w.Code)
+	}
+}
+
+func TestApprovalAuthorization(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+
+	nonApprover := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
+	if w := postDecision(t, nonApprover, "req-1", "approve", "", nil); w.Code != http.StatusForbidden {
+		t.Fatalf("non-approver = %d, want 403", w.Code)
+	}
+
+	st.requests["req-1"].RequesterEmail = "approver@example.com"
+	self := testHandler(t, st, &auth.Identity{Email: "approver@example.com"})
+	if w := postDecision(t, self, "req-1", "approve", "", nil); w.Code != http.StatusForbidden {
+		t.Fatalf("self approval = %d, want 403", w.Code)
+	}
+}
+
+func TestRevoke(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
+	if w := postDecision(t, h, "req-1", "revoke", "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("revoke = %d, body=%s", w.Code, w.Body.String())
+	}
+	if st.requests["req-1"].Status != store.StatusRevoked {
+		t.Fatalf("status = %s", st.requests["req-1"].Status)
+	}
+
+	st.requests["req-2"] = &store.Request{ID: "req-2", RequesterEmail: "other@example.com", Status: store.StatusPending}
+	if w := postDecision(t, h, "req-2", "revoke", "", nil); w.Code != http.StatusNotFound {
+		t.Fatalf("other revoke = %d, want 404", w.Code)
+	}
+}
+
+func TestRevokeApprovedCallsRevoker(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusApproved,
+		Files: []store.File{{ShareID: "share-1"}, {ShareID: ""}}}
+	revoker := &fakeRevoker{}
+	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, Revoker: revoker, Metrics: &metrics.Metrics{}})
+	if w := postDecision(t, h, "req-1", "revoke", "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("revoke approved = %d, body=%s", w.Code, w.Body.String())
+	}
+	if len(revoker.shares) != 1 || revoker.shares[0] != "share-1" {
+		t.Fatalf("revoked shares = %v", revoker.shares)
+	}
+}
+
+func TestPendingPageRequiresApprover(t *testing.T) {
+	st := newFakeStore()
+	st.pending = []*store.Request{{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}}
+
+	requester := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
+	w := httptest.NewRecorder()
+	requester.ServeHTTP(w, requestWithToken(http.MethodGet, "/pending", nil))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("requester pending = %d, want 403", w.Code)
+	}
+
+	approver := testHandler(t, st, &auth.Identity{Email: "approver@example.com"})
+	w = httptest.NewRecorder()
+	approver.ServeHTTP(w, requestWithToken(http.MethodGet, "/pending", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "req-1") {
+		t.Fatalf("approver pending = %d, body=%s", w.Code, w.Body.String())
+	}
+}
+
+func TestDecisionStoreError(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	st.transitionErr = errors.New("db down")
+	h := testHandler(t, st, &auth.Identity{Email: "approver@example.com"})
+	if w := postDecision(t, h, "req-1", "approve", "", nil); w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("decision store error = %d, want 503", w.Code)
+	}
+}
+
+func TestDetailRendersDecisionForms(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+
+	approver := testHandler(t, st, &auth.Identity{Email: "approver@example.com"})
+	w := httptest.NewRecorder()
+	approver.ServeHTTP(w, requestWithToken(http.MethodGet, "/requests/req-1", nil))
+	body := w.Body.String()
+	if w.Code != http.StatusOK || !strings.Contains(body, `/requests/req-1/approve`) || !strings.Contains(body, `/requests/req-1/reject`) || !strings.Contains(body, `/requests/req-1/revoke`) {
+		t.Fatalf("approver detail = %d, body=%s", w.Code, body)
+	}
+
+	requester := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
+	w = httptest.NewRecorder()
+	requester.ServeHTTP(w, requestWithToken(http.MethodGet, "/requests/req-1", nil))
+	body = w.Body.String()
+	if w.Code != http.StatusOK || strings.Contains(body, `/requests/req-1/approve`) || !strings.Contains(body, `/requests/req-1/revoke`) {
+		t.Fatalf("requester detail = %d, body=%s", w.Code, body)
+	}
+}
+
+func TestDecisionAndRevokeEdges(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "approver@example.com"})
+	if w := postDecision(t, h, "missing", "approve", "", nil); w.Code != http.StatusNotFound {
+		t.Fatalf("missing approve = %d, want 404", w.Code)
+	}
+
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	if w := postDecision(t, h, "req-1", "approve", strings.Repeat("x", 1025), nil); w.Code != http.StatusBadRequest {
+		t.Fatalf("long note = %d, want 400", w.Code)
+	}
+
+	st.requests["req-2"] = &store.Request{ID: "req-2", RequesterEmail: "requester@example.com", Status: store.StatusRejected}
+	requester := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
+	if w := postDecision(t, requester, "req-2", "revoke", "", nil); w.Code != http.StatusConflict {
+		t.Fatalf("revoke rejected = %d, want 409", w.Code)
+	}
+}
+
+func TestRevokeRejectsMissingCSRF(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
+	r := requestWithToken(http.MethodPost, "/requests/req-1/revoke", strings.NewReader(""))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("revoke missing csrf = %d, want 403", w.Code)
 	}
 }
