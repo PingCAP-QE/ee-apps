@@ -1,6 +1,6 @@
 import os
 import hashlib
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Any, Optional, Tuple
 from langchain_openai import OpenAIEmbeddings # Import OpenAI Embeddings
 from langchain_google_genai import GoogleGenerativeAIEmbeddings # Import Google Embeddings
 from langchain_community.vectorstores import TiDBVectorStore # Import TiDB VectorStore

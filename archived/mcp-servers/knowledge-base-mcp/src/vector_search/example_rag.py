@@ -1,4 +1,3 @@
-import os
 from typing import List, Optional
 from langchain.docstore.document import Document
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
