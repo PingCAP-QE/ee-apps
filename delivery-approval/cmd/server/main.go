@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/approval"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/auth"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/config"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/metrics"
@@ -69,6 +70,7 @@ func main() {
 	go config.WatchFile(ctx, *configPath, logger, func() error {
 		return manager.Reload(*configPath)
 	})
+	go approval.NewSweeper(st, nil, logger).Run(ctx)
 
 	errc := make(chan error, 2)
 	go func() { errc <- appServer.ListenAndServe() }()

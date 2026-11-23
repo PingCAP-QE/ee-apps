@@ -20,6 +20,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/approval"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/auth"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/config"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/metrics"
@@ -47,6 +48,7 @@ type Options struct {
 	Store   store.Store
 	Config  *config.Manager
 	Auth    auth.Validator
+	Revoker approval.Revoker
 	Metrics *metrics.Metrics
 	Logger  *log.Logger
 }
@@ -56,6 +58,7 @@ type handler struct {
 	config  *config.Manager
 	auth    auth.Validator
 	metrics *metrics.Metrics
+	revoker approval.Revoker
 	logger  *log.Logger
 	tmpl    *template.Template
 	mux     *http.ServeMux
@@ -71,6 +74,7 @@ func New(opts Options) http.Handler {
 		config:  opts.Config,
 		auth:    opts.Auth,
 		metrics: opts.Metrics,
+		revoker: opts.Revoker,
 		logger:  logger,
 		tmpl:    template.Must(template.ParseFS(templateFS, "templates/*.html")),
 	}
@@ -78,7 +82,11 @@ func New(opts Options) http.Handler {
 	h.mux.HandleFunc("GET /{$}", h.form)
 	h.mux.HandleFunc("POST /requests", h.create)
 	h.mux.HandleFunc("GET /requests", h.list)
+	h.mux.HandleFunc("GET /pending", h.pending)
 	h.mux.HandleFunc("GET /requests/{id}", h.detail)
+	h.mux.HandleFunc("POST /requests/{id}/approve", h.approve)
+	h.mux.HandleFunc("POST /requests/{id}/reject", h.reject)
+	h.mux.HandleFunc("POST /requests/{id}/revoke", h.revoke)
 	return h
 }
 
@@ -117,10 +125,12 @@ type pageData struct {
 	Error    string
 	Form     formValues
 
-	Request  *store.Request
-	Files    []*store.Request
-	Pending  []*store.Request
-	Approver bool
+	Request    *store.Request
+	Files      []*store.Request
+	Pending    []*store.Request
+	Approver   bool
+	CanApprove bool
+	CanRevoke  bool
 }
 
 type formValues struct {
@@ -239,7 +249,155 @@ func (h *handler) detail(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	h.render(w, "detail.html", pageData{Identity: identity, Request: req, Approver: h.config.IsApprover(identity.Email)})
+	approver := h.config.IsApprover(identity.Email)
+	h.render(w, "detail.html", pageData{
+		Identity:   identity,
+		CSRF:       csrfToken(w, r),
+		Request:    req,
+		Approver:   approver,
+		CanApprove: approver && req.Status == store.StatusPending && req.RequesterEmail != identity.Email,
+		CanRevoke: (req.RequesterEmail == identity.Email || approver) &&
+			(req.Status == store.StatusPending || req.Status == store.StatusApproved),
+	})
+}
+
+func (h *handler) pending(w http.ResponseWriter, r *http.Request) {
+	identity, _ := auth.IdentityFrom(r.Context())
+	if !h.config.IsApprover(identity.Email) {
+		h.deny(w)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	pending, err := h.store.ListPending(r.Context(), 100)
+	if err != nil {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	h.render(w, "pending.html", pageData{Identity: identity, Pending: pending, Approver: true})
+}
+
+func (h *handler) approve(w http.ResponseWriter, r *http.Request) {
+	h.decide(w, r, store.StatusApproved)
+}
+
+func (h *handler) reject(w http.ResponseWriter, r *http.Request) {
+	h.decide(w, r, store.StatusRejected)
+}
+
+func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status) {
+	identity, _ := auth.IdentityFrom(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if !validCSRF(r) {
+		h.deny(w)
+		http.Error(w, "invalid form", http.StatusForbidden)
+		return
+	}
+	if !h.config.IsApprover(identity.Email) {
+		h.deny(w)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	req, err := h.store.GetRequest(r.Context(), r.PathValue("id"))
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if req.RequesterEmail == identity.Email {
+		h.deny(w)
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if req.Status != store.StatusPending {
+		h.deny(w)
+		http.Error(w, "request is not pending", http.StatusConflict)
+		return
+	}
+	note := strings.TrimSpace(r.PostFormValue("note"))
+	if utf8.RuneCountInString(note) > maxNote {
+		http.Error(w, "note is too long", http.StatusBadRequest)
+		return
+	}
+	ok, err := h.store.Transition(r.Context(), req.ID, store.StatusPending, to, identity.Email, note, now())
+	if err != nil {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !ok {
+		h.deny(w)
+		http.Error(w, "request was already decided", http.StatusConflict)
+		return
+	}
+	if h.metrics != nil {
+		if to == store.StatusApproved {
+			h.metrics.Approved.Add(1)
+		} else {
+			h.metrics.Rejected.Add(1)
+		}
+	}
+	http.Redirect(w, r, "/requests/"+req.ID, http.StatusSeeOther)
+}
+
+func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
+	identity, _ := auth.IdentityFrom(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if !validCSRF(r) {
+		h.deny(w)
+		http.Error(w, "invalid form", http.StatusForbidden)
+		return
+	}
+	req, err := h.store.GetRequest(r.Context(), r.PathValue("id"))
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	approver := h.config.IsApprover(identity.Email)
+	if req.RequesterEmail != identity.Email && !approver {
+		http.NotFound(w, r)
+		return
+	}
+	if req.Status != store.StatusPending && req.Status != store.StatusApproved {
+		h.deny(w)
+		http.Error(w, "request cannot be revoked", http.StatusConflict)
+		return
+	}
+	wasApproved := req.Status == store.StatusApproved
+	ok, err := h.store.Transition(r.Context(), req.ID, req.Status, store.StatusRevoked, identity.Email, "", now())
+	if err != nil {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if !ok {
+		h.deny(w)
+		http.Error(w, "request was already decided", http.StatusConflict)
+		return
+	}
+	if wasApproved && h.revoker != nil {
+		for _, file := range req.Files {
+			if file.ShareID == "" {
+				continue
+			}
+			if err := h.revoker.RevokeShare(r.Context(), file.ShareID); err != nil {
+				h.logger.Printf("approval share revoke failed request=%s", req.ID)
+			}
+		}
+	}
+	http.Redirect(w, r, "/requests/"+req.ID, http.StatusSeeOther)
 }
 
 func (h *handler) render(w http.ResponseWriter, name string, data pageData) {

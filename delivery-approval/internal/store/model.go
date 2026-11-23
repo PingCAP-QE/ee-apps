@@ -88,6 +88,7 @@ type Store interface {
 	ListByRequester(ctx context.Context, email string, limit int) ([]*Request, error)
 	CountPendingByRequester(ctx context.Context, email string) (int, error)
 	CountRequestsSince(ctx context.Context, email string, since time.Time) (int, error)
+	ListExpired(ctx context.Context, before time.Time, limit int) ([]*Request, error)
 	ListPending(ctx context.Context, limit int) ([]*Request, error)
 	Transition(ctx context.Context, id string, from, to Status, actor, note string, decidedAt time.Time) (bool, error)
 	SetDelivery(ctx context.Context, id string, status DeliveryStatus, attempts int, errorClass string) error

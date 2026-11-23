@@ -8,7 +8,7 @@
 <body>
   <main>
     <h1>My delivery requests</h1>
-    <p><a href="/">New request</a></p>
+    <p><a href="/">New request</a>{{if .Approver}} · <a href="/pending">Pending approval</a>{{end}}</p>
 
     {{if .Files}}
     <table>

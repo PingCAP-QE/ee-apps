@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pending approvals</title>
+</head>
+<body>
+  <main>
+    <h1>Pending approvals</h1>
+    <p><a href="/requests">My requests</a> · <a href="/">New request</a></p>
+
+    {{if .Pending}}
+    <table>
+      <thead><tr><th>ID</th><th>Requester</th><th>Created</th><th>Expires</th><th>Files</th></tr></thead>
+      <tbody>
+      {{range .Pending}}
+        <tr>
+          <td><a href="/requests/{{.ID}}">{{.ID}}</a></td>
+          <td>{{.RequesterEmail}}</td>
+          <td>{{.CreatedAt.Format "2006-01-02 15:04 UTC"}}</td>
+          <td>{{.ExpiresAt.Format "2006-01-02 15:04 UTC"}}</td>
+          <td>{{len .Files}}</td>
+        </tr>
+      {{end}}
+      </tbody>
+    </table>
+    {{else}}
+    <p>Nothing pending.</p>
+    {{end}}
+  </main>
+</body>
+</html>
