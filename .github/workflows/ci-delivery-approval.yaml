@@ -29,7 +29,10 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: delivery-approval/go.mod
+          # Run tests/build with the current toolchain. Ent v0.14.6's generator
+          # does not support Go 1.27 export data, so the generate step pins
+          # GOTOOLCHAIN=go1.25.8 explicitly (see internal/database/generate.go).
+          go-version: "1.27.3"
           cache-dependency-path: delivery-approval/go.sum
       - name: Wait for TiDB
         run: |
