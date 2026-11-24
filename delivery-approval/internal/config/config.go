@@ -99,9 +99,6 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("approval dl_base_url: %w", err)
 	}
 	c.DLBaseURL = strings.TrimSuffix(c.DLBaseURL, "/")
-	if strings.TrimSpace(c.OIDCClientID) == "" {
-		return errors.New("approval requires oidc_client_id")
-	}
 	c.OIDCClientID = strings.TrimSpace(c.OIDCClientID)
 
 	if len(c.AllowedEmailDomains) == 0 {

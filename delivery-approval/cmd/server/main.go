@@ -33,6 +33,12 @@ func main() {
 	if err != nil {
 		logger.Fatal(err)
 	}
+	if v := os.Getenv("DL_APPROVAL_OIDC_CLIENT_ID"); v != "" {
+		cfg.OIDCClientID = v
+	}
+	if cfg.OIDCClientID == "" {
+		logger.Fatal("DL_APPROVAL_OIDC_CLIENT_ID or oidc_client_id is required")
+	}
 	manager := config.NewManager(cfg)
 
 	dsn := os.Getenv("DL_APPROVAL_DATABASE_DSN")

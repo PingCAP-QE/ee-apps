@@ -1,0 +1,6 @@
+apiVersion: v2
+name: delivery-approval
+description: Delivery request and approval service for dl capability links.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

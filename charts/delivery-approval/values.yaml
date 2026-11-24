@@ -1,0 +1,119 @@
+# Default values for delivery-approval.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/pingcap-qe/ee-apps/delivery-approval
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+server:
+  args:
+    - "--config=/etc/delivery-approval/config.yaml"
+  # Secrets are created by ExternalSecrets in ee-ops. Override these names only
+  # together with the ExternalSecret target names.
+  env:
+    - name: DL_APPROVAL_DATABASE_DSN
+      valueFrom:
+        secretKeyRef:
+          name: dl-approval-tidb
+          key: runtime_dsn
+    - name: DL_APPROVAL_OIDC_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: dl-approval-oidc
+          key: client-id
+    - name: DL_APPROVAL_LARK_APP_ID
+      valueFrom:
+        secretKeyRef:
+          name: dl-approval-config
+          key: lark_app_id
+    - name: DL_APPROVAL_LARK_APP_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: dl-approval-config
+          key: lark_app_secret
+    - name: DL_APPROVAL_URL_ENCRYPTION_KEY
+      valueFrom:
+        secretKeyRef:
+          name: dl-approval-config
+          key: url_encryption_key
+    - name: DL_APPROVAL_DL_ISSUER_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: dl-approval-config
+          key: dl_issuer_secret
+  envFrom: []
+
+  config:
+    listen: ":8080"
+    health_address: ":8081"
+    public_url: https://approvals.example.com
+    dl_base_url: http://dl-management:80
+    allowed_email_domains:
+      - example.com
+    approver_emails:
+      - approver@example.com
+    max_pending_per_requester: 5
+    max_requests_per_day: 20
+    default_ttl_seconds: 86400
+    max_ttl_seconds: 604800
+    lark_notification_chat_id: ""
+    lark_buzz: true
+
+  volumeMounts: []
+  volumes: []
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+livenessProbe:
+  httpGet:
+    path: /livez
+    port: 8001
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: 8001
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  limits:
+    cpu: "500m"
+    memory: 512Mi
+  requests:
+    cpu: "50m"
+    memory: 64Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 1
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

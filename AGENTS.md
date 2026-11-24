@@ -72,7 +72,7 @@ Build methods: Dockerfile (dl, cloudevents-server, ci-dashboard, cost-insight, r
 ## Helm Charts
 
 Located in `charts/`. Published to `oci://ghcr.io/pingcap-qe/ee-apps/charts`.
-Charts: `chatops-lark`, `ci-dashboard`, `cloudevents-server`, `dl`, `tibuild-v2`.
+Charts: `chatops-lark`, `ci-dashboard`, `cloudevents-server`, `dl`, `delivery-approval`, `tibuild-v2`.
 
 ## CI Workflows (`.github/workflows/`)
 
