@@ -172,3 +172,24 @@ test("failed daily request does not hide weekly history, and changing filters hi
     globalThis.fetch = originalFetch;
   }
 });
+
+test("missing absolute usage is N/A while measured zero remains zero", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  const data = structuredClone(dailyData);
+  data.items[0].metrics = {
+    cpu: { ...metric, avg: null, peak: null, peak_subset: null, peak_coverage: null, coverage: 0, total_used_integral: 0, observed_seconds: 0, usage_observed_seconds: 0 },
+    memory: { ...metric, avg: 0, peak: 0, peak_subset: null, peak_coverage: 1, coverage: 1, total_used_integral: 0, observed_seconds: 60, usage_observed_seconds: 60 },
+  };
+  globalThis.fetch = async (url) => ({ ok: true, json: async () => String(url).includes("/status") ? readyStatus : String(url).includes("/daily") ? data : weeklyData });
+  try {
+    await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
+    const table = renderer.root.findByProps({ "aria-label": "Daily utilization" });
+    const cells = table.findByType("tbody").findByType("tr").findAllByType("td");
+    assert.ok(cells[3].findAllByType("div").some((node) => node.children.join("").includes("N/A (no usage observations)")));
+    assert.ok(cells[4].findAllByType("div").some((node) => node.children.join("") === "Observed actual integral: 0"));
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});

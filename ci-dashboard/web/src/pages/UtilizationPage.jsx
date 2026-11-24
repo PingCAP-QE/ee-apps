@@ -153,13 +153,15 @@ function Metric({ value }) {
   const fullPeak = value.peak_coverage === 1 ? value.peak : null;
   const subset = value.peak_subset ?? (value.peak_coverage !== 1 ? value.peak : null);
   const subsetCoverage = value.peak_subset != null ? value.peak_subset_coverage : value.peak_coverage;
+  const usageObserved = value.usage_observed_seconds ?? value.observed_seconds;
+  const actualKnown = usageObserved > 0 || (value.coverage === 1 && value.expected_seconds === 0 && value.quality?.includes("verified_empty"));
   return <>
     <div>Mean {utilizationPercent(value.avg)} · Full peak {utilizationPercent(fullPeak)}</div>
     {subset != null && <div>Observed subset peak {utilizationPercent(subset)} · coverage {utilizationPercent(subsetCoverage, true)} (not a full-population peak)</div>}
     <div>Coverage {utilizationPercent(value.coverage, true)} · Peak coverage {utilizationPercent(value.peak_coverage, true)}</div>
     <details><summary>Actual / denominator / quality</summary>
       <div>Basis: {value.contract?.denominator || "Unknown"} · {value.contract?.normalized_unit || "unknown unit"}·s</div>
-      <div>Total actual integral: {numeric(value.total_used_integral)}</div>
+      <div>Observed actual integral: {actualKnown ? numeric(value.total_used_integral) : "N/A (no usage observations)"}</div>
       <div>Matched actual / capacity integrals: {numeric(value.used_integral)} / {numeric(value.capacity_integral)}</div>
       <div>Matched / expected seconds: {numeric(value.observed_seconds)} / {numeric(value.expected_seconds)}</div>
       <div>Usage-observed seconds: {numeric(value.usage_observed_seconds ?? value.observed_seconds)}</div>
