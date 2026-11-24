@@ -15,7 +15,8 @@ on:
       - "**/*.toml"
       - "**/*.sql"
       - "**/*.go"
-      - "**/*.gomod"
+      - "**/go.mod"
+      - "**/go.sum"
       - "**/*.html"
       - "**/*.js"
       - "**/*.jsx"
@@ -76,6 +77,8 @@ jobs:
               - 'github-token-broker/**'
             delivery-approval:
               - 'delivery-approval/**'
+            authzd:
+              - 'authzd/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -169,6 +172,14 @@ jobs:
       - name: Build image - delivery-approval
         if: steps.changes.outputs.delivery-approval == 'true'
         working-directory: delivery-approval
+        run: |
+          skaffold build \
+            --push=false \
+            --platform ${{ matrix.platform }} \
+            --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Build image - authzd
+        if: steps.changes.outputs.authzd == 'true'
+        working-directory: authzd
         run: |
           skaffold build \
             --push=false \

@@ -10,6 +10,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 )
@@ -134,7 +135,10 @@ func (r *Registry) Rules() []Rule {
 // attempted for an unknown route or path.
 func (r *Registry) Match(req Request) (Match, bool) {
 	host := normalizeHost(req.Host)
-	method := strings.ToUpper(strings.TrimSpace(req.Method))
+	method := strings.ToUpper(req.Method)
+	if !validHTTPMethod(method) {
+		return Match{}, false
+	}
 	for _, rule := range r.rules {
 		if rule.Host != host || rule.Route != req.Route || rule.Method != method {
 			continue
@@ -159,11 +163,14 @@ func validateRule(r *Rule) error {
 		return errors.New("id and route must be stable identifiers")
 	}
 	r.Host = normalizeHost(r.Host)
-	if r.Host == "" || strings.ContainsAny(r.Host, "/ \t\n") {
-		return errors.New("host must be a hostname without a scheme or path")
+	if !validHostname(r.Host) {
+		return errors.New("host must be a valid hostname or IP address without a scheme or path")
 	}
-	r.Method = strings.ToUpper(strings.TrimSpace(r.Method))
-	if r.Method == "" || strings.ContainsAny(r.Method, " /\t\n") {
+	if strings.TrimSpace(r.Method) != r.Method {
+		return errors.New("method must not contain surrounding whitespace")
+	}
+	r.Method = strings.ToUpper(r.Method)
+	if !validHTTPMethod(r.Method) {
 		return errors.New("method must be an exact HTTP method")
 	}
 	if r.Mode != "off" && r.Mode != "observe" && r.Mode != "shadow" && r.Mode != "enforce" {
@@ -325,10 +332,49 @@ func matchPath(template []segment, raw string) (map[string]string, bool) {
 
 func normalizeHost(host string) string {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
+	if h, port, err := net.SplitHostPort(host); err == nil {
+		if _, err := strconv.ParseUint(port, 10, 16); err == nil {
+			host = h
+		}
 	}
 	return strings.TrimSuffix(host, ".")
+}
+
+func validHostname(host string) bool {
+	if host == "" || strings.ContainsAny(host, "/ \t\n") {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	if len(host) > 253 || strings.Contains(host, ":") {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+				continue
+			}
+			return false
+		}
+	}
+	return true
+}
+
+func validHTTPMethod(method string) bool {
+	if method == "" {
+		return false
+	}
+	for _, r := range method {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("!#$%&'*+-.^_`|~", r) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // Store publishes only fully validated immutable snapshots.

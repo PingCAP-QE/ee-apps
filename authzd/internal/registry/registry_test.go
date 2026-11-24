@@ -91,6 +91,27 @@ func TestRejectsAmbiguousConflictAndMissingChecks(t *testing.T) {
 	}
 }
 
+func TestRejectsMalformedHostsAndMethods(t *testing.T) {
+	for _, host := range []string{"https://prow.tidb.net", "prow.tidb.net/path", "prow.tidb.net:invalid", "bad_host.example", "-bad.example"} {
+		r := rule("invalid-host", "POST", "/rerun", 1)
+		r.Host = host
+		if _, err := Parse(config(r)); err == nil {
+			t.Errorf("Parse accepted invalid hostname %q", host)
+		}
+	}
+	for _, method := range []string{"", "GET /", "GET@POST", "POST\n"} {
+		r := rule("invalid-method", method, "/rerun", 1)
+		if _, err := Parse(config(r)); err == nil {
+			t.Errorf("Parse accepted invalid method %q", method)
+		}
+	}
+	valid := rule("valid-port", "PATCH", "/rerun", 1)
+	valid.Host = "PROW.TIDB.NET:443"
+	if _, err := Parse(config(valid)); err != nil {
+		t.Fatalf("Parse rejected normalized hostname and valid method: %v", err)
+	}
+}
+
 func TestRejectsObjectNamingConflictsAndIncompleteDualCheck(t *testing.T) {
 	r := rule("bad-object", "POST", "/rerun", 1)
 	r.Checks = append(r.Checks, Check{Object: "capability:tibuild.devbuild.rerun", Relation: "read"})

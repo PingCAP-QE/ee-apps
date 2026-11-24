@@ -1,0 +1,20 @@
+apiVersion: skaffold/v4beta6
+kind: Config
+metadata:
+  name: authzd
+build:
+  artifacts:
+    - image: authzd
+      ko:
+        main: ./cmd/authzd
+        fromImage: gcr.io/distroless/static-debian12:nonroot
+        flags:
+          - -trimpath
+        ldflags:
+          - -s
+          - -w
+        dependencies:
+          paths:
+            - "**/*.go"
+            - go.mod
+            - go.sum

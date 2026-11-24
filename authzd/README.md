@@ -1,10 +1,62 @@
 # authzd authorization core
 
-This module currently contains the versioned route registry contract and the
-initial OpenFGA model/policy examples. It is not yet an Envoy ext_authz service
-and is not deployed or connected to production traffic. `observe`, `shadow`,
-and `enforce` in the sample registry are declarative values only until the
-service implementation defines their response semantics.
+This module contains the versioned route registry, the proposed OpenFGA model
+v1, and the first `authzd` service implementation. It is not deployed or
+connected to production traffic. The ADRs and model still need owner approval;
+the checked-in registry is a three-route TiBuild example, not a complete
+production policy. Do not attach Envoy routes to this service or enable
+`enforce` until the identity handoff, resource ownership source, model, and
+route policy have been reviewed and verified.
+
+## Service
+
+`cmd/authzd` serves Envoy's `envoy.service.auth.v3.Authorization/Check` gRPC
+API on port `9002`. It takes the route ID and credential mode from Envoy
+context extensions named `route_id` and `identity_mode`; it does not infer
+route identity from client headers. Each credential mode selects its own
+configured token header, JWKS endpoint, issuer, audience, and canonical
+principal prefix. The JWT signature and claims are checked independently;
+`X-User-*` and `X-Tenant-*` headers are never used as identity.
+For rewritten routes, the ext_authz request path is matched first; an Envoy
+route configuration may provide a trusted `upstream_path` context extension as
+the rewritten candidate. The Gateway configuration that provides these values
+still requires versioned render and runtime verification before use.
+
+The health and metrics HTTP listener defaults to `127.0.0.1:9003` and serves
+`/healthz`, `/readyz`, and `/metrics`. Keep this listener private when changing
+its address. Audit output is structured JSON on stdout and contains decision
+metadata only; raw authorization headers and tokens are not recorded.
+
+The service requires these environment variables:
+
+```sh
+AUTHZD_REGISTRY_PATH=/etc/authzd/registry.json
+AUTHZD_OPENFGA_URL=http://openfga:8080
+AUTHZD_OPENFGA_STORE_ID=<store ULID>
+AUTHZD_OPENFGA_MODEL_ID=<pinned model ULID>
+AUTHZD_CREDENTIAL_MODES='{"machine":{"header":"authorization","jwks_url":"https://issuer.example/jwks","issuer":"https://issuer.example","audience":"authzd","principal_prefix":"workload:gcp/project/"}}'
+```
+
+`AUTHZD_OPENFGA_API_TOKEN` is optional and should come from secret management.
+`AUTHZD_RESOURCE_CATALOG` may point to a trusted static JSON map for tests and
+local integration. It is not a TiBuild resolver or an authoritative production
+catalog. Without it, resource resolution returns an error; unknown resources
+never get guessed. Do not enforce dynamic resource rules until a read-only,
+authoritative ownership resolver is implemented and verified. This service
+version resolves path and query IDs only; it does not parse request bodies, so
+body-based rules such as the sample create policy remain observe-only.
+`AUTHZD_GRPC_ADDR` defaults to `:9002`; `AUTHZD_PRIVATE_ADDR` defaults to
+`127.0.0.1:9003`.
+
+The service supports `off`, `observe`, `shadow`, and `enforce` semantics from
+the registry. `observe` and `shadow` record the authorization result but return
+allow so the existing authn/authz chain can continue. Use them only after
+existing controls are verified to run before this filter. Dependency errors in
+`enforce` return a gRPC error and must be paired with Envoy
+`failure_mode_allow: false`. This service does not yet prove that any live
+Envoy route can only be reached through the verified Gateway.
+An optional `ContextPolicyEvaluator` hook accepts normalized, verified
+attributes for future ABAC rules; no OPA implementation is installed.
 
 ## Registry
 
