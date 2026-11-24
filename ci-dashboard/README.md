@@ -78,6 +78,18 @@ Notes:
 - database limits default to a `10 + 10` connection pool, a 5-second pool/connect wait, a 30-second query/write deadline, and a 35-second read deadline; the query timeout must not exceed the read timeout; override them with the `CI_DASHBOARD_DB_POOL_SIZE`, `CI_DASHBOARD_DB_MAX_OVERFLOW`, `CI_DASHBOARD_DB_POOL_TIMEOUT_SECONDS`, `CI_DASHBOARD_DB_CONNECT_TIMEOUT_SECONDS`, `CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS`, `CI_DASHBOARD_DB_WRITE_TIMEOUT_SECONDS`, and `CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS` environment variables
 - PyMySQL connection establishment retries a transient transport failure once, with short jitter and only while the configured connect budget remains. Greeting/TLS/init-command I/O uses the remaining connect budget; normal read/write timeouts are restored before business SQL. Authentication errors and socket timeouts are not retried. `pool_pre_ping` remains enabled and pooled connections are recycled on checkout after 900 seconds (before the production NAT's 1200-second idle timeout).
 - No in-flight API SQL or transaction is automatically replayed. A query read timeout still fails instead of repeating an expensive query beyond the HTTP deadline; slow-query optimization remains separate from reconnect handling.
+- Example MySQL overrides (positive integers; timeouts in seconds, pool limits in connections). Keep the query timeout no greater than the read timeout, and choose budgets for your HTTP gateway:
+
+  ```sh
+  export CI_DASHBOARD_DB_POOL_SIZE=10
+  export CI_DASHBOARD_DB_MAX_OVERFLOW=10
+  export CI_DASHBOARD_DB_POOL_TIMEOUT_SECONDS=5
+  export CI_DASHBOARD_DB_CONNECT_TIMEOUT_SECONDS=5
+  export CI_DASHBOARD_DB_QUERY_TIMEOUT_SECONDS=10
+  export CI_DASHBOARD_DB_READ_TIMEOUT_SECONDS=12
+  export CI_DASHBOARD_DB_WRITE_TIMEOUT_SECONDS=10
+  ```
+
 - local development can use `CI_DASHBOARD_DB_URL=sqlite+pysqlite:///./ci-dashboard.sqlite`; MySQL/TiDB pool and timeout controls are ignored for SQLite URLs
 - FastAPI serves the built frontend from `web/dist` after `make web-build`
 - set `CI_DASHBOARD_STATIC_DIR` when the built frontend lives outside the default repo or container layout

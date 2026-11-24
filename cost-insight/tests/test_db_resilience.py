@@ -30,12 +30,13 @@ def no_wait(monkeypatch):
 
 
 class CommitFaultEngine:
-    """Inject ACK loss *after* SQLite really commits, or fail the next checkout."""
+    """Inject failures before/after SQLite commits, or fail the next checkout."""
 
-    def __init__(self, engine, *, ack_at=1, fail_connect=()):
+    def __init__(self, engine, *, ack_at=1, fail_connect=(), fail_commit=()):
         self.engine = engine
         self.ack_at = ack_at
         self.fail_connect = fail_connect
+        self.fail_commit = fail_commit
         self.calls = 0
         self.error = disconnect()
 
@@ -47,6 +48,8 @@ class CommitFaultEngine:
             raise self.error
         with self.engine.begin() as connection:
             yield connection
+            if attempt in self.fail_commit:
+                raise self.error
         if attempt == self.ack_at:
             raise self.error
 
@@ -321,6 +324,38 @@ def test_attribution_exhaustion_rolls_back_and_cleanup_failure_preserves_origina
             assert c.execute(text("SELECT COUNT(*) FROM cost_resource_serving_publication")).scalar_one() == 1
         assert attribution_state(engine) == "running"  # Recovery still manual when bookkeeping fails.
         attribution.run_materialize_resource_serving.assert_not_called()
+    finally:
+        engine.dispose()
+
+
+def test_attribution_successful_callback_is_not_an_acknowledged_commit(monkeypatch):
+    engine = attribution_engine(monkeypatch)
+    # refresh() returns normally, but all three attempts fail before COMMIT.
+    faulty = CommitFaultEngine(engine, ack_at=None, fail_commit=(2, 3, 4))
+    try:
+        with pytest.raises(OperationalError) as raised:
+            refresh(faulty)
+        assert raised.value is faulty.error
+        with engine.connect() as c:
+            assert c.execute(text("SELECT net_cost FROM cost_attribution_daily")).scalars().all() == [5]
+            assert c.execute(text("SELECT COUNT(*) FROM cost_resource_serving_publication")).scalar_one() == 1
+        assert attribution_state(engine) == "failed"
+        attribution.run_materialize_resource_serving.assert_not_called()
+    finally:
+        engine.dispose()
+
+
+def test_materialization_failure_after_acknowledged_commit_fails_job(monkeypatch):
+    engine = attribution_engine(monkeypatch)
+    original = ValueError("materialization failed")
+    monkeypatch.setattr(attribution, "run_materialize_resource_serving", Mock(side_effect=original))
+    try:
+        with pytest.raises(ValueError) as raised:
+            refresh(engine)
+        assert raised.value is original
+        with engine.connect() as c:
+            assert c.execute(text("SELECT net_cost FROM cost_attribution_daily")).scalars().all() == [8]
+        assert attribution_state(engine) == "failed"
     finally:
         engine.dispose()
 

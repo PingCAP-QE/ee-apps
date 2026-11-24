@@ -12,6 +12,10 @@ from ci_dashboard.jobs.build_url_matcher import normalize_build_url, normalized_
 
 logger = logging.getLogger(__name__)
 
+POOL_RECYCLE_SECONDS = 900
+CONNECT_RETRY_JITTER_SECONDS = (0.05, 0.15)
+MIN_CONNECT_RETRY_BUDGET_SECONDS = 1.0
+
 
 def _build_connect_args(database: DatabaseSettings) -> dict[str, object]:
     if database.url and database.url.startswith("sqlite"):
@@ -43,7 +47,7 @@ def _build_engine_kwargs(database: DatabaseSettings) -> dict[str, object]:
         "max_overflow": database.max_overflow,
         "pool_timeout": database.pool_timeout_seconds,
         # Proactively retire API pool connections before the 20-minute NAT idle limit.
-        "pool_recycle": 900,
+        "pool_recycle": POOL_RECYCLE_SECONDS,
     }
 
 
@@ -80,16 +84,16 @@ def _install_connection_retry(engine: Engine) -> None:
                 return connection
             except dialect.loaded_dbapi.OperationalError as exc:
                 code = exc.args[0] if exc.args else None
-                delay = random.uniform(0.05, 0.15)
+                delay = random.uniform(*CONNECT_RETRY_JITTER_SECONDS)
                 # Reserve at least a second after jitter for a useful handshake retry.
                 if (attempt or code not in {2003, 2006, 2013}
                         or "timed out" in str(exc).lower()
                         or "timeout" in str(exc).lower()
-                        or time.monotonic() + delay + 1.0 > deadline):
+                        or time.monotonic() + delay + MIN_CONNECT_RETRY_BUDGET_SECONDS > deadline):
                     raise
                 logger.warning("Retrying database connection after transport failure (errno=%s)", code)
                 time.sleep(delay)
-                if deadline - time.monotonic() < 1.0:
+                if deadline - time.monotonic() < MIN_CONNECT_RETRY_BUDGET_SECONDS:
                     # Sleep/scheduling may have consumed more budget than requested.
                     raise
 

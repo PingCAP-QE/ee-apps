@@ -101,6 +101,9 @@ def run_refresh_cost_attribution_from_summary(
             return _positive_rowcount(delete_result.rowcount), rows_inserted
 
         rows_deleted, rows_inserted = replay_safe_transaction(engine, refresh)
+        # The helper returns only after COMMIT is acknowledged, not when refresh()
+        # returns. Keep this outside the callback: commit itself can fail/lose its ACK.
+        # It distinguishes a later materialization failure from an unknown commit.
         attribution_committed = True
         run_materialize_resource_serving(
             engine,
@@ -123,7 +126,8 @@ def run_refresh_cost_attribution_from_summary(
         try:
             with engine.begin() as connection:
                 state = state_store.get_job_state(connection, job_name)
-                # A succeeded transaction may have committed but lost its ACK.
+                # For an unknown commit, preserve a durable succeeded state. If commit
+                # was acknowledged, a subsequent materialization failure still fails the job.
                 if attribution_committed or (state and state.last_status == "running"):
                     state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
         except Exception:  # noqa: BLE001 - bookkeeping must not mask the original failure
