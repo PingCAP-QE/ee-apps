@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "delivery-approval.fullname" . }}
+  labels:
+    {{- include "delivery-approval.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.server.config | nindent 4 }}

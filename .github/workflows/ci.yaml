@@ -74,6 +74,8 @@ jobs:
               - 'experiments/portal/**'
             github-token-broker:
               - 'github-token-broker/**'
+            delivery-approval:
+              - 'delivery-approval/**'
 
       # https://github.com/docker/setup-qemu-action
       - name: Set up QEMU
@@ -159,6 +161,14 @@ jobs:
       - name: Build image - github-token-broker
         if: steps.changes.outputs.github-token-broker == 'true'
         working-directory: github-token-broker
+        run: |
+          skaffold build \
+            --push=false \
+            --platform ${{ matrix.platform }} \
+            --default-repo ghcr.io/pingcap-qe/ee-apps
+      - name: Build image - delivery-approval
+        if: steps.changes.outputs.delivery-approval == 'true'
+        working-directory: delivery-approval
         run: |
           skaffold build \
             --push=false \

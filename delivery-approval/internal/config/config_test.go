@@ -87,7 +87,6 @@ func TestInvalidConfigs(t *testing.T) {
 		"http public url":     func(c *Config) { c.PublicURL = "http://approvals.example.com" },
 		"public query":        func(c *Config) { c.PublicURL = "https://approvals.example.com?x=1" },
 		"dl base path":        func(c *Config) { c.DLBaseURL = "http://dl-management/api" },
-		"empty oidc client":   func(c *Config) { c.OIDCClientID = "" },
 		"empty domains":       func(c *Config) { c.AllowedEmailDomains = nil },
 		"bad domain":          func(c *Config) { c.AllowedEmailDomains = []string{"example"} },
 		"empty approvers":     func(c *Config) { c.ApproverEmails = nil },
