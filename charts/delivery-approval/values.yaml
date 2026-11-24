@@ -88,14 +88,15 @@ securityContext:
     drop:
       - ALL
 
+# The probe port must match server.config.health_address.
 livenessProbe:
   httpGet:
     path: /livez
-    port: 8001
+    port: 8081
 readinessProbe:
   httpGet:
     path: /healthz
-    port: 8001
+    port: 8081
 
 service:
   type: ClusterIP

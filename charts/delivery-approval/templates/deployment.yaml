@@ -51,11 +51,12 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           ports:
+            # Must match server.config.listen and server.config.health_address.
             - name: http
-              containerPort: 80
+              containerPort: 8080
               protocol: TCP
             - name: health
-              containerPort: 8001
+              containerPort: 8081
               protocol: TCP
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
