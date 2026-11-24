@@ -25,10 +25,22 @@ import (
 )
 
 func main() {
+	mode := flag.String("mode", "server", "run mode: server or migrate")
 	configPath := flag.String("config", "config.yaml", "approval configuration file")
 	flag.Parse()
 
 	logger := log.New(os.Stderr, "[delivery-approval] ", log.Ltime)
+	switch *mode {
+	case "server":
+	case "migrate":
+		// The same image serves the one-shot migration Job; the runtime role
+		// still owns no DDL, so the Job is the only writer of the schema.
+		runMigrate(logger)
+		return
+	default:
+		logger.Fatalf("unknown mode %q, want server or migrate", *mode)
+	}
+
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
 		logger.Fatal(err)
@@ -163,4 +175,26 @@ func main() {
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Fatal("approval listener failed")
 	}
+}
+
+// runMigrate applies the approval schema once and returns. It reads only
+// DL_APPROVAL_DATABASE_DSN, so it needs neither the approval config nor the
+// Lark/dl provider credentials.
+func runMigrate(logger *log.Logger) {
+	dsn := os.Getenv("DL_APPROVAL_DATABASE_DSN")
+	if dsn == "" {
+		logger.Fatal("DL_APPROVAL_DATABASE_DSN is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Migrate(ctx); err != nil {
+		logger.Fatal("approval schema migration failed")
+	}
+	logger.Print("approval schema ready")
 }

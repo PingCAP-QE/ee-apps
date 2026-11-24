@@ -109,7 +109,7 @@ The runtime role has no DDL. Run the migration Job once with the migration DSN:
 
 ```bash
 DL_APPROVAL_DATABASE_DSN='dl_approval_migrate:...@tcp(...)/delivery_approval?...' \
-  go run ./cmd/migrate
+  go run ./cmd/server -mode=migrate
 ```
 
 The server refuses to start when the schema is missing. Database/user creation
@@ -134,8 +134,8 @@ go generate ./internal/database/...
 ## Layout
 
 ```text
-cmd/server/          application + private probe listeners
-cmd/migrate/         one-shot Ent schema migration
+cmd/server/          server + private probe listeners; -mode=migrate runs the
+                     one-shot schema migration in the same image
 internal/approval/   Expiry sweeper and share-revoker interface
 internal/delivery/   dl issuance + sealed URL delivery orchestration
 internal/dl/         dl capability API client
