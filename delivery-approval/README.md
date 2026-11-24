@@ -62,6 +62,23 @@ This phase adds the service skeleton, configuration and storage:
   notifier is added in Phase 5. Until then `Delivery` is nil in the server wiring,
   so this phase does not change runtime behavior.
 
+## Phase 5 scope
+
+- `internal/lark`: outbound-only Lark OpenAPI client (no WebSocket, no event
+  subscription, no card callback).
+  - approval card to `lark_notification_chat_id`, containing the review link and
+    no download token;
+  - optional app-level urgent (`lark_buzz`) to the configured approvers, with
+    email → open_id lookup and a cache;
+  - private text message with the one-time delivery links;
+  - private rejection/revocation messages and a fixed-class delivery-failure
+    message (no upstream error body or token).
+- Server wiring enables delivery only when `DL_APPROVAL_LARK_APP_ID`,
+  `DL_APPROVAL_LARK_APP_SECRET`, `lark_notification_chat_id`,
+  `DL_APPROVAL_DL_ISSUER_SECRET` and `DL_APPROVAL_URL_ENCRYPTION_KEY` are all
+  present. A partial provider configuration fails startup.
+- The expiry sweeper now uses the same `dl` client as revoker.
+
 ## Configuration
 
 ```bash
@@ -75,7 +92,9 @@ part of this file:
 | Environment variable | Purpose |
 | --- | --- |
 | `DL_APPROVAL_DATABASE_DSN` | TiDB MySQL-protocol DSN for the runtime role |
-| future `DL_APPROVAL_LARK_*`, `DL_APPROVAL_URL_KEY`, `DL_APPROVAL_DL_ISSUER_SECRET` | later phases |
+| `DL_APPROVAL_LARK_APP_ID` / `DL_APPROVAL_LARK_APP_SECRET` | dedicated delivery-approval Lark app |
+| `DL_APPROVAL_DL_ISSUER_SECRET` | bearer secret for `dl` management API |
+| `DL_APPROVAL_URL_ENCRYPTION_KEY` | base64 32-byte AES-256 key for sealed URLs |
 
 Both `listen` and `health_address` are separate listeners. Never expose
 `health_address` through the Gateway or a Service.
@@ -116,6 +135,7 @@ cmd/migrate/         one-shot Ent schema migration
 internal/approval/   Expiry sweeper and share-revoker interface
 internal/delivery/   dl issuance + sealed URL delivery orchestration
 internal/dl/         dl capability API client
+internal/lark/       outbound Lark card/urgent/DM client
 internal/secure/     AES-256-GCM sealed URL
 internal/auth/       Google ID-token validation and identity context
 internal/config/     YAML defaults, validation, hot reload

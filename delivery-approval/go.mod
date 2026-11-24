@@ -8,6 +8,7 @@ require (
 	entgo.io/ent v0.14.6
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/google/uuid v1.6.0
+	github.com/larksuite/oapi-sdk-go/v3 v3.4.7
 	google.golang.org/api v0.286.0
 	gopkg.in/yaml.v3 v3.0.1
 )

@@ -560,3 +560,82 @@ func TestApproveTriggersDelivery(t *testing.T) {
 		t.Fatal("approval did not trigger delivery")
 	}
 }
+
+type fakeApprovalNotifier struct {
+	ch  chan string
+	err error
+}
+
+func (f *fakeApprovalNotifier) NotifyApproval(_ context.Context, req *store.Request) error {
+	f.ch <- req.ID
+	return f.err
+}
+
+func TestCreateNotifiesApprover(t *testing.T) {
+	st := newFakeStore()
+	n := &fakeApprovalNotifier{ch: make(chan string, 1)}
+	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, ApprovalNotifier: n, Metrics: &metrics.Metrics{}})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d", w.Code)
+	}
+	select {
+	case id := <-n.ch:
+		if id != "req-1" {
+			t.Fatalf("notified id = %q", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("approval notification not triggered")
+	}
+}
+
+type fakeDecisionNotifier struct {
+	ch       chan string
+	decision string
+}
+
+func (f *fakeDecisionNotifier) NotifyDecision(_ context.Context, _ *store.Request, decision, _ string) error {
+	f.decision = decision
+	f.ch <- decision
+	return nil
+}
+
+func TestRejectAndRevokeNotify(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	n := &fakeDecisionNotifier{ch: make(chan string, 2)}
+	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "approver@example.com"}}, DecisionNotifier: n, Metrics: &metrics.Metrics{}})
+	if w := postDecision(t, h, "req-1", "reject", "no", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("reject = %d", w.Code)
+	}
+	select {
+	case got := <-n.ch:
+		if got != "rejected" {
+			t.Fatalf("decision = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("reject did not notify")
+	}
+
+	st.requests["req-2"] = &store.Request{ID: "req-2", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	requester := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, DecisionNotifier: n, Metrics: &metrics.Metrics{}})
+	if w := postDecision(t, requester, "req-2", "revoke", "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("revoke = %d", w.Code)
+	}
+	select {
+	case got := <-n.ch:
+		if got != "revoked" {
+			t.Fatalf("decision = %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("revoke did not notify")
+	}
+}

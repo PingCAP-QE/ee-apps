@@ -14,9 +14,14 @@ import (
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/approval"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/auth"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/config"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/delivery"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/dl"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/lark"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/metrics"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/secure"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/server"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/store"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/web"
 )
 
 func main() {
@@ -51,9 +56,66 @@ func main() {
 
 	m := &metrics.Metrics{}
 	authn := auth.NewGoogleValidator(manager, manager.Current().OIDCClientID)
+
+	// Optional Lark notification + delivery wiring. A partially configured
+	// provider is a startup error; a fully absent provider leaves delivery
+	// disabled (the request/approval flow still works).
+	var notifier *lark.Client
+	appID, appSecret := os.Getenv("DL_APPROVAL_LARK_APP_ID"), os.Getenv("DL_APPROVAL_LARK_APP_SECRET")
+	if appID != "" || appSecret != "" || cfg.LarkChatID != "" {
+		if appID == "" || appSecret == "" || cfg.LarkChatID == "" {
+			logger.Fatal("Lark notifications require DL_APPROVAL_LARK_APP_ID, DL_APPROVAL_LARK_APP_SECRET and lark_notification_chat_id")
+		}
+		notifier, err = lark.NewDefault(appID, appSecret, cfg.LarkChatID, manager, cfg.LarkBuzz, logger)
+		if err != nil {
+			logger.Fatal(err)
+		}
+	}
+
+	var deliverySvc *delivery.Service
+	var revoker approval.Revoker
+	issuerSecret, keyEncoded := os.Getenv("DL_APPROVAL_DL_ISSUER_SECRET"), os.Getenv("DL_APPROVAL_URL_ENCRYPTION_KEY")
+	if issuerSecret != "" || keyEncoded != "" {
+		if issuerSecret == "" || keyEncoded == "" {
+			logger.Fatal("delivery requires DL_APPROVAL_DL_ISSUER_SECRET and DL_APPROVAL_URL_ENCRYPTION_KEY")
+		}
+		key, err := secure.ParseKey(keyEncoded)
+		if err != nil {
+			logger.Fatal(err)
+		}
+		sealer, err := secure.New(key)
+		if err != nil {
+			logger.Fatal(err)
+		}
+		dlClient, err := dl.New(cfg.DLBaseURL, issuerSecret, nil)
+		if err != nil {
+			logger.Fatal(err)
+		}
+		revoker = dlClient
+		if notifier != nil {
+			deliverySvc = delivery.New(st, dlClient, sealer, notifier, logger)
+		} else {
+			logger.Print("delivery disabled: Lark notifier is not configured")
+		}
+	}
+
+	var deliveryHandler web.Deliverer
+	if deliverySvc != nil {
+		deliveryHandler = deliverySvc
+	}
+	var approvalHandler web.ApprovalNotifier
+	var decisionHandler web.DecisionNotifier
+	if notifier != nil {
+		approvalHandler = notifier
+		decisionHandler = notifier
+	}
 	appServer := &http.Server{
-		Addr:              manager.Current().Listen,
-		Handler:           server.Application(server.Options{Store: st, Config: manager, Auth: authn, Metrics: m, Logger: logger}),
+		Addr: manager.Current().Listen,
+		Handler: server.Application(server.Options{
+			Store: st, Config: manager, Auth: authn, Revoker: revoker,
+			Delivery: deliveryHandler, ApprovalNotifier: approvalHandler,
+			DecisionNotifier: decisionHandler, Metrics: m, Logger: logger,
+		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       time.Minute,
 		MaxHeaderBytes:    16 * 1024,
@@ -70,7 +132,7 @@ func main() {
 	go config.WatchFile(ctx, *configPath, logger, func() error {
 		return manager.Reload(*configPath)
 	})
-	go approval.NewSweeper(st, nil, logger).Run(ctx)
+	go approval.NewSweeper(st, revoker, logger).Run(ctx)
 
 	errc := make(chan error, 2)
 	go func() { errc <- appServer.ListenAndServe() }()

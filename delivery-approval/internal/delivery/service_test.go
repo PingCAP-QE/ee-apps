@@ -94,9 +94,15 @@ func (f *fakeIssuer) Revoke(_ context.Context, shareID string) error {
 }
 
 type fakeNotifier struct {
-	links    []Link
-	failures int
-	calls    int
+	links          []Link
+	failures       int
+	calls          int
+	failureClasses []string
+}
+
+func (f *fakeNotifier) NotifyFailure(_ context.Context, _ *store.Request, class string) error {
+	f.failureClasses = append(f.failureClasses, class)
+	return nil
 }
 
 func (f *fakeNotifier) Notify(_ context.Context, _ *store.Request, links []Link) error {
@@ -188,6 +194,9 @@ func TestDeliverIssueFailureRevokesIssuedShares(t *testing.T) {
 	}
 	if len(notifier.links) != 0 {
 		t.Fatal("notifier called after issue failure")
+	}
+	if len(notifier.failureClasses) != 1 || notifier.failureClasses[0] != "issue_failed" {
+		t.Fatalf("failure classes = %v", notifier.failureClasses)
 	}
 }
 

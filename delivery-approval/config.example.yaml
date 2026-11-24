@@ -17,3 +17,6 @@ max_pending_per_requester: 5
 max_requests_per_day: 20
 default_ttl_seconds: 86400
 max_ttl_seconds: 604800
+
+lark_notification_chat_id: oc_example_chat_id
+lark_buzz: true
