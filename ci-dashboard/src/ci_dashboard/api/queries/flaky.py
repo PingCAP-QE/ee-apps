@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any
 from urllib import parse as urllib_parse
@@ -33,8 +34,10 @@ UNKNOWN_ISSUE_BRANCH = "__unknown__"
 _CASE_BUILD_BRANCH_EXPR = "COALESCE(p.target_branch, NULLIF(b.target_branch, ''), NULLIF(b.base_ref, ''))"
 
 
-def get_flaky_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
-    rows = _query_bucketed_flaky_metrics(engine, filters)
+def get_flaky_trend(
+    engine: Engine, filters: CommonFilters, *, _rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    rows = _query_bucketed_flaky_metrics(engine, filters) if _rows is None else _rows
 
     flaky_points: list[list[Any]] = []
     total_points: list[list[Any]] = []
@@ -54,8 +57,10 @@ def get_flaky_trend(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     }
 
 
-def get_flaky_composition(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
-    rows = _query_bucketed_flaky_metrics(engine, filters)
+def get_flaky_composition(
+    engine: Engine, filters: CommonFilters, *, _rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    rows = _query_bucketed_flaky_metrics(engine, filters) if _rows is None else _rows
 
     flaky_points: list[list[Any]] = []
     retry_points: list[list[Any]] = []
@@ -84,7 +89,9 @@ def get_flaky_composition(engine: Engine, filters: CommonFilters) -> dict[str, A
     }
 
 
-def get_flaky_bucketed_rate_view(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+def get_flaky_bucketed_rate_view(
+    engine: Engine, filters: CommonFilters, *, _rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     effective_granularity = _flaky_rate_bucket_granularity(filters.granularity)
     effective_filters = CommonFilters(
         repo=filters.repo,
@@ -100,7 +107,7 @@ def get_flaky_bucketed_rate_view(engine: Engine, filters: CommonFilters) -> dict
         engine,
         effective_filters,
         exclude_partial_weeks=False,
-    )
+    ) if _rows is None else _rows
 
     points: list[list[Any]] = []
     table_rows: list[dict[str, Any]] = []
@@ -657,7 +664,10 @@ def get_issue_filtered_weekly_case_rates(
 
     with engine.begin() as connection:
         issue_cases = _fetch_issue_cases(connection, issue_filters, effective_repo)
-        data_rows = _fetch_issue_weekly_rate_rows(connection, issue_filters, effective_repo)
+        data_rows = (
+            _fetch_issue_weekly_rate_rows(connection, issue_filters, effective_repo)
+            if issue_cases else []
+        )
 
     week_columns = _week_columns(filters.start_date, filters.end_date, data_rows)
     metrics_by_case_week: dict[tuple[str, str], dict[str, dict[str, Any]]] = {}
@@ -758,6 +768,8 @@ def get_issue_filtered_weekly_case_rates(
 def get_issue_lifecycle_snapshot(
     engine: Engine,
     filters: CommonFilters,
+    *,
+    _issue_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
     issue_filters = _issue_query_filters(filters)
@@ -768,8 +780,10 @@ def get_issue_lifecycle_snapshot(
         else None
     )
 
-    with engine.begin() as connection:
-        issue_rows = _fetch_issue_latest_rows(connection, issue_filters, effective_repo)
+    issue_rows = (
+        _query_issue_latest_rows(engine, issue_filters, effective_repo)
+        if _issue_rows is None else _issue_rows
+    )
 
     scoped_issue_rows = [
         row
@@ -868,6 +882,8 @@ def get_issue_lifecycle_snapshot(
 def get_issue_fix_progress_snapshot(
     engine: Engine,
     filters: CommonFilters,
+    *,
+    _issue_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
     as_of_date = filters.end_date or date.today()
@@ -875,7 +891,10 @@ def get_issue_fix_progress_snapshot(
     issue_filters = _issue_query_filters(filters)
 
     with engine.begin() as connection:
-        issue_rows = _fetch_issue_latest_rows(connection, issue_filters, effective_repo)
+        issue_rows = (
+            _fetch_issue_latest_rows(connection, issue_filters, effective_repo)
+            if _issue_rows is None else _issue_rows
+        )
 
         current_issue_rows = [
             row for row in issue_rows if _entity_exists_as_of(row.get("issue_created_at"), as_of_date)
@@ -884,13 +903,12 @@ def get_issue_fix_progress_snapshot(
             row for row in issue_rows if _entity_exists_as_of(row.get("issue_created_at"), comparison_as_of_date)
         ]
 
-        current_pull_rows = _fetch_linked_pull_rows(
-            connection,
-            [(str(row["repo"]), int(row["issue_number"])) for row in current_issue_rows],
-        )
-        previous_pull_rows = _fetch_linked_pull_rows(
-            connection,
-            [(str(row["repo"]), int(row["issue_number"])) for row in previous_issue_rows],
+        current_keys = [(str(row["repo"]), int(row["issue_number"])) for row in current_issue_rows]
+        previous_keys = [(str(row["repo"]), int(row["issue_number"])) for row in previous_issue_rows]
+        current_pull_rows = _fetch_linked_pull_rows(connection, current_keys)
+        previous_pull_rows = (
+            current_pull_rows if current_keys == previous_keys
+            else _fetch_linked_pull_rows(connection, previous_keys)
         )
 
     current_fixed_issue_count = sum(
@@ -956,11 +974,15 @@ def get_issue_fix_progress_snapshot(
 def get_issue_lifecycle_weekly(
     engine: Engine,
     filters: CommonFilters,
+    *,
+    _issue_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     effective_repo = filters.repo or DEFAULT_DISTINCT_CASE_REPO
     issue_filters = _issue_query_filters(filters)
-    with engine.begin() as connection:
-        issue_rows = _fetch_issue_latest_rows(connection, issue_filters, effective_repo)
+    issue_rows = (
+        _query_issue_latest_rows(engine, issue_filters, effective_repo)
+        if _issue_rows is None else _issue_rows
+    )
 
     scoped_issue_rows = [
         row
@@ -1059,6 +1081,52 @@ def get_issue_lifecycle_weekly(
             },
         ],
         "meta": meta,
+    }
+
+
+def get_flaky_chart_sections(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    """Build the page's three charts from request-local, unfiltered raw buckets."""
+    rate_granularity = _flaky_rate_bucket_granularity(filters.granularity)
+    raw_rows = {
+        granularity: _query_bucketed_flaky_metrics(
+            engine, replace(filters, granularity=granularity), exclude_partial_weeks=False,
+        )
+        for granularity in dict.fromkeys((filters.granularity, "week", rate_granularity))
+    }
+
+    def complete_rows(granularity: str) -> list[dict[str, Any]]:
+        rows = raw_rows[granularity]
+        return filter_complete_week_rows(
+            rows, start_date=filters.start_date, end_date=filters.end_date,
+        ) if granularity == "week" else rows
+
+    return {
+        "trend": get_flaky_trend(engine, filters, _rows=complete_rows(filters.granularity)),
+        "composition": get_flaky_composition(
+            engine, replace(filters, granularity="week"), _rows=complete_rows("week"),
+        ),
+        "bucketed_flaky_rate": get_flaky_bucketed_rate_view(
+            engine, filters, _rows=raw_rows[rate_granularity],
+        ),
+    }
+
+
+def _query_issue_latest_rows(
+    engine: Engine, filters: CommonFilters, effective_repo: str,
+) -> list[dict[str, Any]]:
+    with engine.begin() as connection:
+        return _fetch_issue_latest_rows(connection, filters, effective_repo)
+
+
+def get_issue_lifecycle_sections(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+    """Share materialized Issue rows, never a connection, between the page views."""
+    issue_rows = _query_issue_latest_rows(
+        engine, _issue_query_filters(filters), filters.repo or DEFAULT_DISTINCT_CASE_REPO,
+    )
+    return {
+        "issue_fix_progress": get_issue_fix_progress_snapshot(engine, filters, _issue_rows=issue_rows),
+        "issue_lifecycle": get_issue_lifecycle_snapshot(engine, filters, _issue_rows=issue_rows),
+        "issue_lifecycle_weekly": get_issue_lifecycle_weekly(engine, filters, _issue_rows=issue_rows),
     }
 
 
@@ -1256,16 +1324,13 @@ def _fetch_issue_weekly_rate_rows(
     job_clause, _ = build_multi_value_clause(
         "b.job_name", filters.job_names, bind_prefix="job_name"
     )
-    rows = connection.execute(
-        text(
-            f"""
-            WITH {issue_scope_ctes},
-            {_case_build_scope_ctes(connection, filters)},
-            case_runs_raw AS (
+    def case_run_select(*, normalized_key: bool) -> str:
+        # Keep historical non-flaky membership: only the identity calculation differs.
+        return f"""
               SELECT
                 pcr.branch,
                 pcr.case_name,
-                {_case_run_identity_columns(connection)},
+                {_case_run_identity_columns(connection, normalized_key=normalized_key)},
                 pcr.report_time,
                 CASE WHEN pcr.flaky = 1 THEN 1 ELSE 0 END AS flaky_flag
               FROM problem_case_runs pcr
@@ -1282,6 +1347,18 @@ def _fetch_issue_weekly_rate_rows(
                   WHERE ic.case_name = pcr.case_name
                     AND ic.issue_branch = pcr.branch
                 )
+                AND NULLIF(pcr.normalized_build_key, '') IS {"NOT NULL" if normalized_key else "NULL"}
+        """
+
+    rows = connection.execute(
+        text(
+            f"""
+            WITH {issue_scope_ctes},
+            {_case_build_scope_ctes(connection, filters)},
+            case_runs_raw AS (
+              {case_run_select(normalized_key=True)}
+              UNION ALL
+              {case_run_select(normalized_key=False)}
             ),
             case_runs AS (
               SELECT
@@ -1825,9 +1902,9 @@ def _optional_clause(value: object | None, clause: str) -> str:
 
 
 def _case_run_identity_columns(
-    connection: Connection, *, include_github_actions: bool = False,
+    connection: Connection, *, include_github_actions: bool = False, normalized_key: bool = False,
 ) -> str:
-    build_key = f"""COALESCE(
+    build_key = "pcr.normalized_build_key" if normalized_key else f"""COALESCE(
         NULLIF(pcr.normalized_build_key, ''),
         {_normalize_case_build_key_expr(connection, "pcr.build_url")}
     )"""

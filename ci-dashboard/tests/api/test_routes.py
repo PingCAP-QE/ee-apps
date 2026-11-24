@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import Future
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -7432,12 +7433,10 @@ def test_cost_query_page_helpers_cover_parallel_paths(monkeypatch: pytest.Monkey
         )
     ) == (date(2026, 4, 24), date(2026, 4, 30))
 
-    class _ImmediateFuture:
+    class _ImmediateFuture(Future):
         def __init__(self, value):
-            self._value = value
-
-        def result(self):
-            return self._value
+            super().__init__()
+            self.set_result(value)
 
     class _InlineExecutor:
         def __init__(self, *, max_workers: int):
@@ -7495,12 +7494,10 @@ def test_get_cost_page_parallelizes_for_non_sqlite(monkeypatch: pytest.MonkeyPat
 
         return _inner
 
-    class _ImmediateFuture:
+    class _ImmediateFuture(Future):
         def __init__(self, value):
-            self._value = value
-
-        def result(self):
-            return self._value
+            super().__init__()
+            self.set_result(value)
 
     class _InlineExecutor:
         def __init__(self, *, max_workers: int):
