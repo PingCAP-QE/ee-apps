@@ -166,9 +166,10 @@ def aggregate_day(
         if kind == "node" and not entity.startswith(("ins-", "np-")):
             unmapped_inventory = True
             continue
-        begin = begin.replace(second=0, microsecond=0) + (
-            timedelta(minutes=1) if begin.second or begin.microsecond else timedelta()
-        )
+        partial_minute = bool(begin.second or begin.microsecond)
+        begin = begin.replace(second=0, microsecond=0)
+        if partial_minute:
+            begin += timedelta(minutes=1)
         stamp = begin
         while stamp + timedelta(minutes=1) <= finish:
             key = (kind, entity, stamp)

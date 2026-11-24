@@ -200,6 +200,32 @@ def test_node_name_join_and_no_backdating_or_open_interval_extrapolation(profile
     assert metric(rows)["avg"] is None  # first minute is not covered by new metadata
 
 
+@pytest.mark.parametrize(
+    "offset", [timedelta(seconds=30), timedelta(seconds=59), timedelta(microseconds=1)]
+)
+def test_only_whole_source_minutes_receive_evidence(profile, offset):
+    obs = observation(begin=START + offset, end=START + timedelta(minutes=3) + offset)
+    rows = aggregate(profile, [], [obs], minutes=4)
+    body = metric(rows)
+    assert body["expected_seconds"] == 120  # Only 00:01 and 00:02, not 00:00/00:03.
+    assert body["expected_capacity_integral"] == 2 * 120
+    for minute in (0, 3):
+        isolated = aggregate(
+            profile, [], [obs], minutes=minute + 1, window_start=START + timedelta(minutes=minute)
+        )
+        assert isolated == []
+    for minute in (1, 2):
+        isolated = aggregate(
+            profile, [], [obs], minutes=minute + 1, window_start=START + timedelta(minutes=minute)
+        )
+        assert metric(isolated)["expected_seconds"] == 60
+    # A source point before evidence still preserves missing/unknown quality,
+    # never assigning the later requests/capacity retroactively.
+    with_point = aggregate(profile, [point()], [obs], minutes=4)
+    assert metric(with_point)["used_integral"] == 0
+    assert metric(with_point)["unknown_seconds"] == 60
+
+
 def test_ambiguous_evidence_does_not_guess_denominator(profile):
     obs = observation()
     rows = aggregate(profile, [point()], [obs, deepcopy(obs)])
