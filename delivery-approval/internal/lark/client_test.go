@@ -25,6 +25,7 @@ type larkServer struct {
 	batches       int
 	failCode      int
 	failReceiveID string
+	failAll       bool
 }
 
 type sentMessage struct {
@@ -73,7 +74,7 @@ func (s *larkServer) handler() http.HandlerFunc {
 			s.mu.Lock()
 			s.messages = append(s.messages, sentMessage{receiveIDType: r.URL.Query().Get("receive_id_type"), receiveID: body.ReceiveID, content: body.Content})
 			s.mu.Unlock()
-			if s.failCode != 0 || (s.failReceiveID != "" && body.ReceiveID == s.failReceiveID) {
+			if s.failAll || s.failCode != 0 || (s.failReceiveID != "" && body.ReceiveID == s.failReceiveID) {
 				_, _ = io.WriteString(w, `{"code":999,"msg":"failed"}`)
 				return
 			}
@@ -248,12 +249,12 @@ func TestNotifyDecisionAndFailure(t *testing.T) {
 	}
 }
 
-func TestNotifyApprovalDMAttemptsAllAfterFailure(t *testing.T) {
+func TestNotifyApprovalDMAttemptsAllAfterPartialFailure(t *testing.T) {
 	s := &larkServer{failReceiveID: "ou-approver"}
 	c := testClientConfig(t, s, testConfigTwoApprovers(t))
 	c.chatID = ""
-	if err := c.NotifyApproval(context.Background(), sampleRequest()); err == nil {
-		t.Fatal("expected a DM failure")
+	if err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
+		t.Fatalf("partial DM failure should not fail the request: %v", err)
 	}
 	if len(s.messages) != 2 {
 		t.Fatalf("messages = %d, want 2 attempts", len(s.messages))
@@ -262,5 +263,17 @@ func TestNotifyApprovalDMAttemptsAllAfterFailure(t *testing.T) {
 		if msg.receiveIDType != "open_id" {
 			t.Fatalf("receive type = %q", msg.receiveIDType)
 		}
+	}
+}
+
+func TestNotifyApprovalDMFailsWhenEveryApproverFails(t *testing.T) {
+	s := &larkServer{failAll: true}
+	c := testClientConfig(t, s, testConfigTwoApprovers(t))
+	c.chatID = ""
+	if err := c.NotifyApproval(context.Background(), sampleRequest()); err == nil {
+		t.Fatal("expected total DM failure")
+	}
+	if len(s.messages) != 2 {
+		t.Fatalf("messages = %d, want 2 attempts", len(s.messages))
 	}
 }

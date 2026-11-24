@@ -71,7 +71,8 @@ This phase adds the service skeleton, configuration and storage:
     sent privately to every configured approver;
   - optional app-level urgent (`lark_buzz`) in group mode, with email → open_id
     lookup and a cache; DM mode does not call urgent because the card is
-    already a private message;
+    already a private message; a partial DM failure is logged, and only a
+    total failure of every approver is returned as an error;
   - private text message with the one-time delivery links;
   - private rejection/revocation messages and a fixed-class delivery-failure
     message (no upstream error body or token).
