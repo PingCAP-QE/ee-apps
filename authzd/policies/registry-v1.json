@@ -1,0 +1,44 @@
+{
+  "version": "1",
+  "routes": [
+    {
+      "id": "tibuild-devbuild-rerun",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/devbuilds/{id}/rerun",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        { "object": "capability:tibuild.devbuild.rerun", "relation": "invoke" },
+        { "object_from": "devbuild", "id_from": "path.id", "relation": "can_rerun" }
+      ]
+    },
+    {
+      "id": "tibuild-devbuild-create",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/devbuilds",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        { "object": "capability:tibuild.devbuild.create", "relation": "create" },
+        { "object_from": "project", "id_from": "body.project_id", "relation": "can_create_build" }
+      ]
+    },
+    {
+      "id": "tibuild-devbuild-get",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/devbuilds/{id}",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        { "object": "capability:tibuild.devbuild.read", "relation": "read" },
+        { "object_from": "devbuild", "id_from": "path.id", "relation": "can_read" }
+      ]
+    }
+  ]
+}

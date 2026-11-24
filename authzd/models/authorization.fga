@@ -1,0 +1,38 @@
+model
+  schema 1.1
+
+type user
+
+type workload
+
+type team
+  relations
+    define member: [user]
+
+type organization
+  relations
+    define admin: [user, team#member]
+
+type project
+  relations
+    define parent: [organization]
+    define owner: [user, team#member]
+    define editor: [user, team#member]
+    define viewer: [user, team#member]
+    define can_view: viewer or editor or owner or admin from parent
+    define can_edit: editor or owner or admin from parent
+    define can_create_build: can_edit
+
+type devbuild
+  relations
+    define parent: [project]
+    define creator: [user, workload]
+    define can_read: creator or can_view from parent
+    define can_rerun: creator or can_edit from parent
+
+type capability
+  relations
+    define caller: [user, workload, team#member]
+    define invoke: caller
+    define read: caller
+    define create: caller

@@ -1,0 +1,125 @@
+name: Unified authorization model v1
+model_file: ../models/authorization.fga
+
+tests:
+  - name: project owner is directly authorized to rerun a build
+    tuples:
+      - user: user:alice
+        relation: owner
+        object: project:alpha
+      - user: organization:acme
+        relation: parent
+        object: project:alpha
+      - user: project:alpha
+        relation: parent
+        object: devbuild:build-1
+      - user: user:alice
+        relation: caller
+        object: capability:tibuild.devbuild.rerun
+    check:
+      - user: user:alice
+        object: project:alpha
+        assertions:
+          can_edit: true
+      - user: user:alice
+        object: devbuild:build-1
+        assertions:
+          can_rerun: true
+      - user: user:alice
+        object: capability:tibuild.devbuild.rerun
+        assertions:
+          invoke: true
+
+  - name: organization admin inherits rerun access through the project
+    tuples:
+      - user: user:admin
+        relation: admin
+        object: organization:acme
+      - user: organization:acme
+        relation: parent
+        object: project:alpha
+      - user: project:alpha
+        relation: parent
+        object: devbuild:build-2
+      - user: user:admin
+        relation: caller
+        object: capability:tibuild.devbuild.rerun
+    check:
+      - user: user:admin
+        object: devbuild:build-2
+        assertions:
+          can_rerun: true
+
+  - name: team member inherits project editor access
+    tuples:
+      - user: user:bob
+        relation: member
+        object: team:release
+      - user: team:release#member
+        relation: editor
+        object: project:alpha
+      - user: project:alpha
+        relation: parent
+        object: devbuild:build-3
+    check:
+      - user: user:bob
+        object: devbuild:build-3
+        assertions:
+          can_rerun: true
+
+  - name: missing capability tuple denies invocation
+    tuples:
+      - user: user:alice
+        relation: owner
+        object: project:alpha
+      - user: project:alpha
+        relation: parent
+        object: devbuild:build-4
+    check:
+      - user: user:alice
+        object: devbuild:build-4
+        assertions:
+          can_rerun: true
+      - user: user:alice
+        object: capability:tibuild.devbuild.rerun
+        assertions:
+          invoke: false
+
+  - name: revoked team membership denies inherited editor access
+    tuples:
+      - user: team:release#member
+        relation: editor
+        object: project:alpha
+      - user: project:alpha
+        relation: parent
+        object: devbuild:build-5
+    check:
+      - user: user:bob
+        object: devbuild:build-5
+        assertions:
+          can_rerun: false
+
+  - name: a grant on another tenant project does not authorize the build
+    tuples:
+      - user: user:mallory
+        relation: owner
+        object: project:tenant-b
+      - user: project:tenant-a
+        relation: parent
+        object: devbuild:tenant-a-build
+    check:
+      - user: user:mallory
+        object: devbuild:tenant-a-build
+        assertions:
+          can_rerun: false
+
+  - name: workload trust domains remain distinct
+    tuples:
+      - user: workload:gcp/cluster-b/ci/builder
+        relation: caller
+        object: capability:tibuild.devbuild.rerun
+    check:
+      - user: workload:gcp/cluster-a/ci/builder
+        object: capability:tibuild.devbuild.rerun
+        assertions:
+          invoke: false
