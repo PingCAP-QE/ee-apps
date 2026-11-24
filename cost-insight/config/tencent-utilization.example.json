@@ -1,0 +1,17 @@
+{
+  "account_id": "100050658403",
+  "regions": ["ap-beijing", "ap-hongkong"],
+  "cluster_region": "ap-beijing",
+  "cluster_id": "cls-9zpon9y1",
+  "namespaces": ["prow-test-pods", "jenkins-agents", "jenkins-pd", "jenkins-ticdc", "jenkins-tidb", "jenkins-tiflash", "jenkins-tiflow", "jenkins-tikv"],
+  "include_tke_cvm": false,
+  "measurement": {
+    "verified_horizon_seconds": 0,
+    "safety_margin_seconds": 3600,
+    "pod_memory_source_scale": 0,
+    "node_memory_request_source_scale": 0,
+    "horizon_verified_at": null,
+    "evidence_reference": null,
+    "timestamp_alignment_verified": false
+  }
+}

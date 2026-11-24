@@ -22,6 +22,7 @@ from ci_dashboard.api.routes.filters import router as filters_router
 from ci_dashboard.api.routes.flaky import router as flaky_router
 from ci_dashboard.api.routes.pages import router as pages_router
 from ci_dashboard.api.routes.status import router as status_router
+from ci_dashboard.api.routes.utilization import router as utilization_router
 
 
 LOG = logging.getLogger(__name__)
@@ -134,6 +135,7 @@ def create_app() -> FastAPI:
     app.include_router(builds_router)
     app.include_router(failures_router)
     app.include_router(pages_router)
+    app.include_router(utilization_router)
     app.get("/healthz")(healthz)
     app.get("/livez")(livez)
     app.get("/readyz")(readyz)

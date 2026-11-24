@@ -17,6 +17,7 @@ from cost_insight.common.config import (
 )
 from cost_insight.common.db import build_engine
 from cost_insight.common.logging import configure_logging
+from cost_insight.jobs.allocate_tencent_ci_cost import run_allocate_tencent_ci_cost
 from cost_insight.jobs.aws_split_cost_shadow import (
     AWS_7266_ACCOUNT_ID,
     SHADOW_WINDOW_ID,
@@ -32,9 +33,9 @@ from cost_insight.jobs.refresh_attribution_daily import (
     CostAttributionSource,
     run_refresh_cost_attribution_from_summary,
 )
-from cost_insight.jobs.sync_gcs_cache_last_seen import (
-    run_sync_gcs_cache_last_seen,
-    run_tracked_sync_gcs_cache_last_seen,
+from cost_insight.jobs.sync_alibaba_billing_summary import (
+    ALIBABA_ACCOUNT_DISPLAY_NAMES,
+    run_sync_alibaba_billing_summary,
 )
 from cost_insight.jobs.sync_aws_billing_summary import (
     AWS_CUR_LEGACY_SCHEMA_VERSION,
@@ -43,29 +44,28 @@ from cost_insight.jobs.sync_aws_billing_summary import (
     AwsBillingSource,
     run_sync_aws_billing_summary,
 )
-from cost_insight.jobs.sync_aws_parent_residual_allocations import (
-    run_sync_aws_parent_residual_allocations,
-)
 from cost_insight.jobs.sync_aws_kubernetes_workload_allocations import (
     run_sync_aws_kubernetes_workload_allocations,
 )
+from cost_insight.jobs.sync_aws_parent_residual_allocations import (
+    run_sync_aws_parent_residual_allocations,
+)
 from cost_insight.jobs.sync_aws_unmatched_resources import run_sync_aws_unmatched_resources
-from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
 from cost_insight.jobs.sync_azure_billing_summary import (
     AZURE_SUBSCRIPTIONS,
     run_sync_azure_billing_summary,
 )
-from cost_insight.jobs.sync_alibaba_billing_summary import (
-    ALIBABA_ACCOUNT_DISPLAY_NAMES,
-    run_sync_alibaba_billing_summary,
-)
-from cost_insight.jobs.allocate_tencent_ci_cost import run_allocate_tencent_ci_cost
-from cost_insight.jobs.sync_tencent_billing_summary import run_sync_tencent_billing_summary
+from cost_insight.jobs.sync_gcp_billing_summary import run_sync_gcp_billing_summary
 from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
     run_sync_gcp_kubernetes_workload_allocations,
 )
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
 from cost_insight.jobs.sync_gcs_cache_ac_references import run_sync_gcs_cache_ac_references
+from cost_insight.jobs.sync_gcs_cache_last_seen import (
+    run_sync_gcs_cache_last_seen,
+    run_tracked_sync_gcs_cache_last_seen,
+)
+from cost_insight.jobs.sync_tencent_billing_summary import run_sync_tencent_billing_summary
 from cost_insight.jobs.sync_warehouse_billing_summary import run_sync_warehouse_billing_summary
 from cost_insight.jobs.validate_aws_reconciliation import (
     resolve_reconciliation_source,
@@ -414,6 +414,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cleanup_gcs_cache.add_argument("--sample-limit", type=_parse_positive_int, default=None)
 
+    utilization_probe = subparsers.add_parser("utilization-probe", help="Read-only Tencent capability sample; no database")
+    utilization_probe.add_argument("--profile", required=True)
+    utilization_probe.add_argument("--date", type=_parse_date, default=None)
+    utilization_probe.set_defaults(require_database=False)
+
+    utilization_configure = subparsers.add_parser("utilization-configure", help="Explicit opt-in utilization contract/calendar")
+    utilization_configure.add_argument("--profile", required=True)
+    utilization_configure.add_argument("--start-week", type=_parse_date, required=True)
+    utilization_configure.add_argument("--stop-week", type=_parse_date, default=None)
+    utilization_configure.add_argument("--enable", action="store_true")
+    utilization_configure.add_argument("--confirm-source-horizons", action="store_true")
+    utilization_configure.add_argument("--dry-run", action="store_true")
+    utilization_maintain = subparsers.add_parser("utilization-maintain", help="Independent bounded finalization and cleanup")
+    utilization_maintain.add_argument("--dry-run", action="store_true")
+    for command in ("sync-tencent-utilization", "sync-tencent-utilization-inventory"):
+        utilization = subparsers.add_parser(command)
+        utilization.add_argument("--profile", required=True)
+        utilization.add_argument("--dry-run", action="store_true")
+        if command == "sync-tencent-utilization":
+            utilization.add_argument("--date", type=_parse_date, default=None)
+            utilization.add_argument("--repair", action="store_true")
+            utilization.add_argument("--empty-proof", default=None, help="Explicit bounded verified-empty scope proof; requires --date --repair")
+
     return parser
 
 
@@ -429,6 +452,49 @@ def main(argv: Sequence[str] | None = None) -> int:
         require_database = True
     settings = get_settings(require_database=require_database)
     configure_logging(settings.log_level)
+
+    if args.command == "utilization-probe":
+        from cost_insight.utilization.tencent import load_profile, probe
+
+        print(json.dumps(probe(load_profile(args.profile, probe=True), usage_date=args.date), indent=2, sort_keys=True))
+        return 0
+
+    if args.command in {"utilization-configure", "utilization-maintain", "sync-tencent-utilization", "sync-tencent-utilization-inventory"}:
+        from cost_insight.utilization import store
+        from cost_insight.utilization.runner import sync_daily, sync_inventory
+        from cost_insight.utilization.tencent import load_profile
+
+        engine = build_engine(settings)
+        try:
+            if args.command == "utilization-maintain":
+                result = store.maintain(engine, dry_run=args.dry_run)
+            else:
+                profile = load_profile(args.profile)
+                if args.command == "utilization-configure":
+                    if args.enable and not args.confirm_source_horizons:
+                        raise ValueError("--enable requires --confirm-source-horizons and recorded canary evidence")
+                    if args.enable and any(not entry.get("horizon_verified_at") or not entry.get("evidence_reference") or not entry.get("timestamp_alignment_verified") for metrics in profile["contracts"].values() for entry in metrics.values()):
+                        raise ValueError("Source/unit/timestamp canary evidence is required before enabling")
+                    result = store.configure(engine, start_week=args.start_week, stop_week=args.stop_week, contracts=profile["contracts"], enabled=args.enable, dry_run=args.dry_run)
+                elif args.command == "sync-tencent-utilization-inventory":
+                    result = sync_inventory(engine, profile, dry_run=args.dry_run)
+                else:
+                    empty_proof = None
+                    if args.empty_proof:
+                        if not args.date or not args.repair:
+                            raise ValueError("--empty-proof requires --date --repair")
+                        with open(args.empty_proof, encoding="utf-8") as handle:
+                            raw_proof = handle.read(8193)
+                        if len(raw_proof) > 8192:
+                            raise ValueError("Empty proof must be <=8192 characters")
+                        empty_proof = json.loads(raw_proof)
+                        if not isinstance(empty_proof, dict):
+                            raise TypeError("Empty proof must be an object")
+                    result = sync_daily(engine, profile, dry_run=args.dry_run, usage_date=args.date, repair=args.repair, empty_proof=empty_proof)
+            print(json.dumps(result, indent=2, sort_keys=True, default=str))
+            return 2 if any(day.get("published") is False for day in result.get("days", [])) else 0
+        finally:
+            engine.dispose()
 
     if args.command == "sync-warehouse-billing-summary":
         if (args.start_date is None) != (args.end_date is None):

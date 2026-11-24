@@ -29,6 +29,10 @@ Current design:
 - [Cost schema retirement design](docs/cost-schema-retirement-design.md)
 - [Unified cost allocation design](docs/cost-allocation-unification-design.md)
 - [Resource serving materialization design (proposed)](docs/resource-serving-materialization-design.md)
+- [Resource utilization collection design: Tencent first](docs/resource-utilization-design.md)
+- [Tencent utilization: CI Pod validation and incremental cost estimate](docs/tencent-utilization-validation-and-cost-estimate.md)
+- [Resource utilization retention and cleanup design](docs/resource-utilization-retention-design.md)
+- [Resource utilization: opt-in operations and rollout gates](docs/resource-utilization-operations.md)
 
 ## Local Setup
 

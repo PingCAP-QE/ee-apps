@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import CostFilterControls from "./CostFilterControls";
-import { CI_WEEKLY_COST_PATH, COST_PATH, WEEKLY_COST_PATH } from "../lib/filterUrl";
+import { CI_WEEKLY_COST_PATH, COST_PATH, UTILIZATION_PATH, WEEKLY_COST_PATH } from "../lib/filterUrl";
 
 export function DashboardLayout({
   filters,
@@ -59,6 +59,11 @@ export function DashboardLayout({
             search={navSearchByPath[CI_WEEKLY_COST_PATH]}
             label="CI Cost Weekly"
             caption="GCP and Tencent CI budget pace"
+          />
+          <NavItem
+            to={UTILIZATION_PATH}
+            label="Resource Utilization"
+            caption="Tencent repo / stable Job daily and account weekly summaries"
           />
           <NavItem
             to="/cost"

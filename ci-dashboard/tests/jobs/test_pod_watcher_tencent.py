@@ -251,6 +251,31 @@ def test_watch_status_401_refreshes_once_from_processed_resource_version(monkeyp
     assert closed == ["old"]
 
 
+@pytest.mark.parametrize("http_error", [False, True])
+def test_opt_in_watch_flushes_gap_before_auth_reconnect(monkeypatch, http_error):
+    calls = []
+    def stream(*args, **kwargs):
+        assert kwargs["utilization_batches"] is True
+        calls.append(True)
+        if len(calls) == 1:
+            yield {"type": "ADDED", "object": {"metadata": {"resourceVersion": "2"}}}
+            if http_error:
+                raise _unauthorized(401)
+            yield {"type": "ERROR", "object": {"code": 401}}
+        else:
+            yield {"type": "BOOKMARK"}
+    monkeypatch.setattr(watcher, "_stream_watch_json", stream)
+    events = iter(_client(token_provider=lambda: "offline").stream_collection(
+        namespace_name="ci", resource="pods", resource_version="1", utilization_batches=True,
+    ))
+    assert next(events)["type"] == "ADDED"
+    assert next(events)["type"] == watcher.UTILIZATION_GAP
+    assert len(calls) == 1  # Worker flush/reset precedes the second connection.
+    assert next(events)["type"] == "BOOKMARK"
+    assert list(events) == []
+    assert len(calls) == 2
+
+
 @pytest.mark.parametrize("code,attempts", [(401, 2), (403, 1)])
 def test_watch_http_auth_errors_have_bounded_retry(monkeypatch, code, attempts):
     calls = []
@@ -412,6 +437,41 @@ def test_empty_namespace_heartbeat_does_not_require_pod_activity(worker):
         jenkins_prefix_cache=None, stop_event=stop,
     )
     assert health.snapshot()["healthy"] is True
+
+
+def test_disabled_utilization_keeps_list_after_each_clean_eof(monkeypatch):
+    monkeypatch.delenv("CI_DASHBOARD_UTILIZATION_ENABLED", raising=False)
+    stop = threading.Event()
+    persisted = []
+    class Client:
+        lists = 0
+        watches = []
+        def list_collection(self, **kwargs):
+            self.lists += 1
+            return [{"metadata": {"uid": "pod", "name": "pod", "namespace": "ci"}}], f"list-{self.lists}"
+        def stream_collection(self, **kwargs):
+            assert "utilization_batches" not in kwargs
+            self.watches.append(kwargs["resource_version"])
+            yield {"type": "BOOKMARK", "object": {"metadata": {"resourceVersion": "last-watch-rv"}}}
+            if self.lists == 3:
+                stop.set()
+    def persist(engine, settings, snapshots, **kwargs):
+        assert "on_lifecycle_rows" not in kwargs
+        persisted.append(len(snapshots))
+        return len(snapshots)
+    class Recorder:
+        def add(self, **kwargs):
+            pass
+    monkeypatch.setattr(watcher, "_persist_pod_snapshots", persist)
+    monkeypatch.setattr(watcher.utilization_metadata, "MetadataExporter", lambda engine: pytest.fail("feature is off"))
+    client = Client()
+    watcher._run_pod_worker(
+        engine=None, settings=None, client=client, context=_context(), namespace_name="ci",
+        stream_key="ci/pods", health_state=watcher.WatchHealthState(stale_after_seconds=720),
+        recorder=Recorder(), jenkins_prefix_cache=None, stop_event=stop,
+    )
+    assert client.lists == 3 and client.watches == ["list-1", "list-2", "list-3"]
+    assert persisted == [1, 1, 1]
 
 
 def test_prefix_cache_is_partitioned_by_controller_and_reference_window(sqlite_engine, monkeypatch):
