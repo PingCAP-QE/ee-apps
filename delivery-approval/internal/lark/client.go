@@ -34,8 +34,11 @@ type Client struct {
 }
 
 func New(api *larksuite.Client, chatID string, cfg *config.Manager, buzz bool, logger *log.Logger) (*Client, error) {
-	if api == nil || chatID == "" || cfg == nil {
-		return nil, errors.New("lark client requires api, chat id and config")
+	if api == nil {
+		return nil, errors.New("lark client requires a non-nil API client")
+	}
+	if cfg == nil {
+		return nil, errors.New("lark client requires a non-nil configuration manager")
 	}
 	if logger == nil {
 		logger = log.Default()
@@ -86,6 +89,28 @@ func (c *Client) NotifyApproval(ctx context.Context, req *store.Request) error {
 	content, err := json.Marshal(card)
 	if err != nil {
 		return err
+	}
+	if c.chatID == "" {
+		// No shared approval group: deliver the card to each approver's DM.
+		openIDs := c.openIDsFor(ctx, c.config.Current().ApproverEmails)
+		if len(openIDs) == 0 {
+			return errors.New("no approver open_id")
+		}
+		failed := 0
+		for _, openID := range openIDs {
+			if _, err := c.send(ctx, larkim.ReceiveIdTypeOpenId, openID, "interactive", string(content)); err != nil {
+				// Attempt every approver. A partial failure is logged and does
+				// not fail the request; only a total failure is an error.
+				failed++
+			}
+		}
+		if failed == len(openIDs) {
+			return errors.New("failed to send approval DM to every approver")
+		}
+		if failed > 0 {
+			c.logger.Printf("lark approval DM partial failure request=%s failed=%d/%d", req.ID, failed, len(openIDs))
+		}
+		return nil
 	}
 	messageID, err := c.send(ctx, larkim.ReceiveIdTypeChatId, c.chatID, "interactive", string(content))
 	if err != nil {

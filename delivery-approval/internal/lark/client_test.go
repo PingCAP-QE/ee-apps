@@ -19,11 +19,13 @@ import (
 )
 
 type larkServer struct {
-	mu       sync.Mutex
-	messages []sentMessage
-	urgent   []string
-	batches  int
-	failCode int
+	mu            sync.Mutex
+	messages      []sentMessage
+	urgent        []string
+	batches       int
+	failCode      int
+	failReceiveID string
+	failAll       bool
 }
 
 type sentMessage struct {
@@ -51,6 +53,8 @@ func (s *larkServer) handler() http.HandlerFunc {
 				switch email {
 				case "approver@example.com":
 					users = append(users, map[string]string{"user_id": "ou-approver", "email": email})
+				case "second@example.com":
+					users = append(users, map[string]string{"user_id": "ou-second", "email": email})
 				case "requester@example.com":
 					users = append(users, map[string]string{"user_id": "ou-requester", "email": email})
 				}
@@ -70,7 +74,7 @@ func (s *larkServer) handler() http.HandlerFunc {
 			s.mu.Lock()
 			s.messages = append(s.messages, sentMessage{receiveIDType: r.URL.Query().Get("receive_id_type"), receiveID: body.ReceiveID, content: body.Content})
 			s.mu.Unlock()
-			if s.failCode != 0 {
+			if s.failAll || s.failCode != 0 || (s.failReceiveID != "" && body.ReceiveID == s.failReceiveID) {
 				_, _ = io.WriteString(w, `{"code":999,"msg":"failed"}`)
 				return
 			}
@@ -96,15 +100,33 @@ func testConfig(t *testing.T) *config.Manager {
 }
 
 func testClient(t *testing.T, s *larkServer) *Client {
+	return testClientConfig(t, s, testConfig(t))
+}
+
+func testClientConfig(t *testing.T, s *larkServer, cfg *config.Manager) *Client {
 	t.Helper()
 	server := httptest.NewServer(s.handler())
 	t.Cleanup(server.Close)
 	api := larksuite.NewClient("app-id", "app-secret", larksuite.WithOpenBaseUrl(server.URL))
-	c, err := New(api, "oc-chat", testConfig(t), true, nil)
+	c, err := New(api, "oc-chat", cfg, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c
+}
+
+func testConfigTwoApprovers(t *testing.T) *config.Manager {
+	t.Helper()
+	cfg := config.Default()
+	cfg.PublicURL = "https://approvals.example.com"
+	cfg.DLBaseURL = "http://dl-management:80"
+	cfg.OIDCClientID = "audience"
+	cfg.AllowedEmailDomains = []string{"example.com"}
+	cfg.ApproverEmails = []string{"approver@example.com", "second@example.com"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	return config.NewManager(cfg)
 }
 
 func sampleRequest() *store.Request {
@@ -177,6 +199,24 @@ func TestNotifyError(t *testing.T) {
 	}
 }
 
+func TestNotifyApprovalDMsEachApprover(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	c.chatID = ""
+	if err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.messages) != 1 || s.messages[0].receiveIDType != "open_id" || s.messages[0].receiveID != "ou-approver" {
+		t.Fatalf("messages = %+v", s.messages)
+	}
+	if !strings.Contains(s.messages[0].content, "approvals.example.com") {
+		t.Fatalf("DM card missing review link: %s", s.messages[0].content)
+	}
+	if len(s.urgent) != 0 {
+		t.Fatalf("DM mode should not call urgent: %v", s.urgent)
+	}
+}
+
 func TestNewValidation(t *testing.T) {
 	if _, err := New(nil, "chat", testConfig(t), false, nil); err == nil {
 		t.Fatal("nil api accepted")
@@ -184,8 +224,8 @@ func TestNewValidation(t *testing.T) {
 	if _, err := NewDefault("", "", "chat", testConfig(t), false, nil); err == nil {
 		t.Fatal("missing credentials accepted")
 	}
-	if _, err := NewDefault("id", "secret", "", testConfig(t), false, nil); err == nil {
-		t.Fatal("missing chat accepted")
+	if _, err := NewDefault("id", "secret", "", testConfig(t), false, nil); err != nil {
+		t.Fatalf("empty chat should enable per-approver DM: %v", err)
 	}
 }
 
@@ -206,5 +246,34 @@ func TestNotifyDecisionAndFailure(t *testing.T) {
 	}
 	if !strings.Contains(s.messages[1].content, "delivery failed") && !strings.Contains(s.messages[1].content, "Delivery for request") {
 		t.Fatalf("failure message = %s", s.messages[1].content)
+	}
+}
+
+func TestNotifyApprovalDMAttemptsAllAfterPartialFailure(t *testing.T) {
+	s := &larkServer{failReceiveID: "ou-approver"}
+	c := testClientConfig(t, s, testConfigTwoApprovers(t))
+	c.chatID = ""
+	if err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
+		t.Fatalf("partial DM failure should not fail the request: %v", err)
+	}
+	if len(s.messages) != 2 {
+		t.Fatalf("messages = %d, want 2 attempts", len(s.messages))
+	}
+	for _, msg := range s.messages {
+		if msg.receiveIDType != "open_id" {
+			t.Fatalf("receive type = %q", msg.receiveIDType)
+		}
+	}
+}
+
+func TestNotifyApprovalDMFailsWhenEveryApproverFails(t *testing.T) {
+	s := &larkServer{failAll: true}
+	c := testClientConfig(t, s, testConfigTwoApprovers(t))
+	c.chatID = ""
+	if err := c.NotifyApproval(context.Background(), sampleRequest()); err == nil {
+		t.Fatal("expected total DM failure")
+	}
+	if len(s.messages) != 2 {
+		t.Fatalf("messages = %d, want 2 attempts", len(s.messages))
 	}
 }

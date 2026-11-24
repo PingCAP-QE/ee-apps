@@ -18,5 +18,6 @@ max_requests_per_day: 20
 default_ttl_seconds: 86400
 max_ttl_seconds: 604800
 
-lark_notification_chat_id: oc_example_chat_id
+# Optional approval group. Empty means each approver receives a private card.
+lark_notification_chat_id: ""
 lark_buzz: true
