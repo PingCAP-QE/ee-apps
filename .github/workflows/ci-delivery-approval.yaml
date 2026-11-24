@@ -49,6 +49,26 @@ jobs:
         run: go test -race ./...
       - name: Build
         run: go build ./...
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.18.3
+      - name: Check chart ports match the service config
+        run: |
+          set -euo pipefail
+          # The chart must not drift from the ports the binary binds; helm lint
+          # cannot see this.
+          chart=../charts/delivery-approval
+          manifest=$(mktemp)
+          helm template release "$chart" > "$manifest"
+          listen=$(sed -n 's/^ *listen: *"*:\([0-9][0-9]*\)"*$/\1/p' "$chart/values.yaml")
+          health=$(sed -n 's/^ *health_address: *"*:\([0-9][0-9]*\)"*$/\1/p' "$chart/values.yaml")
+          for port in "$listen" "$health"; do
+            grep -q "containerPort: $port" "$manifest" || {
+              echo "chart has no containerPort $port"; exit 1; }
+          done
+          # liveness + readiness both point at the health port.
+          [ "$(grep -c "port: $health" "$manifest")" -ge 2 ] || {
+            echo "probes are not wired to health port $health"; exit 1; }
       - name: Check generated APIs
         run: |
           go generate ./...
