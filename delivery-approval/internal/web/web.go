@@ -14,6 +14,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -142,6 +143,10 @@ func (h *handler) authenticate(r *http.Request) (*auth.Identity, error) {
 }
 
 type pageData struct {
+	// Base is the browser-facing path prefix these pages are mounted under
+	// (for example /dl/grants). The gateway strips it before the request
+	// arrives, so every link and redirect has to add it back.
+	Base     string
 	Identity *auth.Identity
 	CSRF     string
 	Error    string
@@ -243,7 +248,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 			}
 		}(req.ID)
 	}
-	http.Redirect(w, r, "/requests/"+req.ID, http.StatusSeeOther)
+	http.Redirect(w, r, h.basePath()+"/requests/"+req.ID, http.StatusSeeOther)
 }
 
 func (h *handler) list(w http.ResponseWriter, r *http.Request) {
@@ -391,7 +396,7 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 			}
 		}(req.ID)
 	}
-	http.Redirect(w, r, "/requests/"+req.ID, http.StatusSeeOther)
+	http.Redirect(w, r, h.basePath()+"/requests/"+req.ID, http.StatusSeeOther)
 }
 
 func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
@@ -455,14 +460,34 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 			}
 		}(req)
 	}
-	http.Redirect(w, r, "/requests/"+req.ID, http.StatusSeeOther)
+	http.Redirect(w, r, h.basePath()+"/requests/"+req.ID, http.StatusSeeOther)
 }
 
 func (h *handler) render(w http.ResponseWriter, name string, data pageData) {
+	data.Base = h.basePath()
 	if err := h.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		h.logger.Printf("render %s failed", name)
 		http.Error(w, "unavailable", http.StatusInternalServerError)
 	}
+}
+
+// basePath is the path the approval pages are published under, taken from
+// public_url. The HTTP route rewrites that prefix to / before forwarding, so
+// responses must rebuild it; otherwise links and redirects escape to the
+// parent host, where another application answers them.
+func (h *handler) basePath() string {
+	if h.config == nil {
+		return ""
+	}
+	u, err := url.Parse(h.config.Current().PublicURL)
+	if err != nil {
+		return ""
+	}
+	base := strings.TrimSuffix(u.Path, "/")
+	if base == "/" {
+		return ""
+	}
+	return base
 }
 
 func (h *handler) deny(w http.ResponseWriter) {

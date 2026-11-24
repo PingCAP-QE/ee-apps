@@ -103,6 +103,12 @@ part of this file:
 Both `listen` and `health_address` are separate listeners. Never expose
 `health_address` through the Gateway or a Service.
 
+`public_url` is the browser-facing base of the pages, and its path is also the
+mount point: the HTTP route publishes `/dl/grants`, rewrites that prefix to `/`
+before forwarding, and the handler rebuilds it for every link and redirect.
+Changing the mount point therefore means changing both the route and
+`public_url`, and keeping the two in sync.
+
 ## Database
 
 The runtime role has no DDL. Run the migration Job once with the migration DSN:
