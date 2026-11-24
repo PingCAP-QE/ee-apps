@@ -5,6 +5,16 @@ metadata:
 build:
   artifacts:
     - image: authzd
-      context: .
-      docker:
-        dockerfile: Dockerfile
+      ko:
+        main: ./cmd/authzd
+        fromImage: gcr.io/distroless/static-debian12:nonroot
+        flags:
+          - -trimpath
+        ldflags:
+          - -s
+          - -w
+        dependencies:
+          paths:
+            - "**/*.go"
+            - go.mod
+            - go.sum
