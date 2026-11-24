@@ -207,7 +207,7 @@ def run_sync_aws_billing_summary(
                             replaced_usage_end = max(usage_dates)
                         rows_written += replace_summary_usage_dates(
                             engine,
-                            _iter_spooled_rows(row_spool),
+                            lambda: _iter_spooled_rows(row_spool),
                             row_count=rows_seen,
                             vendor="aws",
                             account_id=account_id,
@@ -219,7 +219,7 @@ def run_sync_aws_billing_summary(
                 else:
                     rows_written += replace_summary_partitions(
                         engine,
-                        _iter_spooled_rows(row_spool),
+                        lambda: _iter_spooled_rows(row_spool),
                         row_count=rows_seen,
                         vendor="aws",
                         account_id=account_id,
@@ -286,8 +286,13 @@ def run_sync_aws_billing_summary(
     except Exception as exc:
         LOG.exception("sync_aws_billing_summary failed")
         if not dry_run:
-            with engine.begin() as connection:
-                state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
+            try:
+                with engine.begin() as connection:
+                    state = state_store.get_job_state(connection, job_name)
+                    if state and state.last_status == "running":
+                        state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
+            except Exception:  # noqa: BLE001 - preserve the original sync error
+                LOG.warning("Could not persist AWS failure state; preserving original error")
         raise
 
 

@@ -41,6 +41,73 @@ The collector reads database settings from `COST_INSIGHT_DB_URL` first, then
 falls back to `COST_DB_URL`, `CI_DASHBOARD_DB_URL`, `COST_INSIGHT_TIDB_*`,
 `COST_TIDB_*`, or `TIDB_*`.
 
+### Database transport resilience (jobs)
+
+MySQL/PyMySQL connections retain `pool_pre_ping=True` and use these bounded
+socket timeouts (seconds), independent of the API's shorter read deadline:
+
+| Env | Default | Allowed |
+| --- | --- | --- |
+| `COST_INSIGHT_DB_CONNECT_TIMEOUT_SECONDS` | `10` | `1..60` |
+| `COST_INSIGHT_DB_READ_TIMEOUT_SECONDS` | `600` | `1..3600` |
+| `COST_INSIGHT_DB_WRITE_TIMEOUT_SECONDS` | `600` | `1..3600` |
+
+These bound individual driver operations, not total job runtime or server SQL
+execution. SQLite receives no MySQL driver options. A socket/query timeout is
+**not** retried, even when reported as MySQL 2013.
+
+Retries are explicit, not global: at most **3 total transaction attempts** on
+MySQL transport disconnects (2006/2013, excluding timeouts), or an invalidated
+connection with a known reset/broken-pipe origin. Each attempt enters a fresh
+`engine.begin()`; SQLAlchemy discards disconnected MySQL connections. Backoff
+is exponential with jitter: 0.5–1s, then 1–2s (2s cap). Validation, access,
+schema, syntax, lock/query timeouts and unknown invalidation causes fail without
+replay. Retry logs contain only the attempt number, never SQL/parameters.
+
+Covered boundaries:
+
+- `write_summary_rows`: the same frozen batch, deterministic cleanup and upsert
+  identities, in one transaction (normal GCP/AWS/Azure paths).
+- `replace_summary_partitions`, `replace_summary_partition_usage_dates`, and
+  `replace_summary_usage_dates`: DELETE and **all** INSERT batches together.
+  One-shot inputs are snapshotted into a private local temporary file before
+  DELETE; callers with an existing frozen spool supply a row factory to rewind
+  it without a second disk copy. Each attempt recreates batches/counts. A factory
+  must return the same frozen input every time. Existing empty-source and
+  scoped-row validation rules remain.
+  This also covers the AWS/Azure warehouse runner's per-day summary writes.
+- Summary-derived attribution: fixed vendor/account/date DELETE, all INSERTs,
+  serving-publication invalidation, and success state remain one transaction.
+  Downstream materialization is outside the retried transaction. Existing
+  single-worker/source-snapshot and monetary validation requirements still apply;
+  retries do not authorize concurrent writers or changing upstream snapshots.
+
+A lost commit ACK is an **unknown outcome**, not proof of rollback. Covered
+writes may replay only the same idempotent scope/input; they do not generate a
+new publication version per attempt. Exhaustion re-raises the final original
+error; an acknowledged-lost commit may already be durable. Warehouse terminal
+success is not overwritten by failure cleanup: status/run ownership checks
+remain enforced. Failure-bookkeeping errors cannot replace the original
+warehouse, summary-sync or attribution exception. If attribution committed but
+its ACK/replays failed, its success may be durable while materialization still
+needs reconciliation.
+
+Not covered: arbitrary SQL/SELECT retries, whole-pipeline replay, standalone
+state/checkpoint retries, or an independent connection-establishment retry loop.
+Generic resource-serving staging/publication is deliberately **not retried**:
+its streaming iterator and monetary accumulators cannot safely be reused after
+partial consumption. Failed staging rolls back and leaves the previous active
+publication unchanged; a publication commit with lost ACK needs inspection.
+Tencent `_import_bill_day` page writes are also deferred: mutable pagination
+watermarks/counters and final evidence require a separate replay design. No
+`ping(reconnect=True)`, schema changes, or automatic failed-state resets are used.
+
+Warehouse `running`/`failed` latches still require **manual inspection and
+recovery**, including run ID, committed scopes, source snapshot and monetary
+checks; do not blindly rerun/clear a failed worker. These changes bound recovery
+from transport failures; they do not fix or establish a network/provider root
+cause. `pre_ping` checks checkout, not an active transaction.
+
 Useful GCP settings:
 
 | Env | Default |

@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from cost_insight.common.config import TENCENT_CI_SOURCE
+from cost_insight.common.db_retry import replay_safe_transaction
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
@@ -81,11 +82,12 @@ def run_refresh_cost_attribution_from_summary(
             summary_rows=int(summary_rows),
         )
 
+    attribution_committed = False
     try:
         with engine.begin() as connection:
             state_store.mark_job_started(connection, job_name, watermark)
 
-        with engine.begin() as connection:
+        def refresh(connection):
             delete_result = connection.execute(_DELETE_ATTRIBUTION_DAILY, params)
             rows_inserted = 0
             for insert_statement in _summary_insert_statements(
@@ -96,7 +98,13 @@ def run_refresh_cost_attribution_from_summary(
                 rows_inserted += _positive_rowcount(insert_result.rowcount)
             _invalidate_resource_serving_publications(connection, params)
             state_store.mark_job_succeeded(connection, job_name, watermark)
+            return _positive_rowcount(delete_result.rowcount), rows_inserted
 
+        rows_deleted, rows_inserted = replay_safe_transaction(engine, refresh)
+        # The helper returns only after COMMIT is acknowledged, not when refresh()
+        # returns. Keep this outside the callback: commit itself can fail/lose its ACK.
+        # It distinguishes a later materialization failure from an unknown commit.
+        attribution_committed = True
         run_materialize_resource_serving(
             engine,
             start_date=start_date,
@@ -109,14 +117,21 @@ def run_refresh_cost_attribution_from_summary(
             account_id=source.account_id,
             start_date=start_date,
             end_date=end_date,
-            rows_deleted=_positive_rowcount(delete_result.rowcount),
+            rows_deleted=rows_deleted,
             rows_inserted=rows_inserted,
             dry_run=False,
         )
     except Exception as exc:
         LOG.exception("refresh_cost_attribution_from_summary failed")
-        with engine.begin() as connection:
-            state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
+        try:
+            with engine.begin() as connection:
+                state = state_store.get_job_state(connection, job_name)
+                # For an unknown commit, preserve a durable succeeded state. If commit
+                # was acknowledged, a subsequent materialization failure still fails the job.
+                if attribution_committed or (state and state.last_status == "running"):
+                    state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
+        except Exception:  # noqa: BLE001 - bookkeeping must not mask the original failure
+            LOG.warning("Could not persist attribution failure state; preserving original error")
         raise
 
 

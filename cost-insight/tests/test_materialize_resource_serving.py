@@ -689,8 +689,10 @@ def test_tencent_streaming_merges_labels_and_pools_before_yielding(resource_name
         assert all(row["resource_identity_kind"] == "attribution_fallback" for row in rows)
 
 
-@pytest.mark.parametrize("failure", (None, "conservation", "iteration", "insert", "dry_run"))
+@pytest.mark.parametrize("failure", (None, "conservation", "iteration", "insert", "transport", "dry_run"))
 def test_streamed_staging_validates_before_publication(monkeypatch, failure) -> None:
+    from pymysql.err import OperationalError
+
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     sources, summaries = _tencent_shared_window(resource_count=4, participant_count=3)
     window = {"usage_date": sources[0]["usage_date"], "vendor": "tencent", "account_id": "100050658403"}
@@ -728,11 +730,13 @@ def test_streamed_staging_validates_before_publication(monkeypatch, failure) -> 
                 assert produced == inserts * 2
                 if failure == "insert" and inserts == 2:
                     raise RuntimeError("insert failed")
+                if failure == "transport" and inserts == 2:
+                    raise OperationalError(2013, "Lost connection during staging")
 
         monkeypatch.setattr(job, "build_tencent_resource_serving_rows", stream)
         event.listen(engine, "before_cursor_execute", observe_insert)
-        if failure in ("conservation", "iteration", "insert"):
-            with pytest.raises(RuntimeError):
+        if failure in ("conservation", "iteration", "insert", "transport"):
+            with pytest.raises((RuntimeError, OperationalError)):
                 run_materialize_resource_serving(engine, materialization_version="new", **options)
         else:
             result = run_materialize_resource_serving(
@@ -749,7 +753,7 @@ def test_streamed_staging_validates_before_publication(monkeypatch, failure) -> 
             )).scalar_one()
         assert version == ("old" if failure else "new")
         assert staged_count == (0 if failure else 12)
-        assert inserts == (0 if failure == "dry_run" else 2 if failure == "insert" else 6)
+        assert inserts == (0 if failure == "dry_run" else 2 if failure in ("insert", "transport") else 6)
     finally:
         engine.dispose()
 

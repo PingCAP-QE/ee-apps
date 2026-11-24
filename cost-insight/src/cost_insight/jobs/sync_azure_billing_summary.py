@@ -143,7 +143,8 @@ def run_sync_azure_billing_summary(
                         batch.clear()
             if replace_existing_partitions:
                 spool.seek(0)
-                rows = _iter_spooled_rows(spool)
+                def rows():
+                    return _iter_spooled_rows(spool)
                 if replacement_usage_start_date:
                     rows_written = replace_summary_partition_usage_dates(
                         engine,
@@ -202,8 +203,13 @@ def run_sync_azure_billing_summary(
     except Exception as exc:
         LOG.exception("sync_azure_billing_summary failed")
         if not dry_run:
-            with engine.begin() as connection:
-                state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
+            try:
+                with engine.begin() as connection:
+                    state = state_store.get_job_state(connection, job_name)
+                    if state and state.last_status == "running":
+                        state_store.mark_job_failed(connection, job_name, watermark, repr(exc))
+            except Exception:  # noqa: BLE001 - preserve the original sync error
+                LOG.warning("Could not persist Azure failure state; preserving original error")
         raise
 
 
@@ -303,6 +309,7 @@ def _normalize_summary_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _iter_spooled_rows(spool):
+    spool.seek(0)
     while True:
         try:
             yield pickle.load(spool)

@@ -42,6 +42,17 @@ class DatabaseSettings:
     password: str | None
     database: str | None
     ssl_ca: str | None
+    connect_timeout_seconds: int = 10
+    read_timeout_seconds: int = 600
+    write_timeout_seconds: int = 600
+
+    def __post_init__(self) -> None:
+        for name, maximum in (("connect", 60), ("read", 3600), ("write", 3600)):
+            value = getattr(self, f"{name}_timeout_seconds")
+            if not 1 <= value <= maximum:
+                raise ValueError(
+                    f"COST_INSIGHT_DB_{name.upper()}_TIMEOUT_SECONDS must be between 1 and {maximum}"
+                )
 
 
 @dataclass(frozen=True)
@@ -659,6 +670,12 @@ def _load_database_settings(
     )
     ssl_ca = _read_any(environ, "", "COST_INSIGHT_TIDB_SSL_CA", "COST_TIDB_SSL_CA", "TIDB_SSL_CA")
     ssl_ca = ssl_ca or None
+    timeouts = {
+        f"{name}_timeout_seconds": _read_int_any(
+            environ, (f"COST_INSIGHT_DB_{name.upper()}_TIMEOUT_SECONDS",), default
+        )
+        for name, default in (("connect", 10), ("read", 600), ("write", 600))
+    }
     if database_url:
         return DatabaseSettings(
             url=database_url,
@@ -668,6 +685,7 @@ def _load_database_settings(
             password=None,
             database=None,
             ssl_ca=ssl_ca,
+            **timeouts,
         )
     if not require_database:
         return DatabaseSettings(
@@ -678,6 +696,7 @@ def _load_database_settings(
             password=None,
             database=None,
             ssl_ca=ssl_ca,
+            **timeouts,
         )
     return DatabaseSettings(
         url=None,
@@ -696,6 +715,7 @@ def _load_database_settings(
         ),
         database=_read_required_any(environ, "COST_INSIGHT_TIDB_DB", "COST_TIDB_DB", "TIDB_DB"),
         ssl_ca=ssl_ca,
+        **timeouts,
     )
 
 

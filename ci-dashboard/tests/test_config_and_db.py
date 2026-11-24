@@ -273,6 +273,8 @@ def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.
     install_calls: list[object] = []
     monkeypatch.setattr("ci_dashboard.common.db.create_engine", fake_create_engine)
     monkeypatch.setattr("ci_dashboard.common.db.install_sqlite_functions", install_calls.append)
+    retry_calls: list[object] = []
+    monkeypatch.setattr("ci_dashboard.common.db._install_connection_retry", retry_calls.append)
 
     settings = load_settings(
         {
@@ -295,6 +297,7 @@ def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.
         "pool_size": 10,
         "max_overflow": 10,
         "pool_timeout": 5,
+        "pool_recycle": 900,
         "connect_args": {
             "connect_timeout": 5,
             "read_timeout": 35,
@@ -304,6 +307,7 @@ def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.
         },
     }
     assert install_calls == [engine]
+    assert retry_calls == [engine]
 
 
 def test_configure_logging_sets_root_level() -> None:

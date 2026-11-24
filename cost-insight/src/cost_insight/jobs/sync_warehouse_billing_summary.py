@@ -380,5 +380,9 @@ def run_sync_warehouse_billing_summary(
         return progress
     except BaseException as exc:
         if not dry_run:
-            _checkpoint(engine, name, progress, "failed", repr(exc))
+            try:
+                # Ownership/status checks also protect a succeeded commit whose ACK was lost.
+                _checkpoint(engine, name, progress, "failed", repr(exc))
+            except Exception:  # noqa: BLE001 - bookkeeping must not mask the original failure
+                LOG.warning("Could not persist warehouse failure state; preserving original error")
         raise

@@ -228,15 +228,15 @@ def run_sync_tencent_billing_summary(
             state_store.mark_job_succeeded(connection, state_job_name, watermark)
     except Exception as exc:
         LOG.exception("sync_tencent_billing_summary failed")
-        with engine.begin() as connection:
-            persisted = state_store.get_job_state(connection, state_job_name)
-            failed_watermark = persisted.watermark if persisted else watermark
-            state_store.mark_job_failed(
-                connection,
-                state_job_name,
-                failed_watermark,
-                repr(exc),
-            )
+        try:
+            with engine.begin() as connection:
+                persisted = state_store.get_job_state(connection, state_job_name)
+                if persisted and persisted.last_status == "running":
+                    state_store.mark_job_failed(
+                        connection, state_job_name, persisted.watermark, repr(exc),
+                    )
+        except Exception:  # noqa: BLE001 - preserve the original sync error
+            LOG.warning("Could not persist Tencent failure state; preserving original error")
         raise
 
     return SyncTencentBillingSummaryResult(
