@@ -151,15 +151,23 @@ function SnapshotProgressCard({ title, subtitle, tone = "default", items, loadin
 }
 
 export default function FlakyPage({ filters }) {
-  const page = useApiData("/api/v1/pages/flaky", filters);
-  const topCases = useApiData("/api/v1/flaky/top-cases", filters);
+  const pageRequest = useApiData("/api/v1/pages/flaky", filters);
+  const page = {
+    ...pageRequest,
+    loading: pageRequest.loading || pageRequest.responseKey !== JSON.stringify(filters),
+  };
+  const topCasesRequest = useApiData("/api/v1/flaky/top-cases", filters);
+  const topCases = {
+    ...topCasesRequest,
+    loading: topCasesRequest.loading || topCasesRequest.responseKey !== JSON.stringify(filters),
+  };
   const topCasesMeta = topCases.data?.meta;
   const topCasesTitle = topCasesMeta?.limit ? `Top ${topCasesMeta.limit} flaky cases` : "Top flaky cases";
   const topCasesSubtitle = [
-    "Ranked by distinct builds affected by each flaky case, for the selected repo, branch and dates (UTC).",
+    "Ranked by distinct builds or GitHub Actions workflow runs affected by each flaky case, for the selected repo, branch and dates (UTC).",
     "A build can still pass after retry, so this is not a failed-build count or a flaky rate.",
     topCasesMeta?.build_links_per_case
-      ? `Expand a row for the latest ${topCasesMeta.build_links_per_case} build URLs on the reporting controller.`
+      ? `Expand a row for the latest ${topCasesMeta.build_links_per_case} build or workflow-run URLs.`
       : null,
   ].filter(Boolean).join(" ");
   const [selectedBucketTime, setSelectedBucketTime] = useState(null);
@@ -195,24 +203,27 @@ export default function FlakyPage({ filters }) {
   const bucketedFlakyRateSubtitle = buildBucketedFlakyRateSubtitle(bucketedFlakyRateMeta);
   const bucketedFlakyRateAxisMax = buildCenteredPercentAxisMax(bucketedFlakyRateRows);
   const selectedBucketRange = resolveSelectedBucketRange(selectedBucketTime, bucketedFlakyRateMeta);
+  const bucketTopJobFilters = selectedBucketRange
+    ? {
+        repo: filters.repo,
+        branch: filters.branch,
+        job_name: filters.job_name,
+        cloud_phase: filters.cloud_phase,
+        start_date: selectedBucketRange.start_date,
+        end_date: selectedBucketRange.end_date,
+        granularity: bucketedFlakyRateMeta.effective_granularity || "week",
+        limit: 8,
+      }
+    : {};
   const bucketTopJobs = useApiData(
     "/api/v1/flaky/top-jobs",
-    selectedBucketRange
-      ? {
-          repo: filters.repo,
-          branch: filters.branch,
-          job_name: filters.job_name,
-          cloud_phase: filters.cloud_phase,
-          start_date: selectedBucketRange.start_date,
-          end_date: selectedBucketRange.end_date,
-          granularity: bucketedFlakyRateMeta.effective_granularity || "week",
-          limit: 8,
-        }
-      : {},
+    bucketTopJobFilters,
     Boolean(selectedBucketRange),
   );
   const topJobsItems = selectedBucketRange ? bucketTopJobs.data?.items : page.data?.top_jobs?.items;
-  const topJobsLoading = selectedBucketRange ? bucketTopJobs.loading : page.loading;
+  const topJobsLoading = selectedBucketRange
+    ? bucketTopJobs.loading || bucketTopJobs.responseKey !== JSON.stringify(bucketTopJobFilters)
+    : page.loading;
   const topJobsError = selectedBucketRange ? bucketTopJobs.error : page.error;
   const topJobsSubtitle = buildTopJobsSubtitle(selectedBucketRange);
 
@@ -230,17 +241,19 @@ export default function FlakyPage({ filters }) {
       <PageIntro
         eyebrow="Flaky"
         title="Separate noisy instability from the failures we still cannot classify cleanly"
-        description="This page follows the same intent as the pilot logic, but makes the signals explorable by repo, branch, job, and cloud."
+        description="Explore instability by repo, branch, job, and cloud. Rate cards cover Prow/Jenkins builds; GitHub Actions case reports are ranked separately below."
       />
 
       <section className="stats-grid">
         <StatCard
           label="Flaky Rate"
-          value={formatPercent(currentPeriod?.flaky_rate_pct || 0)}
+          loading={page.loading}
+          error={page.error}
+          value={failureLikeBuildCount ? formatPercent(currentPeriod?.flaky_rate_pct) : "N/A"}
           detail={`${formatNumber(currentPeriod?.flaky_build_count || 0)} flaky / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="rose"
           delta={
-            currentPeriod && previousPeriod
+            failureLikeBuildCount > 0 && previousPeriod?.failure_like_build_count > 0
               ? formatDelta(currentPeriod.flaky_rate_pct, previousPeriod.flaky_rate_pct, "%")
               : null
           }
@@ -252,11 +265,13 @@ export default function FlakyPage({ filters }) {
               <InfoHint text={BLIND_RETRY_LOOP_HINT} />
             </span>
           )}
-          value={formatPercent(currentPeriod?.retry_loop_rate_pct || 0)}
+          loading={page.loading}
+          error={page.error}
+          value={failureLikeBuildCount ? formatPercent(currentPeriod?.retry_loop_rate_pct) : "N/A"}
           detail={`${formatNumber(currentPeriod?.retry_loop_build_count || 0)} blind-retry-loop / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="amber"
           delta={
-            currentPeriod && previousPeriod
+            failureLikeBuildCount > 0 && previousPeriod?.failure_like_build_count > 0
               ? formatDelta(
                   currentPeriod.retry_loop_rate_pct,
                   previousPeriod.retry_loop_rate_pct,
@@ -267,22 +282,26 @@ export default function FlakyPage({ filters }) {
         />
         <StatCard
           label="Combined Noisy Rate"
-          value={formatPercent(currentPeriod?.noisy_rate_pct || 0)}
+          loading={page.loading}
+          error={page.error}
+          value={failureLikeBuildCount ? formatPercent(currentPeriod?.noisy_rate_pct) : "N/A"}
           detail={`${formatNumber(currentPeriod?.noisy_build_count || 0)} noisy / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="teal"
           delta={
-            currentPeriod && previousPeriod
+            failureLikeBuildCount > 0 && previousPeriod?.failure_like_build_count > 0
               ? formatDelta(currentPeriod.noisy_rate_pct, previousPeriod.noisy_rate_pct, "%")
               : null
           }
         />
         <StatCard
           label="Affected PR Rate"
-          value={formatPercent(currentPeriod?.affected_pr_rate_pct || 0)}
+          loading={page.loading}
+          error={page.error}
+          value={totalPrCount ? formatPercent(currentPeriod?.affected_pr_rate_pct) : "N/A"}
           detail={`${formatNumber(currentPeriod?.affected_pr_count || 0)} / ${formatNumber(totalPrCount)} PRs`}
           tone="default"
           delta={
-            currentPeriod && previousPeriod
+            totalPrCount > 0 && previousPeriod?.total_pr_count > 0
               ? formatDelta(currentPeriod.affected_pr_rate_pct, previousPeriod.affected_pr_rate_pct, "%")
               : null
           }
@@ -406,8 +425,9 @@ export default function FlakyPage({ filters }) {
             <span>
               The progress cards, lifecycle chart, and weekly case table use tracked flaky
               issues and ignore the branch filter. Weekly case evidence includes cross-repository
-              CI, using each issue's own tested branch. Job and cloud filters still apply to
-              the running build.
+              CI, using each issue's own tested branch. Build-time weekly evidence requires a
+              matching Prow/Jenkins build; GitHub Actions reports are not included there.
+              Job and cloud filters still apply to the running build.
             </span>
           </div>
           <div className="scope-note__block">
@@ -415,8 +435,10 @@ export default function FlakyPage({ filters }) {
             <span>
               Uses the tested repo and branch (all repos/branches when unset) with the selected
               UTC report-time window.
-              Counts distinct builds affected by each flaky case, independently of issue branch
-              or status. Job and cloud filters apply; bucket granularity does not change the total.
+              Counts distinct builds or workflow runs affected by each flaky case, independently of issue branch
+              or status. Includes GitHub Actions reports when no job or cloud is selected;
+              these reports have no matching Prow/Jenkins build or cloud attribution.
+              Job and cloud filters apply; bucket granularity does not change the total.
             </span>
           </div>
           <div className="scope-note__block">
@@ -424,6 +446,7 @@ export default function FlakyPage({ filters }) {
             <span>
               The four rate cards and the remaining noisy and failure charts ignore issue status
               and follow the build-side repo, branch, job, cloud, and time filters.
+              They measure Prow/Jenkins builds, not GitHub Actions retries or testcase flaky rates.
             </span>
           </div>
         </div>

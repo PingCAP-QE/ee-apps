@@ -180,5 +180,14 @@ The data-layer implementation must support local unit tests without TiDB Cloud b
   a master Issue is closed. Retain multiple associations and unmatched cases.
 - Associations are testcase-level matches, not confirmation of the same root cause;
   “No linked issue” does not establish that GitHub has no relevant Issue.
+- Accept valid HTTPS `github.com/<owner>/<repo>/actions/runs/<id>` case-report
+  links, including `/attempts/<n>` variants. Count a workflow run once across retry
+  attempts and repeated reports, and link to that run. GitHub Actions identity is
+  specific to testcase reports; it does not admit Actions URLs into build ingest.
+- GitHub Actions report links do not identify runner cloud or an attributable L1
+  job. Override legacy TENCENT fallbacks with `UNKNOWN`; explicit GCP/TENCENT or
+  job filters exclude these reports. No workflow execution denominator or build
+  start time is inferred from a report. Build-time weekly evidence and build-level
+  retry-recovery rates remain Prow/Jenkins-only until Actions build ingestion exists.
 - Issue-status and bucket-granularity filters do not change this table. Existing
   Issue-tracked and build-scoped panels retain their separate contracts.

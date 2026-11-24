@@ -1,3 +1,5 @@
+import pytest
+
 from ci_dashboard.jobs.build_url_matcher import (
     build_job_url,
     canonicalize_job_name,
@@ -5,8 +7,28 @@ from ci_dashboard.jobs.build_url_matcher import (
     classify_cloud_phase,
     full_job_name_to_normalized_jenkins_job_path,
     normalize_build_url,
+    normalize_github_actions_build_url,
     normalized_job_path_from_key,
 )
+
+
+@pytest.mark.parametrize("raw,expected", [
+    (None, None),
+    ("   ", None),
+    ("https://github.com/Org/Repo/actions/runs/123", "https://github.com/org/repo/actions/runs/123/"),
+    (" https://github.com/Org/Repo/actions/runs/123/attempts/2/ ", "https://github.com/org/repo/actions/runs/123/"),
+    ("https://github.com/org/repo/actions/runs/123/", "https://github.com/org/repo/actions/runs/123/"),
+    ("http://github.com/org/repo/actions/runs/123", None),
+    ("https://github.com.evil.test/org/repo/actions/runs/123", None),
+    ("https://user@github.com/org/repo/actions/runs/123", None),
+    ("https://github.com/org/../actions/runs/123", None),
+    ("https://github.com/org/repo/actions/runs/0", None),
+    ("https://github.com/org/repo/actions/runs/123/attempts/0", None),
+    ("https://github.com/org/repo/actions/runs/123?next=evil", None),
+])
+def test_normalize_github_actions_run_identity(raw, expected) -> None:
+    assert normalize_github_actions_build_url(raw) == expected
+    assert normalize_build_url(raw) is None  # Case-only identity does not relax ingest.
 
 
 def test_normalize_build_url_strips_known_prefix_and_redirect() -> None:

@@ -165,10 +165,12 @@ export function buildFilterSearch(filters, pathname) {
     return "";
   }
   const normalized = normalizeFiltersForPath(pathname, filters);
+  const defaults = pathname === "/flaky" ? buildDefaultFilters(normalized, pathname) : {};
   const params = new URLSearchParams();
   FILTER_QUERY_KEYS.forEach((key) => {
     const value = normalized[key];
-    if (value !== undefined && value !== null && value !== "") {
+    // Flaky's All choices must not become non-empty defaults on URL round trips.
+    if (value !== undefined && value !== null && (value !== "" || Boolean(defaults[key]))) {
       params.set(key, String(value));
     }
   });

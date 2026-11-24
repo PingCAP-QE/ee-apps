@@ -77,6 +77,29 @@ test("serializes non-empty filters into request-compatible URL parameters", () =
   assert.equal(params.get("granularity"), "day");
 });
 
+test("explicit All selections survive Flaky URL and navigation round trips", () => {
+  for (const key of ["repo", "branch", "issue_status"]) {
+    const filters = { ...buildDefaultFilters(defaultRange, "/flaky"), [key]: "" };
+    const search = buildFilterSearch(filters, "/flaky");
+    assert.equal(new URLSearchParams(search).get(key), "", `${key} must remain explicit`);
+    assert.deepEqual(readFiltersFromSearch(defaultRange, "/flaky", search), filters);
+    const links = buildNavSearchByPath({ "/flaky": filters }, defaultRange, filters);
+    assert.equal(readFiltersFromSearch(defaultRange, "/flaky", links["/flaky"])[key], "");
+  }
+  assert.equal(readFiltersFromSearch(defaultRange, "/flaky", "").issue_status, "closed");
+});
+
+test("clearing Cost dates omits empty parameters without deriving defaults from invalid dates", () => {
+  for (const key of ["start_date", "end_date"]) {
+    const filters = { ...buildDefaultFilters(defaultRange, "/cost"), [key]: "" };
+    const search = buildFilterSearch(filters, "/cost");
+    assert.equal(new URLSearchParams(search).has(key), false);
+    assert.ok(readFiltersFromSearch(defaultRange, "/cost", search)[key]);
+    assert.doesNotThrow(() => buildNavSearchByPath({ "/cost": filters }, defaultRange, filters));
+  }
+  assert.doesNotThrow(() => buildFilterSearch({ start_date: "2026-05-01" }, "/cost"));
+});
+
 test("weekly summary never serializes filters into the root URL", () => {
   const search = buildFilterSearch(
     {

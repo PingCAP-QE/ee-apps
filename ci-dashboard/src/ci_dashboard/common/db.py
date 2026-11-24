@@ -4,7 +4,11 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, URL
 
 from .config import DatabaseSettings, Settings, get_settings
-from ci_dashboard.jobs.build_url_matcher import normalize_build_url, normalized_job_path_from_key
+from ci_dashboard.jobs.build_url_matcher import (
+    normalize_build_url,
+    normalize_github_actions_build_url,
+    normalized_job_path_from_key,
+)
 
 
 def _build_connect_args(database: DatabaseSettings) -> dict[str, object]:
@@ -54,6 +58,11 @@ def install_sqlite_functions(engine: Engine) -> None:
             "normalize_build_url",
             1,
             normalize_build_url,
+        )
+        dbapi_connection.create_function(
+            "normalize_github_actions_build_url",
+            1,
+            normalize_github_actions_build_url,
         )
 
 

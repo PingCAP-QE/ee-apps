@@ -112,7 +112,14 @@ export function StatCard({
   delta,
   deltaTone,
   tone = "default",
+  loading = false,
+  error = null,
 }) {
+  if (loading || error) {
+    value = "—";
+    detail = loading ? "Loading metric..." : `Could not load metric: ${error}`;
+    delta = null;
+  }
   const deltaClassName = [
     "stat-card__delta",
     deltaTone ? `stat-card__delta--${deltaTone}` : "",
@@ -1656,7 +1663,7 @@ export function TopFlakyCasesTable({ rows = [] }) {
           <tr>
             <th scope="col">#</th>
             <th scope="col">Case</th>
-            <th scope="col">Detected in Builds</th>
+            <th scope="col">Detected in Builds / Runs</th>
             <th scope="col">Linked issues</th>
           </tr>
         </thead>
