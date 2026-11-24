@@ -165,6 +165,58 @@ func TestFormRequiresIdentityAndRendersCSRF(t *testing.T) {
 	}
 }
 
+func TestPagesUsePublicURLPathPrefix(t *testing.T) {
+	// The gateway publishes the pages under /dl/grants and rewrites the prefix
+	// away, so every link and redirect must rebuild it. Without this the
+	// browser posts to /requests on the parent host and another app answers.
+	cfg := config.Default()
+	cfg.PublicURL = "https://prow.tidb.net/dl/grants"
+	cfg.DLBaseURL = "http://dl-management:80"
+	cfg.OIDCClientID = "client-id.apps.googleusercontent.com"
+	cfg.AllowedEmailDomains = []string{"example.com"}
+	cfg.ApproverEmails = []string{"approver@example.com"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	st := newFakeStore()
+	h := New(Options{
+		Store:   st,
+		Config:  config.NewManager(cfg),
+		Auth:    fakeAuth{identity: &auth.Identity{Email: "requester@example.com", Subject: "sub"}},
+		Metrics: &metrics.Metrics{},
+	})
+
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"repository": {"us-docker.pkg.dev/project/hub/package"},
+		"tag":        {"v8.1.0"},
+		"files":      {"tidb.tar.gz"},
+		"ttl":        {"3600"},
+		"csrf":       {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Location"); got != "/dl/grants/requests/req-1" {
+		t.Fatalf("redirect location = %q, want the published prefix", got)
+	}
+
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, requestWithToken(http.MethodGet, "/", nil))
+	body := w.Body.String()
+	if !strings.Contains(body, `action="/dl/grants/requests"`) {
+		t.Fatalf("form action missing the published prefix: %s", body)
+	}
+	if !strings.Contains(body, `href="/dl/grants/requests"`) {
+		t.Fatalf("links missing the published prefix: %s", body)
+	}
+}
+
 func TestForbiddenIdentity(t *testing.T) {
 	h := New(Options{Store: newFakeStore(), Config: testConfig(t), Auth: fakeAuth{err: auth.ErrForbidden}, Metrics: &metrics.Metrics{}})
 	w := httptest.NewRecorder()

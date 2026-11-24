@@ -12,7 +12,7 @@
 
     {{if .Error}}<p role="alert"><strong>Error:</strong> {{.Error}}</p>{{end}}
 
-    <form method="post" action="/requests" autocomplete="off">
+    <form method="post" action="{{.Base}}/requests" autocomplete="off">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
 
       <p>
@@ -46,7 +46,7 @@
       <button type="submit">Submit for approval</button>
     </form>
 
-    <p><a href="/requests">My requests</a></p>
+    <p><a href="{{.Base}}/requests">My requests</a></p>
   </main>
 </body>
 </html>

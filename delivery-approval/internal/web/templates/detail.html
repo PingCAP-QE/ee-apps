@@ -8,7 +8,7 @@
 <body>
   <main>
     <h1>Request {{.Request.ID}}</h1>
-    <p><a href="/requests">Back to my requests</a></p>
+    <p><a href="{{.Base}}/requests">Back to my requests</a></p>
 
     <dl>
       <dt>Status</dt><dd>{{.Request.Status}}</dd>
@@ -34,13 +34,13 @@
 
     {{if .CanApprove}}
       <h2>Decision</h2>
-      <form method="post" action="/requests/{{.Request.ID}}/approve" autocomplete="off">
+      <form method="post" action="{{.Base}}/requests/{{.Request.ID}}/approve" autocomplete="off">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <p><label for="approve-note">Approval note (optional)</label><br>
         <textarea id="approve-note" name="note" rows="2" cols="60" maxlength="1024"></textarea></p>
         <button type="submit">Approve</button>
       </form>
-      <form method="post" action="/requests/{{.Request.ID}}/reject" autocomplete="off">
+      <form method="post" action="{{.Base}}/requests/{{.Request.ID}}/reject" autocomplete="off">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <p><label for="reject-note">Rejection reason (optional)</label><br>
         <textarea id="reject-note" name="note" rows="2" cols="60" maxlength="1024"></textarea></p>
@@ -50,7 +50,7 @@
 
     {{if .CanRevoke}}
       <h2>Revoke</h2>
-      <form method="post" action="/requests/{{.Request.ID}}/revoke" autocomplete="off">
+      <form method="post" action="{{.Base}}/requests/{{.Request.ID}}/revoke" autocomplete="off">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <button type="submit">Revoke link</button>
       </form>

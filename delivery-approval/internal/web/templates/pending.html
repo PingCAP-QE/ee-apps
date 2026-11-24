@@ -8,7 +8,7 @@
 <body>
   <main>
     <h1>Pending approvals</h1>
-    <p><a href="/requests">My requests</a> · <a href="/">New request</a></p>
+    <p><a href="{{.Base}}/requests">My requests</a> · <a href="{{.Base}}/">New request</a></p>
 
     {{if .Pending}}
     <table>
@@ -16,7 +16,7 @@
       <tbody>
       {{range .Pending}}
         <tr>
-          <td><a href="/requests/{{.ID}}">{{.ID}}</a></td>
+          <td><a href="{{$.Base}}/requests/{{.ID}}">{{.ID}}</a></td>
           <td>{{.RequesterEmail}}</td>
           <td>{{.CreatedAt.Format "2006-01-02 15:04 UTC"}}</td>
           <td>{{.ExpiresAt.Format "2006-01-02 15:04 UTC"}}</td>

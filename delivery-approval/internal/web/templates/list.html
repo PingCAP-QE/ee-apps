@@ -8,7 +8,7 @@
 <body>
   <main>
     <h1>My delivery requests</h1>
-    <p><a href="/">New request</a>{{if .Approver}} · <a href="/pending">Pending approval</a>{{end}}</p>
+    <p><a href="{{.Base}}/">New request</a>{{if .Approver}} · <a href="{{.Base}}/pending">Pending approval</a>{{end}}</p>
 
     {{if .Files}}
     <table>
@@ -16,7 +16,7 @@
       <tbody>
       {{range .Files}}
         <tr>
-          <td><a href="/requests/{{.ID}}">{{.ID}}</a></td>
+          <td><a href="{{$.Base}}/requests/{{.ID}}">{{.ID}}</a></td>
           <td>{{.Status}}</td>
           <td>{{.CreatedAt.Format "2006-01-02 15:04 UTC"}}</td>
           <td>{{len .Files}}</td>
@@ -36,7 +36,7 @@
         <tbody>
         {{range .Pending}}
           <tr>
-            <td><a href="/requests/{{.ID}}">{{.ID}}</a></td>
+            <td><a href="{{$.Base}}/requests/{{.ID}}">{{.ID}}</a></td>
             <td>{{.RequesterEmail}}</td>
             <td>{{.CreatedAt.Format "2006-01-02 15:04 UTC"}}</td>
             <td>{{len .Files}}</td>
