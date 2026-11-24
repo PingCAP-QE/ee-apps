@@ -254,62 +254,49 @@ Attribution rules for V1:
 
 ### `cost_budgets`
 
-Budget table for later Lark sync. Budgets are requested for a period, usually a
-year, with explicit start and end dates. Monthly budget views and alerts should
-derive a monthly allocation from this period budget instead of storing budgets
-as if they were requested month by month.
+Current production contract (verified 2026-11-24): budgets use **JSON account
+membership**, not a scalar `account_id` column. Runtime readers and test fixtures
+require this schema; scalar-account compatibility has been retired.
 
-```sql
-CREATE TABLE cost_budgets (
-  id BIGINT NOT NULL AUTO_INCREMENT,
-  vendor VARCHAR(32) NOT NULL,
-  account_id VARCHAR(128) NOT NULL,
-  period_start_date DATE NOT NULL,
-  period_end_date DATE NOT NULL,
-  budget_name VARCHAR(255) NULL,
-  label_filters JSON NULL,
-  filter_hash CHAR(64) NOT NULL,
-  group_id BIGINT NULL,
-  manager_id BIGINT NULL,
-  repo VARCHAR(255) NULL,
-  budget_amount DECIMAL(16, 2) NOT NULL,
-  source_type VARCHAR(64) NOT NULL DEFAULT 'manual',
-  source_ref VARCHAR(512) NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_cost_budgets_scope (
-    vendor,
-    account_id,
-    period_start_date,
-    period_end_date,
-    filter_hash
-  ),
-  KEY idx_cost_budgets_period (period_start_date, period_end_date),
-  KEY idx_cost_budgets_group (group_id),
-  KEY idx_cost_budgets_manager (manager_id),
-  KEY idx_cost_budgets_repo (repo)
-);
-```
+| Columns | Meaning |
+| --- | --- |
+| `id`, `budget_name` | Plan identity and display name |
+| `vendor`, `accounts` JSON | Vendor and account membership; multiple accounts share one plan amount |
+| `projects` JSON | Optional project membership; absent/empty falls back to `label_filters.project` in QA readers |
+| `team`, `platform` | Plan classification; QA uses `QA`, CI uses `CICD` |
+| `period_start_date`, `period_end_date`, `budget_amount` | Explicit period and total plan amount |
+| `cost_basis` | Cost basis; see `029_add_ci_budget_cost_basis.sql` |
+| `label_filters`, `filter_hash`, `scope_key` | Additional scope metadata and identity |
+| `group_id`, `manager_id`, `repo` | Additional scope restrictions, where supported by the reader |
+| `source_type`, `source_ref`, `created_at`, `updated_at` | Provenance and timestamps |
 
-Sample:
+Source-wide plans must leave both `projects` and `label_filters` empty, with no
+`group_id`, `manager_id`, or `repo` restriction. QA readers also recognize
+`label_filters.project` as project membership when `projects` is empty; any other
+label key or group/manager/repo restriction makes a plan currently non-reportable.
+Account-only widgets additionally exclude all project-scoped plans.
 
-| period_start_date | period_end_date | vendor | account_id | budget_name | label_filters | repo | budget_amount |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `2026-01-01` | `2026-12-31` | `gcp` | `pingcap-testing-account` | `TiCDC CI` | `{"repo":"ticdc","org":"pingcap"}` | `ticdc` | `60000.00` |
-| `2026-01-01` | `2026-12-31` | `gcp` | `pingcap-testing-account` | `Other CI` | `{"repo":["tidb","pd","tikv"]}` | `NULL` | `144000.00` |
+A future sync should reuse `cost_insight.budgets.build_filter_hash` to compute
+`filter_hash`: SHA256 over canonicalized `label_filters`, with keys and array
+values sorted.
 
-Notes:
+A QA example is `vendor='aws'`, `accounts=['a','b']`, `projects=['Alpha']`,
+`platform='QA'`: its budget is shared across both accounts for Alpha, not a
+separate full budget per account. QA reporting counts that plan once. The home
+page's account-only budget widgets show only single-account plans; a shared plan
+has no account allocation and is not duplicated into each member's budget.
 
-- `label_filters = NULL` means the whole source account/project.
-- JSON filter semantics are AND across keys. A scalar value means equality; an
-  array means `IN`.
-- `filter_hash` is SHA256 over canonicalized `label_filters`, with keys sorted
-  and array values sorted. The helper lives in `cost_insight.budgets` so budget
-  sync can reuse one deterministic implementation.
-- `group_id`, `manager_id`, and `repo` are optional denormalized fields for fast
-  filtering in common views. The authoritative matching condition is
-  `label_filters`.
+Budget periods are explicit, usually annual. Weekly/monthly targets prorate the
+period amount over calendar days. A missing applicable plan is `null`, not zero.
+Project/group/repo restrictions must not be silently treated as unrestricted
+account-wide plans by readers that cannot represent their scoped actual.
+
+Historical SQL `001_create_cost_tables.sql` records the original scalar-account
+DDL; do not rewrite it. The membership-schema transition is not currently present
+in the numbered migration chain. For a fresh database, obtain/reconcile the
+current budget DDL before applying migrations that depend on `accounts` and
+`platform`; replaying the historical files alone is not a supported reconstruction
+of the current budget table. No automated budget sync/seed CLI is implemented.
 
 ### `cost_job_state`
 
@@ -453,15 +440,13 @@ Expected budget shapes:
 
 - GCP `pingcap-testing-account`, `ticdc` annual CI budget
 - GCP `pingcap-testing-account`, other CI annual budget
-- group or manager period budget
-- repo-level period budget when a repo maps cleanly to a group
+- group or manager period budget (currently non-reportable)
+- repo-level period budget when a repo maps cleanly to a group (currently non-reportable)
 
-Initial matching rule:
-
-- Use `label_filters` as the authoritative budget matcher.
-- For repo budgets such as TiCDC, match by repo first, for example
-  `{"repo":"ticdc"}` or `{"repo":"ticdc","org":"pingcap"}`.
-- Do not require a roster group mapping for repo budgets in V1.
+A future sync must write the current `accounts`/`projects` membership contract,
+plan classification, period, cost basis and identity metadata. It must not restore
+scalar `account_id` budgets. Additional label/repo/group restrictions are supported
+only by reports that can compute their scoped actual; do not infer allocations.
 
 For monthly dashboards or alerts, calculate a derived monthly budget from the
 period budget. For example, a yearly budget can be divided into 12 equal monthly
@@ -471,7 +456,8 @@ Budget sync can wait until the cost and usage pipeline is stable.
 
 ## Current Implementation
 
-1. Apply SQL migrations through the latest file under `sql/`.
+1. Reconcile the current schema (including the externally evolved budget membership
+   table described above), then apply the applicable migrations under `sql/`.
 2. Import GCP and AWS billing partitions with the summary commands.
 3. Refresh `cost_attribution_daily` from the summary ledger.
 4. Import weekly resource investigation data separately.
@@ -497,8 +483,8 @@ Resolved decisions:
   inferred to be EQ-owned.
 - Label enrichment is preferred over blindly allocating costs with incomplete
   labels.
-- Repo budgets use `label_filters` and match repo first. TiCDC starts as
-  `{"repo":"ticdc"}` or `{"repo":"ticdc","org":"pingcap"}`.
+- Budget readers use the current membership schema; unsupported repo/group/label
+  scopes are not implicitly interpreted as unrestricted account budgets.
 
 ## References
 
