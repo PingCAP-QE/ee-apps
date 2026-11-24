@@ -130,6 +130,39 @@ test("CI filters use the historical date window and ignore clearing either date"
   }
 });
 
+test("Flaky All issues stays selected and does not send a closed-only API filter", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const requests = [];
+  let renderer;
+  globalThis.window = { scrollY: 0, addEventListener() {}, removeEventListener() {} };
+  globalThis.fetch = async (url) => {
+    requests.push(new URL(url, "https://example.test"));
+    return { ok: true, json: async () => ({ items: [] }) };
+  };
+  try {
+    await act(async () => {
+      renderer = TestRenderer.create(React.createElement(
+        MemoryRouter, { initialEntries: ["/flaky?issue_status=closed"] }, React.createElement(App),
+      ));
+    });
+    const statusSelect = () => renderer.root.findAllByType("select").find((select) =>
+      select.findAllByType("option").some((option) => option.children.join("") === "All issues"));
+    for (const value of ["", "open", "closed"]) {
+      await act(async () => statusSelect().props.onChange({ target: { value } }));
+      assert.equal(statusSelect().props.value, value);
+      const request = requests.findLast((url) => url.pathname === "/api/v1/pages/flaky");
+      assert.equal(request.searchParams.get("issue_status"), value || null);
+      const link = renderer.root.findAllByType("a").find((node) => node.props.href.startsWith("/flaky?"));
+      assert.equal(new URL(link.props.href, "http://localhost").searchParams.get("issue_status"), value);
+    }
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+  }
+});
+
 test("dashboard version uses the runtime meta value and falls back locally", () => {
   const originalDocument = globalThis.document;
   try {
@@ -231,7 +264,7 @@ test("top flaky cases show counts, multiple issue states and unmatched cases", (
     assert.equal(renderer.root.findAllByProps({ className: "status-pill status-pill--closed" }).length, 1);
     const rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /No linked issue/);
-    assert.match(rendered, /Detected in Builds/);
+    assert.match(rendered, /Detected in Builds \/ Runs/);
     assert.doesNotMatch(rendered, /Affected builds|newest first/);
     assert.doesNotMatch(rendered, /82%/);
   } finally {

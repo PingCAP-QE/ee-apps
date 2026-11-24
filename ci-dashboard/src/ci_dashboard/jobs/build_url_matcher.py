@@ -20,6 +20,24 @@ CANONICAL_JENKINS_PATH_PREFIXES = (
 )
 CANONICAL_PROW_PATH_PREFIX = "/view/gs/"
 TRAILING_BUILD_NUMBER_RE = re.compile(r"/\d+/?$")
+GITHUB_ACTIONS_RUN_PATTERN = (
+    r"^https://github[.]com/"  # Exact HTTPS host; no credentials or alternate ports.
+    r"[A-Za-z0-9][A-Za-z0-9-]*/"  # Organization or user.
+    r"[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*/"  # At least one non-dot character: not '.' or '..'.
+    r"actions/runs/[1-9][0-9]*"  # Positive workflow run ID.
+    r"(/attempts/[1-9][0-9]*)?/?$"  # Optional retry attempt and trailing slash; no query or fragment.
+)
+
+
+def normalize_github_actions_build_url(url: str | None) -> str | None:
+    """Case-report identity only: one workflow run across its retry attempts.
+
+    This does not make GitHub Actions an ingestible Prow/Jenkins build.
+    """
+    if not url or not re.fullmatch(GITHUB_ACTIONS_RUN_PATTERN, url.strip()):
+        return None
+    run_url = re.sub(r"/attempts/[1-9][0-9]*/?$", "", url.strip())
+    return run_url.rstrip("/").lower() + "/"
 
 
 def normalize_build_url(url: str | None, *, default_host: str = GCP_HOST) -> str | None:

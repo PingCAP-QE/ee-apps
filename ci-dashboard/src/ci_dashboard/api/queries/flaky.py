@@ -19,7 +19,12 @@ from ci_dashboard.api.queries.base import (
     rate_pct,
     to_number,
 )
-from ci_dashboard.jobs.build_url_matcher import GCP_HOST, TENCENT_HOST
+from ci_dashboard.jobs.build_url_matcher import (
+    GCP_HOST,
+    GITHUB_ACTIONS_RUN_PATTERN,
+    TENCENT_HOST,
+    normalize_github_actions_build_url,
+)
 
 DEFAULT_DISTINCT_CASE_REPO = "pingcap/tidb"
 TOP_CASES_LIMIT = 10
@@ -179,7 +184,7 @@ def get_flaky_top_cases(engine: Engine, filters: CommonFilters) -> dict[str, Any
                 f"""
                 WITH reported_cases AS (
                   SELECT pcr.repo, pcr.case_name, pcr.report_time,
-                    {_case_run_identity_columns(connection)}
+                    {_case_run_identity_columns(connection, include_github_actions=True)}
                   FROM problem_case_runs pcr
                   WHERE {" AND ".join(conditions)}
                 ),
@@ -309,6 +314,9 @@ def get_flaky_top_cases(engine: Engine, filters: CommonFilters) -> dict[str, Any
 
 def _case_build_link(build_match_key: str, cloud_phase: str) -> str:
     """Point at the build URL on the controller that actually reported the case."""
+    github_run = normalize_github_actions_build_url(build_match_key)
+    if github_run:
+        return github_run
     path = urllib_parse.urlparse(build_match_key).path
     host = GCP_HOST if cloud_phase.upper() == "GCP" else TENCENT_HOST
     return f"{host}{path if path.startswith('/') else '/' + path}"
@@ -1816,17 +1824,35 @@ def _optional_clause(value: object | None, clause: str) -> str:
     return clause if value is not None else ""
 
 
-def _case_run_identity_columns(connection: Connection) -> str:
-    return f"""
-        COALESCE(
-          NULLIF(pcr.normalized_build_key, ''),
-          {_normalize_case_build_key_expr(connection, "pcr.build_url")}
-        ) AS build_key,
-        UPPER(COALESCE(
-          NULLIF(pcr.cloud_phase, ''),
-          {_case_cloud_phase_expr("pcr.build_url")}
-        )) AS cloud_phase
-    """
+def _case_run_identity_columns(
+    connection: Connection, *, include_github_actions: bool = False,
+) -> str:
+    build_key = f"""COALESCE(
+        NULLIF(pcr.normalized_build_key, ''),
+        {_normalize_case_build_key_expr(connection, "pcr.build_url")}
+    )"""
+    cloud_phase = f"""UPPER(COALESCE(
+        NULLIF(pcr.cloud_phase, ''),
+        {_case_cloud_phase_expr("pcr.build_url")}
+    ))"""
+    if include_github_actions:
+        github_run = _github_actions_build_key_expr(connection, "pcr.build_url")
+        build_key = f"COALESCE({github_run}, {build_key})"
+        # Old derived rows classify unsupported controllers as TENCENT. A GitHub
+        # workflow's URL does not establish where its runners actually execute.
+        cloud_phase = f"CASE WHEN {github_run} IS NOT NULL THEN 'UNKNOWN' ELSE {cloud_phase} END"
+    return f"{build_key} AS build_key, {cloud_phase} AS cloud_phase"
+
+
+def _github_actions_build_key_expr(connection: Connection, column_name: str) -> str:
+    if connection.dialect.name == "sqlite":
+        return f"normalize_github_actions_build_url({column_name})"
+    trimmed = f"TRIM(COALESCE({column_name}, ''))"
+    return (
+        f"CASE WHEN REGEXP_LIKE({trimmed}, '{GITHUB_ACTIONS_RUN_PATTERN}', 'c') "
+        f"THEN CONCAT(TRIM(TRAILING '/' FROM LOWER(REGEXP_REPLACE({trimmed}, "
+        "'/attempts/[1-9][0-9]*/?$', ''))), '/') ELSE NULL END"
+    )
 
 
 def _normalize_case_build_key_expr(connection: Connection, column_name: str) -> str:

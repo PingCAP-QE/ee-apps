@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,6 +13,7 @@ from ci_dashboard.api.main import app
 from ci_dashboard.api.queries import flaky as flaky_queries
 from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.api.queries.flaky import get_flaky_top_cases
+from ci_dashboard.jobs.build_url_matcher import GITHUB_ACTIONS_RUN_PATTERN, normalize_build_url
 
 
 WINDOW = {"start_date": "2026-10-29", "end_date": "2026-11-11"}
@@ -253,6 +255,61 @@ def test_top_cases_unpinned_scopes_use_report_time_index(sqlite_engine, scope):
     # post-filter, and both bounds stay bound parameters for every scope.
     assert "pcr.report_time >=" in statement
     assert "pcr.report_time <" in statement
+
+
+def test_github_actions_build_key_expression_guards_both_sql_dialects():
+    sqlite = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    mysql = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+    assert flaky_queries._github_actions_build_key_expr(sqlite, "pcr.build_url") == (
+        "normalize_github_actions_build_url(pcr.build_url)"
+    )
+    # Production TiDB uses this expression rather than the SQLite Python UDF.
+    assert flaky_queries._github_actions_build_key_expr(mysql, "pcr.build_url") == (
+        "CASE WHEN REGEXP_LIKE(TRIM(COALESCE(pcr.build_url, '')), "
+        f"'{GITHUB_ACTIONS_RUN_PATTERN}', 'c') "
+        "THEN CONCAT(TRIM(TRAILING '/' FROM LOWER(REGEXP_REPLACE("
+        "TRIM(COALESCE(pcr.build_url, '')), '/attempts/[1-9][0-9]*/?$', ''))), '/') "
+        "ELSE NULL END"
+    )
+
+
+def test_top_cases_include_github_actions_without_inventing_build_or_cloud_attribution(sqlite_engine):
+    base = "https://github.com/tidbcloud/cloud-storage-engine/actions/runs/44511782421"
+    assert normalize_build_url(base) is None  # No change to build-ingest admission.
+    for suffix in ["", "/", "/attempts/1", "/attempts/2/"]:
+        # Existing derived rows may misclassify unsupported controllers as TENCENT.
+        _report(sqlite_engine, build_url=base + suffix, cloud_phase="TENCENT")
+    _report(sqlite_engine, build_url=base.replace("44511782421", "44745950605") + "/attempts/1")
+    _issue(sqlite_engine, 101)
+    row = get_flaky_top_cases(sqlite_engine, FILTERS)["rows"][0]
+    assert row["affected_build_count"] == 2  # A workflow run, not each retry attempt.
+    assert {build["build_url"] for build in row["builds"]} == {
+        base + "/", base.replace("44511782421", "44745950605") + "/",
+    }
+    assert {build["cloud_phase"] for build in row["builds"]} == {"UNKNOWN"}
+    assert row["issues"][0]["issue_number"] == 101
+    for scope in [{"cloud_phase": "TENCENT"}, {"cloud_phase": "GCP"}, {"job_name": "unit"}]:
+        scoped = CommonFilters(**{**FILTERS.__dict__, **scope})
+        assert get_flaky_top_cases(sqlite_engine, scoped)["rows"] == []
+
+
+@pytest.mark.parametrize("url", [
+    "https://github.com.evil.test/org/repo/actions/runs/123",
+    "https://github.com@evil.test/org/repo/actions/runs/123",
+    "https://evil@github.com/org/repo/actions/runs/123",
+    "http://github.com/org/repo/actions/runs/123",
+    "https://github.com:443/org/repo/actions/runs/123",
+    "https://github.com/org/repo/issues/123",
+    "https://github.com/../repo/actions/runs/123",
+    "https://github.com/org/../actions/runs/123",
+    "https://github.com/org/repo/actions/runs/0",
+    "https://github.com/org/repo/actions/runs/123/attempts/0",
+    "https://github.com/org/repo/actions/runs/123/jobs/456",
+    "https://github.com/org/repo/actions/runs/123?redirect=evil",
+])
+def test_top_cases_do_not_accept_arbitrary_github_urls(sqlite_engine, url):
+    _report(sqlite_engine, build_url=url)
+    assert get_flaky_top_cases(sqlite_engine, FILTERS)["rows"] == []
 
 
 def test_top_cases_empty_scope_and_default_window(client):
