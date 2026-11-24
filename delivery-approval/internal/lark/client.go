@@ -93,10 +93,16 @@ func (c *Client) NotifyApproval(ctx context.Context, req *store.Request) error {
 		if len(openIDs) == 0 {
 			return errors.New("no approver open_id")
 		}
+		var errs []error
 		for _, openID := range openIDs {
 			if _, err := c.send(ctx, larkim.ReceiveIdTypeOpenId, openID, "interactive", string(content)); err != nil {
-				return err
+				// Attempt every approver; one unavailable DM must not hide the
+				// failure from the others.
+				errs = append(errs, err)
 			}
+		}
+		if len(errs) > 0 {
+			return errors.Join(errs...)
 		}
 		return nil
 	}

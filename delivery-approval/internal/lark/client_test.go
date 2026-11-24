@@ -19,11 +19,12 @@ import (
 )
 
 type larkServer struct {
-	mu       sync.Mutex
-	messages []sentMessage
-	urgent   []string
-	batches  int
-	failCode int
+	mu            sync.Mutex
+	messages      []sentMessage
+	urgent        []string
+	batches       int
+	failCode      int
+	failReceiveID string
 }
 
 type sentMessage struct {
@@ -51,6 +52,8 @@ func (s *larkServer) handler() http.HandlerFunc {
 				switch email {
 				case "approver@example.com":
 					users = append(users, map[string]string{"user_id": "ou-approver", "email": email})
+				case "second@example.com":
+					users = append(users, map[string]string{"user_id": "ou-second", "email": email})
 				case "requester@example.com":
 					users = append(users, map[string]string{"user_id": "ou-requester", "email": email})
 				}
@@ -70,7 +73,7 @@ func (s *larkServer) handler() http.HandlerFunc {
 			s.mu.Lock()
 			s.messages = append(s.messages, sentMessage{receiveIDType: r.URL.Query().Get("receive_id_type"), receiveID: body.ReceiveID, content: body.Content})
 			s.mu.Unlock()
-			if s.failCode != 0 {
+			if s.failCode != 0 || (s.failReceiveID != "" && body.ReceiveID == s.failReceiveID) {
 				_, _ = io.WriteString(w, `{"code":999,"msg":"failed"}`)
 				return
 			}
@@ -96,15 +99,33 @@ func testConfig(t *testing.T) *config.Manager {
 }
 
 func testClient(t *testing.T, s *larkServer) *Client {
+	return testClientConfig(t, s, testConfig(t))
+}
+
+func testClientConfig(t *testing.T, s *larkServer, cfg *config.Manager) *Client {
 	t.Helper()
 	server := httptest.NewServer(s.handler())
 	t.Cleanup(server.Close)
 	api := larksuite.NewClient("app-id", "app-secret", larksuite.WithOpenBaseUrl(server.URL))
-	c, err := New(api, "oc-chat", testConfig(t), true, nil)
+	c, err := New(api, "oc-chat", cfg, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c
+}
+
+func testConfigTwoApprovers(t *testing.T) *config.Manager {
+	t.Helper()
+	cfg := config.Default()
+	cfg.PublicURL = "https://approvals.example.com"
+	cfg.DLBaseURL = "http://dl-management:80"
+	cfg.OIDCClientID = "audience"
+	cfg.AllowedEmailDomains = []string{"example.com"}
+	cfg.ApproverEmails = []string{"approver@example.com", "second@example.com"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	return config.NewManager(cfg)
 }
 
 func sampleRequest() *store.Request {
@@ -224,5 +245,22 @@ func TestNotifyDecisionAndFailure(t *testing.T) {
 	}
 	if !strings.Contains(s.messages[1].content, "delivery failed") && !strings.Contains(s.messages[1].content, "Delivery for request") {
 		t.Fatalf("failure message = %s", s.messages[1].content)
+	}
+}
+
+func TestNotifyApprovalDMAttemptsAllAfterFailure(t *testing.T) {
+	s := &larkServer{failReceiveID: "ou-approver"}
+	c := testClientConfig(t, s, testConfigTwoApprovers(t))
+	c.chatID = ""
+	if err := c.NotifyApproval(context.Background(), sampleRequest()); err == nil {
+		t.Fatal("expected a DM failure")
+	}
+	if len(s.messages) != 2 {
+		t.Fatalf("messages = %d, want 2 attempts", len(s.messages))
+	}
+	for _, msg := range s.messages {
+		if msg.receiveIDType != "open_id" {
+			t.Fatalf("receive type = %q", msg.receiveIDType)
+		}
 	}
 }
