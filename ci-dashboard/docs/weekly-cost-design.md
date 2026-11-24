@@ -302,12 +302,18 @@ period rather than always claiming a weekly window.
 
 An unmatched project target remains `null` in the API response and is omitted
 from **Budget utilization by scenario**; it is never converted to a zero budget.
-Legacy source-scoped `cost_budgets` rows remain supported for the
-older `vendor`/`account_id` schema, but current QA plans use JSON memberships.
+All budget readers require the deployed `accounts`/`projects` JSON membership
+schema; the scalar `cost_budgets.account_id` fallback and its legacy aggregation
+branches have been removed. Tests use this same schema by default rather than
+adding membership columns to legacy fixtures.
 Budget rows with unsupported group, manager, repo, or non-project label filters
 are excluded because their scoped actual cannot be derived from account/project
-allocations. Legacy rows scoped to a `group_id` are also excluded because the
-legacy schema does not provide group-aware aggregate budget matching. A
+allocations. The home weekly summary and single-account budget health/targets
+only use unfiltered single-account plans. Shared or project-scoped amounts have
+no implied account allocation and are not copied into each member's budget;
+missing account budgets remain `null` while account costs still render. API
+response aliases such as `annual_budget` are retained for existing clients;
+they are not legacy database columns. A
 single logical plan still must not be duplicated across
 separate budget rows merely to model cross-account reporting. All budget
 utilization indicators use the same capped threshold: green below 80%, yellow

@@ -809,11 +809,11 @@ def _insert_cost_budget(
             text(
                 """
                 INSERT INTO cost_budgets (
-                  vendor, account_id, period_start_date, period_end_date, budget_name,
+                  vendor, accounts, projects, platform, period_start_date, period_end_date, budget_name,
                   label_filters, filter_hash, group_id, manager_id, repo, budget_amount,
                   source_type, source_ref
                 ) VALUES (
-                  :vendor, :account_id, :period_start_date, :period_end_date, :budget_name,
+                  :vendor, :accounts, :projects, 'QA', :period_start_date, :period_end_date, :budget_name,
                   :label_filters, :filter_hash, :group_id, :manager_id, :repo, :budget_amount,
                   :source_type, :source_ref
                 )
@@ -830,6 +830,8 @@ def _insert_cost_budget(
                     if isinstance(label_filters, (dict, list))
                     else label_filters
                 ),
+                "accounts": json.dumps([account_id]),
+                "projects": None,
                 "filter_hash": filter_hash
                 or f"{vendor}:{account_id}:{period_start_date}:{period_end_date}:{budget_name or 'scope'}",
                 "group_id": group_id,
@@ -5434,7 +5436,19 @@ def test_weekly_cost_report_adds_list_cost_budget_pace_and_team_share(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["budget_pace"] == {
+    pace = dict(body["budget_pace"])
+    # Membership budgets retain each plan's identity rather than collapsing the
+    # same project across independent accounts into a synthetic project budget.
+    plans = pace.pop("projects")
+    assert {item["key"]: (item["actual_list_cost"], item["period_budget"]) for item in plans} == {
+        "budget-plan:1": (150.0, 700.0),
+        "budget-plan:2": (70.0, 350.0),
+        "budget-plan:3": (100.0, 99.73),
+        "budget-plan:4": (50.0, 49.86),
+        "project:Beta": (50.0, None),
+        "project:(no project)": (20.0, None),
+    }
+    assert pace == {
         "metric": "list_cost",
         "period": {"start_date": "2026-07-12", "end_date": "2026-07-18"},
         "overall": {
@@ -5442,29 +5456,6 @@ def test_weekly_cost_report_adds_list_cost_budget_pace_and_team_share(
             "period_budget": 1199.59,
             "utilization_pct": 18.34,
         },
-        "projects": [
-            {
-                "key": "project:Alpha",
-                "name": "Alpha",
-                "actual_list_cost": 150.0,
-                "period_budget": 149.59,
-                "utilization_pct": 100.27,
-            },
-            {
-                "key": "project:Beta",
-                "name": "Beta",
-                "actual_list_cost": 50.0,
-                "period_budget": None,
-                "utilization_pct": None,
-            },
-            {
-                "key": "project:(no project)",
-                "name": "(no project)",
-                "actual_list_cost": 20.0,
-                "period_budget": None,
-                "utilization_pct": None,
-            },
-        ],
         "team_cost": {
             "metric": "list_cost",
             "total_list_cost": 220.0,
@@ -5760,7 +5751,7 @@ def test_weekly_cost_allocation_rejects_unsupported_period(sqlite_engine) -> Non
         cost_queries.get_weekly_cost_allocation(sqlite_engine, "quarter")
 
 
-def test_weekly_cost_legacy_budget_pace_excludes_unsupported_filters(
+def test_weekly_cost_budget_pace_excludes_unsupported_filters(
     sqlite_engine,
     api_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -5796,7 +5787,7 @@ def test_weekly_cost_legacy_budget_pace_excludes_unsupported_filters(
     assert response.json()["budget_pace"]["overall"]["period_budget"] == 1.92
 
 
-def test_weekly_cost_legacy_budget_scope_uses_budget_overlap_dates() -> None:
+def test_weekly_cost_budget_scope_uses_budget_overlap_dates() -> None:
     pace, scopes = cost_queries._weekly_cost_budget_pace(
         {
             "source_project_values": {
@@ -5808,7 +5799,10 @@ def test_weekly_cost_legacy_budget_scope_uses_budget_overlap_dates() -> None:
         [
             {
                 "vendor": "aws",
-                "account_id": "qa-aws",
+                "id": 1,
+                "accounts": '["qa-aws"]',
+                "projects": None,
+                "budget_name": "QA account plan",
                 "period_start_date": "2026-07-01",
                 "period_end_date": "2026-07-15",
                 "label_filters": None,
@@ -5851,16 +5845,6 @@ def test_weekly_cost_team_dimensions_use_path_boundaries() -> None:
     )
 
     assert dimensions["level1"]["team:20"]["value"] == 10
-
-
-def _add_ci_weekly_cost_budget_schema(sqlite_engine) -> None:
-    with sqlite_engine.begin() as connection:
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN accounts TEXT"))
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN projects TEXT"))
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN platform TEXT"))
-        connection.execute(
-            text("ALTER TABLE cost_budgets ADD COLUMN cost_basis TEXT NOT NULL DEFAULT 'list_cost'")
-        )
 
 
 def _insert_ci_weekly_cost_budget(
@@ -5919,9 +5903,6 @@ def test_weekly_cost_calendar_metadata_aligns_across_endpoints(
     sqlite_engine, api_client, monkeypatch, today, week_start, month_start, month_end
 ):
     monkeypatch.setattr(cost_queries, "_today", lambda: date.fromisoformat(today))
-    _add_ci_weekly_cost_budget_schema(sqlite_engine)
-    with sqlite_engine.begin() as connection:
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN team TEXT"))
 
     qa_response = api_client.get("/api/v1/pages/weekly-cost")
     ci_response = api_client.get("/api/v1/pages/ci-weekly-cost")
@@ -5984,9 +5965,6 @@ def test_weekly_cost_sunday_and_saturday_facts_reconcile_without_next_sunday(
     today_date = date.fromisoformat(today)
     start = date.fromisoformat(week_start)
     monkeypatch.setattr(cost_queries, "_today", lambda: today_date)
-    _add_ci_weekly_cost_budget_schema(sqlite_engine)
-    with sqlite_engine.begin() as connection:
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN team TEXT"))
     sources = [
         ("aws", "qa", 1),
         ("gcp", "pingcap-testing-account", 2),
@@ -6084,7 +6062,6 @@ def test_weekly_cost_sunday_and_saturday_facts_reconcile_without_next_sunday(
 
 
 def test_ci_weekly_cost_rejects_overlapping_plans(sqlite_engine) -> None:
-    _add_ci_weekly_cost_budget_schema(sqlite_engine)
     for budget_name in ("CI plan one", "CI plan two"):
         _insert_ci_weekly_cost_budget(
             sqlite_engine,
@@ -6303,7 +6280,6 @@ def test_ci_weekly_cost_report_uses_each_plan_budget_basis(
             display_name=f"{vendor}-{account_id}",
             purpose="CI",
         )
-    _add_ci_weekly_cost_budget_schema(sqlite_engine)
     _insert_ci_weekly_cost_budget(
         sqlite_engine,
         vendor="gcp",
@@ -6578,11 +6554,6 @@ def test_weekly_cost_report_uses_current_budget_plan_membership_schema(
             net_cost=list_cost,
             dimension_hash=f"weekly-current-budget-{index}",
         )
-    with sqlite_engine.begin() as connection:
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN accounts TEXT"))
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN projects TEXT"))
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN team TEXT"))
-        connection.execute(text("ALTER TABLE cost_budgets ADD COLUMN platform TEXT"))
     for budget_name, amount, projects, group_id in [
         ("QA Alpha and Beta plan", 7300, '["Alpha", "Beta"]', None),
         ("Unsupported filtered plan", 3650, None, 1),
@@ -6770,7 +6741,8 @@ def test_weekly_cost_product_budget_plans_only_include_project_budgets() -> None
         [
             {
                 "vendor": "aws",
-                "account_id": "qa-aws",
+                "accounts": '["qa-aws"]',
+                "projects": '["Alpha"]',
                 "period_start_date": "2026-01-01",
                 "period_end_date": "2026-12-31",
                 "label_filters": {"project": "Alpha"},
@@ -6781,7 +6753,8 @@ def test_weekly_cost_product_budget_plans_only_include_project_budgets() -> None
             },
             {
                 "vendor": "aws",
-                "account_id": "qa-aws",
+                "accounts": '["qa-aws"]',
+                "projects": None,
                 "period_start_date": "2026-01-01",
                 "period_end_date": "2026-12-31",
                 "label_filters": None,
@@ -8014,7 +7987,7 @@ def test_budget_health_snapshot_ignores_stale_finished_period(
     assert snapshot is None
 
 
-def test_budget_period_for_filters_falls_back_to_summing_partitioned_budget_rows(
+def test_budget_period_for_filters_does_not_infer_account_budget_from_repo_plans(
     sqlite_engine,
 ) -> None:
     _insert_cost_budget(
@@ -8050,7 +8023,7 @@ def test_budget_period_for_filters_falls_back_to_summing_partitioned_budget_rows
             target_date=date(2026, 6, 1),
         )
 
-    assert budget == cost_queries.BudgetPeriod(200.0, date(2026, 1, 1), date(2026, 12, 31))
+    assert budget is None
 
 
 def test_budget_period_for_filters_prefers_source_wide_budget_rows(

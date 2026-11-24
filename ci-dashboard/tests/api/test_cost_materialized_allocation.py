@@ -16,13 +16,6 @@ def test_cost_trend_reads_native_attribution_only() -> None:
             )
         """))
         connection.execute(text("""
-            CREATE TABLE cost_budgets (
-              vendor TEXT, account_id TEXT, period_start_date TEXT,
-              period_end_date TEXT, group_id INTEGER, manager_id INTEGER,
-              repo TEXT, label_filters TEXT, budget_amount REAL
-            )
-        """))
-        connection.execute(text("""
             INSERT INTO cost_attribution_daily VALUES
               ('2026-08-10', 'gcp', 'project-1', NULL, 'sku', 10, 10, 10, 'USD', 'matched')
         """))
@@ -69,13 +62,6 @@ def test_cost_trend_aggregates_resource_coverage_with_trend_rows() -> None:
               usage_date TEXT, vendor TEXT, account_id TEXT, target_branch TEXT,
               sku_name TEXT, list_cost REAL, effective_cost REAL, net_cost REAL,
               currency TEXT NOT NULL DEFAULT 'USD', attribution_status TEXT
-            )
-        """))
-        connection.execute(text("""
-            CREATE TABLE cost_budgets (
-              vendor TEXT, account_id TEXT, period_start_date TEXT,
-              period_end_date TEXT, group_id INTEGER, manager_id INTEGER,
-              repo TEXT, label_filters TEXT, budget_amount REAL
             )
         """))
         connection.execute(

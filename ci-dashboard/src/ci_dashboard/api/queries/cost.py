@@ -2050,88 +2050,6 @@ def _weekly_cost_budget_pace(
     dict[str, Any],
     Sequence[WeeklyCostBudgetScope] | None,
 ]:
-    if budget_rows and "accounts" in budget_rows[0]:
-        return _weekly_cost_current_budget_pace(
-            dimensions,
-            budget_rows,
-            start_date,
-            end_date,
-            qa_sources,
-        )
-    overall_budget = Decimal(0)
-    has_overall_budget = False
-    budget_scopes: list[WeeklyCostBudgetScope] = []
-    project_budgets: dict[str, Decimal] = {}
-    project_names: dict[str, str] = {}
-    for row in budget_rows:
-        budget_window = _weekly_cost_budget_window(row, start_date, end_date)
-        if budget_window is None:
-            continue
-        period_budget, scope_start, scope_end = budget_window
-        label_filters = _weekly_cost_label_filters(row["label_filters"])
-        has_group = row["group_id"] is not None
-        has_manager = row["manager_id"] is not None
-        has_repo = bool(str(row["repo"] or "").strip())
-        sources = {(str(row["vendor"]), str(row["account_id"]))}
-        if not has_group and not has_manager and not has_repo and not label_filters:
-            overall_budget += period_budget
-            has_overall_budget = True
-            budget_scopes.append((sources, None, scope_start, scope_end))
-            continue
-        project = label_filters.get("project") if len(label_filters) == 1 else None
-        if (
-            not has_group
-            and not has_manager
-            and not has_repo
-            and isinstance(project, str)
-            and project.strip()
-        ):
-            overall_budget += period_budget
-            has_overall_budget = True
-            project_name = _weekly_cost_project_name(project)
-            budget_scopes.append((sources, {project_name}, scope_start, scope_end))
-            project_key = f"project:{project_name}"
-            project_names[project_key] = project_name
-            project_budgets[project_key] = project_budgets.get(project_key, Decimal(0)) + period_budget
-            continue
-    scoped_actual = (
-        _weekly_cost_budget_scoped_actual(dimensions, budget_scopes)
-        if budget_scopes
-        else Decimal(str(overall_actual))
-    )
-    return (
-        {
-            "metric": "list_cost",
-            "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
-            "overall": {
-                "actual_list_cost": _money(scoped_actual),
-                "period_budget": _money(overall_budget) if has_overall_budget else None,
-                "utilization_pct": (
-                    _nullable_rate_pct(_money(scoped_actual), _money(overall_budget))
-                    if has_overall_budget
-                    else None
-                ),
-            },
-            "projects": _weekly_cost_budget_items(
-                dimensions["projects"],
-                project_budgets,
-                project_names,
-            ),
-        },
-        budget_scopes or None,
-    )
-
-
-def _weekly_cost_current_budget_pace(
-    dimensions: Mapping[str, Any],
-    budget_rows: Sequence[Mapping[str, Any]],
-    start_date: date,
-    end_date: date,
-    qa_sources: set[tuple[str, str]],
-) -> tuple[
-    dict[str, Any],
-    Sequence[WeeklyCostBudgetScope],
-]:
     overall_budget = Decimal(0)
     has_overall_budget = False
     project_values: dict[str, dict[str, Any]] = {}
@@ -2203,7 +2121,10 @@ def _weekly_cost_current_budget_pace(
         if item["name"] not in planned_projects:
             project_values[key] = {"name": item["name"], "value": item["value"]}
 
-    overall_actual = _weekly_cost_budget_scoped_actual(dimensions, budget_scopes)
+    overall_actual = (
+        _weekly_cost_budget_scoped_actual(dimensions, budget_scopes)
+        if budget_rows else Decimal(str(overall_actual))
+    )
     return (
         {
             "metric": "list_cost",
@@ -2219,7 +2140,7 @@ def _weekly_cost_current_budget_pace(
             },
             "projects": _weekly_cost_budget_items(project_values, project_budgets, project_names),
         },
-        budget_scopes,
+        budget_scopes if budget_rows else None,
     )
 
 
@@ -2228,63 +2149,28 @@ def _weekly_cost_budget_rows(
     start_date: date,
     end_date: date,
 ) -> tuple[Mapping[str, Any], ...]:
-    if _table_has_column(connection, "cost_budgets", "accounts"):
-        rows = connection.execute(
-            text(
-                """
-                SELECT
-                  id,
-                  vendor,
-                  accounts,
-                  projects,
-                  team,
-                  platform,
-                  period_start_date,
-                  period_end_date,
-                  budget_name,
-                  label_filters,
-                  group_id,
-                  manager_id,
-                  repo,
-                  budget_amount
-                FROM cost_budgets
-                WHERE LOWER(TRIM(platform)) = 'qa'
-                  AND period_start_date <= :end_date
-                  AND period_end_date >= :start_date
-                """
-            ),
-            {"start_date": start_date, "end_date": end_date},
-        ).mappings()
-        return tuple(rows)
-    qa_source_clause = _weekly_cost_qa_source_clause(connection)
-    if qa_source_clause is None:
-        return ()
-    rows = connection.execute(
-        text(
-            f"""
-            SELECT
-              b.vendor,
-              b.account_id,
-              b.period_start_date,
-              b.period_end_date,
-              b.label_filters,
-              b.group_id,
-              b.manager_id,
-              b.repo,
-              b.budget_amount
-            FROM cost_budgets b
-            JOIN cost_sources s
-              ON s.vendor = b.vendor
-             AND s.account_id = b.account_id
-            WHERE s.is_active = :is_active
-              AND {qa_source_clause}
-              AND b.period_start_date <= :end_date
-              AND b.period_end_date >= :start_date
-            """
-        ),
-        {"is_active": 1, "start_date": start_date, "end_date": end_date},
-    ).mappings()
-    return tuple(rows)
+    return tuple(
+        row for row in _budget_rows_for_window(connection, start_date, end_date)
+        if str(row["platform"] or "").strip().lower() == "qa"
+    )
+
+
+def _budget_rows_for_window(
+    connection: Connection,
+    start_date: date,
+    end_date: date,
+) -> tuple[Mapping[str, Any], ...]:
+    """Read the deployed membership schema; scalar account_id budgets are retired."""
+    return tuple(connection.execute(
+        text("""
+            SELECT id, vendor, accounts, projects, team, platform,
+                   period_start_date, period_end_date, budget_name,
+                   label_filters, group_id, manager_id, repo, budget_amount
+            FROM cost_budgets
+            WHERE period_start_date <= :end_date AND period_end_date >= :start_date
+        """),
+        {"start_date": start_date, "end_date": end_date},
+    ).mappings())
 
 
 def _weekly_cost_budget_sources(
@@ -2304,7 +2190,6 @@ def _weekly_cost_product_budget_plans(
     if not budget_rows:
         return []
 
-    has_membership_schema = "accounts" in budget_rows[0]
     plans = []
     for row in budget_rows:
         period_start = _parse_date(row["period_start_date"])
@@ -2316,11 +2201,7 @@ def _weekly_cost_product_budget_plans(
             or not period_start <= today <= period_end
         ):
             continue
-        sources = (
-            _weekly_cost_budget_sources(row, qa_sources)
-            if has_membership_schema
-            else {(str(row["vendor"]), str(row["account_id"]))} & qa_sources
-        )
+        sources = _weekly_cost_budget_sources(row, qa_sources)
         if not sources:
             continue
         label_filters = _weekly_cost_label_filters(row["label_filters"])
@@ -2331,7 +2212,7 @@ def _weekly_cost_product_budget_plans(
             or set(label_filters) - {"project"}
         ):
             continue
-        projects = _weekly_cost_string_list(row["projects"]) if has_membership_schema else []
+        projects = _weekly_cost_string_list(row["projects"])
         if not projects:
             projects = _weekly_cost_string_list(label_filters.get("project"))
         if not projects:
@@ -3756,81 +3637,35 @@ def _budget_periods_by_account_for_window(
     vendor: str | None = None,
     account_id: str | None = None,
 ) -> dict[tuple[str, str], list[BudgetPeriod]]:
-    vendor_filter = "AND vendor = :vendor" if vendor else ""
-    account_filter = "AND account_id = :account_id" if account_id else ""
-    rows = connection.execute(
-        text(
-            f"""
-            SELECT
-              vendor,
-              account_id,
-              period_start_date,
-              period_end_date,
-              SUM(
-                CASE
-                  WHEN group_id IS NULL
-                    AND manager_id IS NULL
-                    AND repo IS NULL
-                    AND label_filters IS NULL
-                  THEN budget_amount
-                  ELSE 0
-                END
-              ) AS source_wide_budget,
-              SUM(
-                CASE
-                  WHEN group_id IS NULL
-                    AND manager_id IS NULL
-                    AND repo IS NULL
-                    AND label_filters IS NULL
-                  THEN 1
-                  ELSE 0
-                END
-              ) AS source_wide_budget_count,
-              SUM(
-                CASE
-                  WHEN group_id IS NULL AND manager_id IS NULL
-                  THEN budget_amount
-                  ELSE 0
-                END
-              ) AS fallback_budget,
-              SUM(
-                CASE
-                  WHEN group_id IS NULL AND manager_id IS NULL
-                  THEN 1
-                  ELSE 0
-                END
-              ) AS fallback_budget_count
-            FROM cost_budgets
-            WHERE period_start_date <= :end_date
-              AND period_end_date >= :start_date
-              {vendor_filter}
-              {account_filter}
-            GROUP BY vendor, account_id, period_start_date, period_end_date
-            ORDER BY vendor, account_id, period_start_date
-            """
-        ),
-        {
-            "vendor": vendor,
-            "account_id": account_id,
-            "start_date": start_date,
-            "end_date": end_date,
-        },
-    ).mappings()
-
-    periods_by_account: dict[tuple[str, str], list[BudgetPeriod]] = {}
+    rows = _budget_rows_for_window(connection, start_date, end_date)
+    # A shared plan is not an allocation to each member. Account-only widgets can
+    # show single-account budgets, but must not duplicate multi-account totals.
+    grouped: dict[tuple[str, str, date, date], Decimal] = {}
     for row in rows:
+        accounts = set(_weekly_cost_string_list(row["accounts"]))
+        row_vendor = str(row["vendor"] or "")
+        if len(accounts) != 1 or not row_vendor:
+            continue
+        member = next(iter(accounts))
+        if (vendor and row_vendor != vendor) or (account_id and member != account_id):
+            continue
         start = _parse_date(row["period_start_date"])
         end = _parse_date(row["period_end_date"])
-        if start is None or end is None:
+        if start is None or end is None or start > end:
             continue
-        if int(row["source_wide_budget_count"] or 0) > 0:
-            amount = row["source_wide_budget"]
-        elif int(row["fallback_budget_count"] or 0) > 0:
-            amount = row["fallback_budget"]
-        else:
+        if (row["group_id"] is not None or row["manager_id"] is not None
+                or row["repo"] or _weekly_cost_label_filters(row["label_filters"])
+                or _weekly_cost_string_list(row["projects"])):
+            # Project/repo/group budgets cannot be compared to whole-account actual.
             continue
-        key = (str(row["vendor"]), str(row["account_id"]))
-        periods_by_account.setdefault(key, []).append(BudgetPeriod(_money(amount), start, end))
+        key = (row_vendor, member, start, end)
+        grouped[key] = grouped.get(key, Decimal(0)) + Decimal(str(row["budget_amount"] or 0))
+
+    periods_by_account: dict[tuple[str, str], list[BudgetPeriod]] = {}
+    for (row_vendor, member, start, end), amount in sorted(grouped.items()):
+        periods_by_account.setdefault((row_vendor, member), []).append(
+            BudgetPeriod(_money(amount), start, end)
+        )
     return periods_by_account
 
 
