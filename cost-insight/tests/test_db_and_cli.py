@@ -380,7 +380,10 @@ def test_build_engine_uses_database_url(monkeypatch) -> None:
     assert db.build_engine(settings) == "engine"
     assert calls[0][0][0] == "mysql+pymysql://user:pass@host:4000/cost"
     assert calls[0][1]["pool_pre_ping"] is True
-    assert calls[0][1]["connect_args"] == {"ssl": {"ca": "/tmp/ca.pem"}}
+    assert calls[0][1]["connect_args"] == {
+        "ssl": {"ca": "/tmp/ca.pem"},
+        "connect_timeout": 10, "read_timeout": 600, "write_timeout": 600,
+    }
 
 
 def test_build_engine_uses_tidb_parts(monkeypatch) -> None:
@@ -405,7 +408,9 @@ def test_build_engine_uses_tidb_parts(monkeypatch) -> None:
 
     assert db.build_engine(settings) == "engine"
     assert "mysql+pymysql://user:***@127.0.0.1:4000/cost?charset=utf8mb4" in str(calls[0][0][0])
-    assert calls[0][1]["connect_args"] == {}
+    assert calls[0][1]["connect_args"] == {
+        "connect_timeout": 10, "read_timeout": 600, "write_timeout": 600,
+    }
 
 
 def test_configure_logging_accepts_unknown_level() -> None:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine, URL
+from sqlalchemy.engine import URL, Engine, make_url
 
 from cost_insight.common.config import DatabaseSettings, Settings, get_settings
 
@@ -34,6 +34,13 @@ def build_engine(settings: Settings | None = None) -> Engine:
 
 
 def _build_connect_args(database: DatabaseSettings) -> dict[str, object]:
-    if not database.ssl_ca:
+    if database.url and make_url(database.url).get_backend_name() != "mysql":
         return {}
-    return {"ssl": {"ca": database.ssl_ca}}
+    args: dict[str, object] = {
+        "connect_timeout": database.connect_timeout_seconds,
+        "read_timeout": database.read_timeout_seconds,
+        "write_timeout": database.write_timeout_seconds,
+    }
+    if database.ssl_ca:
+        args["ssl"] = {"ca": database.ssl_ca}
+    return args

@@ -217,6 +217,70 @@ def test_cli_success_without_native_publication_stops_and_latches(engine, vendor
     assert state(engine, vendor) == failed
 
 
+def test_transport_retry_is_scoped_to_summary_not_whole_warehouse_pipeline(engine, vendor, monkeypatch):
+    from pymysql.err import OperationalError
+
+    from cost_insight.common import db_retry
+
+    monkeypatch.setattr(db_retry.time, "sleep", Mock())
+    fetch = Mock(side_effect=lambda client, **kw: window(kw["vendor"], kw["account_id"]))
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    failed = False
+
+    def fault(connection, cursor, statement, params, context, many):
+        nonlocal failed
+        if not failed and statement.replace("`", "").lstrip().startswith(f"INSERT INTO {job.SUMMARY}"):
+            failed = True
+            raise OperationalError(2013, "Lost connection during summary insert")
+
+    event.listen(engine, "before_cursor_execute", fault)
+    result = run(engine, vendor)
+    assert failed and result["percent"] == 100
+    fetch.assert_called_once()
+    db_retry.time.sleep.assert_called_once()
+    assert state(engine, vendor).last_status == "succeeded"
+    with engine.connect() as c:
+        for day in job._dates(START, END):
+            total = job._table_totals(c, job.SUMMARY, vendor, ACCOUNT, day)
+            assert total["n"] == 1 and total["net_cost"] == 8
+            job._verify_publication(c, vendor, ACCOUNT, day)
+
+
+def test_failure_bookkeeping_disconnect_preserves_original_error(engine, vendor, monkeypatch):
+    from pymysql.err import OperationalError
+
+    original = RuntimeError("source validation failed")
+    monkeypatch.setattr(job, "fetch_warehouse_window", Mock(side_effect=original))
+    monkeypatch.setattr(job, "_checkpoint", Mock(side_effect=OperationalError(2013, "Lost connection")))
+    with pytest.raises(RuntimeError) as raised:
+        run(engine, vendor)
+    assert raised.value is original
+    assert state(engine, vendor).last_status == "running"
+    job._checkpoint.assert_called_once()
+    assert job._checkpoint.call_args.args[3] == "failed"
+
+
+def test_terminal_commit_ack_loss_keeps_succeeded_latch(engine, vendor, monkeypatch):
+    from pymysql.err import OperationalError
+
+    original = OperationalError(2013, "Lost commit acknowledgement")
+    checkpoint = job._checkpoint
+
+    def lose_ack(*args, **kwargs):
+        checkpoint(*args, **kwargs)
+        if len(args) > 3 and args[3] == "succeeded":
+            # The real checkpoint has already committed before the ACK is lost.
+            raise original
+
+    monkeypatch.setattr(job, "_checkpoint", lose_ack)
+    with pytest.raises(OperationalError) as raised:
+        run(engine, vendor)
+    assert raised.value is original
+    assert state(engine, vendor).last_status == "succeeded"
+    assert state(engine, vendor).watermark["phase"] == "complete"
+    assert len(state(engine, vendor).watermark["completed_account_days"]) == 5
+
+
 def test_running_legacy_operational_key_cannot_be_bypassed(engine, vendor):
     with engine.begin() as c:
         state_store.mark_job_started(c, f"sync_{vendor}_warehouse_daily", {"run_id": "legacy-configmap-worker"})

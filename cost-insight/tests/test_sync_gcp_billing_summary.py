@@ -22,8 +22,8 @@ from cost_insight.jobs.sync_gcp_billing_summary import (
 )
 
 
-def _sqlite_engine():
-    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+def _sqlite_engine(url="sqlite+pysqlite:///:memory:"):
+    engine = create_engine(url, future=True)
     with engine.begin() as connection:
         connection.execute(
             text(

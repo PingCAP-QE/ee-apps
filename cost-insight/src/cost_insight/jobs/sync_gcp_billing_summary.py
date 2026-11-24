@@ -6,6 +6,7 @@ import pickle
 import re
 import tempfile
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, BinaryIO
@@ -15,6 +16,7 @@ from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import AlibabaBillingSettings, GcpBillingSettings
 from cost_insight.common.cost_drivers import classify_cost_driver
+from cost_insight.common.db_retry import replay_safe_transaction
 from cost_insight.common.gcp_summary_identity import build_gcp_summary_row_hash
 from cost_insight.common.row_utils import (
     bind_decimal_rows,
@@ -42,6 +44,8 @@ _SQL_TABLE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 # usage_type and cost_driver_key are derived display fields, not source row identity.
 
 RowFetcher = Callable[..., Iterable[dict[str, Any]]]
+# A factory must return the same frozen input on every invocation (e.g. an existing spool).
+RowInput = Iterable[dict[str, Any]] | Callable[[], Iterable[dict[str, Any]]]
 
 
 @dataclass(frozen=True)
@@ -149,7 +153,7 @@ def run_sync_billing_summary(
                 if replacement_usage_start_date:
                     rows_written += replace_summary_partition_usage_dates(
                         engine,
-                        _iter_spooled_rows(row_spool),
+                        lambda: _iter_spooled_rows(row_spool),
                         vendor=vendor,
                         account_id=settings.account_id,
                         export_partition_date=resolved_start,
@@ -161,7 +165,7 @@ def run_sync_billing_summary(
                 else:
                     rows_written += replace_summary_partitions(
                         engine,
-                        _iter_spooled_rows(row_spool),
+                        lambda: _iter_spooled_rows(row_spool),
                         row_count=rows_seen,
                         vendor=vendor,
                         account_id=settings.account_id,
@@ -236,8 +240,13 @@ def run_sync_billing_summary(
     except Exception as exc:
         LOG.exception("sync_billing_summary failed")
         if not dry_run:
-            with engine.begin() as connection:
-                state_store.mark_job_failed(connection, state_job_name, watermark, repr(exc))
+            try:
+                with engine.begin() as connection:
+                    state = state_store.get_job_state(connection, state_job_name)
+                    if state and state.last_status == "running":
+                        state_store.mark_job_failed(connection, state_job_name, watermark, repr(exc))
+            except Exception:  # noqa: BLE001 - bookkeeping must not mask the original failure
+                LOG.warning("Could not persist summary failure state; preserving original error")
         raise
 
 
@@ -393,14 +402,17 @@ def write_summary_rows(
     if dry_run:
         LOG.info("dry-run skipped summary upsert", extra={"row_count": len(rows), "target_table": target_table})
         return 0
-    with engine.begin() as connection:
-        _write_summary_rows(connection, rows, target_table=target_table)
-    return len(rows)
+    # Freeze the batch before retrying; upsert/cleanup use deterministic identities.
+    fixed_rows = tuple(dict(row) for row in rows)
+    replay_safe_transaction(
+        engine, lambda connection: _write_summary_rows(connection, fixed_rows, target_table=target_table)
+    )
+    return len(fixed_rows)
 
 
 def replace_summary_partitions(
     engine: Engine,
-    rows: Iterable[dict[str, Any]],
+    rows: RowInput,
     *,
     row_count: int,
     vendor: str = "gcp",
@@ -424,37 +436,16 @@ def replace_summary_partitions(
             },
         )
         return 0
-    rows_written = 0
-    batch: list[dict[str, Any]] = []
-    with engine.begin() as connection:
-        _delete_existing_summary_partitions(
-            connection,
-            vendor=vendor,
-            account_id=account_id,
-            export_partition_start=export_partition_start,
-            export_partition_end=export_partition_end,
-            target_table=target_table,
-        )
-        for row in rows:
-            batch.append(row)
-            if len(batch) >= batch_size:
-                _write_summary_rows(
-                    connection,
-                    batch,
-                    cleanup_superseded=False,
-                    target_table=target_table,
-                )
-                rows_written += len(batch)
-                batch.clear()
-        if batch:
-            _write_summary_rows(
-                connection,
-                batch,
-                cleanup_superseded=False,
-                target_table=target_table,
-            )
-            rows_written += len(batch)
-    return rows_written
+    return _replay_summary_replacement(
+        engine, rows,
+        delete_statement=_delete_summary_partitions_statement(target_table),
+        delete_params={
+            "vendor": vendor, "account_id": account_id,
+            "export_partition_start": export_partition_start,
+            "export_partition_end": export_partition_end,
+        },
+        batch_size=batch_size, target_table=target_table,
+    )
 
 
 def _write_summary_rows(
@@ -478,7 +469,7 @@ def _write_summary_rows(
 
 def replace_summary_partition_usage_dates(
     engine: Engine,
-    rows: Iterable[dict[str, Any]],
+    rows: RowInput,
     *,
     vendor: str,
     account_id: str,
@@ -501,20 +492,8 @@ def replace_summary_partition_usage_dates(
     if dry_run:
         return 0
 
-    rows_written = 0
-    batch: list[dict[str, Any]] = []
-    with engine.begin() as connection:
-        connection.execute(
-            _delete_summary_partition_usage_dates_statement(target_table),
-            {
-                "vendor": vendor,
-                "account_id": account_id,
-                "export_partition_date": export_partition_date,
-                "usage_start_date": usage_start_date,
-                "usage_end_date": usage_end_date,
-            },
-        )
-        for row in rows:
+    def scoped_rows():
+        for row in rows() if callable(rows) else rows:
             row_export_partition_date = coerce_date(row.get("export_partition_date"))
             row_usage_date = coerce_date(row.get("usage_date"))
             if (
@@ -528,30 +507,23 @@ def replace_summary_partition_usage_dates(
                     "summary row is outside the partition usage-date replacement scope: "
                     f"{row.get('source_row_hash')}"
                 )
-            batch.append(row)
-            if len(batch) >= batch_size:
-                _write_summary_rows(
-                    connection,
-                    batch,
-                    cleanup_superseded=False,
-                    target_table=target_table,
-                )
-                rows_written += len(batch)
-                batch.clear()
-        if batch:
-            _write_summary_rows(
-                connection,
-                batch,
-                cleanup_superseded=False,
-                target_table=target_table,
-            )
-            rows_written += len(batch)
-    return rows_written
+            yield row
+
+    return _replay_summary_replacement(
+        engine, scoped_rows if callable(rows) else scoped_rows(),
+        delete_statement=_delete_summary_partition_usage_dates_statement(target_table),
+        delete_params={
+            "vendor": vendor, "account_id": account_id,
+            "export_partition_date": export_partition_date,
+            "usage_start_date": usage_start_date, "usage_end_date": usage_end_date,
+        },
+        batch_size=batch_size, target_table=target_table,
+    )
 
 
 def replace_summary_usage_dates(
     engine: Engine,
-    rows: Iterable[dict[str, Any]],
+    rows: RowInput,
     *,
     row_count: int,
     vendor: str,
@@ -591,38 +563,59 @@ def replace_summary_usage_dates(
             },
         )
         return 0
-    rows_written = 0
-    batch: list[dict[str, Any]] = []
-    with engine.begin() as connection:
-        connection.execute(
-            _delete_summary_usage_dates_statement(target_table),
-            {
-                "vendor": vendor,
-                "account_id": account_id,
-                "usage_start_date": usage_start_date,
-                "usage_end_date": usage_end_date,
-            },
-        )
-        for row in rows:
-            batch.append(row)
-            if len(batch) >= batch_size:
+    return _replay_summary_replacement(
+        engine, rows,
+        delete_statement=_delete_summary_usage_dates_statement(target_table),
+        delete_params={
+            "vendor": vendor, "account_id": account_id,
+            "usage_start_date": usage_start_date, "usage_end_date": usage_end_date,
+        },
+        batch_size=batch_size, target_table=target_table,
+    )
+
+
+def _replay_summary_replacement(
+    engine: Engine,
+    rows: RowInput,
+    *,
+    delete_statement,
+    delete_params: dict[str, Any],
+    batch_size: int,
+    target_table: str,
+) -> int:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    with ExitStack() as stack:
+        if callable(rows):
+            row_factory = rows
+        else:
+            # Snapshot one-shot inputs before DELETE, but reuse existing frozen spools.
+            # Pickle is only read from this process's private temporary file.
+            spool = stack.enter_context(tempfile.TemporaryFile("w+b"))
+            for row in rows:
+                _dump_spooled_row(spool, row)
+            row_factory = lambda: _iter_spooled_rows(spool)
+
+        def replace(connection: Connection) -> int:
+            rows_written = 0
+            batch: list[dict[str, Any]] = []
+            connection.execute(delete_statement, delete_params)
+            for row in row_factory():
+                batch.append(row)
+                if len(batch) >= batch_size:
+                    _write_summary_rows(
+                        connection, batch, cleanup_superseded=False, target_table=target_table,
+                    )
+                    rows_written += len(batch)
+                    batch.clear()
+            if batch:
                 _write_summary_rows(
-                    connection,
-                    batch,
-                    cleanup_superseded=False,
-                    target_table=target_table,
+                    connection, batch, cleanup_superseded=False, target_table=target_table,
                 )
                 rows_written += len(batch)
-                batch.clear()
-        if batch:
-            _write_summary_rows(
-                connection,
-                batch,
-                cleanup_superseded=False,
-                target_table=target_table,
-            )
-            rows_written += len(batch)
-    return rows_written
+            return rows_written
+
+        return replay_safe_transaction(engine, replace)
 
 
 def _bind_rows(connection: Connection, rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -759,26 +752,6 @@ def _get_touched_usage_dates(
         if usage_date is not None:
             usage_dates.append(usage_date)
     return tuple(usage_dates)
-
-
-def _delete_existing_summary_partitions(
-    connection: Connection,
-    *,
-    vendor: str = "gcp",
-    account_id: str,
-    export_partition_start: date,
-    export_partition_end: date,
-    target_table: str = SUMMARY_TABLE,
-) -> None:
-    connection.execute(
-        _delete_summary_partitions_statement(target_table),
-        {
-            "vendor": vendor,
-            "account_id": account_id,
-            "export_partition_start": export_partition_start,
-            "export_partition_end": export_partition_end,
-        },
-    )
 
 
 def _build_upsert_statement(connection: Connection, *, target_table: str = SUMMARY_TABLE):
