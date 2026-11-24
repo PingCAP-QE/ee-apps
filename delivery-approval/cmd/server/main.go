@@ -69,8 +69,8 @@ func main() {
 	var notifier *lark.Client
 	appID, appSecret := os.Getenv("DL_APPROVAL_LARK_APP_ID"), os.Getenv("DL_APPROVAL_LARK_APP_SECRET")
 	if appID != "" || appSecret != "" || cfg.LarkChatID != "" {
-		if appID == "" || appSecret == "" || cfg.LarkChatID == "" {
-			logger.Fatal("Lark notifications require DL_APPROVAL_LARK_APP_ID, DL_APPROVAL_LARK_APP_SECRET and lark_notification_chat_id")
+		if appID == "" || appSecret == "" {
+			logger.Fatal("Lark notifications require DL_APPROVAL_LARK_APP_ID and DL_APPROVAL_LARK_APP_SECRET")
 		}
 		notifier, err = lark.NewDefault(appID, appSecret, cfg.LarkChatID, manager, cfg.LarkBuzz, logger)
 		if err != nil {

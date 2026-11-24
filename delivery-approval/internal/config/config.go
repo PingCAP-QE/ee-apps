@@ -45,8 +45,9 @@ type Config struct {
 	DefaultTTLSeconds int64 `yaml:"default_ttl_seconds"`
 	MaxTTLSeconds     int64 `yaml:"max_ttl_seconds"`
 
-	// LarkChatID is the approval notification group. Lark app credentials and
-	// the optional buzz toggle are provided by the deployment.
+	// LarkChatID is optional. When set, approval cards go to this group and
+	// buzz targets individual approvers; when empty, each approver gets a
+	// private approval card instead. Lark app credentials come from env.
 	LarkChatID string `yaml:"lark_notification_chat_id"`
 	LarkBuzz   bool   `yaml:"lark_buzz"`
 }

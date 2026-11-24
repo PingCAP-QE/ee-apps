@@ -62,6 +62,7 @@ server:
     max_requests_per_day: 20
     default_ttl_seconds: 86400
     max_ttl_seconds: 604800
+    # Optional group; empty means DM each approver.
     lark_notification_chat_id: ""
     lark_buzz: true
 

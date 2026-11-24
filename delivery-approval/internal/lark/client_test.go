@@ -177,6 +177,24 @@ func TestNotifyError(t *testing.T) {
 	}
 }
 
+func TestNotifyApprovalDMsEachApprover(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	c.chatID = ""
+	if err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.messages) != 1 || s.messages[0].receiveIDType != "open_id" || s.messages[0].receiveID != "ou-approver" {
+		t.Fatalf("messages = %+v", s.messages)
+	}
+	if !strings.Contains(s.messages[0].content, "approvals.example.com") {
+		t.Fatalf("DM card missing review link: %s", s.messages[0].content)
+	}
+	if len(s.urgent) != 0 {
+		t.Fatalf("DM mode should not call urgent: %v", s.urgent)
+	}
+}
+
 func TestNewValidation(t *testing.T) {
 	if _, err := New(nil, "chat", testConfig(t), false, nil); err == nil {
 		t.Fatal("nil api accepted")
@@ -184,8 +202,8 @@ func TestNewValidation(t *testing.T) {
 	if _, err := NewDefault("", "", "chat", testConfig(t), false, nil); err == nil {
 		t.Fatal("missing credentials accepted")
 	}
-	if _, err := NewDefault("id", "secret", "", testConfig(t), false, nil); err == nil {
-		t.Fatal("missing chat accepted")
+	if _, err := NewDefault("id", "secret", "", testConfig(t), false, nil); err != nil {
+		t.Fatalf("empty chat should enable per-approver DM: %v", err)
 	}
 }
 

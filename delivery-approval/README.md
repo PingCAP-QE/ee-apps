@@ -66,17 +66,19 @@ This phase adds the service skeleton, configuration and storage:
 
 - `internal/lark`: outbound-only Lark OpenAPI client (no WebSocket, no event
   subscription, no card callback).
-  - approval card to `lark_notification_chat_id`, containing the review link and
-    no download token;
-  - optional app-level urgent (`lark_buzz`) to the configured approvers, with
-    email → open_id lookup and a cache;
+  - approval card containing the review link and no download token; when
+    `lark_notification_chat_id` is set it goes to that group, when empty it is
+    sent privately to every configured approver;
+  - optional app-level urgent (`lark_buzz`) in group mode, with email → open_id
+    lookup and a cache; DM mode does not need an extra buzz;
   - private text message with the one-time delivery links;
   - private rejection/revocation messages and a fixed-class delivery-failure
     message (no upstream error body or token).
-- Server wiring enables delivery only when `DL_APPROVAL_LARK_APP_ID`,
-  `DL_APPROVAL_LARK_APP_SECRET`, `lark_notification_chat_id`,
-  `DL_APPROVAL_DL_ISSUER_SECRET` and `DL_APPROVAL_URL_ENCRYPTION_KEY` are all
-  present. A partial provider configuration fails startup.
+- Server wiring enables delivery when `DL_APPROVAL_LARK_APP_ID`,
+  `DL_APPROVAL_LARK_APP_SECRET`, `DL_APPROVAL_DL_ISSUER_SECRET` and
+  `DL_APPROVAL_URL_ENCRYPTION_KEY` are present. `lark_notification_chat_id` is
+  optional: empty means per-approver DM. A partially configured provider fails
+  startup.
 - The expiry sweeper now uses the same `dl` client as revoker.
 
 ## Configuration

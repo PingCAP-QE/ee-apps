@@ -34,8 +34,8 @@ type Client struct {
 }
 
 func New(api *larksuite.Client, chatID string, cfg *config.Manager, buzz bool, logger *log.Logger) (*Client, error) {
-	if api == nil || chatID == "" || cfg == nil {
-		return nil, errors.New("lark client requires api, chat id and config")
+	if api == nil || cfg == nil {
+		return nil, errors.New("lark client requires api and config")
 	}
 	if logger == nil {
 		logger = log.Default()
@@ -86,6 +86,19 @@ func (c *Client) NotifyApproval(ctx context.Context, req *store.Request) error {
 	content, err := json.Marshal(card)
 	if err != nil {
 		return err
+	}
+	if c.chatID == "" {
+		// No shared approval group: deliver the card to each approver's DM.
+		openIDs := c.openIDsFor(ctx, c.config.Current().ApproverEmails)
+		if len(openIDs) == 0 {
+			return errors.New("no approver open_id")
+		}
+		for _, openID := range openIDs {
+			if _, err := c.send(ctx, larkim.ReceiveIdTypeOpenId, openID, "interactive", string(content)); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	messageID, err := c.send(ctx, larkim.ReceiveIdTypeChatId, c.chatID, "interactive", string(content))
 	if err != nil {
