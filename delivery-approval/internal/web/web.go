@@ -31,7 +31,9 @@ import (
 
 const (
 	csrfCookie = "approval_csrf"
-	maxFiles   = 10
+	// maxTargets bounds one request. A release set of one product needs roughly
+	// 10-30 files, and the approval card has to stay readable.
+	maxTargets = 30
 	maxBody    = 64 * 1024
 	maxNote    = 1024
 )
@@ -176,9 +178,9 @@ type pageData struct {
 }
 
 type formValues struct {
-	Repository string
-	Tag        string
-	Files      string
+	// Targets is the raw one-target-per-line block, kept verbatim so a rejected
+	// submission can be corrected instead of retyped.
+	Targets string
 	// TTL is the selected preset; TTLCustom overrides it when filled.
 	TTL       string
 	TTLCustom string
@@ -253,34 +255,43 @@ func (h *handler) form(w http.ResponseWriter, r *http.Request) {
 
 // formValuesFromQuery prefills the form from the URL so a legacy
 // /dl/oci-file/<repo>?file=&tag= link can be turned into an approval request by
-// editing the host and prefix. Unknown or malformed values are ignored; the
-// query never influences authorization.
+// editing the host and prefix. The repository and tag are shared by every
+// prefilled target; unknown or malformed values are ignored, and the query never
+// influences authorization.
 func formValuesFromQuery(r *http.Request) formValues {
 	q := r.URL.Query()
 	// TTL is deliberately not taken from the query: it is a decision the
 	// requester makes in the form, and defaulting it keeps the URL harmless.
-	values := formValues{
-		Repository: clip(strings.TrimSpace(q.Get("repository")), 512),
-		Tag:        clip(strings.TrimSpace(q.Get("tag")), 128),
-		Note:       clip(strings.TrimSpace(q.Get("note")), maxNote),
-	}
+	repo := clip(strings.TrimSpace(q.Get("repository")), 512)
+	tag := clip(strings.TrimSpace(q.Get("tag")), 128)
+	values := formValues{Note: clip(strings.TrimSpace(q.Get("note")), maxNote)}
 	seen := map[string]bool{}
-	var files []string
+	var lines []string
 	add := func(raw string) {
 		for _, name := range splitFiles(strings.ReplaceAll(raw, ",", "\n")) {
 			if seen[name] {
 				continue
 			}
 			seen[name] = true
-			files = append(files, name)
+			lines = append(lines, strings.Join(nonEmpty(repo, tag, name), " "))
 		}
 	}
 	for _, raw := range q["file"] {
 		add(raw)
 	}
 	add(q.Get("files"))
-	values.Files = strings.Join(files, "\n")
+	values.Targets = strings.Join(lines, "\n")
 	return values
+}
+
+func nonEmpty(values ...string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func clip(value string, limit int) string {
@@ -302,7 +313,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form", http.StatusForbidden)
 		return
 	}
-	values, ttl, err := h.parseForm(r)
+	values, ttl, targets, err := h.parseForm(r)
 	if err != nil {
 		cfg := h.config.Current()
 		h.render(w, "form.html", pageData{
@@ -347,9 +358,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		Note:           values.Note,
 		Status:         store.StatusPending,
 		TTLSeconds:     ttl,
-	}
-	for _, filename := range splitFiles(values.Files) {
-		req.Files = append(req.Files, store.File{Repository: values.Repository, Tag: values.Tag, Filename: filename})
+		Files:          targets,
 	}
 	if err := h.store.CreateRequest(ctx, req); err != nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
@@ -711,36 +720,23 @@ func validToken(token string) bool {
 	return err == nil && len(raw) == 32
 }
 
-func (h *handler) parseForm(r *http.Request) (formValues, int64, error) {
+func (h *handler) parseForm(r *http.Request) (formValues, int64, []store.File, error) {
 	cfg := h.config.Current()
 	values := formValues{
-		Repository: strings.TrimSpace(r.PostFormValue("repository")),
-		Tag:        strings.TrimSpace(r.PostFormValue("tag")),
-		Files:      strings.TrimSpace(r.PostFormValue("files")),
-		TTL:        strings.TrimSpace(r.PostFormValue("ttl")),
-		TTLCustom:  strings.TrimSpace(r.PostFormValue("ttl_custom")),
-		Note:       strings.TrimSpace(r.PostFormValue("note")),
+		Targets:   strings.TrimSpace(r.PostFormValue("targets")),
+		TTL:       strings.TrimSpace(r.PostFormValue("ttl")),
+		TTLCustom: strings.TrimSpace(r.PostFormValue("ttl_custom")),
+		Note:      strings.TrimSpace(r.PostFormValue("note")),
 	}
-	if values.Repository == "" || values.Tag == "" || values.Files == "" {
-		return values, 0, errors.New("repository, tag and files are required")
+	if values.Targets == "" {
+		return values, 0, nil, errors.New("at least one target is required")
 	}
-	if !validRepository(values.Repository) {
-		return values, 0, errors.New("invalid repository")
-	}
-	if !tagPattern.MatchString(values.Tag) {
-		return values, 0, errors.New("invalid tag")
-	}
-	files := splitFiles(values.Files)
-	if len(files) == 0 || len(files) > maxFiles {
-		return values, 0, fmt.Errorf("provide 1-%d files", maxFiles)
-	}
-	for _, file := range files {
-		if !validFilename(file) {
-			return values, 0, fmt.Errorf("invalid filename %q", file)
-		}
+	targets, err := parseTargets(values.Targets)
+	if err != nil {
+		return values, 0, nil, err
 	}
 	if utf8.RuneCountInString(values.Note) > maxNote {
-		return values, 0, errors.New("note is too long")
+		return values, 0, nil, errors.New("note is too long")
 	}
 	rawTTL := values.TTLCustom
 	if rawTTL == "" {
@@ -750,14 +746,57 @@ func (h *handler) parseForm(r *http.Request) (formValues, int64, error) {
 	if rawTTL != "" {
 		parsed, err := parseTTL(rawTTL)
 		if err != nil {
-			return values, 0, errors.New("invalid TTL, use seconds or 2h30m/90s")
+			return values, 0, nil, errors.New("invalid TTL, use seconds or 2h30m/90s")
 		}
 		ttl = parsed
 	}
 	if ttl < 1 || ttl > cfg.MaxTTLSeconds {
-		return values, 0, fmt.Errorf("TTL must be between 1 and %d seconds", cfg.MaxTTLSeconds)
+		return values, 0, nil, fmt.Errorf("TTL must be between 1 and %d seconds", cfg.MaxTTLSeconds)
 	}
-	return values, ttl, nil
+	return values, ttl, targets, nil
+}
+
+// parseTargets reads the one-target-per-line block into the files to request.
+// Each line is "<repository> <tag> <filename>" separated by whitespace, so one
+// request may span several repositories. Blank lines are skipped, and an
+// identical repository/tag/filename is only kept once: the store's unique index
+// is per request, and approving the same file twice would issue two shares.
+func parseTargets(raw string) ([]store.File, error) {
+	seen := map[string]bool{}
+	targets := make([]store.File, 0, maxTargets)
+	for i, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("line %d: use <repository> <tag> <filename>", i+1)
+		}
+		repo, tag, name := fields[0], fields[1], fields[2]
+		if !validRepository(repo) {
+			return nil, fmt.Errorf("line %d: invalid repository", i+1)
+		}
+		if !tagPattern.MatchString(tag) {
+			return nil, fmt.Errorf("line %d: invalid tag", i+1)
+		}
+		if !validFilename(name) {
+			return nil, fmt.Errorf("line %d: invalid filename %q", i+1, name)
+		}
+		key := repo + "\x00" + tag + "\x00" + name
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		targets = append(targets, store.File{Repository: repo, Tag: tag, Filename: name})
+	}
+	if len(targets) == 0 {
+		return nil, errors.New("at least one target is required")
+	}
+	if len(targets) > maxTargets {
+		return nil, fmt.Errorf("provide 1-%d targets", maxTargets)
+	}
+	return targets, nil
 }
 
 // parseTTL accepts a plain number of seconds (86400) or a Go duration such as
