@@ -109,6 +109,31 @@ before forwarding, and the handler rebuilds it for every link and redirect.
 Changing the mount point therefore means changing both the route and
 `public_url`, and keeping the two in sync.
 
+## Pages
+
+`public_url` is the browser-facing base, and its path is also the mount point:
+the HTTP route publishes `/dl/grants`, rewrites the prefix to `/`, and the
+handler rebuilds it for every link and redirect.
+
+The request form can be prefilled from the query string, which lets an existing
+`/dl/oci-file/<repository>?file=…&tag=…` link be turned into an approval request
+by pointing it at the form:
+
+```text
+/dl/grants?repository=us-docker.pkg.dev/project/hub/package&tag=v8.5.4
+           &file=tidb.tar.gz&file=tikv.tar.gz&note=customer%20asked
+```
+
+- `file` may repeat; `files` also accepts a newline- or comma-separated list.
+- `ttl` is **not** read from the query: it always starts at
+  `default_ttl_seconds`. In the form it accepts seconds (`86400`) or a Go
+  duration with hour/minute/second units (`24h`, `1m`, `30s`, `2h30m`), bounded
+  by `max_ttl_seconds`; day and week units are rejected so each TTL has one
+  spelling. The request stores seconds and the detail page renders the standard
+  duration form (`24h0m0s (86400s)`).
+- Unknown or malformed values are ignored; the query never influences
+  authorization.
+
 ## Database
 
 The runtime role has no DDL. Run the migration Job once with the migration DSN:

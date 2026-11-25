@@ -15,7 +15,7 @@
       <dt>Requester</dt><dd>{{.Request.RequesterEmail}}</dd>
       <dt>Created</dt><dd>{{.Request.CreatedAt.Format "2006-01-02 15:04 UTC"}}</dd>
       <dt>Expires</dt><dd>{{.Request.ExpiresAt.Format "2006-01-02 15:04 UTC"}}</dd>
-      <dt>TTL</dt><dd>{{.Request.TTLSeconds}} seconds</dd>
+      <dt>TTL</dt><dd>{{.TTL}} ({{.Request.TTLSeconds}}s)</dd>
       {{if .Request.ApproverEmail}}<dt>Approver</dt><dd>{{.Request.ApproverEmail}}</dd>{{end}}
       {{if .Request.DecisionNote}}<dt>Decision note</dt><dd>{{.Request.DecisionNote}}</dd>{{end}}
       {{if .Request.Note}}<dt>Purpose / note</dt><dd>{{.Request.Note}}</dd>{{end}}

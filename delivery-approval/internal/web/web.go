@@ -152,6 +152,8 @@ type pageData struct {
 	Error    string
 	Form     formValues
 
+	TTL        string
+	MaxTTL     string
 	Request    *store.Request
 	Files      []*store.Request
 	Pending    []*store.Request
@@ -169,15 +171,58 @@ type formValues struct {
 }
 
 func (h *handler) form(w http.ResponseWriter, r *http.Request) {
+	cfg := h.config.Current()
 	identity, _ := auth.IdentityFrom(r.Context())
+	values := formValuesFromQuery(r)
+	if values.TTL == "" {
+		values.TTL = (time.Duration(cfg.DefaultTTLSeconds) * time.Second).String()
+	}
 	h.render(w, "form.html", pageData{
 		Identity: identity,
 		CSRF:     csrfToken(w, r),
-		Form: formValues{
-			TTL: strconv.FormatInt(h.config.Current().DefaultTTLSeconds, 10),
-		},
+		Form:     values,
+		MaxTTL:   (time.Duration(cfg.MaxTTLSeconds) * time.Second).String(),
 		Approver: h.config.IsApprover(identity.Email),
 	})
+}
+
+// formValuesFromQuery prefills the form from the URL so a legacy
+// /dl/oci-file/<repo>?file=&tag= link can be turned into an approval request by
+// editing the host and prefix. Unknown or malformed values are ignored; the
+// query never influences authorization.
+func formValuesFromQuery(r *http.Request) formValues {
+	q := r.URL.Query()
+	// TTL is deliberately not taken from the query: it is a decision the
+	// requester makes in the form, and defaulting it keeps the URL harmless.
+	values := formValues{
+		Repository: clip(strings.TrimSpace(q.Get("repository")), 512),
+		Tag:        clip(strings.TrimSpace(q.Get("tag")), 128),
+		Note:       clip(strings.TrimSpace(q.Get("note")), maxNote),
+	}
+	seen := map[string]bool{}
+	var files []string
+	add := func(raw string) {
+		for _, name := range splitFiles(strings.ReplaceAll(raw, ",", "\n")) {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			files = append(files, name)
+		}
+	}
+	for _, raw := range q["file"] {
+		add(raw)
+	}
+	add(q.Get("files"))
+	values.Files = strings.Join(files, "\n")
+	return values
+}
+
+func clip(value string, limit int) string {
+	if limit > 0 && utf8.RuneCountInString(value) > limit {
+		return string([]rune(value)[:limit])
+	}
+	return value
 }
 
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
@@ -289,6 +334,7 @@ func (h *handler) detail(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "detail.html", pageData{
 		Identity:   identity,
 		CSRF:       csrfToken(w, r),
+		TTL:        (time.Duration(req.TTLSeconds) * time.Second).String(),
 		Request:    req,
 		Approver:   approver,
 		CanApprove: approver && req.Status == store.StatusPending && req.RequesterEmail != identity.Email,
@@ -570,9 +616,9 @@ func (h *handler) parseForm(r *http.Request) (formValues, int64, error) {
 	}
 	ttl := cfg.DefaultTTLSeconds
 	if values.TTL != "" {
-		parsed, err := strconv.ParseInt(values.TTL, 10, 64)
+		parsed, err := parseTTL(values.TTL)
 		if err != nil {
-			return values, 0, errors.New("invalid TTL")
+			return values, 0, errors.New("invalid TTL, use seconds or 2h30m/90s")
 		}
 		ttl = parsed
 	}
@@ -580,6 +626,24 @@ func (h *handler) parseForm(r *http.Request) (formValues, int64, error) {
 		return values, 0, fmt.Errorf("TTL must be between 1 and %d seconds", cfg.MaxTTLSeconds)
 	}
 	return values, ttl, nil
+}
+
+// parseTTL accepts a plain number of seconds (86400) or a Go duration such as
+// 24h, 1m, 30s or 2h30m. Day and week units are rejected so each TTL has one
+// spelling. Only the bare-seconds fallback is ours; the rest is time.
+func parseTTL(raw string) (int64, error) {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	if s == "" {
+		return 0, errors.New("empty TTL")
+	}
+	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return v, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, errors.New("invalid TTL")
+	}
+	return int64(d / time.Second), nil
 }
 
 func splitFiles(raw string) []string {

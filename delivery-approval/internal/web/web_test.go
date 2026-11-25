@@ -217,6 +217,99 @@ func TestPagesUsePublicURLPathPrefix(t *testing.T) {
 	}
 }
 
+func TestFormPrefillsFromQuery(t *testing.T) {
+	h := testHandler(t, newFakeStore(), &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	// Mirrors a legacy /dl/oci-file link: repository in the path, file/tag in
+	// the query. Repeated `file` params and a comma list are both accepted.
+	target := "/?repository=us-docker.pkg.dev/project/hub/package&tag=v8.5.4" +
+		"&file=tidb.tar.gz&file=tikv.tar.gz&files=tiflash.tar.gz,tools.tar.gz" +
+		"&ttl=7d&note=customer%20asked"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, requestWithToken(http.MethodGet, target, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("form = %d", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		`value="us-docker.pkg.dev/project/hub/package"`,
+		`value="v8.5.4"`,
+		`tidb.tar.gz`,
+		`tikv.tar.gz`,
+		`tiflash.tar.gz`,
+		`tools.tar.gz`,
+		`customer asked`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("prefill missing %q", want)
+		}
+	}
+	if !strings.Contains(body, `value="24h0m0s"`) {
+		t.Fatal("TTL must keep the default and ignore the query")
+	}
+	if strings.Contains(body, `value="7d"`) {
+		t.Fatal("TTL must not be prefilled from the query")
+	}
+}
+
+func TestParseTTL(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    int64
+		wantErr bool
+	}{
+		{"86400", 86400, false},
+		{"24h", 86400, false},
+		{"168h", 604800, false},
+		{"1m", 60, false},
+		{"30s", 30, false},
+		{"2h30m", 9000, false},
+		{" 30s ", 30, false},
+		{"7d", 0, true},
+		{"1w", 0, true},
+		{"", 0, true},
+		{"abc", 0, true},
+	}
+	for _, tc := range cases {
+		got, err := parseTTL(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Fatalf("parseTTL(%q) = %d, want error", tc.in, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("parseTTL(%q) error: %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Fatalf("parseTTL(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestFormAcceptsFriendlyTTL(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"repository": {"r.example.com/a"},
+		"tag":        {"v1"},
+		"files":      {"a.tar.gz"},
+		"ttl":        {"2h"},
+		"csrf":       {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	if st.created == nil || st.created.TTLSeconds != 7200 {
+		t.Fatalf("ttl = %+v", st.created)
+	}
+}
+
 func TestForbiddenIdentity(t *testing.T) {
 	h := New(Options{Store: newFakeStore(), Config: testConfig(t), Auth: fakeAuth{err: auth.ErrForbidden}, Metrics: &metrics.Metrics{}})
 	w := httptest.NewRecorder()
