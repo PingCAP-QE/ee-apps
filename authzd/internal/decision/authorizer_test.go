@@ -311,3 +311,45 @@ func testAttributes(token string) *authv3.AttributeContext {
 		}},
 	}
 }
+
+func TestRouteIdentityModeSelectsOneVerifier(t *testing.T) {
+	for _, mode := range []string{"browser", "machine"} {
+		t.Run(mode, func(t *testing.T) {
+			a := newTestAuthorizer(t, "enforce", allowChecker(), nil, testResolver(), nil)
+			headers := map[string]string{"browser": "x-forwarded-id-token", "machine": "authorization"}
+			for name, header := range headers {
+				a.credentials[name] = Credential{Header: header, Verifier: verifierFunc(func(_ context.Context, token string) (identity.Principal, error) {
+					if name != mode {
+						t.Fatalf("route selected %s but called %s verifier", mode, name)
+					}
+					if token != name+"-token" {
+						return identity.Principal{}, errors.New("unexpected credential")
+					}
+					return identity.Principal{Subject: name + "-subject"}, nil
+				})}
+			}
+			attrs := testAttributes("")
+			attrs.ContextExtensions["identity_mode"] = mode
+			requestHeaders := attrs.Request.Http.Headers
+			requestHeaders["authorization"] = "Bearer machine-token"
+			requestHeaders["x-forwarded-id-token"] = "browser-token"
+			resp, err := a.Authorize(context.Background(), attrs)
+			if err != nil || resp.GetOkResponse() == nil {
+				t.Fatalf("expected allow: %v", err)
+			}
+			delete(requestHeaders, headers[mode])
+			resp, err = a.Authorize(context.Background(), attrs)
+			if err != nil || resp.GetDeniedResponse() == nil {
+				t.Fatalf("missing selected credential must deny: %v", err)
+			}
+			requestHeaders[headers[mode]] = "invalid"
+			if mode == "machine" {
+				requestHeaders["authorization"] = "Bearer invalid"
+			}
+			resp, err = a.Authorize(context.Background(), attrs)
+			if err != nil || resp.GetDeniedResponse() == nil {
+				t.Fatalf("invalid selected credential must deny: %v", err)
+			}
+		})
+	}
+}

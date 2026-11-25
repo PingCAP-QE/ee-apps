@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,11 +21,12 @@ type Principal struct {
 }
 
 type JWTConfig struct {
-	JWKSURL         string
-	Issuer          string
-	Audience        string
-	PrincipalPrefix string
-	SubjectClaim    string
+	ExcludedAudience string
+	JWKSURL          string
+	Issuer           string
+	Audience         string
+	PrincipalPrefix  string
+	SubjectClaim     string
 }
 
 type JWTVerifier struct {
@@ -98,6 +100,10 @@ func (v *JWTVerifier) Verify(ctx context.Context, raw string) (Principal, error)
 	)
 	if err != nil {
 		return Principal{}, errors.New("identity token validation failed")
+	}
+	audiences, _ := token.Audience()
+	if v.config.ExcludedAudience != "" && slices.Contains(audiences, v.config.ExcludedAudience) {
+		return Principal{}, errors.New("identity token spans browser and machine audiences")
 	}
 	value, ok := token.Field(v.config.SubjectClaim)
 	if !ok {

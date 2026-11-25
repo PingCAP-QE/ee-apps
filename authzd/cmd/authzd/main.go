@@ -72,8 +72,14 @@ func runContext(ctx context.Context, logger *slog.Logger, getenv func(string) st
 		}
 	}()
 	for mode, credential := range cfg.Credentials {
+		var excludedAudience string
+		opposite := map[string]string{"machine": "browser", "browser": "machine"}[mode]
+		if peer, ok := cfg.Credentials[opposite]; ok && peer.Issuer == credential.Issuer {
+			excludedAudience = peer.Audience
+		}
 		verifier, err := identity.NewJWTVerifier(ctx, identity.JWTConfig{
-			JWKSURL: credential.JWKSURL, Issuer: credential.Issuer, Audience: credential.Audience,
+			ExcludedAudience: excludedAudience,
+			JWKSURL:          credential.JWKSURL, Issuer: credential.Issuer, Audience: credential.Audience,
 			PrincipalPrefix: credential.PrincipalPrefix, SubjectClaim: credential.SubjectClaim,
 		})
 		if err != nil {

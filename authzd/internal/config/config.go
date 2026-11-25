@@ -60,6 +60,23 @@ func Load(getenv func(string) string) (Config, error) {
 			return Config{}, fmt.Errorf("credential mode %q is incomplete", mode)
 		}
 	}
+	browser, hasBrowser := cfg.Credentials["browser"]
+	machine, hasMachine := cfg.Credentials["machine"]
+	if hasBrowser && (!strings.HasPrefix(browser.PrincipalPrefix, "user:") ||
+		(browser.SubjectClaim != "" && browser.SubjectClaim != "sub")) {
+		return Config{}, errors.New("browser mode requires a user principal based on the signed sub claim")
+	}
+	if hasMachine && !strings.HasPrefix(machine.PrincipalPrefix, "workload:") {
+		return Config{}, errors.New("machine mode requires a workload principal")
+	}
+	if hasBrowser && hasMachine {
+		if strings.EqualFold(browser.Header, machine.Header) {
+			return Config{}, errors.New("browser and machine modes require separate token headers")
+		}
+		if browser.Issuer == machine.Issuer && browser.Audience == machine.Audience {
+			return Config{}, errors.New("browser and machine modes from the same issuer require distinct audiences")
+		}
+	}
 	return cfg, nil
 }
 
