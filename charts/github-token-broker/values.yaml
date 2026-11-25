@@ -127,9 +127,10 @@ podDisruptionBudget:
 
 networkPolicy:
   enabled: true
-  # Callers of the plaintext HTTP listener (port 8080).
-  ingressNamespaces:
-    - ci
+  # Callers of the plaintext HTTP listener (port 8080). Empty grants port 8080
+  # to nobody, so a fresh install stays closed until the real consumer
+  # namespaces are listed.
+  ingressNamespaces: []
   # Callers of the native TLS listener, when server.tls.enabled is true. Kept
   # separate from ingressNamespaces so enabling TLS does not silently grant the
   # TLS port to every HTTP consumer (or vice versa). Empty grants it to nobody;

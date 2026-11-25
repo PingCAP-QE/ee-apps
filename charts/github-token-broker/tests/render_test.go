@@ -70,10 +70,10 @@ func mapping(value any, keys ...string) map[string]any {
 func TestRenderHTTPAndTLS(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		name := "HTTP default"
-		var settings []string
+		settings := []string{"networkPolicy.ingressNamespaces={ci}"}
 		if enabled {
 			name = "TLS custom keys and ports"
-			settings = []string{"server.tls.enabled=true", "server.tls.existingSecret=broker-tls", "server.tls.certKey=certificate", "server.tls.keyKey=privateKey", "server.tls.port=9443", "service.httpsPort=444", "networkPolicy.tlsIngressNamespaces={arc-runners}", "serviceMonitor.enabled=true"}
+			settings = append(settings, "server.tls.enabled=true", "server.tls.existingSecret=broker-tls", "server.tls.certKey=certificate", "server.tls.keyKey=privateKey", "server.tls.port=9443", "service.httpsPort=444", "networkPolicy.tlsIngressNamespaces={arc-runners}", "serviceMonitor.enabled=true")
 		}
 		t.Run(name, func(t *testing.T) {
 			objects, err := render(t, settings...)
@@ -164,9 +164,18 @@ func TestRenderHTTPAndTLS(t *testing.T) {
 }
 
 func TestNetworkPolicyScopesTLSPortSeparately(t *testing.T) {
+	// A fresh install must not admit anyone: both lists default to empty.
+	objects, err := render(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ingress := mapping(object(t, objects, "NetworkPolicy"), "spec")["ingress"]; ingress != nil {
+		t.Fatalf("default install admits ingress: %v", ingress)
+	}
+
 	// A plaintext consumer must not gain the TLS port just because the listener
 	// exists, and an empty TLS list must not fall back to "any namespace".
-	objects, err := render(t, "server.tls.enabled=true", "server.tls.existingSecret=broker-tls")
+	objects, err = render(t, "networkPolicy.ingressNamespaces={ci}", "server.tls.enabled=true", "server.tls.existingSecret=broker-tls")
 	if err != nil {
 		t.Fatal(err)
 	}
