@@ -1,0 +1,13 @@
+{
+  "source": "reviewed-grants",
+  "revision": "example-only",
+  "generated_at": "2026-11-25T00:00:00Z",
+  "complete": true,
+  "tuples": [
+    {
+      "user": "team:release#member",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.rerun"
+    }
+  ]
+}

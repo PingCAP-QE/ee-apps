@@ -1,8 +1,9 @@
 # authzd authorization core
 
 This module contains the versioned route registry, the proposed OpenFGA model
-v1, and the first `authzd` service implementation. It is not deployed or
-connected to production traffic. The ADRs and model still need owner approval;
+v1, the first `authzd` service implementation, and the one-shot relationship
+sync job. It is deployed in GCP without a Gateway attachment and receives no
+production traffic. The ADRs and model still need owner approval;
 the checked-in registry is a three-route TiBuild example, not a complete
 production policy. Do not attach Envoy routes to this service or enable
 `enforce` until the identity handoff, resource ownership source, model, and
@@ -48,6 +49,10 @@ body-based rules such as the sample create policy remain observe-only.
 `AUTHZD_GRPC_ADDR` defaults to `:9002`; `AUTHZD_PRIVATE_ADDR` defaults to
 `127.0.0.1:9003`.
 
+An ID that the trusted catalog does not contain denies with reason
+`resource_not_found`; only a catalog that cannot answer (unconfigured, backend
+failure) is a dependency error. Neither case falls back to the path or body.
+
 The service supports `off`, `observe`, `shadow`, and `enforce` semantics from
 the registry. `observe` and `shadow` record the authorization result but return
 allow so the existing authn/authz chain can continue. Use them only after
@@ -57,6 +62,23 @@ existing controls are verified to run before this filter. Dependency errors in
 Envoy route can only be reached through the verified Gateway.
 An optional `ContextPolicyEvaluator` hook accepts normalized, verified
 attributes for future ABAC rules; no OPA implementation is installed.
+
+## Relationship sync
+
+`cmd/tuple-sync` reconciles one reviewed snapshot into OpenFGA. It owns only the
+object types and relations passed as `--object-type` and `--relation`, deletes
+before it writes, refuses an incomplete snapshot, and refuses to empty its scope
+without `--allow-empty`. Run it once per reviewed change or from a scheduled job:
+
+```sh
+go run ./cmd/tuple-sync \
+  --snapshot ./policies/capability-grants.example.json \
+  --object-type capability --relation caller --dry-run
+```
+
+`--dry-run` reports the plan as `outcome="planned"` without writing. The metric
+and ownership contract, including which tuple families are still unimplemented,
+is in [`docs/authz/tuple-sync.md`](../docs/authz/tuple-sync.md).
 
 ## Registry
 
