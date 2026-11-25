@@ -34,8 +34,11 @@
       </p>
 
       <p>
-        <label for="ttl">TTL (seconds)</label><br>
-        <input id="ttl" name="ttl" type="number" min="1" max="604800" required value="{{.Form.TTL}}">
+        <label for="ttl">TTL</label><br>
+        <input id="ttl" name="ttl" maxlength="32" required value="{{.Form.TTL}}"
+               placeholder="2h30m">
+        <small>seconds or a duration such as <code>24h0m0s</code>,
+          <code>1h30m0s</code>, <code>30s</code>; max {{.MaxTTL}}</small>
       </p>
 
       <p>
