@@ -194,14 +194,14 @@ type ttlOption struct {
 }
 
 var ttlPresets = []struct{ value, label string }{
-	{"30m", "30 分钟"},
-	{"1h", "1 小时"},
-	{"2h", "2 小时"},
-	{"4h", "4 小时"},
-	{"8h", "8 小时"},
-	{"24h", "1 天（24 小时）"},
-	{"72h", "3 天（72 小时）"},
-	{"168h", "7 天（168 小时，上限）"},
+	{"30m", "30 minutes"},
+	{"1h", "1 hour"},
+	{"2h", "2 hours"},
+	{"4h", "4 hours"},
+	{"8h", "8 hours"},
+	{"24h", "24 hours (default)"},
+	{"72h", "72 hours"},
+	{"168h", "168 hours (max)"},
 }
 
 // ttlOptions lists the presets that fit under the configured maximum and marks
@@ -224,7 +224,7 @@ func ttlOptions(defaultSeconds, maxSeconds int64) []ttlOption {
 	}
 	if !selected && defaultSeconds > 0 && defaultSeconds <= maxSeconds {
 		value := (time.Duration(defaultSeconds) * time.Second).String()
-		out = append([]ttlOption{{Value: value, Label: "默认 " + value, Selected: true}}, out...)
+		out = append([]ttlOption{{Value: value, Label: "default (" + value + ")", Selected: true}}, out...)
 	}
 	return out
 }

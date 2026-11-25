@@ -43,8 +43,8 @@
         <input id="ttl_custom" name="ttl_custom" maxlength="32" value="{{.Form.TTLCustom}}"
                placeholder="customize: 1h30m / 90s">
         <br>
-        <small>自定义值优先；单位支持 <code>h</code>/<code>m</code>/<code>s</code>，
-          上限 {{.MaxTTL}}</small>
+        <small>The custom value overrides the selection; units
+          <code>h</code>/<code>m</code>/<code>s</code>, max {{.MaxTTL}}</small>
       </p>
 
       <p>
