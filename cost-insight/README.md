@@ -102,11 +102,20 @@ Tencent `_import_bill_day` page writes are also deferred: mutable pagination
 watermarks/counters and final evidence require a separate replay design. No
 `ping(reconnect=True)`, schema changes, or automatic failed-state resets are used.
 
-Warehouse `running`/`failed` latches still require **manual inspection and
-recovery**, including run ID, committed scopes, source snapshot and monetary
-checks; do not blindly rerun/clear a failed worker. These changes bound recovery
-from transport failures; they do not fix or establish a network/provider root
-cause. `pre_ping` checks checkout, not an active transaction.
+Warehouse workers resume validated `failed` checkpoints on their next invocation.
+An orphaned `running` checkpoint requires proof that its recorded Pod is gone,
+replaced, or terminal; a live/unknown owner is never displaced. Ownership is
+rechecked under the database lock after the Pod lookup. The recovery pass finishes
+the original window's unfinished account-days, including days now outside the
+normal rolling window; the following normal invocation continues rolling refresh.
+Each incomplete day repeats summary, attribution and publication checks before it
+is marked complete. Source/schema/currency/monetary guards remain in force: a
+persistent validation problem still fails instead of being silently accepted.
+Malformed or unprovable checkpoints still require operator attention; do not
+blindly clear state. See [checkpoint resume operations](docs/warehouse-resume-operations.md)
+for runtime permissions and deployment requirements. Transaction retries and
+checkpoint recovery do not fix or establish a network/provider root cause.
+`pre_ping` checks checkout, not an active transaction.
 
 Useful GCP settings:
 
