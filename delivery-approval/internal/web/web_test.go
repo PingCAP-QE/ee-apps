@@ -302,6 +302,58 @@ func TestParseTTL(t *testing.T) {
 	}
 }
 
+func TestFormPrefillsFromLegacyLink(t *testing.T) {
+	h := testHandler(t, newFakeStore(), &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	legacy := "https://prow.tidb.net/dl/oci-file/us-docker.pkg.dev/project/hub/package" +
+		"?file=tidb.tar.gz&file=tikv.tar.gz&tag=v8.5.4"
+	target := "/?from=" + url.QueryEscape(legacy)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, requestWithToken(http.MethodGet, target, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("form = %d", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		`value="us-docker.pkg.dev/project/hub/package"`,
+		`value="v8.5.4"`,
+		`tidb.tar.gz`,
+		`tikv.tar.gz`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("legacy prefill missing %q", want)
+		}
+	}
+}
+
+func TestExplicitParametersWinOverLegacyLink(t *testing.T) {
+	h := testHandler(t, newFakeStore(), &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	legacy := "https://prow.tidb.net/dl/oci-file/other.example.com/repo?file=b.tar.gz&tag=v2"
+	target := "/?repository=r.example.com/a&tag=v1&from=" + url.QueryEscape(legacy)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, requestWithToken(http.MethodGet, target, nil))
+	body := w.Body.String()
+	if !strings.Contains(body, `value="r.example.com/a"`) || !strings.Contains(body, `value="v1"`) {
+		t.Fatalf("explicit parameters must win: %s", body)
+	}
+	if !strings.Contains(body, "b.tar.gz") {
+		t.Fatalf("files from the legacy link should still be merged: %s", body)
+	}
+}
+
+func TestMalformedLegacyLinkIsIgnored(t *testing.T) {
+	h := testHandler(t, newFakeStore(), &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	for _, from := range []string{"://bad", "https://prow.tidb.net/dashboard/", ""} {
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, requestWithToken(http.MethodGet, "/?from="+url.QueryEscape(from), nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("from=%q → %d", from, w.Code)
+		}
+		if strings.Contains(w.Body.String(), `value="dashboard"`) {
+			t.Fatalf("from=%q must not prefill anything", from)
+		}
+	}
+}
+
 func TestFormAcceptsFriendlyTTL(t *testing.T) {
 	st := newFakeStore()
 	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})

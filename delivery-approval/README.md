@@ -131,6 +131,15 @@ by pointing it at the form:
 ```
 
 - `file` may repeat; `files` also accepts a newline- or comma-separated list.
+- `from` takes a whole legacy `/dl/oci-file/<repository>?file=…&tag=…` link and
+  maps it onto the fields, so internal staff can paste the URL they already have:
+
+  ```text
+  /dl/grants?from=https%3A%2F%2Fprow.tidb.net%2Fdl%2Foci-file%2Fus-docker.pkg.dev%2Fproject%2Fhub%2Fpackage%3Ffile%3Dtidb.tar.gz%26tag%3Dv8.5.4
+  ```
+
+  Explicit `repository`/`tag`/`file` parameters win; only the path shape is
+  used, nothing is fetched from the given URL.
 - `ttl` is **not** read from the query: it always starts at
   `default_ttl_seconds`. In the form it accepts seconds (`86400`) or a Go
   duration with hour/minute/second units (`24h`, `1m`, `30s`, `2h30m`), bounded

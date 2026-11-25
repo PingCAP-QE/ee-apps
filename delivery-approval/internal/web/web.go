@@ -224,8 +224,38 @@ func formValuesFromQuery(r *http.Request) formValues {
 		add(raw)
 	}
 	add(q.Get("files"))
+	// `from` takes a whole legacy /dl/oci-file/... link, so internal staff can
+	// paste the URL they already have instead of splitting it by hand. Explicit
+	// parameters win, and a malformed value is ignored.
+	applyLegacyLink(&values, add, strings.TrimSpace(q.Get("from")))
 	values.Files = strings.Join(files, "\n")
 	return values
+}
+
+// applyLegacyLink maps https://…/dl/oci-file/<repository>?file=<name>&tag=<tag>
+// onto the form fields. Only the shape is used; the host is irrelevant because
+// nothing is fetched from it.
+func applyLegacyLink(values *formValues, add func(string), raw string) {
+	if raw == "" {
+		return
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return
+	}
+	repository := strings.TrimPrefix(u.Path, "/dl/oci-file/")
+	if repository == u.Path || repository == "" {
+		return
+	}
+	if values.Repository == "" {
+		values.Repository = clip(repository, 512)
+	}
+	if values.Tag == "" {
+		values.Tag = clip(strings.TrimSpace(u.Query().Get("tag")), 128)
+	}
+	for _, name := range u.Query()["file"] {
+		add(name)
+	}
 }
 
 func clip(value string, limit int) string {
