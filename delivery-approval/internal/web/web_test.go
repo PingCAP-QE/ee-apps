@@ -558,9 +558,14 @@ func TestApproveReject(t *testing.T) {
 		t.Fatalf("transitions = %v", st.transitions)
 	}
 
+	// A second decision (double submit or a slower approver) is refused, but the
+	// caller is sent to the detail page instead of a bare conflict page.
 	w = postDecision(t, h, "req-1", "reject", "too late", nil)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("second decision = %d, want 409", w.Code)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("second decision = %d, want 303", w.Code)
+	}
+	if loc := w.Header().Get("Location"); !strings.Contains(loc, "notice=already-decided") {
+		t.Fatalf("location = %q", loc)
 	}
 }
 
@@ -675,8 +680,10 @@ func TestDecisionAndRevokeEdges(t *testing.T) {
 
 	st.requests["req-2"] = &store.Request{ID: "req-2", RequesterEmail: "requester@example.com", Status: store.StatusRejected}
 	requester := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
-	if w := postDecision(t, requester, "req-2", "revoke", "", nil); w.Code != http.StatusConflict {
-		t.Fatalf("revoke rejected = %d, want 409", w.Code)
+	if w := postDecision(t, requester, "req-2", "revoke", "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("revoke rejected = %d, want 303", w.Code)
+	} else if loc := w.Header().Get("Location"); !strings.Contains(loc, "notice=not-revocable") {
+		t.Fatalf("location = %q", loc)
 	}
 }
 
@@ -891,5 +898,21 @@ func TestApprovePatchesCards(t *testing.T) {
 	}
 	if updates[0].outcome != string(store.StatusApproved) || updates[0].actor != "approver@example.com" || updates[0].cards != 1 {
 		t.Fatalf("update = %+v", updates[0])
+	}
+}
+
+func TestDetailShowsNotice(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{
+		ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusApproved, TTLSeconds: 3600,
+	}
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, requestWithToken(http.MethodGet, "/requests/req-1?notice=already-decided", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("detail = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "This request was already handled") {
+		t.Fatalf("notice missing: %s", w.Body.String())
 	}
 }

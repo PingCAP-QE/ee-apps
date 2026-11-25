@@ -7,6 +7,9 @@
 </head>
 <body>
   <main>
+  {{- if .Notice}}
+    <p role="status"><strong>Note:</strong> {{.Notice}}</p>
+  {{- end}}
     <h1>Request {{.Request.ID}}</h1>
     <p><a href="{{.Base}}/requests">Back to my requests</a></p>
 
