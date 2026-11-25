@@ -73,6 +73,14 @@ func (f *fakeStore) ClearFileCiphertext(_ context.Context, fileID string) error 
 	}
 	return nil
 }
+func (f *fakeStore) SaveApprovalCards(context.Context, string, []store.ApprovalCard) error {
+	return nil
+}
+
+func (f *fakeStore) ListApprovalCards(context.Context, string) ([]store.ApprovalCard, error) {
+	return nil, nil
+}
+
 func (f *fakeStore) Close() error { return nil }
 
 type fakeIssuer struct {

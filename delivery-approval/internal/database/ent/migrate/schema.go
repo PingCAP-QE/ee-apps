@@ -9,6 +9,32 @@ import (
 )
 
 var (
+	// ApprovalCardsColumns holds the columns for the "approval_cards" table.
+	ApprovalCardsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeString, Size: 36},
+		{Name: "request_id", Type: field.TypeString, Size: 36},
+		{Name: "approver_email", Type: field.TypeString, Size: 320, Default: ""},
+		{Name: "message_id", Type: field.TypeString, Size: 128},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+	}
+	// ApprovalCardsTable holds the schema information for the "approval_cards" table.
+	ApprovalCardsTable = &schema.Table{
+		Name:       "approval_cards",
+		Columns:    ApprovalCardsColumns,
+		PrimaryKey: []*schema.Column{ApprovalCardsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "approvalcard_request_id",
+				Unique:  false,
+				Columns: []*schema.Column{ApprovalCardsColumns[1]},
+			},
+			{
+				Name:    "approvalcard_message_id",
+				Unique:  true,
+				Columns: []*schema.Column{ApprovalCardsColumns[3]},
+			},
+		},
+	}
 	// RequestsColumns holds the columns for the "requests" table.
 	RequestsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeString, Size: 36},
@@ -128,6 +154,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		ApprovalCardsTable,
 		RequestsTable,
 		RequestEventsTable,
 		RequestFilesTable,
@@ -135,6 +162,9 @@ var (
 )
 
 func init() {
+	ApprovalCardsTable.Annotation = &entsql.Annotation{
+		Table: "approval_cards",
+	}
 	RequestsTable.Annotation = &entsql.Annotation{
 		Table: "requests",
 	}

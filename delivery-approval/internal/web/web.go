@@ -51,7 +51,14 @@ type Deliverer interface {
 }
 
 type ApprovalNotifier interface {
-	NotifyApproval(ctx context.Context, req *store.Request) error
+	NotifyApproval(ctx context.Context, req *store.Request) ([]store.ApprovalCard, error)
+}
+
+// CardUpdater patches the approval cards that were already delivered, so an
+// approver does not open a card whose buttons no longer apply. Implementations
+// are best effort: a stale or recalled card must never fail a decision.
+type CardUpdater interface {
+	UpdateApprovalCards(ctx context.Context, req *store.Request, cards []store.ApprovalCard, outcome, actor, note string) error
 }
 
 type DecisionNotifier interface {
@@ -66,6 +73,7 @@ type Options struct {
 	Delivery         Deliverer
 	ApprovalNotifier ApprovalNotifier
 	DecisionNotifier DecisionNotifier
+	Cards            CardUpdater
 	Metrics          *metrics.Metrics
 	Logger           *log.Logger
 }
@@ -79,6 +87,7 @@ type handler struct {
 	delivery         Deliverer
 	approvalNotifier ApprovalNotifier
 	decisionNotifier DecisionNotifier
+	cards            CardUpdater
 	logger           *log.Logger
 	tmpl             *template.Template
 	mux              *http.ServeMux
@@ -98,6 +107,7 @@ func New(opts Options) http.Handler {
 		delivery:         opts.Delivery,
 		approvalNotifier: opts.ApprovalNotifier,
 		decisionNotifier: opts.DecisionNotifier,
+		cards:            opts.Cards,
 		logger:           logger,
 		tmpl:             template.Must(template.ParseFS(templateFS, "templates/*.html")),
 	}
@@ -285,13 +295,20 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		h.metrics.Created.Add(1)
 	}
 	if h.approvalNotifier != nil {
-		go func(id string) {
+		go func(req *store.Request) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if err := h.approvalNotifier.NotifyApproval(ctx, req); err != nil {
-				h.logger.Printf("approval notification failed request=%s", id)
+			cards, err := h.approvalNotifier.NotifyApproval(ctx, req)
+			if err != nil {
+				h.logger.Printf("approval notification failed request=%s", req.ID)
 			}
-		}(req.ID)
+			if len(cards) == 0 {
+				return
+			}
+			if err := h.store.SaveApprovalCards(ctx, req.ID, cards); err != nil {
+				h.logger.Printf("approval card persist failed request=%s", req.ID)
+			}
+		}(req)
 	}
 	http.Redirect(w, r, h.basePath()+"/requests/"+req.ID, http.StatusSeeOther)
 }
@@ -407,7 +424,8 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 		http.Error(w, "note is too long", http.StatusBadRequest)
 		return
 	}
-	ok, err := h.store.Transition(r.Context(), req.ID, store.StatusPending, to, identity.Email, note, now())
+	decidedAt := now()
+	ok, err := h.store.Transition(r.Context(), req.ID, store.StatusPending, to, identity.Email, note, decidedAt)
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
@@ -417,6 +435,11 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 		http.Error(w, "request was already decided", http.StatusConflict)
 		return
 	}
+	req.Status = to
+	req.DecidedAt = &decidedAt
+	req.ApproverEmail = identity.Email
+	req.DecisionNote = note
+	h.updateCards(req, string(to), identity.Email, note)
 	if h.metrics != nil {
 		if to == store.StatusApproved {
 			h.metrics.Approved.Add(1)
@@ -477,7 +500,8 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wasApproved := req.Status == store.StatusApproved
-	ok, err := h.store.Transition(r.Context(), req.ID, req.Status, store.StatusRevoked, identity.Email, "", now())
+	decidedAt := now()
+	ok, err := h.store.Transition(r.Context(), req.ID, req.Status, store.StatusRevoked, identity.Email, "", decidedAt)
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
@@ -487,6 +511,10 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "request was already decided", http.StatusConflict)
 		return
 	}
+	req.Status = store.StatusRevoked
+	req.DecidedAt = &decidedAt
+	req.ApproverEmail = identity.Email
+	h.updateCards(req, string(store.StatusRevoked), identity.Email, "")
 	if wasApproved && h.revoker != nil {
 		for _, file := range req.Files {
 			if file.ShareID == "" {
@@ -507,6 +535,30 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 		}(req)
 	}
 	http.Redirect(w, r, h.basePath()+"/requests/"+req.ID, http.StatusSeeOther)
+}
+
+// updateCards patches the cards that announced the request. It runs in the
+// background: a stale card must never block or fail the decision.
+func (h *handler) updateCards(req *store.Request, outcome, actor, note string) {
+	if h.cards == nil {
+		return
+	}
+	snapshot := *req
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cards, err := h.store.ListApprovalCards(ctx, snapshot.ID)
+		if err != nil {
+			h.logger.Printf("approval cards lookup failed request=%s", snapshot.ID)
+			return
+		}
+		if len(cards) == 0 {
+			return
+		}
+		if err := h.cards.UpdateApprovalCards(ctx, &snapshot, cards, outcome, actor, note); err != nil {
+			h.logger.Printf("approval card update failed request=%s", snapshot.ID)
+		}
+	}()
 }
 
 func (h *handler) render(w http.ResponseWriter, name string, data pageData) {

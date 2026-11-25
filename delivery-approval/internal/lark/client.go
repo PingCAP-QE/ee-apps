@@ -56,72 +56,52 @@ func NewDefault(appID, appSecret, chatID string, cfg *config.Manager, buzz bool,
 	return New(api, chatID, cfg, buzz, logger)
 }
 
-// NotifyApproval posts a notification-only card and optionally buzzes the
-// configured approvers. Approval itself happens in the browser; this method
-// never carries a download token.
-func (c *Client) NotifyApproval(ctx context.Context, req *store.Request) error {
-	link := strings.TrimSuffix(c.config.Current().PublicURL, "/") + "/requests/" + req.ID
-	card := map[string]any{
-		"config": map[string]any{"wide_screen_mode": true},
-		"header": map[string]any{
-			"title": map[string]string{"tag": "plain_text", "content": "Delivery request pending approval"},
-		},
-		"elements": []any{
-			map[string]any{
-				"tag": "div",
-				"text": map[string]string{
-					"tag": "plain_text",
-					"content": fmt.Sprintf("Requester: %s\nRepository: %s\nTag: %s\nFiles: %s\nTTL: %d seconds\nNote: %s",
-						req.RequesterEmail, firstFile(req).Repository, firstFile(req).Tag, fileNames(req), req.TTLSeconds, req.Note),
-				},
-			},
-			map[string]any{
-				"tag": "action",
-				"actions": []any{map[string]any{
-					"tag":  "button",
-					"type": "primary",
-					"text": map[string]string{"tag": "plain_text", "content": "Review and approve"},
-					"url":  link,
-				}},
-			},
-		},
-	}
+// NotifyApproval posts a notification-only card and returns the ids of the
+// cards it created, so they can be patched once the request is decided.
+// Approval itself happens in the browser; no download token is ever included.
+func (c *Client) NotifyApproval(ctx context.Context, req *store.Request) ([]store.ApprovalCard, error) {
+	card := pendingCard(c.config.Current().PublicURL, req)
 	content, err := json.Marshal(card)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if c.chatID == "" {
 		// No shared approval group: deliver the card to each approver's DM.
-		openIDs := c.openIDsFor(ctx, c.config.Current().ApproverEmails)
-		if len(openIDs) == 0 {
-			return errors.New("no approver open_id")
+		targets := c.approverTargets(ctx, c.config.Current().ApproverEmails)
+		if len(targets) == 0 {
+			return nil, errors.New("no approver open_id")
 		}
+		cards := make([]store.ApprovalCard, 0, len(targets))
 		failed := 0
-		for _, openID := range openIDs {
-			if _, err := c.send(ctx, larkim.ReceiveIdTypeOpenId, openID, "interactive", string(content)); err != nil {
+		for _, target := range targets {
+			messageID, err := c.send(ctx, larkim.ReceiveIdTypeOpenId, target.openID, "interactive", string(content))
+			if err != nil {
 				// Attempt every approver. A partial failure is logged and does
 				// not fail the request; only a total failure is an error.
 				failed++
+				continue
 			}
+			cards = append(cards, store.ApprovalCard{ApproverEmail: target.email, MessageID: messageID})
 		}
-		if failed == len(openIDs) {
-			return errors.New("failed to send approval DM to every approver")
+		if failed == len(targets) {
+			return nil, errors.New("failed to send approval DM to every approver")
 		}
 		if failed > 0 {
-			c.logger.Printf("lark approval DM partial failure request=%s failed=%d/%d", req.ID, failed, len(openIDs))
+			c.logger.Printf("lark approval DM partial failure request=%s failed=%d/%d", req.ID, failed, len(targets))
 		}
-		return nil
+		return cards, nil
 	}
 	messageID, err := c.send(ctx, larkim.ReceiveIdTypeChatId, c.chatID, "interactive", string(content))
 	if err != nil {
-		return err
+		return nil, err
 	}
+	cards := []store.ApprovalCard{{MessageID: messageID}}
 	if !c.buzz {
-		return nil
+		return cards, nil
 	}
 	openIDs := c.openIDsFor(ctx, c.config.Current().ApproverEmails)
 	if len(openIDs) == 0 {
-		return nil
+		return cards, nil
 	}
 	urgent, err := c.api.Im.Message.UrgentApp(ctx, larkim.NewUrgentAppMessageReqBuilder().
 		MessageId(messageID).
@@ -132,6 +112,38 @@ func (c *Client) NotifyApproval(ctx context.Context, req *store.Request) error {
 		// A buzz failure must not change the request state; the card is already
 		// delivered and the pending list is the fallback.
 		c.logger.Printf("lark urgent app failed request=%s", req.ID)
+	}
+	return cards, nil
+}
+
+// UpdateApprovalCards patches the cards that announced a request to their
+// decided state. It is best effort: Lark only patches cards sent in the last
+// 14 days, a card may have been recalled, and a failed patch must never change
+// the decision. At least one successful patch is enough.
+func (c *Client) UpdateApprovalCards(ctx context.Context, req *store.Request, cards []store.ApprovalCard, outcome, actor, note string) error {
+	if len(cards) == 0 {
+		return nil
+	}
+	content, err := json.Marshal(decidedCard(c.config.Current().PublicURL, req, outcome, actor, note))
+	if err != nil {
+		return err
+	}
+	failed := 0
+	for _, card := range cards {
+		if card.MessageID == "" {
+			continue
+		}
+		resp, err := c.api.Im.Message.Patch(ctx, larkim.NewPatchMessageReqBuilder().
+			MessageId(card.MessageID).
+			Body(larkim.NewPatchMessageReqBodyBuilder().Content(string(content)).Build()).
+			Build())
+		if err != nil || !resp.Success() {
+			failed++
+			c.logger.Printf("lark card update failed request=%s", req.ID)
+		}
+	}
+	if failed == len(cards) {
+		return errors.New("failed to update every approval card")
 	}
 	return nil
 }
@@ -231,6 +243,28 @@ func (c *Client) openIDsFor(ctx context.Context, emails []string) []string {
 		if id := c.openIDs[strings.ToLower(strings.TrimSpace(email))]; id != "" {
 			out = append(out, id)
 		}
+	}
+	c.mu.Unlock()
+	return out
+}
+
+// target pairs an approver email with its open id so a sent card can be
+// attributed to the approver who received it.
+type target struct {
+	email  string
+	openID string
+}
+
+func (c *Client) approverTargets(ctx context.Context, emails []string) []target {
+	c.openIDsFor(ctx, emails)
+	out := make([]target, 0, len(emails))
+	c.mu.Lock()
+	for _, email := range emails {
+		key := strings.ToLower(strings.TrimSpace(email))
+		if key == "" || c.openIDs[key] == "" {
+			continue
+		}
+		out = append(out, target{email: key, openID: c.openIDs[key]})
 	}
 	c.mu.Unlock()
 	return out

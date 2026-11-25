@@ -27,6 +27,9 @@ func testTiDB(t *testing.T) *TiDB {
 		t.Fatal(err)
 	}
 	// The CI database is disposable; keep each test independent.
+	if _, err := st.client.ApprovalCard.Delete().Exec(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := st.client.RequestEvent.Delete().Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -248,5 +251,40 @@ func TestListExpiredAndTransitionEvent(t *testing.T) {
 		Count(ctx)
 	if err != nil || count != 1 {
 		t.Fatalf("expired events = %d, err = %v", count, err)
+	}
+}
+
+func TestApprovalCardsRoundTrip(t *testing.T) {
+	st := testTiDB(t)
+	ctx := context.Background()
+	req := &Request{
+		RequesterEmail: "requester@example.com",
+		Status:         StatusPending,
+		TTLSeconds:     3600,
+		Files:          []File{{Repository: "r.example.com/a", Tag: "v1", Filename: "a.tar.gz"}},
+	}
+	if err := st.CreateRequest(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	cards := []ApprovalCard{
+		{ApproverEmail: "one@example.com", MessageID: "om-1"},
+		{ApproverEmail: "two@example.com", MessageID: "om-2"},
+	}
+	if err := st.SaveApprovalCards(ctx, req.ID, cards); err != nil {
+		t.Fatal(err)
+	}
+	// A retried notification repeats the same message ids and must not fail.
+	if err := st.SaveApprovalCards(ctx, req.ID, cards); err != nil {
+		t.Fatalf("duplicate save: %v", err)
+	}
+	got, err := st.ListApprovalCards(ctx, req.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].MessageID != "om-1" || got[1].ApproverEmail != "two@example.com" {
+		t.Fatalf("cards = %+v", got)
+	}
+	if got, err := st.ListApprovalCards(ctx, "missing"); err != nil || len(got) != 0 {
+		t.Fatalf("missing request = %+v, %v", got, err)
 	}
 }

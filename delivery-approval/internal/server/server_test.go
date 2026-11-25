@@ -45,7 +45,15 @@ func (f *fakeStore) AppendEvent(context.Context, *store.Event) error            
 func (f *fakeStore) SetFileShare(context.Context, string, string, []byte) error { return nil }
 func (f *fakeStore) SaveFileCiphertext(context.Context, string, []byte) error   { return nil }
 func (f *fakeStore) ClearFileCiphertext(context.Context, string) error          { return nil }
-func (f *fakeStore) Close() error                                               { return nil }
+func (f *fakeStore) SaveApprovalCards(context.Context, string, []store.ApprovalCard) error {
+	return nil
+}
+
+func (f *fakeStore) ListApprovalCards(context.Context, string) ([]store.ApprovalCard, error) {
+	return nil, nil
+}
+
+func (f *fakeStore) Close() error { return nil }
 
 func TestProbes(t *testing.T) {
 	m := &metrics.Metrics{}

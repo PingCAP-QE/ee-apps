@@ -6,6 +6,9 @@ import (
 	"entgo.io/ent/dialect/sql"
 )
 
+// ApprovalCard is the predicate function for approvalcard builders.
+type ApprovalCard func(*sql.Selector)
+
 // Request is the predicate function for request builders.
 type Request func(*sql.Selector)
 
