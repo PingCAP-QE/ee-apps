@@ -144,9 +144,9 @@ The form asks for a target block: one line per file, whitespace separated, up to
 covers exactly the list that was submitted.
 
 ```text
-us-docker.pkg.dev/project/hub/package     v8.5.4 tidb.tar.gz
-us-docker.pkg.dev/project/hub/package     v8.5.4 tikv.tar.gz
-us-docker.pkg.dev/project/hotfix/package  v8.5.4 tikv-hotfix.tar.gz
+registry.example.com/project/hub/package      v8.5.4  tidb.tar.gz
+registry.example.com/project/hub/package      v8.5.4  tikv.tar.gz
+registry.example.com/project/hotfix/package   v8.5.4  tikv-hotfix.tar.gz
 ```
 
 Every line is validated on its own (`repository`, `tag`, `filename`), an error
@@ -159,8 +159,8 @@ The form can also be prefilled from the query string, which lets an existing
 by pointing it at the form:
 
 ```text
-/dl/grants?repository=us-docker.pkg.dev/project/hub/package&tag=v8.5.4
-           &file=tidb.tar.gz&file=tikv.tar.gz&note=customer%20asked
+<public_url path>?repository=registry.example.com/project/hub/package&tag=v8.5.4
+                 &file=tidb.tar.gz&file=tikv.tar.gz&note=customer%20asked
 ```
 
 - `file` may repeat; `files` also accepts a newline- or comma-separated list.
