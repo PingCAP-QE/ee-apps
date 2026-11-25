@@ -26,6 +26,12 @@ type startupWriter struct {
 	once    sync.Once
 }
 
+func (w *startupWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buffer.String()
+}
+
 func (w *startupWriter) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	n, err := w.buffer.Write(p)
@@ -87,6 +93,9 @@ func TestRunContextStartsPrivateListenersAndShutsDown(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("authzd listeners did not start")
 	}
+	if !strings.Contains(writer.String(), `"decision_mode":"enforce"`) {
+		t.Fatalf("startup log does not report the decision mode: %s", writer.String())
+	}
 	cancel()
 	select {
 	case err := <-result:
@@ -95,6 +104,14 @@ func TestRunContextStartsPrivateListenersAndShutsDown(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("authzd did not shut down after context cancellation")
+	}
+}
+
+func TestRunContextRejectsUnknownDecisionMode(t *testing.T) {
+	values := map[string]string{"AUTHZD_DECISION_MODE": "allow"}
+	logger := slog.New(slog.NewJSONHandler(new(bytes.Buffer), nil))
+	if err := runContext(context.Background(), logger, func(name string) string { return values[name] }); err == nil {
+		t.Fatal("runContext() accepted an unknown decision mode")
 	}
 }
 

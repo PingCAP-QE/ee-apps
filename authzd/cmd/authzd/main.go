@@ -89,7 +89,8 @@ func runContext(ctx context.Context, logger *slog.Logger, getenv func(string) st
 		verifiers[mode] = decision.Credential{Header: credential.Header, Verifier: verifier}
 	}
 	audit := observability.NewRecorder(logger)
-	authorizer := decision.NewAuthorizer(policyRegistry, verifiers, resourceResolver, checker, audit)
+	authorizer := decision.NewAuthorizer(policyRegistry, verifiers, resourceResolver, checker, audit).
+		WithDecisionMode(cfg.DecisionMode)
 	grpcListener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {
 		return fmt.Errorf("listen for ext_authz: %w", err)
@@ -109,7 +110,9 @@ func runContext(ctx context.Context, logger *slog.Logger, getenv func(string) st
 	errorsFromServers := make(chan error, 2)
 	go func() { errorsFromServers <- grpcServer.Serve(grpcListener) }()
 	go func() { errorsFromServers <- privateServer.Serve(privateListener) }()
-	logger.Info("authzd listeners started", "grpc_address", cfg.GRPCAddress, "private_address", cfg.PrivateAddress)
+	logger.Info("authzd listeners started",
+		"grpc_address", cfg.GRPCAddress, "private_address", cfg.PrivateAddress,
+		"decision_mode", cfg.DecisionMode)
 	select {
 	case <-ctx.Done():
 	case err := <-errorsFromServers:

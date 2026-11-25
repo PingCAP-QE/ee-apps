@@ -27,6 +27,7 @@ type Config struct {
 	OpenFGAStoreID  string
 	OpenFGAModelID  string
 	OpenFGAAPIToken string
+	DecisionMode    string
 	Credentials     map[string]Credential
 }
 
@@ -40,6 +41,7 @@ func Load(getenv func(string) string) (Config, error) {
 		OpenFGAStoreID:  getenv("AUTHZD_OPENFGA_STORE_ID"),
 		OpenFGAModelID:  getenv("AUTHZD_OPENFGA_MODEL_ID"),
 		OpenFGAAPIToken: getenv("AUTHZD_OPENFGA_API_TOKEN"),
+		DecisionMode:    defaultValue(getenv("AUTHZD_DECISION_MODE"), "enforce"),
 	}
 	credentialsJSON := getenv("AUTHZD_CREDENTIAL_MODES")
 	if strings.TrimSpace(credentialsJSON) != "" {
@@ -51,6 +53,11 @@ func Load(getenv func(string) string) (Config, error) {
 		if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
 			return Config{}, errors.New("AUTHZD_CREDENTIAL_MODES must contain one JSON object")
 		}
+	}
+	switch cfg.DecisionMode {
+	case "off", "observe", "shadow", "enforce":
+	default:
+		return Config{}, errors.New("AUTHZD_DECISION_MODE must be off, observe, shadow, or enforce")
 	}
 	if cfg.RegistryPath == "" || cfg.OpenFGAURL == "" || cfg.OpenFGAStoreID == "" || cfg.OpenFGAModelID == "" || len(cfg.Credentials) == 0 {
 		return Config{}, errors.New("registry, OpenFGA endpoint/store/model, and credential modes are required")
