@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date, timedelta
 from typing import Any
 
@@ -49,15 +49,11 @@ from ci_dashboard.api.queries.failures import (
 from ci_dashboard.api.queries.filters import list_repos
 from ci_dashboard.api.queries.flaky import (
     get_distinct_flaky_case_counts_by_branch,
-    get_flaky_bucketed_rate_view,
-    get_flaky_composition,
+    get_flaky_chart_sections,
     get_flaky_period_comparison,
     get_flaky_top_jobs,
-    get_flaky_trend,
     get_issue_filtered_weekly_case_rates,
-    get_issue_fix_progress_snapshot,
-    get_issue_lifecycle_snapshot,
-    get_issue_lifecycle_weekly,
+    get_issue_lifecycle_sections,
 )
 from ci_dashboard.api.queries.runtime import (
     get_classification_coverage,
@@ -154,16 +150,6 @@ def get_build_trend_page(engine: Engine, filters: CommonFilters) -> dict[str, An
 def get_flaky_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
     previous_start, previous_end = _get_previous_date_range(filters)
     build_scope_filters = filters.without_issue_status()
-    build_scope_filters_weekly = CommonFilters(
-        repo=build_scope_filters.repo,
-        branch=build_scope_filters.branch,
-        job_name=build_scope_filters.job_name,
-        cloud_phase=build_scope_filters.cloud_phase,
-        issue_status=None,
-        start_date=build_scope_filters.start_date,
-        end_date=build_scope_filters.end_date,
-        granularity="week",
-    )
     sections = _resolve_page_sections(
         engine,
         {
@@ -171,16 +157,9 @@ def get_flaky_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
                 engine,
                 filters,
             ),
-            "issue_fix_progress": lambda: get_issue_fix_progress_snapshot(engine, filters),
-            "issue_lifecycle": lambda: get_issue_lifecycle_snapshot(engine, filters),
-            "issue_lifecycle_weekly": lambda: get_issue_lifecycle_weekly(engine, filters),
+            "issue_sections": lambda: get_issue_lifecycle_sections(engine, filters),
             "issue_case_rates": lambda: get_issue_filtered_weekly_case_rates(engine, filters),
-            "trend": lambda: get_flaky_trend(engine, build_scope_filters),
-            "composition": lambda: get_flaky_composition(engine, build_scope_filters_weekly),
-            "bucketed_flaky_rate": lambda: get_flaky_bucketed_rate_view(
-                engine,
-                build_scope_filters,
-            ),
+            "chart_sections": lambda: get_flaky_chart_sections(engine, build_scope_filters),
             "top_jobs": lambda: get_flaky_top_jobs(engine, build_scope_filters, limit=8),
             "failure_category_share": lambda: get_failure_category_share(
                 engine,
@@ -208,8 +187,14 @@ def get_flaky_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
         }
     )
     issue_case_rates = sections.pop("issue_case_rates")
+    distinct_cases = sections.pop("distinct_flaky_case_counts")
+    issue_sections = sections.pop("issue_sections")
+    chart_sections = sections.pop("chart_sections")
     return {
         "scope": filters.meta(),
+        "distinct_flaky_case_counts": distinct_cases,
+        **issue_sections,
+        **chart_sections,
         **sections,
         "issue_case_weekly_rates": {
             "weeks": issue_case_rates["weeks"],
@@ -384,6 +369,31 @@ def _resolve_page_sections(
     if engine.dialect.name == "sqlite" or len(tasks) <= 1:
         return {name: task() for name, task in tasks.items()}
 
-    with ThreadPoolExecutor(max_workers=min(len(tasks), 4)) as executor:
-        futures = {name: executor.submit(task) for name, task in tasks.items()}
-        return {name: future.result() for name, future in futures.items()}
+    max_workers = min(len(tasks), 4)
+    remaining = iter(tasks.items())
+    results: dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        pending = {}
+
+        def submit_next() -> None:
+            entry = next(remaining, None)
+            if entry is not None:
+                name, task = entry
+                pending[executor.submit(task)] = name
+
+        try:
+            for _ in range(max_workers):
+                submit_next()
+            while pending:
+                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                # Check the entire completed batch before submitting replacements.
+                for future in done:
+                    results[pending.pop(future)] = future.result()
+                for _ in done:
+                    submit_next()
+        except BaseException:
+            for future in pending:
+                future.cancel()
+            # Context exit waits for already-running SQL to clean up normally.
+            raise
+    return {name: results[name] for name in tasks}

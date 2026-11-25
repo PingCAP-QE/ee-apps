@@ -178,6 +178,9 @@ export function useApiData(path, params = {}, enabled = true) {
 
     fetchJson(path, params, controller.signal)
       .then((data) => {
+        if (controller.signal.aborted) {
+          return;
+        }
         setState({
           data,
           loading: false,

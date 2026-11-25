@@ -151,15 +151,25 @@ function SnapshotProgressCard({ title, subtitle, tone = "default", items, loadin
 }
 
 export default function FlakyPage({ filters }) {
+  const pageRequestKey = JSON.stringify(filters);
   const pageRequest = useApiData("/api/v1/pages/flaky", filters);
   const page = {
     ...pageRequest,
-    loading: pageRequest.loading || pageRequest.responseKey !== JSON.stringify(filters),
+    loading: pageRequest.loading || pageRequest.responseKey !== pageRequestKey,
   };
-  const topCasesRequest = useApiData("/api/v1/flaky/top-cases", filters);
+  // The reported-case ranking ignores issue status and chart bucket granularity.
+  const topCaseFilters = {
+    repo: filters.repo,
+    branch: filters.branch,
+    job_name: filters.job_name,
+    cloud_phase: filters.cloud_phase,
+    start_date: filters.start_date,
+    end_date: filters.end_date,
+  };
+  const topCasesRequest = useApiData("/api/v1/flaky/top-cases", topCaseFilters);
   const topCases = {
     ...topCasesRequest,
-    loading: topCasesRequest.loading || topCasesRequest.responseKey !== JSON.stringify(filters),
+    loading: topCasesRequest.loading || topCasesRequest.responseKey !== JSON.stringify(topCaseFilters),
   };
   const topCasesMeta = topCases.data?.meta;
   const topCasesTitle = topCasesMeta?.limit ? `Top ${topCasesMeta.limit} flaky cases` : "Top flaky cases";
@@ -170,7 +180,10 @@ export default function FlakyPage({ filters }) {
       ? `Expand a row for the latest ${topCasesMeta.build_links_per_case} build or workflow-run URLs.`
       : null,
   ].filter(Boolean).join(" ");
-  const [selectedBucketTime, setSelectedBucketTime] = useState(null);
+  const [selectedBucket, setSelectedBucket] = useState(null);
+  // Ignore a prior scope synchronously, before effects can fire a mixed-scope request.
+  const selectedBucketTime = selectedBucket?.requestKey === pageRequestKey ? selectedBucket.time : null;
+  const setSelectedBucketTime = (time) => setSelectedBucket(time ? { time, requestKey: pageRequestKey } : null);
   const showPanelActions = !page.loading && !page.error;
   const currentPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_a")?.values;
   const previousPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_b")?.values;
@@ -202,7 +215,9 @@ export default function FlakyPage({ filters }) {
   const bucketedFlakyRateMeta = bucketedFlakyRate.meta || {};
   const bucketedFlakyRateSubtitle = buildBucketedFlakyRateSubtitle(bucketedFlakyRateMeta);
   const bucketedFlakyRateAxisMax = buildCenteredPercentAxisMax(bucketedFlakyRateRows);
-  const selectedBucketRange = resolveSelectedBucketRange(selectedBucketTime, bucketedFlakyRateMeta);
+  const selectedBucketRange = !page.loading && !page.error
+    ? resolveSelectedBucketRange(selectedBucketTime, bucketedFlakyRateMeta)
+    : null;
   const bucketTopJobFilters = selectedBucketRange
     ? {
         repo: filters.repo,
@@ -228,13 +243,13 @@ export default function FlakyPage({ filters }) {
   const topJobsSubtitle = buildTopJobsSubtitle(selectedBucketRange);
 
   useEffect(() => {
-    if (!selectedBucketTime) {
-      return;
+    if (selectedBucket && (
+      selectedBucket.requestKey !== pageRequestKey
+      || (!page.loading && !bucketedFlakyRateRows.some((row) => row.time === selectedBucket.time))
+    )) {
+      setSelectedBucket(null);
     }
-    if (!bucketedFlakyRateRows.some((row) => row.time === selectedBucketTime)) {
-      setSelectedBucketTime(null);
-    }
-  }, [bucketedFlakyRateRows, selectedBucketTime]);
+  }, [bucketedFlakyRateRows, selectedBucket, pageRequestKey, page.loading]);
 
   return (
     <div className="page-stack">

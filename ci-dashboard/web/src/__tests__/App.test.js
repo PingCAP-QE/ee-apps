@@ -397,9 +397,10 @@ test("top cases load independently, follow global filters and sit below Scope sw
       await Promise.resolve();
     });
     const request = requests.find((r) => r.pathname === "/api/v1/flaky/top-cases");
-    for (const [key, value] of Object.entries(filters)) {
-      assert.equal(request.searchParams.get(key), value);
+    for (const key of ["repo", "branch", "start_date", "end_date", "job_name", "cloud_phase"]) {
+      assert.equal(request.searchParams.get(key), filters[key]);
     }
+    assert.equal(request.searchParams.get("issue_status"), null);
     let rendered = JSON.stringify(renderer.toJSON());
     assert.match(rendered, /503 Unavailable/);
     assert.match(rendered, /ReleaseCase/);
