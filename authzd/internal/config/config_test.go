@@ -80,14 +80,53 @@ func TestBrowserAndMachineTrustDomains(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err = Load(func(name string) string {
-				if name == "AUTHZD_CREDENTIAL_MODES" {
+				switch name {
+				case "AUTHZD_CREDENTIAL_MODES":
 					return string(raw)
+				case "AUTHZD_DECISION_MODE":
+					return ""
+				default:
+					return "configured"
 				}
-				return "configured"
 			})
 			if (err == nil) != tc.valid {
 				t.Fatalf("Load error = %v, want valid=%t", err, tc.valid)
 			}
 		})
+	}
+}
+
+func TestLoadDecisionMode(t *testing.T) {
+	base := map[string]string{
+		"AUTHZD_REGISTRY_PATH":    "/etc/authzd/registry.json",
+		"AUTHZD_OPENFGA_URL":      "http://openfga:8080",
+		"AUTHZD_OPENFGA_STORE_ID": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+		"AUTHZD_OPENFGA_MODEL_ID": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+		"AUTHZD_CREDENTIAL_MODES": `{"machine":{"header":"authorization","jwks_url":"https://issuer.example/jwks","issuer":"https://issuer.example","audience":"authzd","principal_prefix":"workload:gcp/project/"}}`,
+	}
+	get := func(name string) string { return base[name] }
+
+	cfg, err := Load(get)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DecisionMode != "enforce" {
+		t.Fatalf("default DecisionMode = %q, want enforce", cfg.DecisionMode)
+	}
+	for _, mode := range []string{"off", "observe", "shadow", "enforce"} {
+		base["AUTHZD_DECISION_MODE"] = mode
+		cfg, err := Load(get)
+		if err != nil {
+			t.Fatalf("Load(mode=%q) error = %v", mode, err)
+		}
+		if cfg.DecisionMode != mode {
+			t.Fatalf("DecisionMode = %q, want %q", cfg.DecisionMode, mode)
+		}
+	}
+	for _, mode := range []string{"allow", "ON", "Enforce ", "disabled"} {
+		base["AUTHZD_DECISION_MODE"] = mode
+		if _, err := Load(get); err == nil {
+			t.Fatalf("Load() accepted decision mode %q", mode)
+		}
 	}
 }

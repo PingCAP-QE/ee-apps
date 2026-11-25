@@ -53,10 +53,25 @@ An ID that the trusted catalog does not contain denies with reason
 `resource_not_found`; only a catalog that cannot answer (unconfigured, backend
 failure) is a dependency error. Neither case falls back to the path or body.
 
-The service supports `off`, `observe`, `shadow`, and `enforce` semantics from
-the registry. `observe` and `shadow` record the authorization result but return
-allow so the existing authn/authz chain can continue. Use them only after
-existing controls are verified to run before this filter. Dependency errors in
+`AUTHZD_DECISION_MODE` bounds the strength of every response and defaults to
+`enforce`:
+
+| Mode | Behaviour |
+| --- | --- |
+| `off` | Allow everything. No decision is recorded. |
+| `observe` / `shadow` | Allow every request and record the decision that `enforce` would have made, including `route_not_registered`, identity, resolver, OpenFGA and context-policy failures. |
+| `enforce` | Rule modes decide; an unmatched route denies. |
+
+Use `observe` when attaching `extAuth` to a live route for the first time: with
+`enforce`, a route the registry does not list yet is denied for every path it
+serves. At this service `shadow` and `observe` are identical, because Envoy only
+reaches the ext_authz filter after its own authentication passed; the
+distinction is which traffic reaches the filter, not how the decision is made.
+
+Each rule in the registry also carries `off`, `observe`, `shadow`, or `enforce`; a
+weaker global mode wins over a stronger rule mode, and rule modes only decide
+when the global mode is `enforce`. Use them only after existing controls are
+verified to run before this filter. Dependency errors in
 `enforce` return a gRPC error and must be paired with Envoy
 `failure_mode_allow: false`. This service does not yet prove that any live
 Envoy route can only be reached through the verified Gateway.
