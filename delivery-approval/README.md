@@ -10,6 +10,10 @@ Delivery approval service for the `dl` capability links. It owns:
 `dl` stays the low-level capability service. This module talks to it over HTTP;
 it does not import `dl` and does not share its database.
 
+The operator runbook — request lifecycle, approval/revocation, audit queries,
+log fields and the Lark/TiDB/`dl` degradation paths — is
+[`docs/approval.md`](docs/approval.md).
+
 ## Phase 1 scope
 
 This phase adds the service skeleton, configuration and storage:
