@@ -12,13 +12,21 @@ view (configuration, layout, design notes).
 
 ## Surfaces
 
-| URL | Who | Notes |
+Hosts are deliberately not repeated here: the browser-facing base is whatever
+`public_url` says, the in-cluster `dl` origin is `dl_base_url`, and the anonymous
+download origin belongs to the `dl` deployment.
+
+| Surface (relative to the base above) | Who | Notes |
 | --- | --- | --- |
-| `https://prow.tidb.net/dl/grants` | any `@pingcap.com` employee | OIDC-protected form; the only public surface |
-| `https://prow.tidb.net/dl/grants/pending` | approvers | pending queue |
-| `https://prow.tidb.net/dl/grants/requests/<id>` | requester and approvers | detail, approve/reject/revoke |
-| `dl-management.dl.svc:80/api/v1/shares` | this service only | issuer `delivery-approval` |
-| `dl.pingcap.net/d/<token>` | nobody logged in | the anonymous link handed to the customer |
+| `public_url` + `/` | any employee whose email domain is in `allowed_email_domains` | OIDC-protected form; the only public surface |
+| `public_url` + `/pending` | approvers | pending queue |
+| `public_url` + `/requests`, `public_url` + `/requests/{id}` | requester and approvers | list and detail; approve/reject/revoke on the detail page |
+| `dl_base_url` + `/api/v1/shares` | this service only | issuer `delivery-approval` |
+| the `dl` public origin + `/d/{token}` | nobody logged in | the anonymous link handed to the customer |
+
+`public_url` is also the mount point: the route publishes that path and rewrites
+it before forwarding, so a link pasted without the prefix lands on the
+unauthenticated `dl` application instead.
 
 The application listener is `:8080`; `/livez`, `/healthz` and `/metrics` live on
 the private `:8081` listener, which has no route and must never be published.
@@ -243,7 +251,7 @@ Symptom: `delivery_status = failed`, `last_error_class` is set, event
 | `store_failed` | DB write failed mid-delivery | restore the DB; the shares issued so far were revoked |
 | `expired` | the request expired between approval and delivery | submit a new request with a longer TTL |
 
-A `401` from `dl-management` means the issuer secret no longer matches the
+A `401` from the `dl` management API means the issuer secret no longer matches the
 policy hash or `download_issuers` disabled `delivery-approval`. Confirm with an
 authenticated probe — `POST /api/v1/shares` with `{}` must return `400`
 (`missing_field`), not `401`.
@@ -269,14 +277,14 @@ shows the real state.
 
 | Symptom | Cause | Action |
 | --- | --- | --- |
-| `Forbidden - origin invalid`, address bar lost `/dl/grants` | the link was pasted without the mount prefix and landed on the anonymous `dl` app | prepend `/dl/grants` |
+| `Forbidden - origin invalid`, address bar lost the `public_url` path | the link was pasted without the mount prefix and landed on the unauthenticated `dl` application | prepend the `public_url` path |
 | `POST` fails with an origin error | a gateway CSRF filter is back in the `SecurityPolicy`; CSRF is enforced in the app | remove `csrf` from `dl-approval-oidc` (`ee-ops#2874`) |
 | Detail page has no Approve/Reject | the viewer is the requester | let another approver decide |
 | `401 unauthorized` from the app | no `X-Approval-Id-Token`, or the token failed validation | check the route's `SecurityPolicy` still forwards the ID token |
 | `403 forbidden` on every page | the email domain is not in `allowed_email_domains` | add the domain or use a company account |
 | `429` | pending/daily limit reached | decide or revoke the older requests |
 | TTL rejected (`invalid TTL`) | day/week units are not accepted | use `168h` instead of `7d` |
-| Anonymous `GET /dl/livez` redirects to Google | `/dl` carries its own OIDC policy | expected; probes run on the private listener |
+| An anonymous request to a probe path on the legacy `dl` route redirects to the OIDC provider | that route carries its own OIDC policy | expected; probes run on the private listener |
 | Links stop working with `404`/`410` | revoked, expired, or `max_sessions` reached | issue a new request; check `dl`'s `download_events` |
 
 ## Rollback
