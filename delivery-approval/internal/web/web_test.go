@@ -259,8 +259,8 @@ func TestFormPrefillsFromQuery(t *testing.T) {
 			t.Fatalf("prefill missing %q", want)
 		}
 	}
-	if !strings.Contains(body, `value="24h0m0s"`) {
-		t.Fatal("TTL must keep the default and ignore the query")
+	if !strings.Contains(body, `<option value="24h" selected>`) {
+		t.Fatalf("TTL must keep the default and ignore the query: %s", body)
 	}
 	if strings.Contains(body, `value="7d"`) {
 		t.Fatal("TTL must not be prefilled from the query")
@@ -914,5 +914,54 @@ func TestDetailShowsNotice(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "This request was already handled") {
 		t.Fatalf("notice missing: %s", w.Body.String())
+	}
+}
+
+func TestTTLCustomOverridesPreset(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"repository": {"r.example.com/a"},
+		"tag":        {"v1"},
+		"files":      {"a.tar.gz"},
+		"ttl":        {"2h"},
+		"ttl_custom": {"90m"},
+		"csrf":       {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	if st.created == nil || st.created.TTLSeconds != 5400 {
+		t.Fatalf("ttl = %+v, want the custom 90m", st.created)
+	}
+}
+
+func TestTTLPresetIsUsedWithoutCustom(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"repository": {"r.example.com/a"},
+		"tag":        {"v1"},
+		"files":      {"a.tar.gz"},
+		"ttl":        {"8h"},
+		"csrf":       {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	if st.created == nil || st.created.TTLSeconds != 28800 {
+		t.Fatalf("ttl = %+v, want 8h", st.created)
 	}
 }
