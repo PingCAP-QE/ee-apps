@@ -1,7 +1,8 @@
 # ADR 0003: Browser identity handoff to authzd
 
-- Status: Proposed; pending Envoy/Gateway evidence and security approval
-- Date: 2026-11-24
+- Status: Proposed; blocked on a decision — the recommended header forwarding is
+  not reachable in the deployed filter order (evidence below)
+- Date: 2026-11-24, evidence added 2026-11-25
 
 ## Context
 
@@ -31,17 +32,72 @@ Pending: Gateway owner and security owner.
 
 ## GCP deployment evidence (2026-11-25)
 
-The deployed Gateway controller is v1.9.3. Its installed SecurityPolicy CRD
-describes a raw ID token for a custom forwarding header and a Bearer token for
-Authorization. The live tibuild-v2-oidc policy omits forwardIDToken and extAuth.
-The active eg-internal Envoy listener orders CSRF, OAuth2, JWT authentication
-and RBAC before the router; no ext_authz filter was present. These observations
-establish the baseline. Filter ordering and header replacement with extAuth
-attached still require a routed test before browser mode can be used.
+The deployed Gateway controller is v1.9.3. Its installed `SecurityPolicy` CRD
+exports `extAuth.contextExtensions`, `failOpen`, `timeout`, `statusOnError` and a
+gRPC `backendRefs` list, and the OIDC policy exports a raw ID token for a custom
+forwarding header.
 
-For browser mode, configure a dedicated forwarded-token header, the OAuth
-client audience, and a user principal based on the signed sub claim. For machine
-mode, retain the machine JWT audience, workload principal and existing Gateway
-allowlist. The service selects one verifier from trusted route context. A token
-that fails its selected verifier must end that decision. The service rejects a
-shared header or a shared issuer/audience pair across these two modes at startup.
+### Measured filter order
+
+Taken from the live Envoy admin `config_dump` after `extAuth` was attached to
+`tibuild-v2-machine-jwt` (the policy reports `Accepted=True`):
+
+```text
+1. csrf
+2. ext_authz   (per-route enabled; disabled at chain level)
+3. oauth2
+4. jwt_authn
+5. rbac
+6. local_ratelimit
+7. credential_injector   (github-token-broker upstream credential)
+8. router
+```
+
+`ext_authz` runs **before** both authentication filters and before the token
+broker's credential replacement. Per-route `typed_per_filter_config` confirms the
+filter is enabled on the machine and privileged routes and absent from the
+browser GET/HEAD/OPTIONS rules.
+
+### What this falsifies
+
+`forwardIDToken` is attached by the OIDC and JWT filters, which run *after*
+`ext_authz`. A browser request therefore reaches `authzd` without the forwarded ID
+token, so the recommended mechanism cannot deliver a browser identity. This is the
+one part of the previous recommendation that the evidence rules out; the rest of
+the contract (independent verification, no identity headers, separate modes)
+still holds and is already implemented.
+
+### What the order confirms
+
+- Requests that OIDC/JWT will later reject do reach `authzd`. In observe mode they
+  are recorded as `identity_invalid`, which is useful signal, not a regression:
+  the later filters still reject them.
+- The token broker contract from the design holds: `credential_injector` runs
+  after `ext_authz`, so `authzd` sees the caller's original `Authorization`
+  header and does not need to reconstruct the external identity from an internal
+  credential.
+
+## Options for browser identity
+
+| Option | Mechanism | Cost / risk |
+| --- | --- | --- |
+| A. Keep browser routes out of `extAuth` | Browser keeps OIDC + CSRF and the application's own checks; no browser `extAuth` in V1 | No resource-level gateway decision for browser reads. Acceptable while every `/tibuild` mutation is machine-only and ADR 0002 keeps reads open to authenticated staff |
+| B. `authzd` validates the OIDC ID-token cookie | `authzd` reads the configured `idToken` cookie and verifies it against Google JWKS and the OAuth client audience | Needs a cookie-aware verifier and an explicit allow-list of unauthenticated browser paths, or an expired cookie is denied before `oauth2` can redirect to login. Also needs a spoofing test: a client-supplied cookie is untrusted input, verified the same way as a bearer token |
+| C. Reorder filters with `EnvoyPatchPolicy` | Patch the HCM `http_filters` order so `ext_authz` follows `oauth2`/`jwt_authn` | Unsupported surface, applies to the whole listener, and reverses the broker advantage above. Not recommended |
+
+### Recommendation
+
+Take option A for V1 and record it as an explicit exception: the browser route
+keeps OIDC, CSRF and the service-side checks, and receives no `extAuth` fragment.
+Revisit only if browser reads need row-level scoping or a browser mutation becomes
+externally reachable — at that point option B is the viable path, with the
+unauthenticated-path allow-list and the cookie spoofing test designed up front.
+
+Option A also keeps the design statement honest: the gateway does not authorize
+browser reads, and nothing in this ADR claims it does.
+
+## Decision needed
+
+Gateway owner and security owner: confirm option A as the V1 boundary, or choose
+option B and accept the cookie verifier, the unauthenticated-path allow-list and
+the redirect behavior in enforce mode.
