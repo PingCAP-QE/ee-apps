@@ -160,6 +160,7 @@ type pageData struct {
 	Identity *auth.Identity
 	CSRF     string
 	Error    string
+	Notice   string
 	Form     formValues
 
 	TTL        string
@@ -347,11 +348,19 @@ func (h *handler) detail(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	notice := ""
+	switch r.URL.Query().Get("notice") {
+	case "already-decided":
+		notice = "This request was already handled; the page shows its current state."
+	case "not-revocable":
+		notice = "This request can no longer be revoked."
+	}
 	approver := h.config.IsApprover(identity.Email)
 	h.render(w, "detail.html", pageData{
 		Identity:   identity,
 		CSRF:       csrfToken(w, r),
 		TTL:        (time.Duration(req.TTLSeconds) * time.Second).String(),
+		Notice:     notice,
 		Request:    req,
 		Approver:   approver,
 		CanApprove: approver && req.Status == store.StatusPending && req.RequesterEmail != identity.Email,
@@ -415,8 +424,11 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 		return
 	}
 	if req.Status != store.StatusPending {
+		// Another approver (or a double submit) already decided it. Send the
+		// caller to the detail page so they see the outcome instead of a raw
+		// conflict page.
 		h.deny(w)
-		http.Error(w, "request is not pending", http.StatusConflict)
+		http.Redirect(w, r, h.basePath()+"/requests/"+req.ID+"?notice=already-decided", http.StatusSeeOther)
 		return
 	}
 	note := strings.TrimSpace(r.PostFormValue("note"))
@@ -496,7 +508,7 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Status != store.StatusPending && req.Status != store.StatusApproved {
 		h.deny(w)
-		http.Error(w, "request cannot be revoked", http.StatusConflict)
+		http.Redirect(w, r, h.basePath()+"/requests/"+req.ID+"?notice=not-revocable", http.StatusSeeOther)
 		return
 	}
 	wasApproved := req.Status == store.StatusApproved
