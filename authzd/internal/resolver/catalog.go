@@ -20,6 +20,11 @@ type StaticCatalog struct {
 	resources map[string]string
 }
 
+// ErrNotFound marks a resource ID that the trusted catalog does not contain.
+// It is a decision input, not a dependency failure: an unknown or mismatched ID
+// must deny without inventing ownership or returning a server error.
+var ErrNotFound = errors.New("resource is not present in the trusted catalog")
+
 type Unavailable struct{}
 
 func (Unavailable) Resolve(context.Context, string, string) (string, error) {
@@ -67,7 +72,7 @@ func (c *StaticCatalog) Resolve(_ context.Context, resourceType, id string) (str
 	}
 	object, ok := c.resources[resourceType+"/"+id]
 	if !ok {
-		return "", errors.New("resource ownership is not present in trusted catalog")
+		return "", fmt.Errorf("%w: %s/%s", ErrNotFound, resourceType, id)
 	}
 	return object, nil
 }

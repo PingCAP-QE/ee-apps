@@ -11,6 +11,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/identity"
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/registry"
+	"github.com/PingCAP-QE/ee-apps/authzd/internal/resolver"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	rpcstatus "google.golang.org/genproto/googleapis/rpc/status"
@@ -152,6 +153,9 @@ func (a *Authorizer) Authorize(ctx context.Context, attrs *authv3.AttributeConte
 			event.ResourceType, event.ResourceID = check.ObjectFrom, safeLogValue(id)
 			object, err = a.resolver.Resolve(ctx, check.ObjectFrom, id)
 			if err != nil {
+				if errors.Is(err, resolver.ErrNotFound) {
+					return a.finishMode(ctx, event, matched.Rule.Mode, false, "resource_not_found"), nil
+				}
 				return a.dependencyFailure(ctx, event, matched.Rule.Mode, "resource_resolution_error", fmt.Errorf("resource resolution unavailable: %w", err))
 			}
 			event.ResourceType, event.ResourceID = splitObject(object)
