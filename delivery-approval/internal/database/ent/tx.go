@@ -12,6 +12,8 @@ import (
 // Tx is a transactional client that is created by calling Client.Tx().
 type Tx struct {
 	config
+	// ApprovalCard is the client for interacting with the ApprovalCard builders.
+	ApprovalCard *ApprovalCardClient
 	// Request is the client for interacting with the Request builders.
 	Request *RequestClient
 	// RequestEvent is the client for interacting with the RequestEvent builders.
@@ -149,6 +151,7 @@ func (tx *Tx) Client() *Client {
 }
 
 func (tx *Tx) init() {
+	tx.ApprovalCard = NewApprovalCardClient(tx.config)
 	tx.Request = NewRequestClient(tx.config)
 	tx.RequestEvent = NewRequestEventClient(tx.config)
 	tx.RequestFile = NewRequestFileClient(tx.config)
@@ -161,7 +164,7 @@ func (tx *Tx) init() {
 // of them in order to commit or rollback the transaction.
 //
 // If a closed transaction is embedded in one of the generated entities, and the entity
-// applies a query, for example: Request.QueryXXX(), the query will be executed
+// applies a query, for example: ApprovalCard.QueryXXX(), the query will be executed
 // through the driver which created this transaction.
 //
 // Note that txDriver is not goroutine safe.

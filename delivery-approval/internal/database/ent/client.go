@@ -15,6 +15,7 @@ import (
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/approvalcard"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/request"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestevent"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestfile"
@@ -25,6 +26,8 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// ApprovalCard is the client for interacting with the ApprovalCard builders.
+	ApprovalCard *ApprovalCardClient
 	// Request is the client for interacting with the Request builders.
 	Request *RequestClient
 	// RequestEvent is the client for interacting with the RequestEvent builders.
@@ -42,6 +45,7 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.ApprovalCard = NewApprovalCardClient(c.config)
 	c.Request = NewRequestClient(c.config)
 	c.RequestEvent = NewRequestEventClient(c.config)
 	c.RequestFile = NewRequestFileClient(c.config)
@@ -137,6 +141,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	return &Tx{
 		ctx:          ctx,
 		config:       cfg,
+		ApprovalCard: NewApprovalCardClient(cfg),
 		Request:      NewRequestClient(cfg),
 		RequestEvent: NewRequestEventClient(cfg),
 		RequestFile:  NewRequestFileClient(cfg),
@@ -159,6 +164,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	return &Tx{
 		ctx:          ctx,
 		config:       cfg,
+		ApprovalCard: NewApprovalCardClient(cfg),
 		Request:      NewRequestClient(cfg),
 		RequestEvent: NewRequestEventClient(cfg),
 		RequestFile:  NewRequestFileClient(cfg),
@@ -168,7 +174,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		Request.
+//		ApprovalCard.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -190,6 +196,7 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.ApprovalCard.Use(hooks...)
 	c.Request.Use(hooks...)
 	c.RequestEvent.Use(hooks...)
 	c.RequestFile.Use(hooks...)
@@ -198,6 +205,7 @@ func (c *Client) Use(hooks ...Hook) {
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
+	c.ApprovalCard.Intercept(interceptors...)
 	c.Request.Intercept(interceptors...)
 	c.RequestEvent.Intercept(interceptors...)
 	c.RequestFile.Intercept(interceptors...)
@@ -206,6 +214,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *ApprovalCardMutation:
+		return c.ApprovalCard.mutate(ctx, m)
 	case *RequestMutation:
 		return c.Request.mutate(ctx, m)
 	case *RequestEventMutation:
@@ -214,6 +224,139 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.RequestFile.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// ApprovalCardClient is a client for the ApprovalCard schema.
+type ApprovalCardClient struct {
+	config
+}
+
+// NewApprovalCardClient returns a client for the ApprovalCard from the given config.
+func NewApprovalCardClient(c config) *ApprovalCardClient {
+	return &ApprovalCardClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `approvalcard.Hooks(f(g(h())))`.
+func (c *ApprovalCardClient) Use(hooks ...Hook) {
+	c.hooks.ApprovalCard = append(c.hooks.ApprovalCard, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `approvalcard.Intercept(f(g(h())))`.
+func (c *ApprovalCardClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ApprovalCard = append(c.inters.ApprovalCard, interceptors...)
+}
+
+// Create returns a builder for creating a ApprovalCard entity.
+func (c *ApprovalCardClient) Create() *ApprovalCardCreate {
+	mutation := newApprovalCardMutation(c.config, OpCreate)
+	return &ApprovalCardCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ApprovalCard entities.
+func (c *ApprovalCardClient) CreateBulk(builders ...*ApprovalCardCreate) *ApprovalCardCreateBulk {
+	return &ApprovalCardCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ApprovalCardClient) MapCreateBulk(slice any, setFunc func(*ApprovalCardCreate, int)) *ApprovalCardCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ApprovalCardCreateBulk{err: fmt.Errorf("calling to ApprovalCardClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ApprovalCardCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ApprovalCardCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ApprovalCard.
+func (c *ApprovalCardClient) Update() *ApprovalCardUpdate {
+	mutation := newApprovalCardMutation(c.config, OpUpdate)
+	return &ApprovalCardUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ApprovalCardClient) UpdateOne(_m *ApprovalCard) *ApprovalCardUpdateOne {
+	mutation := newApprovalCardMutation(c.config, OpUpdateOne, withApprovalCard(_m))
+	return &ApprovalCardUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ApprovalCardClient) UpdateOneID(id string) *ApprovalCardUpdateOne {
+	mutation := newApprovalCardMutation(c.config, OpUpdateOne, withApprovalCardID(id))
+	return &ApprovalCardUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ApprovalCard.
+func (c *ApprovalCardClient) Delete() *ApprovalCardDelete {
+	mutation := newApprovalCardMutation(c.config, OpDelete)
+	return &ApprovalCardDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ApprovalCardClient) DeleteOne(_m *ApprovalCard) *ApprovalCardDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ApprovalCardClient) DeleteOneID(id string) *ApprovalCardDeleteOne {
+	builder := c.Delete().Where(approvalcard.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ApprovalCardDeleteOne{builder}
+}
+
+// Query returns a query builder for ApprovalCard.
+func (c *ApprovalCardClient) Query() *ApprovalCardQuery {
+	return &ApprovalCardQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeApprovalCard},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ApprovalCard entity by its id.
+func (c *ApprovalCardClient) Get(ctx context.Context, id string) (*ApprovalCard, error) {
+	return c.Query().Where(approvalcard.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ApprovalCardClient) GetX(ctx context.Context, id string) *ApprovalCard {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *ApprovalCardClient) Hooks() []Hook {
+	return c.hooks.ApprovalCard
+}
+
+// Interceptors returns the client interceptors.
+func (c *ApprovalCardClient) Interceptors() []Interceptor {
+	return c.inters.ApprovalCard
+}
+
+func (c *ApprovalCardClient) mutate(ctx context.Context, m *ApprovalCardMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ApprovalCardCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ApprovalCardUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ApprovalCardUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ApprovalCardDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ApprovalCard mutation op: %q", m.Op())
 	}
 }
 
@@ -683,9 +826,9 @@ func (c *RequestFileClient) mutate(ctx context.Context, m *RequestFileMutation) 
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Request, RequestEvent, RequestFile []ent.Hook
+		ApprovalCard, Request, RequestEvent, RequestFile []ent.Hook
 	}
 	inters struct {
-		Request, RequestEvent, RequestFile []ent.Interceptor
+		ApprovalCard, Request, RequestEvent, RequestFile []ent.Interceptor
 	}
 )

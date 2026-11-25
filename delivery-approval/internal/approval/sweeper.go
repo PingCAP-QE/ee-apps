@@ -15,9 +15,15 @@ type Revoker interface {
 	RevokeShare(ctx context.Context, shareID string) error
 }
 
+// CardUpdater patches the approval cards of an expired request; nil disables it.
+type CardUpdater interface {
+	UpdateApprovalCards(ctx context.Context, req *store.Request, cards []store.ApprovalCard, outcome, actor, note string) error
+}
+
 type Sweeper struct {
 	Store    store.Store
 	Revoker  Revoker
+	Cards    CardUpdater
 	Logger   *log.Logger
 	Interval time.Duration
 	Batch    int
@@ -84,6 +90,22 @@ func (s *Sweeper) sweep(ctx context.Context) {
 		}
 		if !ok {
 			continue
+		}
+		if s.Cards != nil {
+			req.Status = store.StatusExpired
+			decided := now
+			req.DecidedAt = &decided
+			req.ApproverEmail = ""
+			cards, err := s.Store.ListApprovalCards(ctx, req.ID)
+			if err != nil {
+				s.Logger.Printf("approval cards lookup failed request=%s", req.ID)
+				continue
+			}
+			if len(cards) > 0 {
+				if err := s.Cards.UpdateApprovalCards(ctx, req, cards, string(store.StatusExpired), "", ""); err != nil {
+					s.Logger.Printf("approval card update failed request=%s", req.ID)
+				}
+			}
 		}
 	}
 }

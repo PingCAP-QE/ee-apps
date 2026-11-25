@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,6 +29,8 @@ func (f fakeAuth) Validate(context.Context, string) (*auth.Identity, error) {
 }
 
 type fakeStore struct {
+	mu            sync.Mutex
+	cards         map[string][]store.ApprovalCard
 	requests      map[string]*store.Request
 	pending       []*store.Request
 	pendingCount  int
@@ -39,7 +42,7 @@ type fakeStore struct {
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{requests: map[string]*store.Request{}}
+	return &fakeStore{requests: map[string]*store.Request{}, cards: map[string][]store.ApprovalCard{}}
 }
 
 func (f *fakeStore) Ready(context.Context) error { return nil }
@@ -101,7 +104,20 @@ func (f *fakeStore) AppendEvent(context.Context, *store.Event) error            
 func (f *fakeStore) SetFileShare(context.Context, string, string, []byte) error { return nil }
 func (f *fakeStore) SaveFileCiphertext(context.Context, string, []byte) error   { return nil }
 func (f *fakeStore) ClearFileCiphertext(context.Context, string) error          { return nil }
-func (f *fakeStore) Close() error                                               { return nil }
+func (f *fakeStore) SaveApprovalCards(_ context.Context, requestID string, cards []store.ApprovalCard) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cards[requestID] = append(f.cards[requestID], cards...)
+	return nil
+}
+
+func (f *fakeStore) ListApprovalCards(_ context.Context, requestID string) ([]store.ApprovalCard, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]store.ApprovalCard(nil), f.cards[requestID]...), nil
+}
+
+func (f *fakeStore) Close() error { return nil }
 
 func testConfig(t *testing.T) *config.Manager {
 	t.Helper()
@@ -707,13 +723,51 @@ func TestApproveTriggersDelivery(t *testing.T) {
 }
 
 type fakeApprovalNotifier struct {
-	ch  chan string
-	err error
+	ch    chan string
+	cards []store.ApprovalCard
+	err   error
 }
 
-func (f *fakeApprovalNotifier) NotifyApproval(_ context.Context, req *store.Request) error {
+func (f *fakeApprovalNotifier) NotifyApproval(_ context.Context, req *store.Request) ([]store.ApprovalCard, error) {
 	f.ch <- req.ID
-	return f.err
+	return f.cards, f.err
+}
+
+// fakeCardUpdater records the card patches the handler issues after a decision.
+type fakeCardUpdater struct {
+	mu      sync.Mutex
+	updates []cardUpdate
+}
+
+type cardUpdate struct {
+	requestID string
+	outcome   string
+	actor     string
+	note      string
+	cards     int
+}
+
+func (f *fakeCardUpdater) UpdateApprovalCards(_ context.Context, req *store.Request, cards []store.ApprovalCard, outcome, actor, note string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.updates = append(f.updates, cardUpdate{requestID: req.ID, outcome: outcome, actor: actor, note: note, cards: len(cards)})
+	return nil
+}
+
+func (f *fakeCardUpdater) wait(t *testing.T) []cardUpdate {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		f.mu.Lock()
+		if len(f.updates) > 0 {
+			out := append([]cardUpdate(nil), f.updates...)
+			f.mu.Unlock()
+			return out
+		}
+		f.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }
 
 func TestCreateNotifiesApprover(t *testing.T) {
@@ -782,5 +836,60 @@ func TestRejectAndRevokeNotify(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("revoke did not notify")
+	}
+}
+
+func TestCreateRecordsApprovalCards(t *testing.T) {
+	st := newFakeStore()
+	n := &fakeApprovalNotifier{ch: make(chan string, 1), cards: []store.ApprovalCard{{ApproverEmail: "approver@example.com", MessageID: "om-1"}}}
+	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, ApprovalNotifier: n, Metrics: &metrics.Metrics{}})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d", w.Code)
+	}
+	<-n.ch
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		st.mu.Lock()
+		saved := append([]store.ApprovalCard(nil), st.cards["req-1"]...)
+		st.mu.Unlock()
+		if len(saved) == 1 && saved[0].MessageID == "om-1" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("approval card ids were not persisted")
+}
+
+func TestApprovePatchesCards(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	st.cards["req-1"] = []store.ApprovalCard{{ApproverEmail: "approver@example.com", MessageID: "om-1"}}
+	updater := &fakeCardUpdater{}
+	h := New(Options{
+		Store:   st,
+		Config:  testConfig(t),
+		Auth:    fakeAuth{identity: &auth.Identity{Email: "approver@example.com"}},
+		Cards:   updater,
+		Metrics: &metrics.Metrics{},
+	})
+	w := postDecision(t, h, "req-1", "approve", "looks good", nil)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("approve = %d, body=%s", w.Code, w.Body.String())
+	}
+	updates := updater.wait(t)
+	if len(updates) != 1 {
+		t.Fatalf("updates = %+v", updates)
+	}
+	if updates[0].outcome != string(store.StatusApproved) || updates[0].actor != "approver@example.com" || updates[0].cards != 1 {
+		t.Fatalf("update = %+v", updates[0])
 	}
 }

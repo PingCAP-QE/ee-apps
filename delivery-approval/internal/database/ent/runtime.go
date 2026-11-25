@@ -5,6 +5,7 @@ package ent
 import (
 	"time"
 
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/approvalcard"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/request"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestevent"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestfile"
@@ -15,6 +16,30 @@ import (
 // (default values, validators, hooks and policies) and stitches it
 // to their package variables.
 func init() {
+	approvalcardFields := schema.ApprovalCard{}.Fields()
+	_ = approvalcardFields
+	// approvalcardDescRequestID is the schema descriptor for request_id field.
+	approvalcardDescRequestID := approvalcardFields[1].Descriptor()
+	// approvalcard.RequestIDValidator is a validator for the "request_id" field. It is called by the builders before save.
+	approvalcard.RequestIDValidator = approvalcardDescRequestID.Validators[0].(func(string) error)
+	// approvalcardDescApproverEmail is the schema descriptor for approver_email field.
+	approvalcardDescApproverEmail := approvalcardFields[2].Descriptor()
+	// approvalcard.DefaultApproverEmail holds the default value on creation for the approver_email field.
+	approvalcard.DefaultApproverEmail = approvalcardDescApproverEmail.Default.(string)
+	// approvalcard.ApproverEmailValidator is a validator for the "approver_email" field. It is called by the builders before save.
+	approvalcard.ApproverEmailValidator = approvalcardDescApproverEmail.Validators[0].(func(string) error)
+	// approvalcardDescMessageID is the schema descriptor for message_id field.
+	approvalcardDescMessageID := approvalcardFields[3].Descriptor()
+	// approvalcard.MessageIDValidator is a validator for the "message_id" field. It is called by the builders before save.
+	approvalcard.MessageIDValidator = approvalcardDescMessageID.Validators[0].(func(string) error)
+	// approvalcardDescCreatedAt is the schema descriptor for created_at field.
+	approvalcardDescCreatedAt := approvalcardFields[4].Descriptor()
+	// approvalcard.DefaultCreatedAt holds the default value on creation for the created_at field.
+	approvalcard.DefaultCreatedAt = approvalcardDescCreatedAt.Default.(func() time.Time)
+	// approvalcardDescID is the schema descriptor for id field.
+	approvalcardDescID := approvalcardFields[0].Descriptor()
+	// approvalcard.IDValidator is a validator for the "id" field. It is called by the builders before save.
+	approvalcard.IDValidator = approvalcardDescID.Validators[0].(func(string) error)
 	requestFields := schema.Request{}.Fields()
 	_ = requestFields
 	// requestDescRequesterEmail is the schema descriptor for requester_email field.

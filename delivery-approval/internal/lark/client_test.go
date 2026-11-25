@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"strings"
 	"sync"
 	"testing"
@@ -22,10 +23,17 @@ type larkServer struct {
 	mu            sync.Mutex
 	messages      []sentMessage
 	urgent        []string
+	patches       []patchedMessage
 	batches       int
 	failCode      int
 	failReceiveID string
 	failAll       bool
+	failPatch     bool
+}
+
+type patchedMessage struct {
+	messageID string
+	content   string
 }
 
 type sentMessage struct {
@@ -60,6 +68,20 @@ func (s *larkServer) handler() http.HandlerFunc {
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "data": map[string]any{"user_list": users}})
+		case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/im/v1/messages/") && !strings.Contains(r.URL.Path, "/urgent_app"):
+			var body struct {
+				Content string `json:"content"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			s.mu.Lock()
+			s.patches = append(s.patches, patchedMessage{messageID: path.Base(r.URL.Path), content: body.Content})
+			fail := s.failPatch
+			s.mu.Unlock()
+			if fail {
+				_, _ = io.WriteString(w, `{"code":999,"msg":"failed"}`)
+				return
+			}
+			_, _ = io.WriteString(w, `{"code":0,"data":{}}`)
 		case strings.Contains(r.URL.Path, "/urgent_app"):
 			s.mu.Lock()
 			s.urgent = append(s.urgent, r.URL.Path)
@@ -143,7 +165,7 @@ func sampleRequest() *store.Request {
 func TestNotifyApprovalSendsCardAndBuzz(t *testing.T) {
 	s := &larkServer{}
 	c := testClient(t, s)
-	if err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
+	if _, err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
 		t.Fatal(err)
 	}
 	if len(s.messages) != 1 || s.messages[0].receiveIDType != "chat_id" || s.messages[0].receiveID != "oc-chat" {
@@ -203,7 +225,7 @@ func TestNotifyApprovalDMsEachApprover(t *testing.T) {
 	s := &larkServer{}
 	c := testClient(t, s)
 	c.chatID = ""
-	if err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
+	if _, err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
 		t.Fatal(err)
 	}
 	if len(s.messages) != 1 || s.messages[0].receiveIDType != "open_id" || s.messages[0].receiveID != "ou-approver" {
@@ -253,7 +275,7 @@ func TestNotifyApprovalDMAttemptsAllAfterPartialFailure(t *testing.T) {
 	s := &larkServer{failReceiveID: "ou-approver"}
 	c := testClientConfig(t, s, testConfigTwoApprovers(t))
 	c.chatID = ""
-	if err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
+	if _, err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
 		t.Fatalf("partial DM failure should not fail the request: %v", err)
 	}
 	if len(s.messages) != 2 {
@@ -270,10 +292,64 @@ func TestNotifyApprovalDMFailsWhenEveryApproverFails(t *testing.T) {
 	s := &larkServer{failAll: true}
 	c := testClientConfig(t, s, testConfigTwoApprovers(t))
 	c.chatID = ""
-	if err := c.NotifyApproval(context.Background(), sampleRequest()); err == nil {
+	if _, err := c.NotifyApproval(context.Background(), sampleRequest()); err == nil {
 		t.Fatal("expected total DM failure")
 	}
 	if len(s.messages) != 2 {
 		t.Fatalf("messages = %d, want 2 attempts", len(s.messages))
+	}
+}
+
+func TestPendingCardIsPatchable(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	if _, err := c.NotifyApproval(context.Background(), sampleRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s.messages[0].content, `"update_multi":true`) {
+		t.Fatalf("card must be patchable: %s", s.messages[0].content)
+	}
+	if !strings.Contains(s.messages[0].content, "TTL: 1h0m0s") {
+		t.Fatalf("card should show a human TTL: %s", s.messages[0].content)
+	}
+}
+
+func TestUpdateApprovalCardsPatchesEveryCard(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	req := sampleRequest()
+	req.Status = store.StatusApproved
+	decided := time.Now().UTC()
+	req.DecidedAt = &decided
+
+	cards := []store.ApprovalCard{
+		{ApproverEmail: "approver@example.com", MessageID: "om-1"},
+		{ApproverEmail: "second@example.com", MessageID: "om-2"},
+	}
+	if err := c.UpdateApprovalCards(context.Background(), req, cards, string(store.StatusApproved), "approver@example.com", "looks good"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if len(s.patches) != 2 {
+		t.Fatalf("patches = %d, want 2", len(s.patches))
+	}
+	for _, patch := range s.patches {
+		if !strings.Contains(patch.content, "approved by approver@example.com") {
+			t.Fatalf("patch body missing decision: %s", patch.content)
+		}
+		if strings.Contains(patch.content, "Review and approve") {
+			t.Fatalf("decided card must not keep the approve button: %s", patch.content)
+		}
+	}
+}
+
+func TestUpdateApprovalCardsToleratesFailure(t *testing.T) {
+	s := &larkServer{failPatch: true}
+	c := testClient(t, s)
+	cards := []store.ApprovalCard{{MessageID: "om-1"}}
+	if err := c.UpdateApprovalCards(context.Background(), sampleRequest(), cards, string(store.StatusRejected), "approver@example.com", ""); err == nil {
+		t.Fatal("expected an error when every patch fails")
+	}
+	if err := c.UpdateApprovalCards(context.Background(), sampleRequest(), nil, "approved", "", ""); err != nil {
+		t.Fatalf("no cards must be a no-op: %v", err)
 	}
 }

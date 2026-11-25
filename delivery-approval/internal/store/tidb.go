@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/approvalcard"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/migrate"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/request"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestfile"
@@ -383,4 +384,47 @@ func clampLimit(limit int) int {
 		return 200
 	}
 	return limit
+}
+
+// SaveApprovalCards records the cards that announced a request so they can be
+// patched later. Duplicate message ids are ignored: a retried notification must
+// not fail the request.
+func (s *TiDB) SaveApprovalCards(ctx context.Context, requestID string, cards []ApprovalCard) error {
+	builders := make([]*dbent.ApprovalCardCreate, 0, len(cards))
+	for _, card := range cards {
+		if card.MessageID == "" {
+			continue
+		}
+		builders = append(builders, s.client.ApprovalCard.Create().
+			SetID(uuid.NewString()).
+			SetRequestID(requestID).
+			SetApproverEmail(card.ApproverEmail).
+			SetMessageID(card.MessageID))
+	}
+	if len(builders) == 0 {
+		return nil
+	}
+	if err := s.client.ApprovalCard.CreateBulk(builders...).Exec(ctx); err != nil {
+		if dbent.IsConstraintError(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// ListApprovalCards returns the cards recorded for a request, oldest first.
+func (s *TiDB) ListApprovalCards(ctx context.Context, requestID string) ([]ApprovalCard, error) {
+	rows, err := s.client.ApprovalCard.Query().
+		Where(approvalcard.RequestIDEQ(requestID)).
+		Order(dbent.Asc(approvalcard.FieldCreatedAt)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ApprovalCard, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, ApprovalCard{ApproverEmail: row.ApproverEmail, MessageID: row.MessageID})
+	}
+	return out, nil
 }

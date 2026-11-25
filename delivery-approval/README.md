@@ -76,6 +76,12 @@ This phase adds the service skeleton, configuration and storage:
   - private text message with the one-time delivery links;
   - private rejection/revocation messages and a fixed-class delivery-failure
     message (no upstream error body or token).
+- Approval cards are patched after the decision: `request_events` stays the
+  audit log, `approval_cards` stores one `(request_id, approver_email,
+  message_id)` row per delivered card, and approve/reject/revoke/expire patch
+  each card to its decided state so nobody clicks a stale button. Patching is
+  best effort (Lark only patches cards sent in the last 14 days) and never
+  changes a decision.
 - Server wiring enables delivery when `DL_APPROVAL_LARK_APP_ID`,
   `DL_APPROVAL_LARK_APP_SECRET`, `DL_APPROVAL_DL_ISSUER_SECRET` and
   `DL_APPROVAL_URL_ENCRYPTION_KEY` are present. `lark_notification_chat_id` is
