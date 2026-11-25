@@ -122,3 +122,47 @@ func TestRunSweepsOnceAndStops(t *testing.T) {
 		t.Fatalf("transitions = %v", st.transitions)
 	}
 }
+
+type fakeNotifier struct {
+	requests []string
+	hadLinks []bool
+	err      error
+}
+
+func (f *fakeNotifier) NotifyExpired(_ context.Context, req *store.Request, hadLinks bool) error {
+	f.requests = append(f.requests, req.ID)
+	f.hadLinks = append(f.hadLinks, hadLinks)
+	return f.err
+}
+
+func TestSweepNotifiesTheRequester(t *testing.T) {
+	st := &fakeStore{expired: []*store.Request{
+		{ID: "pending-one", RequesterEmail: "requester@example.com", Status: store.StatusPending},
+		{ID: "approved-one", RequesterEmail: "requester@example.com", Status: store.StatusApproved},
+	}}
+	notifier := &fakeNotifier{}
+	s := NewSweeper(st, nil, nil)
+	s.Notifier = notifier
+	s.sweep(context.Background())
+
+	if len(notifier.requests) != 2 {
+		t.Fatalf("notified %v, want both requests", notifier.requests)
+	}
+	// List order: a pending request never had links, an approved one did.
+	if notifier.hadLinks[0] || !notifier.hadLinks[1] {
+		t.Fatalf("hadLinks = %v, want [false true] in list order", notifier.hadLinks)
+	}
+}
+
+func TestSweepSurvivesNotificationFailure(t *testing.T) {
+	st := &fakeStore{expired: []*store.Request{
+		{ID: "one", Status: store.StatusApproved},
+	}}
+	s := NewSweeper(st, nil, nil)
+	s.Notifier = &fakeNotifier{err: errors.New("lark down")}
+	s.sweep(context.Background())
+
+	if len(st.transitions) != 1 {
+		t.Fatalf("transitions = %v, want the request expired anyway", st.transitions)
+	}
+}

@@ -333,8 +333,17 @@ func TestUpdateApprovalCardsPatchesEveryCard(t *testing.T) {
 		t.Fatalf("patches = %d, want 2", len(s.patches))
 	}
 	for _, patch := range s.patches {
-		if !strings.Contains(patch.content, "approved by approver@example.com") {
+		if !strings.Contains(patch.content, "**Approved** by approver@example.com") {
 			t.Fatalf("patch body missing decision: %s", patch.content)
+		}
+		if !strings.Contains(patch.content, "Decision note: looks good") {
+			t.Fatalf("patch body missing the decision note: %s", patch.content)
+		}
+		if !strings.Contains(patch.content, `"template":"green"`) {
+			t.Fatalf("approved card should be green: %s", patch.content)
+		}
+		if !strings.Contains(patch.content, "View approved request") {
+			t.Fatalf("button label should state the outcome: %s", patch.content)
 		}
 		if strings.Contains(patch.content, "Review and approve") {
 			t.Fatalf("decided card must not keep the approve button: %s", patch.content)
@@ -351,5 +360,95 @@ func TestUpdateApprovalCardsToleratesFailure(t *testing.T) {
 	}
 	if err := c.UpdateApprovalCards(context.Background(), sampleRequest(), nil, "approved", "", ""); err != nil {
 		t.Fatalf("no cards must be a no-op: %v", err)
+	}
+}
+
+func TestDecidedCardStates(t *testing.T) {
+	decided := time.Date(2026, 11, 25, 7, 2, 0, 0, time.UTC)
+	cases := []struct {
+		outcome  store.Status
+		actor    string
+		template string
+		state    string
+		button   string
+	}{
+		{store.StatusApproved, "approver@example.com", "green", "Approved", "View approved request"},
+		{store.StatusRejected, "approver@example.com", "red", "Rejected", "View rejected request"},
+		{store.StatusRevoked, "requester@example.com", "orange", "Revoked", "View revoked request"},
+		{store.StatusExpired, "", "grey", "Expired", "View expired request"},
+	}
+	for _, tc := range cases {
+		req := sampleRequest()
+		req.Status = tc.outcome
+		req.DecidedAt = &decided
+		content, err := json.Marshal(decidedCard("https://approvals.example.com", req, string(tc.outcome), tc.actor, ""))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := string(content)
+		for _, want := range []string{
+			`"template":"` + tc.template + `"`,
+			"**" + tc.state + "**",
+			tc.button,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s card missing %q: %s", tc.outcome, want, body)
+			}
+		}
+		if strings.Contains(body, "Review and approve") {
+			t.Fatalf("%s card still offers approval: %s", tc.outcome, body)
+		}
+	}
+}
+
+func TestExpiredCardExplainsDeadLinks(t *testing.T) {
+	decided := time.Date(2026, 11, 25, 7, 2, 0, 0, time.UTC)
+	req := sampleRequest()
+	req.DecidedAt = &decided
+	content, err := json.Marshal(decidedCard("https://approvals.example.com", req, string(store.StatusExpired), "", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "no longer work") {
+		t.Fatalf("expired card should say the links are dead: %s", content)
+	}
+}
+
+func TestNotifyExpiredTellsTheRequester(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	req := sampleRequest()
+	req.Status = store.StatusExpired
+	req.ExpiresAt = time.Date(2026, 11, 25, 7, 2, 0, 0, time.UTC)
+
+	if err := c.NotifyExpired(context.Background(), req, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.messages) != 1 || s.messages[0].receiveID != "ou-requester" || s.messages[0].receiveIDType != "open_id" {
+		t.Fatalf("messages = %+v", s.messages)
+	}
+	body := s.messages[0].content
+	if !strings.Contains(body, "expired at 2026-11-25 07:02 UTC") {
+		t.Fatalf("missing expiry time: %s", body)
+	}
+	if !strings.Contains(body, "no longer work") {
+		t.Fatalf("an approved request should say its links are dead: %s", body)
+	}
+	if strings.Contains(body, "/d/") {
+		t.Fatalf("expiry message must not carry a download link: %s", body)
+	}
+}
+
+func TestNotifyExpiredForPendingRequest(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	req := sampleRequest()
+	req.ExpiresAt = time.Date(2026, 11, 25, 7, 2, 0, 0, time.UTC)
+
+	if err := c.NotifyExpired(context.Background(), req, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(s.messages[0].content, "no longer work") {
+		t.Fatalf("a pending request never had links: %s", s.messages[0].content)
 	}
 }

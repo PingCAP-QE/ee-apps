@@ -159,6 +159,7 @@ func main() {
 	sweeper := approval.NewSweeper(st, revoker, logger)
 	if notifier != nil {
 		sweeper.Cards = notifier
+		sweeper.Notifier = notifier
 	}
 	go sweeper.Run(ctx)
 
