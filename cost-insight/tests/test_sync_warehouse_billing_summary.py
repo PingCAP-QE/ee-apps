@@ -720,7 +720,8 @@ def test_dead_running_owner_is_resumed_and_records_new_pod_identity(engine, vend
 @pytest.mark.parametrize("change", [
     {"accounts": [DORMANT]}, {"project": "another-project"}, {"source_profile": "custom"},
     {"completed_account_days": [f"{ACCOUNT}/2026-01-01"]},
-    {"windows": []},
+    {"windows": []}, {"accounts": None}, {"run_id": []},
+    {"completed_account_days": [{}]}, {"current_account_day": {}}, {"phase": "unknown"},
 ])
 def test_recovery_refuses_changed_or_corrupt_persisted_scope(engine, vendor, monkeypatch, change):
     failed = fail_mid_window(engine, vendor, monkeypatch)
@@ -730,6 +731,45 @@ def test_recovery_refuses_changed_or_corrupt_persisted_scope(engine, vendor, mon
     monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
     with pytest.raises(ValueError):
         run(engine, vendor)
+    fetch.assert_not_called()
+
+
+@pytest.mark.parametrize("bad_window", [
+    {"account_id": ACCOUNT}, "account-a/2026-11-20", 12345, None,
+    {"account_id": ACCOUNT, "start": None, "end": str(END)},
+    {"account_id": [], "start": str(START), "end": str(END)},
+    {"account_id": ACCOUNT, "start": "not-a-date", "end": str(END)},
+])
+def test_malformed_recovery_window_is_actionable_and_keeps_checkpoint(
+        engine, vendor, monkeypatch, bad_window):
+    failed = fail_mid_window(engine, vendor, monkeypatch)
+    with engine.begin() as c:
+        state_store.mark_job_failed(c, f"sync_{vendor}_warehouse_daily",
+            {**failed.watermark, "windows": [bad_window]}, "original write failure")
+    before = state(engine, vendor)
+    fetch = Mock()
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    with pytest.raises(ValueError, match="Malformed warehouse recovery window; inspect before recovery"):
+        run(engine, vendor)
+    assert state(engine, vendor) == before
+    fetch.assert_not_called()
+
+
+def test_empty_completions_do_not_allow_scope_reset_after_summary_commit(engine, vendor, monkeypatch):
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary",
+                        Mock(side_effect=RuntimeError("crash after first summary commit")))
+    with pytest.raises(RuntimeError, match="first summary commit"):
+        run(engine, vendor)
+    before = state(engine, vendor)
+    assert before.watermark["completed_account_days"] == []
+    with engine.connect() as c:
+        assert job._table_totals(c, job.SUMMARY, vendor, ACCOUNT, START)["n"] == 1
+    fetch = Mock()
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    with pytest.raises(ValueError, match="original account scope"):
+        job.run_sync_warehouse_billing_summary(engine, client=Mock(), vendor=vendor,
+            account_ids=[ACCOUNT, "account-b"], project=PROJECT, tcms_allocation_table=RULES)
+    assert state(engine, vendor) == before
     fetch.assert_not_called()
 
 

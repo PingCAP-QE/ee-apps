@@ -8,7 +8,7 @@ import ssl
 from http.client import HTTPException
 from pathlib import Path
 from urllib.error import HTTPError
-from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
 _SERVICE_ACCOUNT = Path("/var/run/secrets/kubernetes.io/serviceaccount")
 _LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
@@ -26,8 +26,8 @@ def _valid_name(value, *, namespace=False):
             and re.fullmatch(pattern, value) is not None)
 
 
-def _valid_uid(value):
-    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,252}", value)
+def _valid_uid(value) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,252}", value) is not None
 
 
 def assert_owner_stopped(progress: dict) -> None:
@@ -44,29 +44,45 @@ def assert_owner_stopped(progress: dict) -> None:
     if uid is not None and not _valid_uid(uid):
         raise ValueError("Previous warehouse owner has no valid pod_uid")
 
-    try:
-        namespace = progress.get("pod_namespace")
-        if namespace is None:
+    namespace = progress.get("pod_namespace")
+    if namespace is None:
+        try:
             namespace = os.getenv("POD_NAMESPACE") or (_SERVICE_ACCOUNT / "namespace").read_text().strip()
-        if not _valid_name(namespace, namespace=True):
-            raise ValueError("Previous warehouse owner has no valid pod_namespace")
+        except (OSError, UnicodeError) as exc:
+            raise ValueError("Cannot read warehouse owner pod_namespace") from exc
+    if not _valid_name(namespace, namespace=True):
+        raise ValueError("Previous warehouse owner has no valid pod_namespace")
 
-        host = os.environ["KUBERNETES_SERVICE_HOST"]
-        if ":" in host:
+    host = os.getenv("KUBERNETES_SERVICE_HOST", "")
+    if ":" in host:
+        try:
             host = f"[{ipaddress.IPv6Address(host)}]"
-        elif not _valid_name(host):
-            raise ValueError("Invalid Kubernetes service host")
+        except ValueError as exc:
+            raise ValueError("Invalid Kubernetes service host") from exc
+    elif not _valid_name(host):
+        raise ValueError("Invalid Kubernetes service host")
+    try:
         port = int(os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443"))
-        if not 1 <= port <= 65535:
-            raise ValueError("Invalid Kubernetes HTTPS port")
+    except ValueError as exc:
+        raise ValueError("Invalid Kubernetes HTTPS port") from exc
+    if not 1 <= port <= 65535:
+        raise ValueError("Invalid Kubernetes HTTPS port")
+    try:
         token = (_SERVICE_ACCOUNT / "token").read_text().strip()
-        if not token or any(char.isspace() for char in token):
-            raise ValueError("Missing or invalid Kubernetes service account token")
+    except (OSError, UnicodeError) as exc:
+        raise ValueError("Cannot read Kubernetes service account token") from exc
+    if not token or any(char.isspace() for char in token):
+        raise ValueError("Missing or invalid Kubernetes service account token")
+    try:
         context = ssl.create_default_context(cafile=str(_SERVICE_ACCOUNT / "ca.crt"))
-        opener = build_opener(HTTPSHandler(context=context), _NoRedirect())
-        request = Request(f"https://{host}:{port}/api/v1/namespaces/{namespace}/pods/{name}",
-                          headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-                          method="GET")
+    except (OSError, ValueError) as exc:
+        raise ValueError("Cannot load Kubernetes service account CA") from exc
+    # Internal API calls must not inherit ambient proxy routing.
+    opener = build_opener(ProxyHandler({}), HTTPSHandler(context=context), _NoRedirect())
+    request = Request(f"https://{host}:{port}/api/v1/namespaces/{namespace}/pods/{name}",
+                      headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                      method="GET")
+    try:
         with opener.open(request, timeout=10) as response:
             if response.status != 200:
                 raise ValueError("Unexpected Kubernetes Pod response status")
@@ -76,7 +92,7 @@ def assert_owner_stopped(progress: dict) -> None:
         if exc.code == 404:
             return
         raise ValueError(f"Cannot prove warehouse owner stopped: Kubernetes HTTP {exc.code}") from exc
-    except (OSError, ValueError, KeyError, HTTPException) as exc:
+    except (OSError, HTTPException, json.JSONDecodeError, UnicodeError) as exc:
         raise ValueError("Cannot prove warehouse owner stopped: Kubernetes Pod lookup failed") from exc
 
     metadata = pod.get("metadata") if isinstance(pod, dict) else None

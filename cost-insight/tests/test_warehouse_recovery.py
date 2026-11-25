@@ -7,7 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPSHandler, build_opener
+from urllib.request import HTTPSHandler, ProxyHandler, build_opener
 from urllib.response import addinfourl
 
 import pytest
@@ -60,10 +60,29 @@ def test_only_authenticated_get_to_named_pod_with_verified_tls_and_timeout(clust
     cluster.open.assert_called_once_with(request, timeout=10)
     recovery.ssl.create_default_context.assert_called_once_with(cafile=str(tmp_path / "ca.crt"))
     handlers = recovery.build_opener.call_args.args
-    assert len(handlers) == 2
-    assert isinstance(handlers[0], HTTPSHandler)
-    assert handlers[0]._context is recovery.ssl.create_default_context.return_value
-    assert isinstance(handlers[1], recovery._NoRedirect)
+    proxy = next(h for h in handlers if isinstance(h, ProxyHandler))
+    assert proxy.proxies == {}
+    tls = next(h for h in handlers if isinstance(h, HTTPSHandler))
+    assert tls._context is recovery.ssl.create_default_context.return_value
+    assert any(isinstance(h, recovery._NoRedirect) for h in handlers)
+
+
+@pytest.mark.parametrize("proxy_env", ["HTTPS_PROXY", "https_proxy"])
+def test_real_urllib_ignores_ambient_proxies(cluster, monkeypatch, proxy_env):
+    for name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(proxy_env, "http://proxy.example:3128")
+    wire_response = addinfourl(BytesIO(json.dumps(pod("Succeeded")).encode()), {},
+                               "https://10.0.0.1:443/", code=200)
+    wire_response.msg = "OK"
+    transport = HTTPSHandler()
+    transport.https_open = Mock(return_value=wire_response)
+    monkeypatch.setattr(recovery, "build_opener", lambda *handlers: build_opener(
+        transport, *[h for h in handlers if not isinstance(h, HTTPSHandler)]))
+    assert recovery.assert_owner_stopped(OWNER) is None
+    request = transport.https_open.call_args.args[0]
+    assert request.host == "10.0.0.1:443"
+    assert request._tunnel_host is None
 
 
 def test_404_proves_previous_pod_gone(cluster):
@@ -282,6 +301,26 @@ def test_invalid_token_fails_before_network(cluster, tmp_path, token):
 def test_missing_token_fails_before_network(cluster, tmp_path):
     (tmp_path / "token").unlink()
     with pytest.raises(ValueError):
+        recovery.assert_owner_stopped(OWNER)
+    cluster.open.assert_not_called()
+
+
+@pytest.mark.parametrize("setting,value,expected", [
+    ("POD_NAMESPACE", "../bad", "pod_namespace"),
+    ("KUBERNETES_SERVICE_HOST", "api/evil", "service host"),
+    ("KUBERNETES_SERVICE_PORT_HTTPS", "bad-port", "HTTPS port"),
+])
+def test_config_errors_preserve_specific_actionable_message(cluster, monkeypatch, setting, value, expected):
+    monkeypatch.setenv(setting, value)
+    owner = {"pod_name": OWNER["pod_name"]} if setting == "POD_NAMESPACE" else OWNER
+    with pytest.raises(ValueError, match=expected):
+        recovery.assert_owner_stopped(owner)
+    cluster.open.assert_not_called()
+
+
+def test_missing_token_retains_actionable_message_without_token_contents(cluster, tmp_path):
+    (tmp_path / "token").unlink()
+    with pytest.raises(ValueError, match="service account token"):
         recovery.assert_owner_stopped(OWNER)
     cluster.open.assert_not_called()
 

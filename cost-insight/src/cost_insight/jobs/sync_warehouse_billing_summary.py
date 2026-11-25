@@ -260,24 +260,34 @@ def _resume_progress(previous, progress):
         legacy_ordinary = key == "source_profile" and key not in old and progress[key] == "ordinary"
         if not legacy_ordinary and old.get(key) != progress[key]:
             raise ValueError(f"Previous warehouse worker is {previous.last_status}; inspect before recovery: {key}")
-    if tuple(old.get("accounts", ())) != progress["accounts"] or not old.get("run_id"):
-        raise ValueError("Warehouse recovery requires the original account scope and run identity")
+    accounts = old.get("accounts")
+    if (not isinstance(accounts, (list, tuple)) or tuple(accounts) != progress["accounts"]
+            or not isinstance(old.get("run_id"), str) or not old["run_id"]):
+        raise ValueError("Warehouse recovery requires the original account scope and run identity; inspect before recovery")
     windows = old.get("windows")
     completed = old.get("completed_account_days")
     if not isinstance(windows, list) or not isinstance(completed, list):
         raise ValueError("Missing warehouse recovery windows/completions; inspect before recovery")  # noqa: TRY004
     expected, seen = set(), set()
     for window in windows:
+        if not isinstance(window, dict) or not isinstance(window.get("account_id"), str):
+            raise ValueError("Malformed warehouse recovery window; inspect before recovery")  # noqa: TRY004
         account = window["account_id"]
-        start, end = _date(window["start"]), _date(window["end"])
+        try:
+            start, end = _date(window.get("start")), _date(window.get("end"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Malformed warehouse recovery window; inspect before recovery") from exc
         if account not in progress["accounts"] or account in seen or not 0 <= (end - start).days <= 4:
-            raise ValueError("Invalid warehouse recovery window")
+            raise ValueError("Invalid warehouse recovery window; inspect before recovery")
         seen.add(account)
         expected.update(f"{account}/{day}" for day in _dates(start, end))
-    if (len(set(completed)) != len(completed) or not set(completed) <= expected
-            or (old.get("phase") != "preflight" and seen != set(progress["accounts"]))
-            or (old.get("current_account_day") and old["current_account_day"] not in expected)):
-        raise ValueError("Incomplete or inconsistent warehouse recovery checkpoint")
+    current_day = old.get("current_account_day")
+    if (not all(isinstance(day, str) for day in completed)
+            or len(set(completed)) != len(completed) or not set(completed) <= expected
+            or old.get("phase") not in ("preflight", "write", "complete")
+            or (old["phase"] != "preflight" and seen != set(progress["accounts"]))
+            or (current_day is not None and (not isinstance(current_day, str) or current_day not in expected))):
+        raise ValueError("Incomplete or inconsistent warehouse recovery checkpoint; inspect before recovery")
     progress.update(windows=[dict(window) for window in windows], completed_account_days=list(completed),
                     recovered_from_run_id=old["run_id"])
 
@@ -387,7 +397,9 @@ def run_sync_warehouse_billing_summary(
             window = fetch_warehouse_window(client, vendor=vendor, account_id=account, project=project,
                                              today=resolved_today, heartbeat=heartbeat,
                                              **({"f04": True} if f04 else {}), **bounds)
-            if (expected or start_date is not None) and (window.start, window.end) != (expected or (start_date, end_date)):
+            requested_window = expected if expected is not None else (
+                (start_date, end_date) if start_date is not None else None)
+            if requested_window is not None and (window.start, window.end) != requested_window:
                 raise ValueError("Historical warehouse source returned a different date window")
             if (type(window.start) is not date or type(window.end) is not date
                     or not 0 <= (window.end - window.start).days <= 4 or window.end >= resolved_today):
