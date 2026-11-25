@@ -29,6 +29,7 @@ from cost_insight.jobs.sync_gcp_billing_summary import (
     _normalize_summary_row as normalize_aws,
 )
 from cost_insight.jobs.sync_gcp_billing_summary import replace_summary_partition_usage_dates
+from cost_insight.jobs.warehouse_recovery import assert_owner_stopped
 from cost_insight.sources.aws_flat_cur_export import _AWS_TIDB_CLOUD_F04_USEDBY as F04_USEDBY
 from cost_insight.sources.warehouse_billing_export import (
     F04_ACCOUNT_ID,
@@ -242,23 +243,73 @@ def _verify_publication(connection, vendor, account, day):
          summary=summary, attribution=attr, serving=serving)
 
 
+def _locked_state(connection, name):
+    # SQLite has no FOR UPDATE; obtain its writer lock before reading ownership.
+    sql = ("UPDATE cost_job_state SET job_name=job_name WHERE job_name=:name"
+           if connection.dialect.name == "sqlite" else
+           "SELECT job_name FROM cost_job_state WHERE job_name=:name FOR UPDATE")
+    connection.execute(text(sql), {"name": name})
+    return state_store.get_job_state(connection, name)
+
+
+def _resume_progress(previous, progress):
+    old = previous.watermark
+    for key in ("vendor", "project", "source_profile"):
+        # Pre-F04 ordinary workers did not record a profile. The runner has
+        # already rejected custom/F04 registry routes before constructing this scope.
+        legacy_ordinary = key == "source_profile" and key not in old and progress[key] == "ordinary"
+        if not legacy_ordinary and old.get(key) != progress[key]:
+            raise ValueError(f"Previous warehouse worker is {previous.last_status}; inspect before recovery: {key}")
+    if tuple(old.get("accounts", ())) != progress["accounts"] or not old.get("run_id"):
+        raise ValueError("Warehouse recovery requires the original account scope and run identity")
+    windows = old.get("windows")
+    completed = old.get("completed_account_days")
+    if not isinstance(windows, list) or not isinstance(completed, list):
+        raise ValueError("Missing warehouse recovery windows/completions; inspect before recovery")  # noqa: TRY004
+    expected, seen = set(), set()
+    for window in windows:
+        account = window["account_id"]
+        start, end = _date(window["start"]), _date(window["end"])
+        if account not in progress["accounts"] or account in seen or not 0 <= (end - start).days <= 4:
+            raise ValueError("Invalid warehouse recovery window")
+        seen.add(account)
+        expected.update(f"{account}/{day}" for day in _dates(start, end))
+    if (len(set(completed)) != len(completed) or not set(completed) <= expected
+            or (old.get("phase") != "preflight" and seen != set(progress["accounts"]))
+            or (old.get("current_account_day") and old["current_account_day"] not in expected)):
+        raise ValueError("Incomplete or inconsistent warehouse recovery checkpoint")
+    progress.update(windows=[dict(window) for window in windows], completed_account_days=list(completed),
+                    recovered_from_run_id=old["run_id"])
+
+
 def _acquire(engine, name, progress):
+    with engine.connect() as connection:
+        previous = state_store.get_job_state(connection, name)
+    if previous and previous.last_status not in ("ready", "succeeded"):
+        if previous.last_status not in ("failed", "running"):
+            raise ValueError(f"Previous warehouse worker is {previous.last_status}; inspect before recovery")
+        if previous.last_status == "running":
+            # Never hold a database transaction across the Kubernetes request.
+            try:
+                assert_owner_stopped(previous.watermark)
+            except ValueError as exc:
+                raise ValueError(f"Previous warehouse worker is running; inspect before recovery: {exc}") from exc
+        _resume_progress(previous, progress)
     with engine.begin() as connection:
-        sqlite = connection.dialect.name == "sqlite"
-        statement = "INSERT OR IGNORE" if sqlite else "INSERT IGNORE"
+        statement = "INSERT OR IGNORE" if connection.dialect.name == "sqlite" else "INSERT IGNORE"
         connection.execute(text(f"""{statement} INTO cost_job_state
             (job_name,watermark_json,last_status) VALUES (:name,'{{}}','ready')"""), {"name": name})
-        status = connection.execute(text("SELECT last_status FROM cost_job_state WHERE job_name=:name" +
-                                   ("" if sqlite else " FOR UPDATE")), {"name": name}).scalar_one()
-        if status not in ("ready", "succeeded"):
-            raise ValueError(f"Previous warehouse worker is {status}; inspect before recovery")
+        current = _locked_state(connection, name)
+        if ((previous is not None and current != previous)
+                or (previous is None and current.last_status != "ready")):
+            raise ValueError("Warehouse worker state changed during acquisition; retry next run")
         state_store.mark_job_started(connection, name, progress)
 
 
 def _checkpoint(engine, name, progress, status="running", error=None):
     progress["last_update"] = datetime.now(UTC).isoformat()
     with engine.begin() as connection:
-        state = state_store.get_job_state(connection, name)
+        state = _locked_state(connection, name)
         if state is None or state.last_status != "running" or state.watermark.get("run_id") != progress["run_id"]:
             raise ValueError("Lost warehouse worker state ownership")
         if status == "succeeded":
@@ -301,9 +352,14 @@ def run_sync_warehouse_billing_summary(
         raise ValueError("Explicit historical warehouse windows are currently restricted to F04")
     # Preserve ordinary-worker latches; a failed F04 run must not block other AWS accounts.
     name = "sync_aws_f04_warehouse_daily" if f04 else f"sync_{vendor}_warehouse_daily"
-    progress = {"run_id": str(uuid.uuid4()), "pod_name": os.getenv("POD_NAME"), "vendor": vendor, "project": project,
+    progress = {"run_id": str(uuid.uuid4()), "pod_name": os.getenv("POD_NAME"),
+                "pod_uid": os.getenv("POD_UID"), "pod_namespace": os.getenv("POD_NAMESPACE"),
+                "vendor": vendor, "project": project,
                 "source_profile": AWS_TIDB_CLOUD_F04_SCHEMA_VERSION if f04 else "ordinary",
-                "accounts": accounts, "windows": [], "completed_account_days": [],
+                "accounts": accounts,
+                "windows": ([{"account_id": account, "start": str(start_date), "end": str(end_date)}
+                             for account in accounts] if start_date is not None else []),
+                "completed_account_days": [],
                 "percent": 0, "phase": "preflight", "dry_run": dry_run}
     if not dry_run:
         _acquire(engine, name, progress)
@@ -316,23 +372,38 @@ def run_sync_warehouse_billing_summary(
             last_heartbeat = time.monotonic()
 
     try:
+        saved_windows = {w["account_id"]: w for w in progress["windows"]}
         plans, snapshots = [], {}
         for account in accounts:
             with engine.connect() as connection:
                 if _validate_registry(connection, vendor, account, project) != f04:
                     raise ValueError("Warehouse source profile changed since preflight")
-            bounds = {"start_date": start_date, "end_date": end_date} if start_date is not None else {}
+            saved = saved_windows.get(account)
+            expected = (_date(saved["start"]), _date(saved["end"])) if saved else None
+            if expected and start_date is not None and expected != (start_date, end_date):
+                raise ValueError("Explicit warehouse dates differ from the recovery checkpoint")
+            bounds = ({"recovery_window": expected} if expected else
+                      {"start_date": start_date, "end_date": end_date} if start_date is not None else {})
             window = fetch_warehouse_window(client, vendor=vendor, account_id=account, project=project,
                                              today=resolved_today, heartbeat=heartbeat,
                                              **({"f04": True} if f04 else {}), **bounds)
-            if start_date is not None and (window.start, window.end) != (start_date, end_date):
+            if (expected or start_date is not None) and (window.start, window.end) != (expected or (start_date, end_date)):
                 raise ValueError("Historical warehouse source returned a different date window")
-            progress["windows"].append({"account_id": account, "start": str(window.start), "end": str(window.end)})
+            if (type(window.start) is not date or type(window.end) is not date
+                    or not 0 <= (window.end - window.start).days <= 4 or window.end >= resolved_today):
+                raise ValueError("Invalid resolved warehouse window")
+            if not saved:
+                progress["windows"].append({"account_id": account, "start": str(window.start), "end": str(window.end)})
+                if not dry_run:
+                    _checkpoint(engine, name, progress)
             plan = {"account": account, "window": window, "f04": f04,
                     "groups": _normalize(window, vendor, account, f04=f04,
-                                         allow_short_window=start_date is not None)}
+                                         allow_short_window=expected is not None or start_date is not None)}
             with engine.connect() as connection:
                 _baseline(connection, plan, vendor, project)
+                for day in _dates(window.start, window.end):
+                    if f"{account}/{day}" in progress["completed_account_days"]:
+                        _verify_publication(connection, vendor, account, day)
             for table, metadata in window.snapshots.items():
                 if table in snapshots and snapshots[table] != metadata:
                     raise ValueError("Warehouse snapshot changed between account reads")
@@ -344,12 +415,16 @@ def run_sync_warehouse_billing_summary(
         if dry_run:
             return progress
         total_account_days = sum((p["window"].end - p["window"].start).days + 1 for p in plans)
+        progress["percent"] = 100 * len(progress["completed_account_days"]) // total_account_days
         progress["phase"] = "write"
         _checkpoint(engine, name, progress)
         for plan in plans:
             account, window = plan["account"], plan["window"]
             for day in _dates(window.start, window.end):
-                progress["current_account_day"] = f"{account}/{day}"
+                account_day = f"{account}/{day}"
+                if account_day in progress["completed_account_days"]:
+                    continue
+                progress["current_account_day"] = account_day
                 _checkpoint(engine, name, progress)
                 with engine.connect() as connection:
                     if _validate_registry(connection, vendor, account, project, window.start) != f04:

@@ -198,6 +198,41 @@ def test_f04_empty_explicit_source_stops_without_reading_summary():
     assert client.query.call_count == 2
 
 
+@pytest.mark.parametrize("vendor", ["aws", "azure"])
+def test_persisted_recovery_window_reads_old_days_without_rolling_discovery(vendor):
+    start, end = date(2026, 8, 30), date(2026, 9, 3)
+    controls = [{"usage_date": start, "export_partition_date": start.replace(day=1), "n": 1}]
+    client, _ = client_for(discovery=controls, rows=[{"old": True}])
+    window = fetch(client, vendor, recovery_window=(start, end))
+    assert (window.start, window.end) == (start, end)
+    assert window.controls == controls and window.rows == [{"old": True}]
+    assert client.query.call_count == 4
+    for call in client.query.call_args_list:
+        assert parameters(call)["earliest_usage_date"] == start
+        assert parameters(call)["usage_end_date"] == end
+        assert call.kwargs["job_config"].maximum_bytes_billed == source.MAX_BYTES
+    if vendor == "azure":
+        assert set(window.snapshots) == {
+            f"{PROJECT}.raw_azure_billing.azure_billing_cost_20260801",
+            f"{PROJECT}.raw_azure_billing.azure_billing_cost_20260901"}
+
+
+@pytest.mark.parametrize("vendor", ["aws", "azure"])
+@pytest.mark.parametrize("options", [
+    {"start_date": START, "end_date": END},  # Still not a public ordinary repair path.
+    {"recovery_window": (START, START + timedelta(days=5))},
+    {"recovery_window": (TODAY, TODAY)},
+    {"recovery_window": (END, START)},
+    {"recovery_window": (START, END), "start_date": START, "end_date": END},
+])
+def test_ordinary_recovery_does_not_relax_date_bounds_or_expose_cli_repair(vendor, options):
+    client, _ = client_for()
+    with pytest.raises(ValueError):
+        fetch(client, vendor, **options)
+    client.get_table.assert_not_called()
+    client.query.assert_not_called()
+
+
 def test_aws_uses_existing_warehouse_raw_builder_and_exact_usage_listcost_semantics():
     client, _ = client_for()
     fetch(client)

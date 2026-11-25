@@ -212,9 +212,11 @@ def test_cli_success_without_native_publication_stops_and_latches(engine, vendor
     assert failed.watermark["current_account_day"] == f"{ACCOUNT}/{START}"
     with engine.connect() as c:
         assert c.execute(text(f"SELECT COUNT(DISTINCT usage_date) FROM {job.SUMMARY} WHERE account_id=:a"), {"a": ACCOUNT}).scalar_one() == 2
-    with pytest.raises(ValueError, match="inspect before recovery"):
-        run(engine, vendor)
-    assert state(engine, vendor) == failed
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publish)
+    recovered = run(engine, vendor)
+    assert recovered["recovered_from_run_id"] == failed.watermark["run_id"]
+    assert len(recovered["completed_account_days"]) == 5
+    assert state(engine, vendor).last_status == "succeeded"
 
 
 def test_transport_retry_is_scoped_to_summary_not_whole_warehouse_pipeline(engine, vendor, monkeypatch):
@@ -331,7 +333,7 @@ def f04_engine(engine, vendor, monkeypatch):
                   {"f04": F04_ACCOUNT, "old": ACCOUNT})
     def fetch(client, **kw):
         assert kw["f04"] is True and kw["account_id"] == F04_ACCOUNT
-        first, last = kw.get("start_date") or START, kw.get("end_date") or END
+        first, last = kw.get("recovery_window") or (kw.get("start_date") or START, kw.get("end_date") or END)
         w = window("aws", F04_ACCOUNT, start=first, end=last)
         rows = [{**r, "author": F04_USEDBY,
                  "vendor_tags_json": '{"usedby":"prod-us-west-2-f04"}'} for r in w.rows]
@@ -563,6 +565,276 @@ def test_source_change_still_stops_later_writes_and_keeps_failure_latch(engine, 
     assert failed.last_status == "failed"
     assert failed.watermark["completed_account_days"] == [f"{ACCOUNT}/{START}"]
     assert failed.watermark["current_account_day"] == f"{ACCOUNT}/{START + timedelta(days=1)}"
-    with pytest.raises(ValueError, match="inspect before recovery"):
+    monkeypatch.setattr(job, "assert_snapshot", Mock())
+    publisher = Mock(side_effect=publish)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publisher)
+    result = run(engine, vendor)
+    assert result["recovered_from_run_id"] == failed.watermark["run_id"]
+    assert publisher.call_count == 4
+    assert [c.kwargs["start_date"] for c in publisher.call_args_list] == list(job._dates(START + timedelta(days=1), END))
+
+
+def fail_mid_window(engine, vendor, monkeypatch):
+    def fail(engine, **kw):
+        if kw["start_date"] == START + timedelta(days=2):
+            raise RuntimeError("crashed after summary commit")
+        publish(engine, **kw)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", fail)
+    with pytest.raises(RuntimeError, match="crashed"):
         run(engine, vendor)
-    assert state(engine, vendor) == failed
+    return state(engine, vendor)
+
+
+@pytest.mark.parametrize("legacy_profile", [False, True])
+def test_failed_run_preserves_old_window_and_replays_only_unfinished_days(engine, vendor, monkeypatch, legacy_profile):
+    failed = fail_mid_window(engine, vendor, monkeypatch)
+    if legacy_profile:
+        # Real ordinary workers before the F04 cutover omitted source_profile.
+        old = {k: v for k, v in failed.watermark.items() if k not in ("source_profile", "pod_uid", "pod_namespace")}
+        with engine.begin() as c:
+            state_store.mark_job_failed(c, f"sync_{vendor}_warehouse_daily", old, "old worker failure")
+        failed = state(engine, vendor)
+    assert failed.watermark["completed_account_days"] == [f"{ACCOUNT}/{START}", f"{ACCOUNT}/{START + timedelta(days=1)}"]
+    fetches = []
+    def fetch(client, **kw):
+        fetches.append(kw)
+        # An ordinary discovery would now lose every pending day of the old run.
+        first, last = kw.get("recovery_window") or (END + timedelta(days=10), END + timedelta(days=14))
+        return window(vendor, start=first, end=last)
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    publisher = Mock(side_effect=publish)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publisher)
+    replacement = Mock(wraps=job.replace_summary_partition_usage_dates)
+    monkeypatch.setattr(job, "replace_summary_partition_usage_dates", replacement)
+    result = run(engine, vendor)
+    assert fetches[0]["recovery_window"] == (START, END)
+    assert result["windows"] == failed.watermark["windows"]
+    assert result["percent"] == 100 and len(result["completed_account_days"]) == 5
+    assert [c.kwargs["start_date"] for c in publisher.call_args_list] == list(job._dates(START + timedelta(days=2), END))
+    assert replacement.call_count == 3  # Whole pending day, even where summary already committed.
+    with engine.connect() as c:
+        for day in job._dates(START, END):
+            total = job._table_totals(c, job.SUMMARY, vendor, ACCOUNT, day)
+            assert total["n"] == 1 and total["net_cost"] == 8
+            job._verify_publication(c, vendor, ACCOUNT, day)
+    with pytest.raises(ValueError, match="ownership"):
+        job._checkpoint(engine, f"sync_{vendor}_warehouse_daily", failed.watermark)
+
+
+@pytest.mark.parametrize("running", [False, True])
+def test_dry_run_does_not_reclaim_or_write_valid_recovery_state(engine, vendor, monkeypatch, running):
+    failed = fail_mid_window(engine, vendor, monkeypatch)
+    if running:
+        with engine.begin() as c:
+            state_store.mark_job_started(c, f"sync_{vendor}_warehouse_daily", failed.watermark)
+    before = state(engine, vendor)
+    statements = []
+    event.listen(engine, "before_cursor_execute",
+                 lambda c, cur, sql, p, ctx, many: statements.append(sql.strip().upper()))
+    guard, publisher = Mock(), Mock()
+    monkeypatch.setattr(job, "assert_owner_stopped", guard)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publisher)
+    run(engine, vendor, dry_run=True)
+    assert state(engine, vendor) == before
+    assert statements and all(s.startswith("SELECT") for s in statements)
+    guard.assert_not_called()
+    publisher.assert_not_called()
+
+
+def test_preflight_failure_keeps_discovered_window_before_any_fact_write(engine, vendor, monkeypatch):
+    normalize = job._normalize
+    monkeypatch.setattr(job, "_normalize", Mock(side_effect=RuntimeError("preflight crash")))
+    with pytest.raises(RuntimeError, match="preflight crash"):
+        run(engine, vendor)
+    old = state(engine, vendor)
+    assert old.watermark["windows"] == [{"account_id": ACCOUNT, "start": str(START), "end": str(END)}]
+    assert old.watermark["phase"] == "preflight" and not old.watermark["completed_account_days"]
+    monkeypatch.setattr(job, "_normalize", normalize)
+    def fetch(client, **kw):
+        assert kw["recovery_window"] == (START, END)
+        return window(vendor)
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    assert run(engine, vendor)["percent"] == 100
+
+
+@pytest.mark.parametrize("table,assignment", [
+    ("cost_attribution_daily", "net_cost=99"),
+    ("cost_resource_serving_publication", "active_materialization_version='missing'"),
+])
+def test_completed_days_are_verified_before_skipping_or_replacing_any_pending_day(
+        engine, vendor, monkeypatch, table, assignment):
+    fail_mid_window(engine, vendor, monkeypatch)
+    with engine.begin() as c:
+        c.execute(text(f"UPDATE {table} SET {assignment} WHERE usage_date=:day"), {"day": START})
+    replacement = Mock()
+    monkeypatch.setattr(job, "replace_summary_partition_usage_dates", replacement)
+    with pytest.raises(ValueError, match="summary -> attribution|Published native version"):
+        run(engine, vendor)
+    replacement.assert_not_called()
+
+
+def test_running_owner_requires_proof_and_rechecks_state_after_pod_lookup(engine, vendor, monkeypatch):
+    failed = fail_mid_window(engine, vendor, monkeypatch)
+    name = f"sync_{vendor}_warehouse_daily"
+    with engine.begin() as c:
+        state_store.mark_job_started(c, name, failed.watermark)
+    old = state(engine, vendor)
+    guard = Mock(side_effect=ValueError("Pod is alive or unknown"))
+    monkeypatch.setattr(job, "assert_owner_stopped", guard)
+    fetch = Mock()
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    with pytest.raises(ValueError, match="running"):
+        run(engine, vendor)
+    assert state(engine, vendor) == old
+    fetch.assert_not_called()
+
+    def replaced_owner(progress):
+        # Simulate a second contender winning while our Kubernetes request is in flight.
+        with engine.begin() as c:
+            state_store.mark_job_started(c, name, {**progress, "run_id": "another-worker"})
+    guard.side_effect = replaced_owner
+    with pytest.raises(ValueError, match="state changed"):
+        run(engine, vendor)
+    assert state(engine, vendor).watermark["run_id"] == "another-worker"
+    fetch.assert_not_called()
+    with pytest.raises(ValueError, match="ownership"):
+        job._checkpoint(engine, name, old.watermark)
+    assert state(engine, vendor).watermark["run_id"] == "another-worker"
+
+
+def test_dead_running_owner_is_resumed_and_records_new_pod_identity(engine, vendor, monkeypatch):
+    failed = fail_mid_window(engine, vendor, monkeypatch)
+    with engine.begin() as c:
+        state_store.mark_job_started(c, f"sync_{vendor}_warehouse_daily", failed.watermark)
+    guard = Mock()
+    monkeypatch.setattr(job, "assert_owner_stopped", guard)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publish)
+    for env, value in (("POD_NAME", "new-pod"), ("POD_UID", "new-uid"), ("POD_NAMESPACE", "apps")):
+        monkeypatch.setenv(env, value)
+    result = run(engine, vendor)
+    guard.assert_called_once_with(failed.watermark)
+    assert result["pod_uid"] == "new-uid" and result["pod_namespace"] == "apps"
+    assert result["run_id"] != failed.watermark["run_id"] and result["percent"] == 100
+
+
+@pytest.mark.parametrize("change", [
+    {"accounts": [DORMANT]}, {"project": "another-project"}, {"source_profile": "custom"},
+    {"completed_account_days": [f"{ACCOUNT}/2026-01-01"]},
+    {"windows": []},
+])
+def test_recovery_refuses_changed_or_corrupt_persisted_scope(engine, vendor, monkeypatch, change):
+    failed = fail_mid_window(engine, vendor, monkeypatch)
+    with engine.begin() as c:
+        state_store.mark_job_failed(c, f"sync_{vendor}_warehouse_daily", {**failed.watermark, **change}, "old")
+    fetch = Mock()
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    with pytest.raises(ValueError):
+        run(engine, vendor)
+    fetch.assert_not_called()
+
+
+def test_two_failed_state_contenders_cannot_both_acquire(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    db = create_engine(f"sqlite:///{tmp_path / 'state.db'}")
+    with db.begin() as c:
+        c.execute(text('''CREATE TABLE cost_job_state(job_name TEXT PRIMARY KEY,watermark_json TEXT,
+            last_started_at TEXT,last_succeeded_at TEXT,last_status TEXT,last_error TEXT,updated_at TEXT)'''))
+        previous = {"run_id": "old", "vendor": "azure", "project": PROJECT, "source_profile": "ordinary",
+                    "accounts": [ACCOUNT], "windows": [{"account_id": ACCOUNT, "start": str(START), "end": str(END)}],
+                    "completed_account_days": [], "phase": "write"}
+        state_store.mark_job_failed(c, "worker", previous, "crashed")
+    barrier = Barrier(2)
+    resume = job._resume_progress
+    def synchronized(*args):
+        resume(*args)
+        barrier.wait(timeout=5)
+    monkeypatch.setattr(job, "_resume_progress", synchronized)
+    def acquire(run_id):
+        progress = {**previous, "run_id": run_id, "accounts": (ACCOUNT,)}
+        try:
+            job._acquire(db, "worker", progress)
+            return True
+        except ValueError as exc:
+            assert "state changed" in str(exc)
+            return False
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            assert sorted(pool.map(acquire, ("one", "two"))) == [False, True]
+    finally:
+        db.dispose()
+
+
+def test_all_days_checkpointed_before_terminal_failure_need_no_republication(engine, vendor, monkeypatch):
+    checkpoint = job._checkpoint
+    def fail_success(*args, **kwargs):
+        if len(args) > 3 and args[3] == "succeeded":
+            raise RuntimeError("crashed before terminal checkpoint")
+        return checkpoint(*args, **kwargs)
+    monkeypatch.setattr(job, "_checkpoint", fail_success)
+    with pytest.raises(RuntimeError, match="terminal checkpoint"):
+        run(engine, vendor)
+    assert len(state(engine, vendor).watermark["completed_account_days"]) == 5
+    monkeypatch.setattr(job, "_checkpoint", checkpoint)
+    publisher = Mock()
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publisher)
+    assert run(engine, vendor)["percent"] == 100
+    publisher.assert_not_called()
+    assert state(engine, vendor).last_status == "succeeded"
+
+
+def test_f04_short_historical_failure_resumes_without_explicit_cli_dates(f04_engine, monkeypatch):
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", Mock(side_effect=RuntimeError("crashed")))
+    with pytest.raises(RuntimeError, match="crashed"):
+        run_f04(f04_engine, start_date=START, end_date=START)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publish)
+    result = run_f04(f04_engine)
+    assert result["percent"] == 100
+    assert result["completed_account_days"] == [f"{F04_ACCOUNT}/{START}"]
+
+
+def test_f04_preflight_crash_preserves_explicit_window_and_requires_profile(f04_engine, monkeypatch):
+    fetch = job.fetch_warehouse_window
+    monkeypatch.setattr(job, "fetch_warehouse_window", Mock(side_effect=RuntimeError("preflight crash")))
+    with pytest.raises(RuntimeError, match="preflight crash"):
+        run_f04(f04_engine, start_date=START, end_date=START)
+    with f04_engine.connect() as c:
+        previous = state_store.get_job_state(c, "sync_aws_f04_warehouse_daily")
+    assert previous.watermark["windows"] == [{"account_id": F04_ACCOUNT, "start": str(START), "end": str(START)}]
+    legacy = {k: v for k, v in previous.watermark.items() if k != "source_profile"}
+    with f04_engine.begin() as c:
+        state_store.mark_job_failed(c, "sync_aws_f04_warehouse_daily", legacy, "missing profile")
+    with pytest.raises(ValueError, match="source_profile"):
+        run_f04(f04_engine)
+    job.fetch_warehouse_window.assert_called_once()  # No new lookup for ambiguous F04 checkpoint.
+    with f04_engine.begin() as c:
+        state_store.mark_job_failed(c, "sync_aws_f04_warehouse_daily", previous.watermark, "old failure")
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    result = run_f04(f04_engine)
+    assert result["completed_account_days"] == [f"{F04_ACCOUNT}/{START}"]
+    assert result["percent"] == 100
+
+
+def test_recovery_after_transport_fault_still_replaces_not_adds(engine, vendor, monkeypatch):
+    from pymysql.err import OperationalError
+
+    from cost_insight.common import db_retry
+
+    fail_mid_window(engine, vendor, monkeypatch)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publish)
+    monkeypatch.setattr(db_retry.time, "sleep", Mock())
+    failed = False
+    def fault(connection, cursor, statement, params, context, many):
+        nonlocal failed
+        if not failed and statement.replace("`", "").lstrip().startswith(f"INSERT INTO {job.SUMMARY}"):
+            failed = True
+            raise OperationalError(2013, "Lost connection during resumed insert")
+    event.listen(engine, "before_cursor_execute", fault)
+    assert run(engine, vendor)["percent"] == 100
+    db_retry.time.sleep.assert_called_once()
+    with engine.connect() as c:
+        for day in job._dates(START, END):
+            total = job._table_totals(c, job.SUMMARY, vendor, ACCOUNT, day)
+            assert total["n"] == 1 and total["net_cost"] == 8
+            job._verify_publication(c, vendor, ACCOUNT, day)
