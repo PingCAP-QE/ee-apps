@@ -127,9 +127,14 @@ podDisruptionBudget:
 
 networkPolicy:
   enabled: true
-  # Callers are expected to live in these namespaces.
+  # Callers of the plaintext HTTP listener (port 8080).
   ingressNamespaces:
     - ci
+  # Callers of the native TLS listener, when server.tls.enabled is true. Kept
+  # separate from ingressNamespaces so enabling TLS does not silently grant the
+  # TLS port to every HTTP consumer (or vice versa). Empty grants it to nobody;
+  # use a dedicated NetworkPolicy for a namespace-scoped rollout.
+  tlsIngressNamespaces: []
   # Empty means unrestricted egress. Restrict to the GitHub API in production.
   egress: []
 
