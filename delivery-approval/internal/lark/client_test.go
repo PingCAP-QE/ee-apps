@@ -413,3 +413,42 @@ func TestExpiredCardExplainsDeadLinks(t *testing.T) {
 		t.Fatalf("expired card should say the links are dead: %s", content)
 	}
 }
+
+func TestNotifyExpiredTellsTheRequester(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	req := sampleRequest()
+	req.Status = store.StatusExpired
+	req.ExpiresAt = time.Date(2026, 11, 25, 7, 2, 0, 0, time.UTC)
+
+	if err := c.NotifyExpired(context.Background(), req, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.messages) != 1 || s.messages[0].receiveID != "ou-requester" || s.messages[0].receiveIDType != "open_id" {
+		t.Fatalf("messages = %+v", s.messages)
+	}
+	body := s.messages[0].content
+	if !strings.Contains(body, "expired at 2026-11-25 07:02 UTC") {
+		t.Fatalf("missing expiry time: %s", body)
+	}
+	if !strings.Contains(body, "no longer work") {
+		t.Fatalf("an approved request should say its links are dead: %s", body)
+	}
+	if strings.Contains(body, "/d/") {
+		t.Fatalf("expiry message must not carry a download link: %s", body)
+	}
+}
+
+func TestNotifyExpiredForPendingRequest(t *testing.T) {
+	s := &larkServer{}
+	c := testClient(t, s)
+	req := sampleRequest()
+	req.ExpiresAt = time.Date(2026, 11, 25, 7, 2, 0, 0, time.UTC)
+
+	if err := c.NotifyExpired(context.Background(), req, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(s.messages[0].content, "no longer work") {
+		t.Fatalf("a pending request never had links: %s", s.messages[0].content)
+	}
+}
