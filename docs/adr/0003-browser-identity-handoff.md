@@ -1,8 +1,9 @@
 # ADR 0003: Browser identity handoff to authzd
 
-- Status: Proposed; blocked on a decision — the recommended header forwarding is
-  not reachable in the deployed filter order (evidence below)
-- Date: 2026-11-24, evidence added 2026-11-25
+- Status: Accepted — Option D (native `EnvoyProxy.spec.filterOrder`), subject to
+  the two validation phases below. Browser routes stay out of `extAuth` until both
+  pass.
+- Date: 2026-11-24, evidence added 2026-11-25, decision 2026-11-25
 
 ## Context
 
@@ -96,8 +97,54 @@ unauthenticated-path allow-list and the cookie spoofing test designed up front.
 Option A also keeps the design statement honest: the gateway does not authorize
 browser reads, and nothing in this ADR claims it does.
 
-## Decision needed
+## Decision (2026-11-25)
 
-Gateway owner and security owner: confirm option A as the V1 boundary, or choose
-option B and accept the cookie verifier, the unauthenticated-path allow-list and
-the redirect behavior in enforce mode.
+Gateway architect, security owner: proceed with **option D**. `filterOrder` is a
+first-class Envoy Gateway v1.9 feature, so the fix is configuration, not a custom
+xDS patch and not cookie verification inside `authzd`. Option A remains the
+rollout boundary until validation passes; no business service changes.
+
+### Validation phases
+
+**Phase A — isolated Gateway PoC** (`PingCAP-QE/ee-ops`
+`infrastructure/gcp/poc-authz-filter-order/`): prove the resulting chain, that
+`jwt_authn` rejects before `ext_authz` (and therefore records no decision), that an
+authenticated request reaches `authzd`, that the caller's original `Authorization`
+header is still present, and that `credential_injector` still runs afterwards.
+
+**Phase B — real OIDC integration** on a host that can receive the OAuth callback:
+prove `forwardIDToken` delivery, browser session binding, login/callback/refresh/
+logout, header sanitization, CSRF, and a browser ReBAC allow/deny decision. Use a
+dedicated OAuth client and test redirect URI if that avoids touching the shared
+production Gateway; otherwise a controlled canary in observe mode. Browser
+enforcement stays off until Phase B passes.
+
+### Contracts this ADR now fixes
+
+1. **Filter order is a contract.** `ext_authz` must run after the authentication
+   filters that produce identity and before `credential_injector`. It is versioned
+   in the `EnvoyProxy`, verified by reading the admin `config_dump`, and recorded in
+   every shadow report. `filterOrder` is proxy-wide, so any change is evaluated
+   route by route.
+2. **Identity substitution is the acceptance test**, not the absence of malformed
+   tokens: establish a browser session for user A, present a valid ID token for
+   user B in the forwarding header, and prove `authzd` decides on user A. A
+   deployment that accepts B fails the contract even if it rejects malformed or
+   duplicated values.
+3. **One credential per header.** `authzd` rejects a forwarded identity header
+   that carries a comma, embedded whitespace or an empty value, with the same
+   strictness as `Authorization`. This is a prerequisite for browser integration
+   and is already implemented; it bounds the damage if a Gateway ever fails to
+   overwrite a client-supplied copy.
+4. **Three failure classes stay distinguishable.** A Gateway authentication
+   failure produces no `authzd` decision; a handoff failure produces
+   `identity_missing` or `identity_invalid`; an authorization denial produces
+   `relationship_denied`, `resource_not_found` or `route_not_registered`.
+   Reordering resets the shadow baseline: pre- and post-reordering counts are not
+   comparable, and `identity_invalid` becomes a signal of handoff problems rather
+   than of ordinary unauthenticated traffic.
+
+Upstream note: Envoy v1.39 release notes state that OAuth2 `forward_id_token`
+strips client-supplied custom forwarding headers and sets them only from a
+validated cookie. Treat that as supporting evidence, not proof — it is verified
+against the deployed image in Phase B.
