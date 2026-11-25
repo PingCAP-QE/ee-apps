@@ -270,21 +270,6 @@ func (c *Client) approverTargets(ctx context.Context, emails []string) []target 
 	return out
 }
 
-func firstFile(req *store.Request) store.File {
-	if len(req.Files) == 0 {
-		return store.File{}
-	}
-	return req.Files[0]
-}
-
-func fileNames(req *store.Request) string {
-	names := make([]string, 0, len(req.Files))
-	for _, f := range req.Files {
-		names = append(names, f.Filename)
-	}
-	return strings.Join(names, ", ")
-}
-
 // NotifyDecision tells the requester that a request was rejected or revoked.
 // Delivery success uses Notify with links; delivery failure uses NotifyFailure.
 func (c *Client) NotifyDecision(ctx context.Context, req *store.Request, decision, note string) error {

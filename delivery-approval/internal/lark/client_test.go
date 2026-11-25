@@ -162,6 +162,29 @@ func sampleRequest() *store.Request {
 	}
 }
 
+func TestApprovalCardListsEveryTarget(t *testing.T) {
+	req := sampleRequest()
+	req.Files = []store.File{
+		{Repository: "r.example.com/a", Tag: "v1", Filename: "a.tar.gz"},
+		{Repository: "r.example.com/b", Tag: "v2", Filename: "b.tar.gz"},
+	}
+	content, err := json.Marshal(pendingCard("https://approvals.example.com", req))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(content)
+	// A request may span repositories, so each file is listed with its own
+	// repository and tag instead of one repository/tag header.
+	for _, want := range []string{"r.example.com/a v1 a.tar.gz", "r.example.com/b v2 b.tar.gz"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("card missing target %q: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "Repository:") || strings.Contains(body, "Files:") {
+		t.Fatalf("card still shows a single repository/tag: %s", body)
+	}
+}
+
 func TestNotifyApprovalSendsCardAndBuzz(t *testing.T) {
 	s := &larkServer{}
 	c := testClient(t, s)

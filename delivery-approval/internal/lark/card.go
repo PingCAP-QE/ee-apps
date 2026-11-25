@@ -162,9 +162,24 @@ func summaryBlock(req *store.Request) map[string]any {
 		"tag": "div",
 		"text": map[string]string{
 			"tag": "plain_text",
-			"content": fmt.Sprintf("Requester: %s\nRepository: %s\nTag: %s\nFiles: %s\nTTL: %s\nRequest note: %s",
-				req.RequesterEmail, firstFile(req).Repository, firstFile(req).Tag,
-				fileNames(req), (time.Duration(req.TTLSeconds) * time.Second).String(), req.Note),
+			"content": fmt.Sprintf("Requester: %s\nTargets:\n%s\nTTL: %s\nRequest note: %s",
+				req.RequesterEmail, targetLines(req),
+				(time.Duration(req.TTLSeconds) * time.Second).String(), req.Note),
 		},
 	}
+}
+
+// targetLines lists every requested file as "<repository> <tag> <filename>", one
+// per line. A request may span several repositories, so the card cannot show a
+// single repository/tag plus a filename list: the approver has to see exactly
+// which files will be issued.
+func targetLines(req *store.Request) string {
+	if len(req.Files) == 0 {
+		return "(none)"
+	}
+	lines := make([]string, 0, len(req.Files))
+	for _, f := range req.Files {
+		lines = append(lines, f.Repository+" "+f.Tag+" "+f.Filename)
+	}
+	return strings.Join(lines, "\n")
 }

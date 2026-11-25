@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -204,11 +205,9 @@ func TestPagesUsePublicURLPathPrefix(t *testing.T) {
 
 	csrf, cookie := obtainCSRF(t, h)
 	form := url.Values{
-		"repository": {"us-docker.pkg.dev/project/hub/package"},
-		"tag":        {"v8.1.0"},
-		"files":      {"tidb.tar.gz"},
-		"ttl":        {"3600"},
-		"csrf":       {csrf},
+		"targets": {"us-docker.pkg.dev/project/hub/package v8.1.0 tidb.tar.gz"},
+		"ttl":     {"3600"},
+		"csrf":    {csrf},
 	}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -236,7 +235,8 @@ func TestPagesUsePublicURLPathPrefix(t *testing.T) {
 func TestFormPrefillsFromQuery(t *testing.T) {
 	h := testHandler(t, newFakeStore(), &auth.Identity{Email: "requester@example.com", Subject: "sub"})
 	// Mirrors a legacy /dl/oci-file link: repository in the path, file/tag in
-	// the query. Repeated `file` params and a comma list are both accepted.
+	// the query. Repeated `file` params and a comma list are both accepted and
+	// become one target line each.
 	target := "/?repository=us-docker.pkg.dev/project/hub/package&tag=v8.5.4" +
 		"&file=tidb.tar.gz&file=tikv.tar.gz&files=tiflash.tar.gz,tools.tar.gz" +
 		"&ttl=7d&note=customer%20asked"
@@ -247,12 +247,11 @@ func TestFormPrefillsFromQuery(t *testing.T) {
 	}
 	body := w.Body.String()
 	for _, want := range []string{
-		`value="us-docker.pkg.dev/project/hub/package"`,
-		`value="v8.5.4"`,
-		`tidb.tar.gz`,
-		`tikv.tar.gz`,
-		`tiflash.tar.gz`,
-		`tools.tar.gz`,
+		`name="targets"`,
+		"us-docker.pkg.dev/project/hub/package v8.5.4 tidb.tar.gz",
+		"us-docker.pkg.dev/project/hub/package v8.5.4 tikv.tar.gz",
+		"us-docker.pkg.dev/project/hub/package v8.5.4 tiflash.tar.gz",
+		"us-docker.pkg.dev/project/hub/package v8.5.4 tools.tar.gz",
 		`customer asked`,
 	} {
 		if !strings.Contains(body, want) {
@@ -264,6 +263,114 @@ func TestFormPrefillsFromQuery(t *testing.T) {
 	}
 	if strings.Contains(body, `value="7d"`) {
 		t.Fatal("TTL must not be prefilled from the query")
+	}
+}
+
+func TestCreateAcceptsMultipleRepositories(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	// Two repositories in one request, and a repeated triple that must collapse
+	// instead of tripping the per-request unique index.
+	form := url.Values{
+		"targets": {
+			"us-docker.pkg.dev/project/hub/package v8.1.0 tidb.tar.gz\n" +
+				"us-docker.pkg.dev/project/hotfix/package v8.1.0-hotfix tikv.tar.gz\n" +
+				"us-docker.pkg.dev/project/hub/package v8.1.0 tidb.tar.gz",
+		},
+		"ttl":  {"3600"},
+		"note": {"two repositories"},
+		"csrf": {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	want := []store.File{
+		{Repository: "us-docker.pkg.dev/project/hub/package", Tag: "v8.1.0", Filename: "tidb.tar.gz"},
+		{Repository: "us-docker.pkg.dev/project/hotfix/package", Tag: "v8.1.0-hotfix", Filename: "tikv.tar.gz"},
+	}
+	if st.created == nil {
+		t.Fatal("request was not created")
+	}
+	if len(st.created.Files) != len(want) {
+		t.Fatalf("files = %+v, want %d", st.created.Files, len(want))
+	}
+	for i, file := range st.created.Files {
+		if file.Repository != want[i].Repository || file.Tag != want[i].Tag || file.Filename != want[i].Filename {
+			t.Fatalf("file %d = %+v, want %+v", i, file, want[i])
+		}
+	}
+}
+
+func TestParseTargets(t *testing.T) {
+	tooMany := make([]string, 0, 31)
+	for i := 0; i < 31; i++ {
+		tooMany = append(tooMany, fmt.Sprintf("r.example.com/a v1 file-%02d.tar.gz", i))
+	}
+	cases := []struct {
+		name    string
+		in      string
+		want    int
+		wantErr string
+	}{
+		{"tab separated", "r.example.com/a\tv1\ta.tar.gz", 1, ""},
+		{"blank lines", "\n\nr.example.com/a v1 a.tar.gz\n\n", 1, ""},
+		{"wrong field count", "r.example.com/a v1", 0, "line 1: use <repository> <tag> <filename>"},
+		{"filename with a space", "r.example.com/a v1 a b.tar.gz", 0, "line 1: use <repository> <tag> <filename>"},
+		{"invalid repository", "../evil v1 a.tar.gz", 0, "line 1: invalid repository"},
+		{"invalid tag", "r.example.com/a v1@bad a.tar.gz", 0, "line 1: invalid tag"},
+		{"filename with a slash", "r.example.com/a v1 ../secret", 0, "line 1: invalid filename"},
+		{"second line", "r.example.com/a v1 a.tar.gz\nr.example.com/b v1", 0, "line 2: use <repository> <tag> <filename>"},
+		{"nothing", "  \n \n", 0, "at least one target is required"},
+		{"too many", strings.Join(tooMany, "\n"), 0, "provide 1-30 targets"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseTargets(tc.in)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("parseTargets(%q) error = %v, want %q", tc.in, err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseTargets(%q) error: %v", tc.in, err)
+			}
+			if len(got) != tc.want {
+				t.Fatalf("parseTargets(%q) = %+v, want %d targets", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCreateKeepsTargetsAfterRejection(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"targets": {"r.example.com/a v1 a.tar.gz\nr.example.com/b v2"},
+		"ttl":     {"60"},
+		"csrf":    {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || !strings.Contains(body, "line 2: use &lt;repository&gt; &lt;tag&gt; &lt;filename&gt;") {
+		t.Fatalf("create = %d, body=%s", w.Code, body)
+	}
+	if !strings.Contains(body, "r.example.com/a v1 a.tar.gz") {
+		t.Fatalf("typed targets were dropped: %s", body)
+	}
+	if st.created != nil {
+		t.Fatal("an invalid form must not create a request")
 	}
 }
 
@@ -307,11 +414,9 @@ func TestFormAcceptsFriendlyTTL(t *testing.T) {
 	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
 	csrf, cookie := obtainCSRF(t, h)
 	form := url.Values{
-		"repository": {"r.example.com/a"},
-		"tag":        {"v1"},
-		"files":      {"a.tar.gz"},
-		"ttl":        {"2h"},
-		"csrf":       {csrf},
+		"targets": {"r.example.com/a v1 a.tar.gz"},
+		"ttl":     {"2h"},
+		"csrf":    {csrf},
 	}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -340,11 +445,12 @@ func TestCreateRequest(t *testing.T) {
 	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
 
 	form := url.Values{
-		"repository": {"us-docker.pkg.dev/project/hub/package"},
-		"tag":        {"v8.1.0_linux_amd64"},
-		"files":      {"tidb.tar.gz\ntikv.tar.gz"},
-		"ttl":        {"3600"},
-		"note":       {"customer asked"},
+		"targets": {
+			"us-docker.pkg.dev/project/hub/package v8.1.0_linux_amd64 tidb.tar.gz\n" +
+				"us-docker.pkg.dev/project/hub/package v8.1.0_linux_amd64 tikv.tar.gz",
+		},
+		"ttl":  {"3600"},
+		"note": {"customer asked"},
 	}
 	csrf, cookie := obtainCSRF(t, h)
 	form.Set("csrf", csrf)
@@ -370,7 +476,7 @@ func TestCreateRequest(t *testing.T) {
 
 func TestCreateRejectsBadCSRFAndInput(t *testing.T) {
 	h := testHandler(t, newFakeStore(), &auth.Identity{Email: "requester@example.com"})
-	valid := url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}}
+	valid := url.Values{"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}}
 
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(valid.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -381,7 +487,7 @@ func TestCreateRejectsBadCSRFAndInput(t *testing.T) {
 	}
 
 	csrf, cookie := obtainCSRF(t, h)
-	bad := url.Values{"repository": {"../evil"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf}}
+	bad := url.Values{"targets": {"../evil v1 a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf}}
 	r = requestWithToken(http.MethodPost, "/requests", strings.NewReader(bad.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.AddCookie(cookie)
@@ -397,7 +503,7 @@ func TestRateLimits(t *testing.T) {
 	st.pendingCount = 5
 	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
 	csrf, cookie := obtainCSRF(t, h)
-	form := url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf}}
+	form := url.Values{"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf}}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.AddCookie(cookie)
@@ -488,10 +594,10 @@ func TestInvalidFilenameAndTTL(t *testing.T) {
 		form url.Values
 		want string
 	}{
-		{"filename", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"../secret"}, "ttl": {"60"}}, "invalid filename"},
-		{"ttl", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"0"}}, "TTL must be"},
-		{"too many", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk"}, "ttl": {"60"}}, "provide 1-10 files"},
-		{"long note", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "note": {strings.Repeat("x", 1025)}}, "note is too long"},
+		{"filename", url.Values{"targets": {"r.example.com/a v1 ../secret"}, "ttl": {"60"}}, "invalid filename"},
+		{"ttl", url.Values{"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"0"}}, "TTL must be"},
+		{"too many", url.Values{"targets": {manyTargets(31)}, "ttl": {"60"}}, "provide 1-30 targets"},
+		{"long note", url.Values{"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}, "note": {strings.Repeat("x", 1025)}}, "note is too long"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -540,6 +646,15 @@ func postDecision(t *testing.T, h http.Handler, id, action, note string, identit
 
 func obtainCSRFFor(t *testing.T, h http.Handler) (string, *http.Cookie) {
 	return obtainCSRF(t, h)
+}
+
+// manyTargets builds a target block with n distinct lines.
+func manyTargets(n int) string {
+	lines := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		lines = append(lines, fmt.Sprintf("r.example.com/a v1 file-%02d.tar.gz", i))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func TestApproveReject(t *testing.T) {
@@ -783,7 +898,7 @@ func TestCreateNotifiesApprover(t *testing.T) {
 	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, ApprovalNotifier: n, Metrics: &metrics.Metrics{}})
 	csrf, cookie := obtainCSRF(t, h)
 	form := url.Values{
-		"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
+		"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
 	}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -852,7 +967,7 @@ func TestCreateRecordsApprovalCards(t *testing.T) {
 	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, ApprovalNotifier: n, Metrics: &metrics.Metrics{}})
 	csrf, cookie := obtainCSRF(t, h)
 	form := url.Values{
-		"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
+		"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
 	}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -922,9 +1037,7 @@ func TestTTLCustomOverridesPreset(t *testing.T) {
 	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
 	csrf, cookie := obtainCSRF(t, h)
 	form := url.Values{
-		"repository": {"r.example.com/a"},
-		"tag":        {"v1"},
-		"files":      {"a.tar.gz"},
+		"targets":    {"r.example.com/a v1 a.tar.gz"},
 		"ttl":        {"2h"},
 		"ttl_custom": {"90m"},
 		"csrf":       {csrf},
@@ -947,11 +1060,9 @@ func TestTTLPresetIsUsedWithoutCustom(t *testing.T) {
 	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
 	csrf, cookie := obtainCSRF(t, h)
 	form := url.Values{
-		"repository": {"r.example.com/a"},
-		"tag":        {"v1"},
-		"files":      {"a.tar.gz"},
-		"ttl":        {"8h"},
-		"csrf":       {csrf},
+		"targets": {"r.example.com/a v1 a.tar.gz"},
+		"ttl":     {"8h"},
+		"csrf":    {csrf},
 	}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
