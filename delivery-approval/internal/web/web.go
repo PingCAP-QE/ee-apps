@@ -164,6 +164,8 @@ type pageData struct {
 	Form     formValues
 
 	TTL        string
+	TTLCustom  string
+	TTLOptions []ttlOption
 	MaxTTL     string
 	Request    *store.Request
 	Files      []*store.Request
@@ -177,8 +179,54 @@ type formValues struct {
 	Repository string
 	Tag        string
 	Files      string
-	TTL        string
-	Note       string
+	// TTL is the selected preset; TTLCustom overrides it when filled.
+	TTL       string
+	TTLCustom string
+	Note      string
+}
+
+// ttlOption is one entry of the TTL dropdown. Presets keep the common lifetimes
+// one click away while the free-text field stays available for odd values.
+type ttlOption struct {
+	Value    string
+	Label    string
+	Selected bool
+}
+
+var ttlPresets = []struct{ value, label string }{
+	{"30m", "30 分钟"},
+	{"1h", "1 小时"},
+	{"2h", "2 小时"},
+	{"4h", "4 小时"},
+	{"8h", "8 小时"},
+	{"24h", "1 天（24 小时）"},
+	{"72h", "3 天（72 小时）"},
+	{"168h", "7 天（168 小时，上限）"},
+}
+
+// ttlOptions lists the presets that fit under the configured maximum and marks
+// the configured default. When the default is not a preset, it is added so the
+// form never silently falls back to a different lifetime.
+func ttlOptions(defaultSeconds, maxSeconds int64) []ttlOption {
+	out := make([]ttlOption, 0, len(ttlPresets)+1)
+	selected := false
+	for _, preset := range ttlPresets {
+		seconds, err := parseTTL(preset.value)
+		if err != nil || seconds > maxSeconds {
+			continue
+		}
+		option := ttlOption{Value: preset.value, Label: preset.label}
+		if seconds == defaultSeconds {
+			option.Selected = true
+			selected = true
+		}
+		out = append(out, option)
+	}
+	if !selected && defaultSeconds > 0 && defaultSeconds <= maxSeconds {
+		value := (time.Duration(defaultSeconds) * time.Second).String()
+		out = append([]ttlOption{{Value: value, Label: "默认 " + value, Selected: true}}, out...)
+	}
+	return out
 }
 
 func (h *handler) form(w http.ResponseWriter, r *http.Request) {
@@ -186,14 +234,20 @@ func (h *handler) form(w http.ResponseWriter, r *http.Request) {
 	identity, _ := auth.IdentityFrom(r.Context())
 	values := formValuesFromQuery(r)
 	if values.TTL == "" {
-		values.TTL = (time.Duration(cfg.DefaultTTLSeconds) * time.Second).String()
+		for _, option := range ttlOptions(cfg.DefaultTTLSeconds, cfg.MaxTTLSeconds) {
+			if option.Selected {
+				values.TTL = option.Value
+				break
+			}
+		}
 	}
 	h.render(w, "form.html", pageData{
-		Identity: identity,
-		CSRF:     csrfToken(w, r),
-		Form:     values,
-		MaxTTL:   (time.Duration(cfg.MaxTTLSeconds) * time.Second).String(),
-		Approver: h.config.IsApprover(identity.Email),
+		Identity:   identity,
+		CSRF:       csrfToken(w, r),
+		Form:       values,
+		TTLOptions: ttlOptions(cfg.DefaultTTLSeconds, cfg.MaxTTLSeconds),
+		MaxTTL:     (time.Duration(cfg.MaxTTLSeconds) * time.Second).String(),
+		Approver:   h.config.IsApprover(identity.Email),
 	})
 }
 
@@ -250,7 +304,16 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	values, ttl, err := h.parseForm(r)
 	if err != nil {
-		h.render(w, "form.html", pageData{Identity: identity, CSRF: csrfToken(w, r), Error: err.Error(), Form: values, Approver: h.config.IsApprover(identity.Email)})
+		cfg := h.config.Current()
+		h.render(w, "form.html", pageData{
+			Identity:   identity,
+			CSRF:       csrfToken(w, r),
+			Error:      err.Error(),
+			Form:       values,
+			TTLOptions: ttlOptions(cfg.DefaultTTLSeconds, cfg.MaxTTLSeconds),
+			MaxTTL:     (time.Duration(cfg.MaxTTLSeconds) * time.Second).String(),
+			Approver:   h.config.IsApprover(identity.Email),
+		})
 		return
 	}
 
@@ -655,6 +718,7 @@ func (h *handler) parseForm(r *http.Request) (formValues, int64, error) {
 		Tag:        strings.TrimSpace(r.PostFormValue("tag")),
 		Files:      strings.TrimSpace(r.PostFormValue("files")),
 		TTL:        strings.TrimSpace(r.PostFormValue("ttl")),
+		TTLCustom:  strings.TrimSpace(r.PostFormValue("ttl_custom")),
 		Note:       strings.TrimSpace(r.PostFormValue("note")),
 	}
 	if values.Repository == "" || values.Tag == "" || values.Files == "" {
@@ -678,9 +742,13 @@ func (h *handler) parseForm(r *http.Request) (formValues, int64, error) {
 	if utf8.RuneCountInString(values.Note) > maxNote {
 		return values, 0, errors.New("note is too long")
 	}
+	rawTTL := values.TTLCustom
+	if rawTTL == "" {
+		rawTTL = values.TTL
+	}
 	ttl := cfg.DefaultTTLSeconds
-	if values.TTL != "" {
-		parsed, err := parseTTL(values.TTL)
+	if rawTTL != "" {
+		parsed, err := parseTTL(rawTTL)
 		if err != nil {
 			return values, 0, errors.New("invalid TTL, use seconds or 2h30m/90s")
 		}

@@ -35,10 +35,16 @@
 
       <p>
         <label for="ttl">TTL</label><br>
-        <input id="ttl" name="ttl" maxlength="32" required value="{{.Form.TTL}}"
-               placeholder="2h30m">
-        <small>seconds or a duration such as <code>24h0m0s</code>,
-          <code>1h30m0s</code>, <code>30s</code>; max {{.MaxTTL}}</small>
+        <select id="ttl" name="ttl">
+          {{- range .TTLOptions}}
+          <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+          {{- end}}
+        </select>
+        <input id="ttl_custom" name="ttl_custom" maxlength="32" value="{{.Form.TTLCustom}}"
+               placeholder="自定义：1h30m / 90s">
+        <br>
+        <small>自定义值优先；单位支持 <code>h</code>/<code>m</code>/<code>s</code>，
+          上限 {{.MaxTTL}}</small>
       </p>
 
       <p>
