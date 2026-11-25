@@ -304,6 +304,29 @@ func (c *Client) NotifyDecision(ctx context.Context, req *store.Request, decisio
 	return err
 }
 
+// NotifyExpired tells the requester that their request expired. It is a plain
+// text DM with no link, so a stale message can never be mistaken for a working
+// download.
+func (c *Client) NotifyExpired(ctx context.Context, req *store.Request, hadLinks bool) error {
+	openID, err := c.openID(ctx, req.RequesterEmail)
+	if err != nil {
+		return err
+	}
+	text := fmt.Sprintf("Your delivery request %s expired at %s.\n%s",
+		req.ID, req.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC"),
+		"Submit a new request if the customer still needs the file.")
+	if hadLinks {
+		text = fmt.Sprintf("Your delivery request %s expired at %s.\nThe download links issued for it no longer work.\nSubmit a new request if the customer still needs the file.",
+			req.ID, req.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC"))
+	}
+	content, err := json.Marshal(map[string]string{"text": text})
+	if err != nil {
+		return err
+	}
+	_, err = c.send(ctx, larkim.ReceiveIdTypeOpenId, openID, "text", string(content))
+	return err
+}
+
 // NotifyFailure tells the requester that delivery failed. The class is a fixed
 // error label, never an upstream response body or token.
 func (c *Client) NotifyFailure(ctx context.Context, req *store.Request, class string) error {
