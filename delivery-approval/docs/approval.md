@@ -38,6 +38,22 @@ without exactly one valid token is `401`; a valid identity outside
 `allowed_email_domains` is `403`. No other identity header is trusted, including
 on cluster-internal calls.
 
+## Requesting a link
+
+The form asks for a target block: one file per line, whitespace separated,
+`<repository> <tag> <filename>`, 1–30 distinct targets. A request may span
+several repositories; one approval covers exactly the submitted list, and the
+approval card lists the same lines, so the approver can compare them one by one.
+There is no way to add files after submission: if the set is wrong, revoke the
+request and submit a new one.
+
+Each line is validated on its own and the error names it (`line 3: invalid tag`),
+so a rejected form keeps what was typed. An identical repository/tag/filename is
+kept only once — the store's unique index is per request, and approving the same
+file twice would issue two shares. Passing the form does not mean `dl` will
+accept the artifact: the repository must be inside the `delivery-approval`
+issuer policy, and that rejection only shows up as a failed delivery.
+
 ## Request lifecycle
 
 ```
@@ -284,6 +300,8 @@ shows the real state.
 | `403 forbidden` on every page | the email domain is not in `allowed_email_domains` | add the domain or use a company account |
 | `429` | pending/daily limit reached | decide or revoke the older requests |
 | TTL rejected (`invalid TTL`) | day/week units are not accepted | use `168h` instead of `7d` |
+| `line N: use <repository> <tag> <filename>` | the line does not split into exactly three whitespace-separated fields (usually a missing tag, or a filename containing a space) | rewrite that line; filenames cannot contain `/`, `\` or spaces |
+| `provide 1-30 targets` | more than 30 distinct files in one request | split it into two requests |
 | An anonymous request to a probe path on the legacy `dl` route redirects to the OIDC provider | that route carries its own OIDC policy | expected; probes run on the private listener |
 | Links stop working with `404`/`410` | revoked, expired, or `max_sessions` reached | issue a new request; check `dl`'s `download_events` |
 
