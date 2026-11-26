@@ -73,7 +73,7 @@ func TestRenderHTTPAndTLS(t *testing.T) {
 		settings := []string{"networkPolicy.ingressNamespaces={ci}"}
 		if enabled {
 			name = "TLS custom keys and ports"
-			settings = append(settings, "server.tls.enabled=true", "server.tls.existingSecret=broker-tls", "server.tls.certKey=certificate", "server.tls.keyKey=privateKey", "server.tls.port=9443", "service.httpsPort=444", "networkPolicy.tlsIngressNamespaces={arc-runners}", "serviceMonitor.enabled=true")
+			settings = append(settings, "cache.minRemaining=1h", "server.tls.enabled=true", "server.tls.existingSecret=broker-tls", "server.tls.certKey=certificate", "server.tls.keyKey=privateKey", "server.tls.port=9443", "service.httpsPort=444", "networkPolicy.tlsIngressNamespaces={arc-runners}", "serviceMonitor.enabled=true")
 		}
 		t.Run(name, func(t *testing.T) {
 			objects, err := render(t, settings...)
@@ -87,6 +87,15 @@ func TestRenderHTTPAndTLS(t *testing.T) {
 			server := mapping(cfg, "server")
 			if server["address"] != ":8080" {
 				t.Fatalf("HTTP address changed: %v", server)
+			}
+			// Callers share a cache entry, so the lifetime floor must reach the
+			// config the broker actually reads.
+			wantRemaining := "15m"
+			if enabled {
+				wantRemaining = "1h"
+			}
+			if got := mapping(cfg, "cache")["min_remaining"]; got != wantRemaining {
+				t.Fatalf("bad cache.min_remaining: %v", got)
 			}
 			spec := mapping(object(t, objects, "Deployment"), "spec", "template", "spec")
 			container := spec["containers"].([]any)[0].(map[string]any)

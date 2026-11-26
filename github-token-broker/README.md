@@ -141,6 +141,10 @@ See [config.example.yaml](./config.example.yaml). Notable settings:
 - `github.fallback_pat_file`: optional PAT for owners where the App is not
   installed (prefer a mounted Secret over inline values).
 - `cache.ttl_margin`: stop using a cached token this long before expiry.
+- `cache.min_remaining`: least lifetime a caller may be handed (default `15m`).
+  Entries are keyed by the requested repository set and permissions, not by the
+  caller, so without this floor a slow job can be handed a token that expires
+  while it is still working. Tokens below it are re-minted.
 - `rate_limit.per_minute`: per-caller fixed-window limit (0 disables it).
 - `reload.interval`: how often the configuration and policy files are polled
   for changes (default `5s`; set `reload.disabled: true` to turn it off).

@@ -62,6 +62,55 @@ func TestGetOrMintDoesNotCacheWithoutExpiry(t *testing.T) {
 	}
 }
 
+func TestGetOrMintDoesNotServeTokensBelowMinRemaining(t *testing.T) {
+	// Callers share a cache key (owner/repo/permissions) but not their clocks:
+	// here the entry was minted 50 minutes ago for another caller, so only 10 of
+	// the required 15 minutes are left. Serving it would expire it mid-job.
+	c := New(time.Minute, 10)
+	c.SetMinRemaining(15 * time.Minute)
+	base := time.Now()
+	c.tokens.Set("key", Token{Value: "shared", ExpiresAt: base.Add(time.Hour), Source: "app"}, time.Hour)
+	c.now = func() time.Time { return base.Add(50 * time.Minute) }
+
+	var calls int32
+	mint := func(context.Context) (Token, error) {
+		atomic.AddInt32(&calls, 1)
+		return Token{Value: "fresh", ExpiresAt: c.now().Add(time.Hour), Source: "app"}, nil
+	}
+	token, err := c.GetOrMint(context.Background(), "key", mint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || token.Value != "fresh" {
+		t.Fatalf("expected a fresh mint, got %q after %d mints", token.Value, calls)
+	}
+}
+
+func TestGetOrMintServesTokensAboveMinRemaining(t *testing.T) {
+	c := New(time.Minute, 10)
+	c.SetMinRemaining(15 * time.Minute)
+	base := time.Now()
+	c.now = func() time.Time { return base }
+	var calls int32
+	mint := func(context.Context) (Token, error) {
+		atomic.AddInt32(&calls, 1)
+		return Token{Value: "token", ExpiresAt: base.Add(time.Hour), Source: "app"}, nil
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := c.GetOrMint(context.Background(), "key", mint); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 40 minutes in, an hour-long token is still 20 minutes from expiry.
+	c.now = func() time.Time { return base.Add(40 * time.Minute) }
+	if _, err := c.GetOrMint(context.Background(), "key", mint); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("expected one mint, got %d", calls)
+	}
+}
+
 func TestGetOrMintSingleflight(t *testing.T) {
 	c := New(time.Minute, 10)
 	var calls int32

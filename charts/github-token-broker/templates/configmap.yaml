@@ -29,6 +29,7 @@ data:
     cache:
       ttl_margin: {{ .Values.cache.ttlMargin | quote }}
       max_entries: {{ .Values.cache.maxEntries }}
+      min_remaining: {{ .Values.cache.minRemaining | quote }}
     auth:
       {{- if .Values.auth.kubernetesApiUrl }}
       kubernetes_api_url: {{ .Values.auth.kubernetesApiUrl | quote }}

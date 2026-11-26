@@ -76,6 +76,10 @@ github:
 cache:
   ttlMargin: 5m
   maxEntries: 1000
+  # Least lifetime a caller may be handed. Entries are shared by callers asking
+  # for the same repository set and permissions, so a slow job can otherwise
+  # receive a token that expires mid-run; those are re-minted instead.
+  minRemaining: 15m
 
 auth:
   # Empty means in-cluster discovery.
