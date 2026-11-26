@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import pickle
 import tempfile
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
+from itertools import pairwise
 from typing import Any
 
 from sqlalchemy.engine import Engine
@@ -53,6 +55,7 @@ def run_sync_aws_unmatched_resources(
     dry_run: bool = False,
     limit: int | None = None,
     replace_existing_usage_dates: bool = False,
+    split_replacement_by_day: bool = False,
     validate_guardrail: bool = True,
     source: AwsBillingSource | None = None,
     fetch_rows: RowFetcher | None = None,
@@ -107,6 +110,7 @@ def run_sync_aws_unmatched_resources(
         source_billing_account_id: str | None = None
         if replace_existing_usage_dates:
             with tempfile.TemporaryFile("w+b") as row_spool:
+                day_starts: list[tuple[date, int, int]] = []
                 for source_row in _fetch_source_rows(
                     fetch_rows=resolved_fetch_rows,
                     source=resolved_source,
@@ -119,25 +123,48 @@ def run_sync_aws_unmatched_resources(
                     limit=limit,
                     validate_guardrail=validate_guardrail,
                 ):
-                    rows_seen += 1
                     normalized = _normalize_resource_row(source_row)
+                    if split_replacement_by_day:
+                        day = normalized["usage_date"]
+                        # Split-cost BigQuery results are ordered by usage_date.
+                        if not usage_start_date <= day <= usage_end_date or (
+                            day_starts and day < day_starts[-1][0]
+                        ):
+                            raise ValueError("replacement source dates out of order or scope")
+                        if not day_starts or day != day_starts[-1][0]:
+                            day_starts.append((day, row_spool.tell(), rows_seen))
+                    rows_seen += 1
                     source_billing_account_id = source_billing_account_id or normalized[
                         "billing_account_id"
                     ]
                     _dump_spooled_row(row_spool, normalized)
                 if rows_seen == 0:
                     raise ValueError("usage-date replacement source returned no rows")
-                rows_written += replace_unmatched_resource_usage_dates(
-                    engine,
-                    _iter_spooled_rows(row_spool),
-                    row_count=rows_seen,
-                    vendor="aws",
-                    account_id=account_id,
-                    usage_start_date=usage_start_date,
-                    usage_end_date=usage_end_date,
-                    dry_run=dry_run,
-                    batch_size=settings.page_size,
-                )
+
+                def replace(rows, count, start, end):
+                    return replace_unmatched_resource_usage_dates(
+                        engine, rows, row_count=count, vendor="aws", account_id=account_id,
+                        usage_start_date=start, usage_end_date=end, dry_run=dry_run,
+                        batch_size=settings.page_size,
+                    )
+
+                if not day_starts:
+                    rows_written = replace(
+                        _iter_spooled_rows(row_spool), rows_seen, usage_start_date, usage_end_date,
+                    )
+                else:
+                    start = usage_start_date
+                    for (day, offset, before), (_, _, after) in pairwise(
+                        [*day_starts, (usage_end_date, 0, rows_seen)]
+                    ):
+                        # Cover empty days too, as the original range replacement did.
+                        end = usage_end_date if after == rows_seen else day
+                        count = after - before
+                        row_spool.seek(offset)
+                        rows_written += replace(
+                            (pickle.load(row_spool) for _ in range(count)), count, start, end,
+                        )
+                        start = end + timedelta(days=1)
         else:
             batch: list[dict[str, Any]] = []
             for source_row in _fetch_source_rows(

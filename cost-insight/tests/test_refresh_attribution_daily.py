@@ -4,7 +4,7 @@ import re
 from datetime import date
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 
@@ -2242,6 +2242,89 @@ def account_default_connection():
             yield connection
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("duplicate_hash,fail_second_batch", [(False, False), (True, False), (False, True)])
+def test_split_attribution_batches_preserve_full_rows_and_atomicity(
+    account_default_connection, monkeypatch, duplicate_hash, fail_second_batch,
+):
+    connection = account_default_connection
+    day = date(2026, 9, 1)
+    params = {"vendor": "aws", "account_id": "account-1", "start_date": day, "end_date": day}
+    connection.execute(text("""
+        INSERT INTO cost_bq_export_summary_daily (
+          id, usage_date, vendor, account_id, source_row_hash, org, owner,
+          source_schema_version, list_cost, effective_cost, credit_amount, net_cost
+        ) VALUES
+          (1, '2026-09-01', 'aws', 'account-1', 'h1', 'tenant-a', NULL,
+           'aws_split_cost_v1', 12, 10, -2, 8),
+          (2, '2026-09-01', 'aws', 'other', 'h2', 'tenant-a', NULL,
+           'aws_split_cost_v1', 12, 10, -2, 8),
+          (5, '2026-09-01', 'aws', 'account-1', 'h5', 'tenant-a', 'native@pingcap.com',
+           'aws_split_cost_v1', 6, 4, -1, 3),
+          (9, '2026-09-01', 'aws', 'account-1', :last_hash, 'tenant-a', NULL,
+           'aws_split_cost_v1', 24, 20, -4, 16),
+          (10, '2026-09-02', 'aws', 'account-1', 'h10', 'tenant-a', NULL,
+           'aws_split_cost_v1', 12, 10, -2, 8)
+    """), {"last_hash": "h1" if duplicate_hash else "h9"})
+    connection.execute(text("""
+        INSERT INTO resource_allocation (
+          id, vendor, account_id, vendor_tags_json, icost_owner_email, icost_project
+        ) VALUES (1, 'aws', 'account-1', '{}', 'tcms@pingcap.cn', 'tcms-project')
+    """))
+    source = CostAttributionSource("aws", "account-1", "aws_split_cost_v1")
+    statement, = _summary_insert_statements(
+        source=source, tcms_allocation_table="resource_allocation",
+    )
+    _, _, select_body = str(statement).partition("\n        SELECT\n")
+    connection.execute(text("CREATE TABLE cost_attribution_daily AS SELECT\n" + select_body), params)
+    # Match publication and state effects of a real refresh; serving itself is tested separately.
+    connection.execute(text("""CREATE TABLE cost_resource_serving_publication (
+        basis_key TEXT, vendor TEXT, account_id TEXT, usage_date TEXT
+    )"""))
+    connection.execute(text("""INSERT INTO cost_resource_serving_publication
+        VALUES ('native', 'aws', 'account-1', '2026-09-01')
+    """))
+    select_rows = text("SELECT * FROM cost_attribution_daily ORDER BY dimension_hash")
+    initial_rows = connection.execute(select_rows).all()
+    assert len(initial_rows) == (2 if duplicate_hash else 3)
+    connection.commit()
+
+    engine = connection.engine
+    monkeypatch.setattr(refresh_attribution_daily, "_SPLIT_ATTRIBUTION_BATCH_SIZE", 2)
+    publication_calls = []
+    monkeypatch.setattr(
+        refresh_attribution_daily, "run_materialize_resource_serving",
+        lambda *args, **kwargs: publication_calls.append(kwargs),
+    )
+    writes = []
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def record_batches(_conn, _cursor, sql, parameters, _context, _executemany):
+        if sql.lstrip().startswith("INSERT INTO cost_attribution_daily"):
+            writes.append(sql.count("summary.id IN"))
+            if fail_second_batch and len(writes) == 2:
+                raise RuntimeError("second batch failed")
+
+    def refresh():
+        return run_refresh_cost_attribution_from_summary(
+            engine, source=source, start_date=day, end_date=day,
+            tcms_allocation_table="resource_allocation",
+        )
+
+    if fail_second_batch:
+        with pytest.raises(RuntimeError, match="second batch failed"):
+            refresh()
+    else:
+        assert refresh().rows_inserted == len(initial_rows)
+    assert writes == ([0] if duplicate_hash else [3, 3])
+    assert len(publication_calls) == (0 if fail_second_batch else 1)
+    with engine.connect() as readback:
+        assert readback.execute(select_rows).all() == initial_rows
+        publication_rows = readback.execute(text(
+            "SELECT COUNT(*) FROM cost_resource_serving_publication"
+        )).scalar_one()
+    assert publication_rows == int(fail_second_batch)
 
 
 def _preview_account_default(

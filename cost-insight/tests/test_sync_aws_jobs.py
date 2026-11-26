@@ -898,6 +898,85 @@ def test_split_unmatched_replacement_caps_database_write_batches(
         engine.dispose()
 
 
+@pytest.mark.parametrize("failure", (None, "fetch", "write", "order"))
+def test_daily_split_details_spool_before_writing_and_commit_by_day(monkeypatch, failure):
+    engine = _sqlite_engine()
+    account = "946646677266"
+    source = AwsBillingSource(account, "project.dataset.split", AWS_SPLIT_COST_SCHEMA_VERSION)
+    rows = [
+        {**_resource_row(), "usage_date": f"2026-05-{day:02d}", "resource_name": name}
+        for day, name in [(1, "new-first"), (1, "new-second"), (3, "new-third")]
+    ]
+    kwargs = {
+        "settings": AwsBillingSettings(account_id=account), "account_id": account, "source": source,
+        "usage_start_date": date(2026, 5, 1), "usage_end_date": date(2026, 5, 4),
+    }
+
+    def resources():
+        with engine.connect() as connection:
+            return connection.execute(text("""
+                SELECT resource_name FROM cost_unmatched_resource_daily ORDER BY resource_name
+            """)).scalars().all()
+
+    try:
+        run_sync_aws_unmatched_resources(engine, **kwargs, fetch_rows=lambda **_: [
+            {**_resource_row(), "usage_date": f"2026-05-{day:02d}", "resource_name": f"old-{day}"}
+            for day in range(1, 6)
+        ])
+        old_rows = resources()
+        fetched = False
+
+        def fetch(**_):
+            nonlocal fetched
+            yield from (reversed(rows) if failure == "order" else rows)
+            assert resources() == old_rows
+            if failure == "fetch":
+                raise RuntimeError("fetch interrupted")
+            fetched = True
+
+        replace = aws_unmatched_resources.replace_unmatched_resource_usage_dates
+        windows = []
+
+        def record_replace(engine, rows, **kwargs):
+            assert fetched
+            windows.append((kwargs["usage_start_date"].day, kwargs["usage_end_date"].day))
+            return replace(engine, rows, **kwargs)
+
+        original_write = gcp_unmatched_resources._write_unmatched_resource_rows
+
+        def fail_second_day(connection, rows, **kwargs):
+            original_write(connection, rows, **kwargs)
+            if rows[0]["resource_name"] == "new-third":
+                raise RuntimeError("write interrupted")
+
+        monkeypatch.setattr(aws_unmatched_resources, "replace_unmatched_resource_usage_dates", record_replace)
+        if failure == "write":
+            monkeypatch.setattr(gcp_unmatched_resources, "_write_unmatched_resource_rows", fail_second_day)
+        options = {
+            "replace_existing_usage_dates": True, "split_replacement_by_day": True, "fetch_rows": fetch,
+        }
+        if failure == "order":
+            with pytest.raises(ValueError, match="out of order or scope"):
+                run_sync_aws_unmatched_resources(engine, **kwargs, **options)
+        elif failure:
+            with pytest.raises(RuntimeError, match=f"{failure} interrupted"):
+                run_sync_aws_unmatched_resources(engine, **kwargs, **options)
+        else:
+            result = run_sync_aws_unmatched_resources(engine, **kwargs, **options)
+            assert (result.rows_seen, result.rows_written) == (3, 3)
+        if failure in {"fetch", "order"}:
+            assert resources() == old_rows
+            assert not windows
+        else:
+            assert windows == [(1, 1), (2, 4)]
+            assert resources() == (
+                ["new-first", "new-second", "old-2", "old-3", "old-4", "old-5"]
+                if failure else ["new-first", "new-second", "new-third", "old-5"]
+            )
+    finally:
+        engine.dispose()
+
+
 def test_split_unmatched_replacement_rejects_empty_source() -> None:
     engine = _sqlite_engine()
     source = AwsBillingSource(
