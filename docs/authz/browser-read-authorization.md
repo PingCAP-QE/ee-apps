@@ -25,6 +25,12 @@ External paths that matter for reads, after the `/tibuild` → `/` rewrite:
 | Read one build | `GET /tibuild/api/v2/devbuilds/{id}` | single row |
 | Capabilities | `GET /tibuild/api/v2/devbuilds/capabilities` | what the caller may do |
 
+> **Status note (2026-11-26).** The owner decided that browser reads stay open to
+> any authenticated employee (ADR 0002) and that groups will not be queried at all;
+> future special-operation APIs are authorized per individual. This contract is
+> therefore not on the roadmap. It is kept because it records the reasoning for the
+> boundary below, which still applies to any future browser authorization.
+
 ## Scope boundary: authorization only
 
 This contract decides *who may act*, never *who someone is*. Authentication stays
@@ -74,7 +80,7 @@ product does not make. When a distinction appears (for example a separate
 | Tuple | Owner | Status |
 | --- | --- | --- |
 | `capability:tibuild.devbuild.read#caller@team:<staff-group>#member` | reviewed grants file | writable today |
-| `team:<staff-group>#member@user:google/sub/<sub>` per employee | directory sync | **blocked**: no approved membership source |
+| `team:<staff-group>#member@user:google/sub/<sub>` per employee | directory sync | **not taken** — the owner decided against group lookup; see the note above |
 
 The second row is the blocker. "Every authenticated employee" is a set, and the
 only honest way to express it is a team whose membership comes from an
