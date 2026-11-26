@@ -59,6 +59,8 @@ type OpsUpdateComponentRequest struct {
 	Author      string `json:"author,omitempty"`
 	ReleaseID   string `json:"release_id,omitempty"`
 	ChangeID    string `json:"change_id,omitempty"`
+	StepKey     string `json:"step_key,omitempty"`
+	ExecutionID string `json:"execution_id,omitempty"`
 }
 
 // OpsUpdateComponentResponse is the ops response with the ticket id.
