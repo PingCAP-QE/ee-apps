@@ -1,7 +1,14 @@
 # Workspace group membership as the read-visibility source
 
-Decision: "every authenticated employee" is a Google Workspace group, and its
-membership is the only source for the `team` object that grants browser reads.
+> **Not taken (2026-11-26).** The owner decided not to query groups at all:
+> special-operation APIs will be authorized per individual, and browser reads stay
+> open to any authenticated employee (ADR 0002). This document is kept as the
+> record of the path examined and not chosen — the reader below is dormant, not on
+> the roadmap. See `docs/authz/special-operation-grants.md` for the model that
+> replaced it.
+
+Decision examined: "every authenticated employee" is a Google Workspace group, and
+its membership is the only source for the `team` object that grants browser reads.
 This records the API, the credential, the mapping that must be verified before the
 first real run, and what happens on revocation.
 
