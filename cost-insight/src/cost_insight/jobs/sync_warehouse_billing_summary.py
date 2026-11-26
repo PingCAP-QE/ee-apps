@@ -34,6 +34,7 @@ from cost_insight.jobs.warehouse_recovery import assert_owner_stopped
 from cost_insight.sources.aws_flat_cur_export import _AWS_TIDB_CLOUD_F04_USEDBY as F04_USEDBY
 from cost_insight.sources.warehouse_billing_export import (
     F04_ACCOUNT_ID,
+    WarehouseSnapshotError,
     WarehouseWindow,
     assert_snapshot,
     fetch_warehouse_window,
@@ -341,10 +342,6 @@ class WarehouseAccountFailures(ValueError):
                                   summary["account_results"].items() if result.get("error")))
 
 
-class _SharedSnapshotError(ValueError):
-    """A shared source change invalidates every pending account plan."""
-
-
 def _migrate_ordinary_aws_state(engine, project):
     """Fence old singleton workers atomically with preserving their scoped work."""
     name = "sync_aws_warehouse_daily"
@@ -467,12 +464,6 @@ def run_sync_warehouse_billing_summary(
             scope["owned"] = False
         _log("account_failed", accounts=scope["progress"]["accounts"], error=repr(exc))
 
-    def check_snapshot():
-        try:
-            assert_snapshot(client, snapshots)
-        except Exception as exc:
-            raise _SharedSnapshotError(str(exc)) from exc
-
     def heartbeat():
         # Only the account currently being fetched can fail this source read.
         # Other acquired accounts remain protected by the same live Pod owner.
@@ -528,6 +519,8 @@ def run_sync_warehouse_billing_summary(
                     for day in _dates(window.start, window.end):
                         if f"{account}/{day}" in progress["completed_account_days"]:
                             _verify_publication(connection, vendor, account, day)
+            except WarehouseSnapshotError:
+                raise
             except Exception as exc:
                 if not isolated:
                     raise
@@ -537,13 +530,13 @@ def run_sync_warehouse_billing_summary(
             # invalidate ALL prefetched plans, including before the first write.
             for table, metadata in window.snapshots.items():
                 if table in snapshots and snapshots[table] != metadata:
-                    raise _SharedSnapshotError("Warehouse snapshot changed between account reads")
+                    raise WarehouseSnapshotError("Warehouse snapshot changed between account reads")
                 snapshots[table] = metadata
             plans.append(plan)
             _log("window_validated", vendor=vendor, account_id=account,
                  start=str(window.start), end=str(window.end), controls=window.controls)
         if plans:
-            check_snapshot()
+            assert_snapshot(client, snapshots)
         if not dry_run:
             for plan in plans:
                 account, window = plan["account"], plan["window"]
@@ -568,7 +561,7 @@ def run_sync_warehouse_billing_summary(
                         for (month, usage_day), rows in sorted(plan["groups"].items()):
                             if usage_day != day:
                                 continue
-                            check_snapshot()
+                            assert_snapshot(client, snapshots)
                             written = replace_summary_partition_usage_dates(
                                 engine, rows, vendor=vendor, account_id=account, export_partition_date=month,
                                 usage_start_date=day, usage_end_date=day, dry_run=False, batch_size=500)
@@ -589,7 +582,7 @@ def run_sync_warehouse_billing_summary(
                         progress["phase"] = "complete"
                         _checkpoint(engine, name, progress, "succeeded")
                         scope["owned"] = False
-                except _SharedSnapshotError:
+                except WarehouseSnapshotError:
                     raise
                 except Exception as exc:
                     if not isolated:
@@ -601,9 +594,12 @@ def run_sync_warehouse_billing_summary(
                 scopes["shared"]["owned"] = False
     except BaseException as exc:
         for scope in scopes.values():
-            if scope.get("owned"):
+            if scope.get("owned") or (dry_run and "error" not in scope):
                 fail(scope, exc)
-        raise
+        # Multi-account failures, including shared aborts, have one JSON/CLI exit.
+        # Cancellation still cleans ownership and propagates, as do legacy scopes.
+        if not isolated or len(accounts) == 1 or not isinstance(exc, Exception):
+            raise
     errors = [scope["error"] for scope in scopes.values() if "error" in scope]
     if not isolated or len(accounts) == 1:
         if errors:

@@ -1144,7 +1144,7 @@ def test_multi_account_dry_run_never_fences_or_reclaims_any_latch(ordinary_aws_e
 
 def test_shared_source_change_stops_all_pending_accounts(ordinary_aws_engine, monkeypatch):
     engine = ordinary_aws_engine
-    monkeypatch.setattr(job, "assert_snapshot", Mock(side_effect=[None, None, ValueError("shared snapshot changed")]))
+    monkeypatch.setattr(job, "assert_snapshot", Mock(side_effect=[None, None, job.WarehouseSnapshotError("shared snapshot changed")]))
     with pytest.raises(ValueError, match="shared snapshot changed"):
         run_accounts(engine)
     assert state(engine, "aws").watermark["completed_account_days"] == [f"{ACCOUNT}/{START}"]
@@ -1172,6 +1172,122 @@ def test_cli_reports_partial_failure_as_nonzero(ordinary_aws_engine, monkeypatch
     assert results[ACCOUNT]["status"] == "failed" and results[ACCOUNT]["error"]
     assert results["account-b"]["status"] == "succeeded"
     engine.dispose.assert_called_once()
+
+
+def real_warehouse_client(*, drift_at_metadata_call=None):
+    from types import SimpleNamespace
+
+    client = Mock()
+    status = {"changed": False, "metadata_calls": 0, "cancel": False, "jobs": []}
+    def metadata(*args, **kwargs):
+        status["metadata_calls"] += 1
+        if drift_at_metadata_call and status["metadata_calls"] >= drift_at_metadata_call:
+            status["changed"] = True
+        return SimpleNamespace(table_type="TABLE", expires=None, time_partitioning=None,
+            modified=datetime(2026, 10, 31, tzinfo=UTC), num_rows=101 if status["changed"] else 100,
+            etag="changed" if status["changed"] else "stable")
+    def query(sql, *, job_config, **kwargs):
+        query_job = Mock(total_bytes_processed=100, job_id="query")
+        status["jobs"].append(query_job)
+        if not job_config.dry_run:
+            account = next(p.value for p in job_config.query_parameters if p.name == "account_id")
+            w = window("aws", account)
+            query_job.result.return_value = w.controls if "COUNT(*) AS n" in sql else w.rows
+            if status["cancel"]:
+                query_job.result.side_effect = KeyboardInterrupt("cancel source read")
+        return query_job
+    client.get_table.side_effect = metadata
+    client.query.side_effect = query
+    return client, status
+
+
+def use_real_warehouse_reader(monkeypatch):
+    from cost_insight.sources import warehouse_billing_export as source
+
+    monkeypatch.setattr(job, "fetch_warehouse_window", source.fetch_warehouse_window)
+    monkeypatch.setattr(job, "assert_snapshot", source.assert_snapshot)
+
+
+def test_source_internal_snapshot_drift_aborts_all_accounts_before_writes(ordinary_aws_engine, monkeypatch):
+    engine = ordinary_aws_engine
+    use_real_warehouse_reader(monkeypatch)
+    # Initial snapshot, query pre-guard, then actual source post-read guard drifts.
+    client, _ = real_warehouse_client(drift_at_metadata_call=3)
+    with pytest.raises(job.WarehouseAccountFailures) as raised:
+        job.run_sync_warehouse_billing_summary(engine, client=client, vendor="aws",
+            account_ids=[ACCOUNT, "account-b"], project=PROJECT, tcms_allocation_table=RULES,
+            today=END + timedelta(days=2))
+    results = raised.value.summary["account_results"]
+    assert all(r["status"] == "failed" and "snapshot" in r["error"] for r in results.values())
+    assert {p.value for call in client.query.call_args_list
+            for p in call.kwargs["job_config"].query_parameters if p.name == "account_id"} == {ACCOUNT}
+    assert all(state(engine, "aws", a).last_status == "failed" for a in (ACCOUNT, "account-b"))
+    with engine.connect() as c:
+        assert c.execute(text(f"SELECT COUNT(*) FROM {job.SUMMARY} WHERE usage_date >= :start"),
+                         {"start": START}).scalar_one() == 0
+
+
+def test_real_source_snapshot_abort_dry_run_remains_select_only(ordinary_aws_engine, monkeypatch):
+    engine = ordinary_aws_engine
+    use_real_warehouse_reader(monkeypatch)
+    client, _ = real_warehouse_client(drift_at_metadata_call=3)
+    statements = []
+    event.listen(engine, "before_cursor_execute", lambda c, cur, sql, p, ctx, many: statements.append(sql.strip().upper()))
+    with pytest.raises(job.WarehouseAccountFailures) as raised:
+        job.run_sync_warehouse_billing_summary(engine, client=client, vendor="aws",
+            account_ids=[ACCOUNT, "account-b"], project=PROJECT, tcms_allocation_table=RULES,
+            today=END + timedelta(days=2), dry_run=True)
+    assert all(r["status"] == "failed" for r in raised.value.summary["account_results"].values())
+    with engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM cost_job_state")).scalar_one() == 0
+    assert statements and all(s.startswith("SELECT") for s in statements)
+
+
+def test_cli_shared_snapshot_abort_after_sibling_success_keeps_json_and_states(ordinary_aws_engine, monkeypatch, capsys):
+    import json
+    from functools import partial
+
+    engine = ordinary_aws_engine
+    use_real_warehouse_reader(monkeypatch)
+    client, metadata = real_warehouse_client()
+    def publish_then_drift(engine, **kwargs):
+        publish(engine, **kwargs)
+        if kwargs["source"].account_id == ACCOUNT and kwargs["start_date"] == END:
+            metadata["changed"] = True  # Real writer guard for B now sees a changed shared table.
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publish_then_drift)
+    settings = load_settings({"COST_INSIGHT_DB_URL": "sqlite://", "COST_INSIGHT_BILLING_BQ_PROJECT": PROJECT,
+                              "COST_INSIGHT_BILLING_BQ_LOCATION": "us-west1"})
+    monkeypatch.setattr(cli, "get_settings", lambda **kw: settings)
+    monkeypatch.setattr(cli, "configure_logging", Mock())
+    monkeypatch.setattr(cli, "build_engine", Mock(return_value=engine))
+    monkeypatch.setattr(cli, "build_billing_bigquery_client", Mock(return_value=client))
+    monkeypatch.setattr(cli, "run_sync_warehouse_billing_summary", partial(
+        job.run_sync_warehouse_billing_summary, today=END + timedelta(days=2)))
+    monkeypatch.setattr(engine, "dispose", Mock())
+    assert cli.main(["sync-warehouse-billing-summary", "--vendor", "aws",
+                     "--account-id", ACCOUNT, "--account-id", "account-b"]) == 1
+    results = json.loads(capsys.readouterr().out)["account_results"]
+    assert results[ACCOUNT]["status"] == "succeeded" and results[ACCOUNT]["error"] is None
+    assert results["account-b"]["status"] == "failed" and "snapshot" in results["account-b"]["error"]
+    assert state(engine, "aws").last_status == "succeeded"
+    assert state(engine, "aws", "account-b").last_status == "failed"
+    with engine.connect() as c:
+        assert job._table_totals(c, job.SUMMARY, "aws", "account-b", START)["n"] == 0
+        for day in job._dates(START, END):
+            job._verify_publication(c, "aws", ACCOUNT, day)
+
+
+def test_source_cancellation_cleans_all_owners_and_propagates_base_exception(ordinary_aws_engine, monkeypatch):
+    engine = ordinary_aws_engine
+    use_real_warehouse_reader(monkeypatch)
+    client, metadata = real_warehouse_client()
+    metadata["cancel"] = True
+    with pytest.raises(KeyboardInterrupt, match="cancel source read"):
+        job.run_sync_warehouse_billing_summary(engine, client=client, vendor="aws",
+            account_ids=[ACCOUNT, "account-b"], project=PROJECT, tcms_allocation_table=RULES,
+            today=END + timedelta(days=2))
+    assert all(state(engine, "aws", a).last_status == "failed" for a in (ACCOUNT, "account-b"))
+    metadata["jobs"][-1].cancel.assert_called_once_with(timeout=30, retry=None)
 
 
 def test_ordinary_aws_account_write_failure_does_not_stop_sibling(engine, vendor, monkeypatch):

@@ -303,8 +303,9 @@ timeouts; source metadata must remain stable. Canonical hash collisions are
 merged before exact account/billing-partition/day replacement. All source
 windows for eligible accounts are validated before facts are written. An ordinary
 AWS account's registry/source/preflight or write failure does not prevent other
-requested accounts from completing; a changed **shared source snapshot** still
-stops all pending writes. Each day then refreshes
+requested accounts from completing; a changed or unverifiable **shared source
+snapshot**, including a source query's own metadata guards, still stops all
+pending reads/writes. Each day then refreshes
 attribution and verifies the active native publication conserves all four
 monetary fields. Other accounts, sibling days and unqueried partitions remain
 untouched. Recent billing dates remain provisional; revisions older than five
@@ -318,7 +319,8 @@ Each account retains ownership checks and the validated checkpoint recovery
 [described above](#database-transport-resilience-jobs): the next invocation can resume
 its original unfinished window, never silently skip it. An unverified failed or
 live/unknown running account blocks only itself. Multi-account CLI output includes
-per-account status/error/progress, and any account failure returns a nonzero exit.
+per-account status/error/progress even after a shared snapshot abort, and any
+account failure returns a nonzero exit.
 There is no concurrent execution or whole-pipeline retry within an invocation.
 
 Before ordinary AWS uses account keys, it atomically fences the old singleton as
