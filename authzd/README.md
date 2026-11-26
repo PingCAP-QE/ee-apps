@@ -49,6 +49,11 @@ body-based rules such as the sample create policy remain observe-only.
 `AUTHZD_GRPC_ADDR` defaults to `:9002`; `AUTHZD_PRIVATE_ADDR` defaults to
 `127.0.0.1:9003`.
 
+Principal prefixes must be OpenFGA-safe: an identifier may not contain `:` after
+the type prefix, so issuers appear as a short token (`user:google/sub/<sub>`,
+`workload:google/sub/<sub>`) rather than as a URL. OpenFGA rejects the URL form
+with `invalid relation: the 'user' field is malformed`.
+
 An ID that the trusted catalog does not contain denies with reason
 `resource_not_found`; only a catalog that cannot answer (unconfigured, backend
 failure) is a dependency error. Neither case falls back to the path or body.
