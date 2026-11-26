@@ -34,9 +34,9 @@ async function withPage(check) {
   globalThis.fetch = (url, { signal }) => new Promise((resolve) => {
     requests.push({ url: String(url), signal, resolve, settled: false });
   });
-  const settle = async (values = summary, failed = false, sections = {}) => {
+  const settle = async (values = summary, failed = false, sections = {}, section = "period_comparison") => {
     const request = requests.findLast(({ url, settled }) => !settled
-      && new URL(url, "http://localhost").pathname === "/api/v1/pages/flaky");
+      && new URL(url, "http://localhost").pathname === `/api/v1/pages/flaky/${section}`);
     assert.ok(request);
     request.settled = true;
     await act(async () => request.resolve({
@@ -98,7 +98,7 @@ test("bucket job rankings hide the prior scope before the new request effect run
         rows: weeks.map((time) => ({ time, flaky_rate_pct: 1 })),
         meta: { start_date: weeks[0], end_date: "2026-11-22", effective_granularity: "week" },
       },
-    });
+    }, "chart_sections");
     const selectBucket = (time) => renderer.root.findAll((node) =>
       typeof node.props.onBucketSelect === "function")[0].props.onBucketSelect(time);
     const rankingPanel = () => renderer.root.findAll((node) =>

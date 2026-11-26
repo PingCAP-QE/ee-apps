@@ -13,7 +13,9 @@ from ci_dashboard.api.main import app
 from ci_dashboard.api.queries import flaky as flaky_queries
 from ci_dashboard.api.queries.base import CommonFilters
 from ci_dashboard.api.queries.flaky import get_flaky_top_cases
+from ci_dashboard.common.config import load_settings
 from ci_dashboard.jobs.build_url_matcher import GITHUB_ACTIONS_RUN_PATTERN, normalize_build_url
+from ci_dashboard.jobs.sync_flaky_issues import run_sync_flaky_issues
 
 
 WINDOW = {"start_date": "2026-10-29", "end_date": "2026-11-11"}
@@ -161,6 +163,51 @@ def test_top_cases_keep_closed_and_cross_branch_issues_without_filtering_ranking
     assert data["rows"][1]["issues"] == []
     assert data["meta"]["ignores_issue_status"] is True
     assert data["meta"]["ignores_issue_branch"] is True
+
+
+def test_flaky_views_use_legacy_pd_issue_case_after_resync(sqlite_engine, client):
+    title = "`TestScheduler` is flaky"
+    build_url = "https://do.pingcap.net/jenkins/job/pd-tests/1592/"
+    _issue(sqlite_engine, 5578, case=title, repo="tikv/pd")
+    _report(sqlite_engine, case="TestScheduler", repo="tikv/pd", branch="master",
+            build_url=build_url, report_time="2026-11-20 15:34:51")
+    with sqlite_engine.begin() as connection:
+        connection.execute(text("""
+            INSERT INTO ci_l1_builds
+              (repo_full_name, target_branch, normalized_build_url, cloud_phase,
+               job_name, start_time, state)
+            VALUES ('tikv/pd', 'master', :url, 'TENCENT', 'pd-tests',
+                    '2026-11-20 07:02:28', 'success')
+        """), {"url": build_url})
+        connection.execute(text("""
+            INSERT INTO github_tickets
+              (type, repo, number, title, body, labels, state, created_at, updated_at)
+            VALUES ('issue', 'tikv/pd', 5578, :title, 'Legacy report', '["flaky-test"]',
+                    'open', '2022-10-10 04:33:50', '2026-11-21 00:10:54')
+        """), {"title": title})
+    run_sync_flaky_issues(sqlite_engine, load_settings({"CI_DASHBOARD_DB_URL": "sqlite://"}))
+
+    params = {"repo": "tikv/pd", "start_date": "2026-11-16", "end_date": "2026-11-22"}
+    response = client.get("/api/v1/flaky/top-cases", params={**params, "branch": "master"})
+    assert response.status_code == 200
+    row, = response.json()["rows"]
+    assert row["case_name"] == "TestScheduler"
+    assert row["issues"] == [{
+        "issue_number": 5578,
+        "issue_url": "https://github.com/tikv/pd/issues/5578",
+        "issue_status": "open",
+        "issue_title": title,
+    }]
+    release_params = {**params, "branch": "release-nextgen-202603"}
+    release = client.get("/api/v1/flaky/top-cases", params=release_params)
+    assert release.status_code == 200
+    assert release.json()["rows"] == []
+
+    weekly = client.get("/api/v1/flaky/issue-weekly-rates", params=release_params)
+    assert weekly.status_code == 200
+    issue, = weekly.json()["rows"]
+    assert (issue["issue_number"], issue["case_name"], issue["issue_branch"]) == (5578, "TestScheduler", "master")
+    assert issue["metrics"][0]["flaky_runs"] == 1
 
 
 def test_top_cases_limit_and_ties_are_stable_and_all_repos_stay_separate(sqlite_engine):

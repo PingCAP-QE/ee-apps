@@ -29,13 +29,13 @@ async function withPage(check) {
     requests.push({ url: new URL(url, "http://localhost"), signal, resolve, settled: false });
   });
   const matching = (path) => requests.filter(({ url }) => url.pathname === path);
-  const respond = async (request, data) => {
+  const respond = async (request, data, status = 200) => {
     request.settled = true;
-    await act(async () => request.resolve({ ok: true, json: async () => data }));
+    await act(async () => request.resolve({ ok: status === 200, status, statusText: "", json: async () => data }));
   };
   const settle = async () => {
-    for (const request of requests.filter((r) => !r.settled)) {
-      await respond(request, { rows: [], meta: {} });
+    for (const request of requests) {
+      if (!request.settled) await respond(request, { rows: [], meta: {} });
     }
   };
   const update = async (filters) => {
@@ -52,7 +52,9 @@ async function withPage(check) {
   }
 }
 
-const PAGE = "/api/v1/pages/flaky";
+const AGGREGATE = "/api/v1/pages/flaky";
+const SECTIONS = `${AGGREGATE}/`;
+const PAGE = `${SECTIONS}chart_sections`;
 const TOP = "/api/v1/flaky/top-cases";
 const BUCKET = "/api/v1/flaky/top-jobs";
 
@@ -64,6 +66,92 @@ function bucketPage(start, end, time) {
     },
   };
 }
+
+test("a timed-out issue request neither blocks nor resets healthy Flaky panels", async () => {
+  await withPage(async ({ renderer, requests, matching, respond }) => {
+    const sections = () => requests.filter(({ url }) => url.pathname.startsWith(SECTIONS));
+    assert.equal(sections().length, 4, "no eight-request burst");
+    assert.equal(matching("/api/v1/pages/flaky").length, 0, "do not run the aggregate too");
+    const delayed = matching(`${SECTIONS}issue_case_rates`)[0];
+    const cards = () => renderer.root.findByProps({ className: "stats-grid" });
+    const values = () => cards().findAllByProps({ className: "stat-card__value" });
+    await respond(matching(`${SECTIONS}period_comparison`)[0], {
+      period_comparison: { groups: [{ name: "period_a", values: { failure_like_build_count: 4, flaky_rate_pct: 25 } }] },
+    });
+    assert.equal(values()[0].children.join(""), "25.0%");
+    const issuePanel = () => renderer.root.findAll((node) =>
+      node.props.title === "Filtered-issue weekly case table" && "loading" in node.props)[0];
+    assert.equal(issuePanel().props.loading, true);
+    await respond(delayed, null, 504);
+    assert.match(issuePanel().props.error, /504/);
+    assert.equal(issuePanel().props.actions, null, "no invented zero badges on failure");
+    assert.equal(values()[0].children.join(""), "25.0%");
+    while (sections().some((request) => !request.settled)) {
+      assert.ok(sections().filter((request) => !request.settled).length <= 4);
+      await respond(sections().find((request) => !request.settled), {});
+    }
+    assert.equal(sections().length, 8);
+    assert.equal(new Set(sections().map(({ url }) => url.pathname)).size, 8, "no replay/fallback");
+  });
+});
+
+test("missing section routes share one aggregate fallback without replacing healthy panels", async () => {
+  await withPage(async ({ renderer, requests, matching, respond }) => {
+    const sections = () => requests.filter(({ url }) => url.pathname.startsWith(SECTIONS));
+    const [period, distinct, rates, chart] = sections();
+    const periodPage = (flaky_rate_pct) => ({ period_comparison: { groups: [{ name: "period_a", values: {
+      failure_like_build_count: 4, flaky_rate_pct,
+    } }] } });
+    await respond(distinct, null, 404);
+    await respond(rates, null, 405);
+    await respond(chart, null, 404);
+    assert.equal(matching(AGGREGATE).length, 0, "drain section requests before starting aggregate SQL");
+    await respond(period, periodPage(25));
+    assert.equal(sections().length, 4, "stop scheduling sections when an old API is found");
+    assert.equal(matching(AGGREGATE).length, 1);
+    const aggregate = matching(AGGREGATE)[0];
+    assert.deepEqual(Object.fromEntries(aggregate.url.searchParams), initialFilters);
+    const content = () => JSON.stringify(renderer.toJSON());
+    await respond(aggregate, {
+      ...periodPage(99),
+      ...bucketPage("2026-11-09", "2026-11-22", "2026-11-09"),
+      top_jobs: { items: [{ name: "aggregate-only-job", value: 25 }] },
+    });
+    assert.match(content(), /aggregate-only-job/);
+    assert.doesNotMatch(content(), /Section unavailable/);
+    assert.equal(renderer.root.findAllByProps({ className: "stat-card__value" })[0].children.join(""), "25.0%");
+  });
+});
+
+test("gateway timeouts do not free slots for more server-side work during an outage", async () => {
+  await withPage(async ({ renderer, requests, respond }) => {
+    const sections = () => requests.filter(({ url }) => url.pathname.startsWith(SECTIONS));
+    const first = sections();
+    for (const request of first) await respond(request, null, 504);
+    assert.equal(sections().length, 4, "timed-out SQL may still be running behind the gateway");
+    const topJobs = renderer.root.findAll((node) => node.props.title === "Top noisy jobs" && "loading" in node.props)[0];
+    assert.equal(topJobs.props.loading, false, "skipped sections must not spin forever");
+    assert.match(topJobs.props.error, /not requested/i);
+    const cardValues = renderer.root.findAllByProps({ className: "stat-card__value" });
+    assert.ok(cardValues.every((item) => item.children.join("") === "—"));
+  });
+});
+
+test("late section responses neither populate nor dispatch work for an aborted scope", async () => {
+  await withPage(async ({ renderer, requests, matching, respond, update }) => {
+    const old = requests.filter(({ url }) => url.pathname.startsWith(SECTIONS));
+    await update({ ...initialFilters, repo: "tikv/pd" });
+    assert.ok(old.every(({ signal }) => signal.aborted));
+    const path = `${SECTIONS}period_comparison`;
+    const period = (value) => ({ period_comparison: { groups: [{ name: "period_a", values: {
+      failure_like_build_count: 12, flaky_rate_pct: value,
+    } }] } });
+    await respond(matching(path).at(-1), period(23));
+    for (const request of old) await respond(request, period(99));
+    assert.equal(requests.filter(({ url }) => url.pathname.startsWith(SECTIONS) && url.searchParams.get("repo") === "pingcap/tidb").length, 4);
+    assert.equal(renderer.root.findAllByProps({ className: "stat-card__value" })[0].children.join(""), "23.0%");
+  });
+});
 
 test("Top cases ignores issue status/granularity changes but refetches every effective scope", async () => {
   await withPage(async ({ matching, settle, update, panel }) => {

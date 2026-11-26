@@ -274,7 +274,10 @@ def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.
     monkeypatch.setattr("ci_dashboard.common.db.create_engine", fake_create_engine)
     monkeypatch.setattr("ci_dashboard.common.db.install_sqlite_functions", install_calls.append)
     retry_calls: list[object] = []
-    monkeypatch.setattr("ci_dashboard.common.db._install_connection_retry", retry_calls.append)
+    monkeypatch.setattr("ci_dashboard.common.db._install_connection_retry",
+                        lambda e, *, retry_connect_timeout: retry_calls.append((e, retry_connect_timeout)))
+    budget_calls = []
+    monkeypatch.setattr("ci_dashboard.common.db._install_pool_socket_budgets", lambda e, d: budget_calls.append((e, d)))
 
     settings = load_settings(
         {
@@ -307,7 +310,8 @@ def test_build_engine_builds_mysql_url_and_ssl_connect_args(monkeypatch: pytest.
         },
     }
     assert install_calls == [engine]
-    assert retry_calls == [engine]
+    assert retry_calls == [(engine, False)]
+    assert budget_calls == [(engine, settings.database)]
 
 
 def test_configure_logging_sets_root_level() -> None:

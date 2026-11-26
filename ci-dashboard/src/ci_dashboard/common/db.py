@@ -55,12 +55,12 @@ def _build_engine_kwargs(database: DatabaseSettings) -> dict[str, object]:
     }
 
 
-def _install_connection_retry(engine: Engine) -> None:
+def _install_connection_retry(engine: Engine, *, retry_connect_timeout: bool = False) -> None:
     """Retry transport failures only before handing a new PyMySQL connection to SQLAlchemy.
 
     Only for engines built here with explicit connect/read/write timeout arguments.
-    No SQL statement or transaction is replayed here. Query/socket timeouts are
-    deliberately not retried: repeating expensive work can worsen an outage.
+    The API can reserve part of its connect budget for a second handshake on
+    timeout. No checked-out connection, business SQL or transaction is replayed.
     """
     if engine.dialect.name != "mysql" or engine.dialect.driver != "pymysql":
         return
@@ -72,6 +72,10 @@ def _install_connection_retry(engine: Engine) -> None:
         deadline = time.monotonic() + params["connect_timeout"]
         for attempt in range(2):
             remaining = max(0.001, deadline - time.monotonic())
+            if retry_connect_timeout and attempt == 0 and remaining >= (
+                2 * (MIN_CONNECT_RETRY_BUDGET_SECONDS + CONNECT_RETRY_JITTER_SECONDS[1])
+            ):
+                remaining /= 2  # reserve room for a fresh connection, not a query retry
             connect_params = dict(params)
             # Also bound greeting/TLS/init-command reads, not just the TCP connect.
             for name in ("connect_timeout", "read_timeout", "write_timeout"):
@@ -90,9 +94,9 @@ def _install_connection_retry(engine: Engine) -> None:
                 code = exc.args[0] if exc.args else None
                 delay = random.uniform(*CONNECT_RETRY_JITTER_SECONDS)
                 # Reserve at least a second after jitter for a useful handshake retry.
+                timed_out = "timed out" in str(exc).lower() or "timeout" in str(exc).lower()
                 if (attempt or code not in {2003, 2006, 2013}
-                        or "timed out" in str(exc).lower()
-                        or "timeout" in str(exc).lower()
+                        or (timed_out and not retry_connect_timeout)
                         or time.monotonic() + delay + MIN_CONNECT_RETRY_BUDGET_SECONDS > deadline):
                     raise
                 logger.warning("Retrying database connection after transport failure (errno=%s)", code)
@@ -100,6 +104,26 @@ def _install_connection_retry(engine: Engine) -> None:
                 if deadline - time.monotonic() < MIN_CONNECT_RETRY_BUDGET_SECONDS:
                     # Sleep/scheduling may have consumed more budget than requested.
                     raise
+
+
+def _install_pool_socket_budgets(engine: Engine, database: DatabaseSettings) -> None:
+    if engine.dialect.name != "mysql" or engine.dialect.driver != "pymysql":
+        return
+
+    # SQLAlchemy initializes new connections (SET NAMES) and pre-pings idle ones
+    # before its checkout event. A silent socket must not get a business-query
+    # timeout in either path. Leave disconnect classification/replacement to the pool.
+    @event.listens_for(engine, "connect", insert=True)
+    @event.listens_for(engine, "checkin")
+    def _use_probe_budget(connection, _record):
+        if connection is not None:  # invalidated connections can check in as None
+            connection._read_timeout = min(database.connect_timeout_seconds, database.read_timeout_seconds)
+            connection._write_timeout = min(database.connect_timeout_seconds, database.write_timeout_seconds)
+
+    @event.listens_for(engine, "checkout")
+    def _use_query_budget(connection, _record, _proxy):
+        connection._read_timeout = database.read_timeout_seconds
+        connection._write_timeout = database.write_timeout_seconds
 
 
 def install_sqlite_functions(engine: Engine) -> None:
@@ -125,17 +149,9 @@ def install_sqlite_functions(engine: Engine) -> None:
         )
 
 
-def build_engine(settings: Settings | None = None) -> Engine:
+def build_engine(settings: Settings | None = None, *, retry_connect_timeout: bool = False) -> Engine:
     resolved = settings or get_settings()
-    if resolved.database.url:
-        engine = create_engine(
-            resolved.database.url,
-            **_build_engine_kwargs(resolved.database),
-        )
-        install_sqlite_functions(engine)
-        _install_connection_retry(engine)
-        return engine
-    url = URL.create(
+    url = resolved.database.url or URL.create(
         drivername="mysql+pymysql",
         username=resolved.database.user,
         password=resolved.database.password,
@@ -149,5 +165,6 @@ def build_engine(settings: Settings | None = None) -> Engine:
         **_build_engine_kwargs(resolved.database),
     )
     install_sqlite_functions(engine)
-    _install_connection_retry(engine)
+    _install_connection_retry(engine, retry_connect_timeout=retry_connect_timeout)
+    _install_pool_socket_budgets(engine, resolved.database)
     return engine

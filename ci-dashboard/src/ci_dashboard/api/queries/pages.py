@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.engine import Engine
 
@@ -147,62 +147,47 @@ def get_build_trend_page(engine: Engine, filters: CommonFilters) -> dict[str, An
     }
 
 
-def get_flaky_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:
+FlakySection = Literal[
+    "distinct_flaky_case_counts", "issue_sections", "issue_case_rates", "chart_sections",
+    "top_jobs", "failure_category_share", "failure_category_trend", "period_comparison",
+]
+
+
+def get_flaky_page(
+    engine: Engine, filters: CommonFilters, *, section: FlakySection | None = None,
+) -> dict[str, Any]:
     previous_start, previous_end = _get_previous_date_range(filters)
     build_scope_filters = filters.without_issue_status()
-    sections = _resolve_page_sections(
-        engine,
-        {
-            "distinct_flaky_case_counts": lambda: get_distinct_flaky_case_counts_by_branch(
-                engine,
-                filters,
-            ),
-            "issue_sections": lambda: get_issue_lifecycle_sections(engine, filters),
-            "issue_case_rates": lambda: get_issue_filtered_weekly_case_rates(engine, filters),
-            "chart_sections": lambda: get_flaky_chart_sections(engine, build_scope_filters),
-            "top_jobs": lambda: get_flaky_top_jobs(engine, build_scope_filters, limit=8),
-            "failure_category_share": lambda: get_failure_category_share(
-                engine,
-                build_scope_filters,
-            ),
-            "failure_category_trend": lambda: get_failure_category_trend(
-                engine,
-                build_scope_filters,
-            ),
-            "period_comparison": (
-                lambda: get_flaky_period_comparison(
-                    engine,
-                    repo=build_scope_filters.repo,
-                    branch=build_scope_filters.branch,
-                    job_name=build_scope_filters.job_name,
-                    cloud_phase=build_scope_filters.cloud_phase,
-                    period_a_start=build_scope_filters.start_date,
-                    period_a_end=build_scope_filters.end_date,
-                    period_b_start=previous_start,
-                    period_b_end=previous_end,
-                )
-                if previous_start and previous_end and filters.start_date and filters.end_date
-                else {"groups": [], "meta": filters.meta()}
-            ),
-        }
-    )
-    issue_case_rates = sections.pop("issue_case_rates")
-    distinct_cases = sections.pop("distinct_flaky_case_counts")
-    issue_sections = sections.pop("issue_sections")
-    chart_sections = sections.pop("chart_sections")
-    return {
-        "scope": filters.meta(),
-        "distinct_flaky_case_counts": distinct_cases,
-        **issue_sections,
-        **chart_sections,
-        **sections,
-        "issue_case_weekly_rates": {
-            "weeks": issue_case_rates["weeks"],
-            "rows": issue_case_rates["rows"],
-            "meta": issue_case_rates["meta"],
-        },
-        "issue_filtered_weekly_trend": issue_case_rates["trend"],
+    tasks = {
+        "distinct_flaky_case_counts": lambda: get_distinct_flaky_case_counts_by_branch(engine, filters),
+        "issue_sections": lambda: get_issue_lifecycle_sections(engine, filters),
+        "issue_case_rates": lambda: get_issue_filtered_weekly_case_rates(engine, filters),
+        "chart_sections": lambda: get_flaky_chart_sections(engine, build_scope_filters),
+        "top_jobs": lambda: get_flaky_top_jobs(engine, build_scope_filters, limit=8),
+        "failure_category_share": lambda: get_failure_category_share(engine, build_scope_filters),
+        "failure_category_trend": lambda: get_failure_category_trend(engine, build_scope_filters),
+        "period_comparison": lambda: get_flaky_period_comparison(
+            engine,
+            repo=build_scope_filters.repo,
+            branch=build_scope_filters.branch,
+            job_name=build_scope_filters.job_name,
+            cloud_phase=build_scope_filters.cloud_phase,
+            period_a_start=build_scope_filters.start_date,
+            period_a_end=build_scope_filters.end_date,
+            period_b_start=previous_start,
+            period_b_end=previous_end,
+        ) if previous_start and previous_end and filters.start_date and filters.end_date
+        else {"groups": [], "meta": filters.meta()},
     }
+    sections = {section: tasks[section]()} if section is not None else _resolve_page_sections(engine, tasks)
+    result = {"scope": filters.meta()}
+    result.update(sections.pop("issue_sections", {}))
+    result.update(sections.pop("chart_sections", {}))
+    if "issue_case_rates" in sections:
+        rates = sections.pop("issue_case_rates")
+        result["issue_case_weekly_rates"] = {key: rates[key] for key in ("weeks", "rows", "meta")}
+        result["issue_filtered_weekly_trend"] = rates["trend"]
+    return {**result, **sections}
 
 
 def get_runtime_insights_page(engine: Engine, filters: CommonFilters) -> dict[str, Any]:

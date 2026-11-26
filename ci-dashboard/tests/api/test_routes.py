@@ -185,7 +185,8 @@ def test_get_engine_dependency_caches_underlying_engine(monkeypatch: pytest.Monk
 
     dependencies_module._cached_engine.cache_clear()
 
-    def fake_build_engine():
+    def fake_build_engine(*, retry_connect_timeout):
+        assert retry_connect_timeout is True
         calls["count"] += 1
         return sentinel
 
@@ -2896,6 +2897,62 @@ def test_flaky_case_counts_match_current_tencent_host_with_legacy_case_key(sqlit
             assert rows["TestTencentCurrentUrl"]["cells"] == ["100.00% (1/1)"]
     finally:
         app.dependency_overrides.clear()
+
+
+def test_flaky_sections_match_aggregate_without_repeating_sql(api_client, sqlite_engine):
+    from collections import Counter
+
+    path = "/api/v1/pages/flaky"
+    statements = []
+
+    def record(_connection, _cursor, statement, parameters, _context, _many):
+        statements.append((statement, tuple(parameters)))
+
+    event.listen(sqlite_engine, "before_cursor_execute", record)
+    try:
+        aggregate = api_client.get(path)
+        assert aggregate.status_code == 200
+        expected_sql = Counter(statements)
+        statements.clear()
+        combined = {}
+        for section in (
+            "period_comparison", "distinct_flaky_case_counts", "issue_sections", "issue_case_rates",
+            "chart_sections", "top_jobs", "failure_category_share", "failure_category_trend",
+        ):
+            response = api_client.get(f"{path}/{section}")
+            assert response.status_code == 200
+            data = response.json()
+            assert (combined.keys() & data.keys()) <= {"scope"}
+            combined.update(data)
+        assert combined == aggregate.json()
+        assert Counter(statements) == expected_sql
+        statements.clear()
+        assert api_client.get(f"{path}/invalid").status_code == 422
+        assert not statements
+    finally:
+        event.remove(sqlite_engine, "before_cursor_execute", record)
+
+
+def test_flaky_section_failure_is_isolated_and_not_replayed(api_client, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    calls = []
+
+    def fail(*args, **kwargs):
+        calls.append(1)
+        raise OperationalError("private SQL", {}, OSError("lost connection"))
+
+    monkeypatch.setattr(page_queries, "get_flaky_top_jobs", fail)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        path = "/api/v1/pages/flaky"
+        response = client.get(f"{path}/top_jobs")
+        assert response.status_code == 500
+        assert "private SQL" not in response.text
+        period = client.get(f"{path}/period_comparison")
+        assert period.status_code == 200 and period.json()["period_comparison"]["groups"]
+        assert len(calls) == 1
+        assert client.get(path).status_code == 500  # legacy consumer: no fake partial success
+        assert len(calls) == 2
 
 
 def test_flaky_validation_errors(api_client: TestClient) -> None:
