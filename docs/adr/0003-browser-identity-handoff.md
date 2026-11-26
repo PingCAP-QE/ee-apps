@@ -148,3 +148,39 @@ Upstream note: Envoy v1.39 release notes state that OAuth2 `forward_id_token`
 strips client-supplied custom forwarding headers and sets them only from a
 validated cookie. Treat that as supporting evidence, not proof — it is verified
 against the deployed image in Phase B.
+
+## Phase B mode-1 results (2026-11-26)
+
+Run on an isolated Gateway (`EnvoyProxy.spec.filterOrder`, `ext_authz` after
+`oauth2`/`jwt_authn`), a dedicated OAuth client, and a `/authz-canary` route whose
+registry rule uses `capability:authz.canary` so every decision is attributable.
+
+Confirmed:
+
+1. **`forwardIDToken` reaches `ext_authz`.** A browser session produced a
+   decision with `principal=user:google/sub/<sub>` — a subject `authzd` derived
+   from the forwarded ID token by verifying it against Google JWKS with the
+   dedicated client as audience. This is the mechanism the previous revision
+   called unproven.
+2. **The decision uses the session identity, not the client's claim.** Requests
+   carrying a client-supplied `X-Authzd-ID-Token` (a garbage value, and a
+   duplicate `a, b` value) were both decided on the session user. The Gateway
+   overwrote the header in both cases; the duplicate form would also have been
+   rejected by `authzd`'s single-credential rule.
+3. **Gateway-rejected requests still produce no decision.** An unauthenticated
+   request is answered by the OIDC filter with a redirect and leaves no decision
+   record, which is the behaviour the reordering introduced.
+4. **The canonical subject encoding had to change.** The subject inherited from
+   ADR 0001 (`user:<issuer-url>|<sub>`) is rejected by OpenFGA because the
+   identifier contains `:`. See the constraint recorded in ADR 0001; the deployed
+   prefix is now `user:google/sub/`.
+
+Residual gap, explicitly not claimed: the substitution test with a **valid ID
+token belonging to another user** has not been executed, because no second
+identity was available. Envoy's overwrite does not inspect the value, and both of
+the above probes show replacement, but the ADR does not treat that as proof.
+Options to close it, in order of cost: a dedicated Workspace test account that can
+complete one login; a colleague's token; a temporary `serviceAccountTokenCreator`
+grant so a service-account token with this audience can be minted.
+
+Until that runs, the browser route stays out of `extAuth`.
