@@ -16,6 +16,9 @@ def mysql_engine(monkeypatch, outcomes, **engine_opts):
     engine = db.build_engine(settings, **engine_opts)
     connect = Mock(side_effect=outcomes)
     monkeypatch.setattr(engine.dialect.loaded_dbapi, "connect", connect)
+    # These tests script whole handshake outcomes; the real TCP path has its
+    # own tests with multiple DNS answers and the unmocked PyMySQL driver.
+    monkeypatch.setattr(db, "_connect_api_tcp", lambda d, a, p, *_: d.connect(*a, **p))
     monkeypatch.setattr(time, "sleep", lambda _: None)
     return engine, connect
 
