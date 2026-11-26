@@ -68,6 +68,19 @@ func (s *hotfixsrvc) BumpTagForTidbx(ctx context.Context, p *hotfix.BumpTagForTi
 		}
 	}
 
+	// The ops ids are optional, and an id that carries no value must stay out of
+	// the annotation. Normalize first, then validate what is left: a malformed id
+	// would be frozen into the tag annotation and forwarded to the ops build
+	// callback as-is, so reject it before touching GitHub.
+	normalizeBumpTagOpsIDs(p.Meta)
+	if err := validateBumpTagOpsIDs(p.Meta); err != nil {
+		l.Warn().Err(err).Msg("Invalid ops request metadata")
+		return nil, &hotfix.HTTPError{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("invalid meta.ops_req: %v", err),
+		}
+	}
+
 	// Step 1: Verify the branch or commit exists
 	commitSHA, err := s.verifyAndGetCommit(ctx, owner, repo, p.Branch, p.Commit)
 	if err != nil {

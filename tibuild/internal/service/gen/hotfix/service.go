@@ -91,10 +91,16 @@ type QueryTagOfTidbxPayload struct {
 }
 
 type TiDBxBumpTagMeta struct {
+	// Ops request ids of the caller. release_id, change_id, step_key and
+	// execution_id are all optional and independent.
 	OpsReq *struct {
 		Applicant *string `json:"applicant,omitempty"`
 		ReleaseID *string `json:"release_id,omitempty"`
 		ChangeID  *string `json:"change_id,omitempty"`
+		// Optional UUID of the ops step that requested the tag
+		StepKey *string `json:"step_key,omitempty"`
+		// Optional UUID of the ops execution that requested the tag
+		ExecutionID *string `json:"execution_id,omitempty"`
 	} `json:"ops_req,omitempty"`
 }
 
