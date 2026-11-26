@@ -10,8 +10,10 @@
       "priority": 100,
       "mode": "observe",
       "checks": [
-        { "object": "capability:tibuild.devbuild.rerun", "relation": "invoke" },
-        { "object_from": "devbuild", "id_from": "path.id", "relation": "can_rerun" }
+        {
+          "object": "capability:tibuild.devbuild.rerun",
+          "relation": "invoke"
+        }
       ]
     },
     {
@@ -23,8 +25,10 @@
       "priority": 100,
       "mode": "observe",
       "checks": [
-        { "object": "capability:tibuild.devbuild.create", "relation": "create" },
-        { "object_from": "project", "id_from": "body.project_id", "relation": "can_create_build" }
+        {
+          "object": "capability:tibuild.devbuild.create",
+          "relation": "create"
+        }
       ]
     },
     {
@@ -36,8 +40,10 @@
       "priority": 100,
       "mode": "observe",
       "checks": [
-        { "object": "capability:tibuild.devbuild.read", "relation": "read" },
-        { "object_from": "devbuild", "id_from": "path.id", "relation": "can_read" }
+        {
+          "object": "capability:tibuild.devbuild.read",
+          "relation": "read"
+        }
       ]
     }
   ]

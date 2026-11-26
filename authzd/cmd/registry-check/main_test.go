@@ -29,7 +29,7 @@ func TestRun(t *testing.T) {
 		wantOut  string
 		wantErr  string
 	}{
-		{"valid report", []string{validFile}, 0, "tibuild-devbuild-rerun", "rules with resource checks: 3"},
+		{"valid report", []string{validFile}, 0, "tibuild-devbuild-rerun", "rules with resource checks: 0"},
 		{"invalid registry", []string{invalidFile}, 1, "", "registry version is required"},
 		{"missing file", []string{filepath.Join(dir, "missing.json")}, 2, "", "no such file"},
 		{"usage", nil, 2, "", "usage: registry-check"},

@@ -38,12 +38,14 @@ against production rather than assumed.
 | Gap | Consequence |
 | --- | --- |
 | Three callers are absent: `devops-server`, `devops-server-dev`, `devops-server-staging` in `gcp-resilience-dev` | The IAM API denies `serviceAccounts.describe` for that project, so their uniqueIDs are unknown. Adding them needs someone with access. Until then this file is **incomplete** |
-| Resource checks have no data (ADR 0005) | `devbuild#can_rerun` and `devbuild#can_read` need `devbuild` tuples that cannot be sourced; the create rule needs a body-derived project id the resolver cannot read |
 
-So capability grants are necessary but not sufficient. With them applied, a rerun
-in `observe` still reports `resource_not_found`, and in `enforce` it would deny.
-**Enforcement stays off** until both gaps close. Do not read a green
-`relationship_denied` count as readiness to enforce.
+Resource checks are no longer a gap: ADR 0005 was accepted, so the registry rules
+carry a capability check only and TiBuild keeps object ownership. Enforcement is
+therefore blocked by the three missing callers and by the decision to flip the
+mode — not by missing ownership data.
+
+Do not read a green `relationship_denied` count as readiness to enforce: it only
+says the caller lacks the capability.
 
 ## Applying it
 
