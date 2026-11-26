@@ -93,6 +93,37 @@ owns **all** `team#member` tuples. Two consequences:
   granularity first. That is a small change, but it must happen before the second
   source exists, not after.
 
+## Running it
+
+The job reads the Directory through the same `cmd/tuple-sync`, with a token file
+instead of a reviewed snapshot. The token file holds a bearer token with the
+Directory scope and is re-read on every call, so a rotated token needs no restart.
+
+Run Gate 1 first, with a credential that can read the Directory:
+
+```sh
+go run ./cmd/tuple-sync \
+  --source workspace-group \
+  --workspace-group <group-key> \
+  --team-object team:all-staff \
+  --workspace-token-file /etc/authzd/workspace.token \
+  --verify-email <a-known-employee> \
+  --verify-subject <their sub from a decision log> \
+  --object-type team --relation member \
+  --dry-run
+```
+
+A mismatch aborts before the store is touched, so a wrong mapping cannot write a
+single tuple. Keep both `--verify-*` flags on the first real runs; they cost one
+extra API call and they are the only thing that catches an id/subject divergence
+introduced later.
+
+`--directory-url` exists for tests against a stub; leave it unset in a cluster.
+
+Without the verification flags the same command performs the sync. Use `--dry-run`
+first to see the plan, then drop it. The job needs its own OpenFGA credential with
+write access to the store — never the `authzd` decision-path credential.
+
 ## Open items
 
 1. Which group, and who owns its membership. Contractors or guests in that group

@@ -189,3 +189,98 @@ func TestRunRevokesRemovedGrants(t *testing.T) {
 		t.Fatalf("deleted %v, want the revoked grant", first)
 	}
 }
+
+func newDirectoryServer(t *testing.T, id string) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/groups/"):
+			_, _ = w.Write([]byte(`{"members":[{"id":"` + id + `","type":"USER","status":"ACTIVE"}]}`))
+		case strings.Contains(r.URL.Path, "/users/"):
+			_, _ = w.Write([]byte(`{"id":"` + id + `"}`))
+		default:
+			t.Errorf("unexpected directory path %q", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+func TestRunWorkspaceSourceWritesMembers(t *testing.T) {
+	fga := newFakeOpenFGA(t, `[]`)
+	directory := newDirectoryServer(t, "102401699953594095413")
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--source", "workspace-group",
+		"--workspace-group", "all@example.com",
+		"--team-object", "team:all-staff",
+		"--workspace-token-file", tokenFile,
+		"--object-type", "team", "--relation", "member",
+		"--directory-url", directory.URL,
+	}, env(fga.server.URL), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() = %d, stderr = %s", code, stderr.String())
+	}
+	if fga.writes != 1 {
+		t.Fatalf("write requests = %d, want 1", fga.writes)
+	}
+	if !strings.Contains(stderr.String(), `"outcome":"applied"`) {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+}
+
+func TestRunWorkspaceSourceRejectsMismatchedSubjectBeforeWriting(t *testing.T) {
+	fga := newFakeOpenFGA(t, `[]`)
+	directory := newDirectoryServer(t, "102401699953594095413")
+	tokenFile := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenFile, []byte("test-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"--source", "workspace-group",
+		"--workspace-group", "all@example.com",
+		"--team-object", "team:all-staff",
+		"--workspace-token-file", tokenFile,
+		"--verify-email", "a@example.com",
+		"--verify-subject", "user:google/sub/999",
+		"--object-type", "team", "--relation", "member",
+		"--directory-url", directory.URL,
+	}, env(fga.server.URL), &stdout, &stderr)
+	if code == 0 {
+		t.Fatal("run() accepted a mismatched subject")
+	}
+	if fga.writes != 0 || fga.deletes != 0 {
+		t.Fatalf("gate 1 failure still wrote tuples: %+v", fga)
+	}
+	if !strings.Contains(stderr.String(), "gate 1 failed") {
+		t.Fatalf("stderr = %s", stderr.String())
+	}
+}
+
+func TestRunRejectsInvalidSourceConfiguration(t *testing.T) {
+	fga := newFakeOpenFGA(t, `[]`)
+	cases := map[string][]string{
+		"unknown source":          {"--source", "magic", "--object-type", "team", "--relation", "member"},
+		"workspace without group": {"--source", "workspace-group", "--team-object", "team:t", "--workspace-token-file", "/tmp/x", "--object-type", "team", "--relation", "member"},
+		"workspace without token": {"--source", "workspace-group", "--workspace-group", "g", "--team-object", "team:t", "--object-type", "team", "--relation", "member"},
+		"verify without email":    {"--source", "workspace-group", "--workspace-group", "g", "--team-object", "team:t", "--workspace-token-file", "/tmp/x", "--verify-subject", "1", "--object-type", "team", "--relation", "member"},
+		"file without snapshot":   {"--source", "file", "--object-type", "capability", "--relation", "caller"},
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run(args, env(fga.server.URL), &stdout, &stderr); code == 0 {
+				t.Fatalf("run() accepted %s", name)
+			}
+			if fga.writes != 0 {
+				t.Fatalf("%s wrote tuples", name)
+			}
+		})
+	}
+}

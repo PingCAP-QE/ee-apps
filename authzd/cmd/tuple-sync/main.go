@@ -21,6 +21,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/openfga"
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/relationships"
+	"github.com/PingCAP-QE/ee-apps/authzd/internal/workspace"
 )
 
 func main() {
@@ -34,16 +35,19 @@ func main() {
 func run(args []string, getenv func(string) string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("tuple-sync", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	snapshotPath := flags.String("snapshot", "", "path to the reviewed relationship snapshot")
+	snapshotPath := flags.String("snapshot", "", "path to the reviewed relationship snapshot (--source file)")
+	sourceKind := flags.String("source", "file", "relationship source: file or workspace-group")
+	workspaceGroup := flags.String("workspace-group", "", "Workspace group key for --source workspace-group")
+	teamObject := flags.String("team-object", "", "team object that receives members, e.g. team:all-staff")
+	workspaceTokenFile := flags.String("workspace-token-file", "", "file holding a Directory API bearer token")
+	directoryURL := flags.String("directory-url", "", "override the Directory API base URL (tests)")
+	verifyEmail := flags.String("verify-email", "", "with --verify-subject, the Directory user to compare")
+	verifySubject := flags.String("verify-subject", "", "with --verify-email, the expected token subject (Gate 1)")
 	objectTypes := flags.String("object-type", "", "comma-separated object types this job owns")
 	relations := flags.String("relation", "", "comma-separated relations this job owns")
 	dryRun := flags.Bool("dry-run", false, "compute and report the plan without writing tuples")
 	allowEmpty := flags.Bool("allow-empty", false, "allow a reviewed snapshot to delete every owned tuple")
 	if err := flags.Parse(args); err != nil {
-		return 2
-	}
-	if strings.TrimSpace(*snapshotPath) == "" {
-		fmt.Fprintln(stderr, "tuple-sync: --snapshot is required")
 		return 2
 	}
 	scope := relationships.Scope{ObjectTypes: splitList(*objectTypes), Relations: splitList(*relations)}
@@ -54,9 +58,14 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 
 	logger := slog.New(slog.NewJSONHandler(stderr, nil))
 	metrics := relationships.NewMetrics()
-	source, err := relationships.NewFileSource(*snapshotPath)
+	source, err := buildSource(sourceConfig{
+		kind: *sourceKind, snapshotPath: *snapshotPath, group: *workspaceGroup,
+		teamObject: *teamObject, tokenFile: *workspaceTokenFile, directoryURL: *directoryURL,
+		verifyEmail: *verifyEmail, verifySubject: *verifySubject,
+	}, logger)
 	if err != nil {
-		logger.Error("invalid snapshot source", "error", err)
+		logger.Error("invalid relationship source", "error", err)
+		fmt.Fprintln(stderr, "tuple-sync:", err)
 		return 2
 	}
 	store, err := openfga.NewTupleStore(openfga.Config{
@@ -93,6 +102,62 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 		return 1
 	}
 	return 0
+}
+
+type sourceConfig struct {
+	kind, snapshotPath, group, teamObject, tokenFile, verifyEmail, verifySubject, directoryURL string
+}
+
+// buildSource selects the relationship source. The workspace source verifies
+// Gate 1 first when asked: writing tuples from a Directory id that is not the
+// token subject would authorize the wrong person, so a mismatch aborts before the
+// store is touched.
+func buildSource(cfg sourceConfig, logger *slog.Logger) (relationships.Source, error) {
+	switch strings.TrimSpace(cfg.kind) {
+	case "file", "":
+		if strings.TrimSpace(cfg.snapshotPath) == "" {
+			return nil, errors.New("--snapshot is required for --source file")
+		}
+		return relationships.NewFileSource(cfg.snapshotPath)
+	case "workspace-group":
+		if strings.TrimSpace(cfg.group) == "" || strings.TrimSpace(cfg.teamObject) == "" {
+			return nil, errors.New("--workspace-group and --team-object are required for --source workspace-group")
+		}
+		if strings.TrimSpace(cfg.tokenFile) == "" {
+			return nil, errors.New("--workspace-token-file is required for --source workspace-group")
+		}
+		token := tokenFromFile(cfg.tokenFile)
+		if strings.TrimSpace(cfg.verifySubject) != "" || strings.TrimSpace(cfg.verifyEmail) != "" {
+			if strings.TrimSpace(cfg.verifySubject) == "" || strings.TrimSpace(cfg.verifyEmail) == "" {
+				return nil, errors.New("--verify-subject and --verify-email must be set together")
+			}
+			verifier, err := workspace.NewVerifier(workspace.VerifierConfig{Token: token, BaseURL: cfg.directoryURL})
+			if err != nil {
+				return nil, err
+			}
+			if err := verifier.VerifySubject(context.Background(), cfg.verifyEmail, cfg.verifySubject); err != nil {
+				return nil, err
+			}
+			logger.Info("gate 1 verified", "email", cfg.verifyEmail)
+		}
+		return workspace.NewSource(workspace.Config{
+			BaseURL: cfg.directoryURL, GroupKey: cfg.group, TeamObject: cfg.teamObject, Token: token,
+		})
+	default:
+		return nil, fmt.Errorf("unknown --source %q", cfg.kind)
+	}
+}
+
+// tokenFromFile re-reads the file on every call so a rotated token is picked up
+// without restarting the job.
+func tokenFromFile(path string) func(context.Context) (string, error) {
+	return func(context.Context) (string, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read workspace token: %w", err)
+		}
+		return strings.TrimSpace(string(data)), nil
+	}
 }
 
 func splitList(value string) []string {
