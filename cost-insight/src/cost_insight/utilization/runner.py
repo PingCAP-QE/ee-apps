@@ -51,8 +51,15 @@ def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, re
     reader = reader or TencentReader(profile)
     reader.verify_account()
     # No DB writes until all requested partitions and both products have completed.
-    snapshots = [candidate for day in bill_days for candidate in reader.billing_candidates(day)]
-    summaries = {}
+    by_machine = {}
+    for partition in bill_days:
+        for row in reader.billing_candidates(partition):
+            key = (row["region"], row["cluster_id"], row["machine_id"])
+            rows, partitions = by_machine.setdefault(key, ([], set()))
+            rows.append(row)
+            partitions.add(partition)
+    summaries, deferred = {}, []
+    cutoff = minute(clock - timedelta(minutes=10))
 
     def summary(day):
         return summaries.setdefault(
@@ -61,9 +68,30 @@ def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, re
              "horizon_gaps": 0, "errors": []},
         )
 
-    for candidate in TencentReader._merge_snapshots(snapshots):
+    def merged_candidates():
+        for (region, _, machine_id), (rows, partitions) in by_machine.items():
+            try:
+                candidates = TencentReader._merge_snapshots(rows)
+            except ValueError as error:
+                day = policy.usage_date(min(row["observed_from"] for row in rows))
+                summary(day)["errors"].append(
+                    {"machine_id": machine_id, "region": region, "error": str(error)}
+                )
+                continue
+            for candidate in candidates:
+                yield candidate, partitions
+
+    for candidate, partitions in merged_candidates():
         start = minute(candidate["observed_from"], ceil=True)
-        end = min(minute(candidate["observed_until"]), minute(clock - timedelta(minutes=10)))
+        fee_end = minute(candidate["observed_until"])
+        tail_start = max(start, cutoff)
+        if tail_start < fee_end:
+            deferred.append({
+                "machine_id": candidate["machine_id"], "region": candidate["region"],
+                "cluster_id": candidate["cluster_id"], "start": tail_start.isoformat(),
+                "end": fee_end.isoformat(), "bill_days": [day.isoformat() for day in sorted(partitions)],
+            })
+        end = min(fee_end, cutoff)
         if start >= end:
             continue
         floor = first_open[candidate["resource_class"]]
@@ -97,6 +125,7 @@ def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, re
     return {
         "bill_days": [day.isoformat() for day in bill_days],
         "days": [summaries[day] for day in sorted(summaries)],
+        "deferred": deferred,
         "source": reader.stats,
         "dry_run": dry_run,
     }

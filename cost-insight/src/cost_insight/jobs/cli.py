@@ -500,7 +500,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             incomplete_days = any(
                 day.get("horizon_gaps") or day.get("errors") for day in result.get("days", [])
             )
-            return 2 if result.get("retry") or result.get("fenced") or incomplete_days else 0
+            return 2 if (result.get("retry") or result.get("fenced")
+                         or result.get("deferred") or incomplete_days) else 0
         finally:
             engine.dispose()
 

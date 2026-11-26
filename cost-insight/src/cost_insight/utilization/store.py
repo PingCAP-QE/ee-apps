@@ -175,6 +175,11 @@ def deadline(state, target, start, end):
     return min(ends)
 
 
+def _machine_snapshot(payload):
+    # The enclosing bill interval selects windows but does not change a task's snapshot.
+    return {k: v for k, v in payload.items() if k not in {"observed_from", "observed_until"}}
+
+
 def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
     start, end = policy.utc_naive(start), policy.utc_naive(end)
     if (
@@ -184,9 +189,10 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
         or end - start > timedelta(minutes=30)
     ):
         raise ValueError("invalid completed task window")
-    if policy.usage_date(start) != policy.usage_date(end - timedelta(microseconds=1)):
+    day = policy.usage_date(start)
+    if day != policy.usage_date(end - timedelta(microseconds=1)):
         raise ValueError("split task at Beijing midnight")
-    if policy.usage_date(start) < date.fromisoformat(state["start_date"]):
+    if day < date.fromisoformat(state["start_date"]):
         return 0
     if end > clock:
         raise ValueError("cannot collect a future window")
@@ -202,62 +208,72 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
         or target["namespace"] not in state["scope"]["namespaces"]
     ):
         raise ValueError("Pod outside collection scope")
+    is_machine = target["kind"] == "machine"
     payload = {**target, "contract_version": state["contract_version"]}
-    if target["kind"] == "machine":
-        # The enclosing bill interval only selects windows. It is not part of
-        # the queries or capacity snapshot for an unchanged individual window.
-        payload.pop("observed_from", None)
-        payload.pop("observed_until", None)
+    if is_machine:
+        payload = _machine_snapshot(payload)
     payload = json.loads(json.dumps(payload, default=str, allow_nan=False))
     if len(json.dumps(payload)) > 16384:
         raise ValueError("unbounded task payload")
-    key = identity(
+    selector = (
         target["kind"],
         policy.ACCOUNT_ID,
         target["region"],
         target.get("cluster_id", ""),
         target.get("machine_id") or target.get("pod_uid"),
-        start.isoformat(),
-        end.isoformat(),
-        state["contract_version"],
     )
-    previous = connection.execute(select(tasks).where(tasks.c.id == key)).mappings().first()
+    contract = state["contract_version"]
+    key = identity(*selector, start.isoformat(), end.isoformat(), contract)
+    previous = connection.execute(select(tasks.c.payload_json).where(tasks.c.id == key)).first()
     if previous:
-        snapshot = dict(previous["payload_json"])
-        if target["kind"] == "machine":
-            snapshot.pop("observed_from", None)
-            snapshot.pop("observed_until", None)
-        if snapshot != payload:
+        snapshot = previous.payload_json
+        if (_machine_snapshot(snapshot) if is_machine else snapshot) != payload:
             raise ValueError("conflicting snapshot for existing window; explicit repair required")
         return 0
+    identity_field = "machine_id" if is_machine else "pod_uid"
+    cluster = tasks.c.payload_json["cluster_id"].as_string()
+    overlap = select(tasks.c.id).where(
+        tasks.c.account_id == policy.ACCOUNT_ID,
+        tasks.c.kind == target["kind"],
+        tasks.c.payload_json[identity_field].as_string() == target[identity_field],
+        tasks.c.payload_json["region"].as_string() == target["region"],
+        (func.coalesce(cluster, "") if is_machine else cluster) == target.get("cluster_id", ""),
+        tasks.c.window_start < end,
+        tasks.c.window_end > start,
+    )
+    overlap_error = "overlapping task windows require explicit repair, never double-add"
+    if is_machine:
+        # A growing window may reuse retained checkpoints only as an exact prefix.
+        cursor = start
+        fragments = overlap.with_only_columns(
+            tasks.c.window_start, tasks.c.window_end, tasks.c.payload_json
+        ).order_by(tasks.c.window_start)
+        for first, stop, snapshot in connection.execute(fragments):
+            if (
+                first != cursor
+                or not cursor < stop <= end
+                or stop != minute(stop)
+                or _machine_snapshot(snapshot) != payload
+            ):
+                raise ValueError(overlap_error)
+            cursor = stop
+        if cursor == end:
+            return 0
+        if cursor != start:
+            start = cursor
+            key = identity(*selector, start.isoformat(), end.isoformat(), contract)
     limit = deadline(state, target, start, end)
     if limit <= clock and context_id is None:
         raise ValueError("source window has expired; never recreate a purged checkpoint")
-    if target["kind"] == "machine" and deadline(
-        state, target, policy.day_start(policy.usage_date(start)), end
-    ) <= clock:
+    if is_machine and deadline(state, target, policy.day_start(day), end) <= clock:
         # Once the day's earliest checkpoint could have expired, a shifted
         # boundary must not re-add time already represented in the daily fact.
         raise ValueError("machine usage day has expired; never reopen purged checkpoints")
     # An active context's unplanned exhausted tail is registered once while its
     # planned_until advances atomically; maintenance records expected missing use.
-    identity_field = "machine_id" if target["kind"] == "machine" else "pod_uid"
-    overlap = connection.execute(
-        select(tasks.c.id)
-        .where(
-            tasks.c.account_id == policy.ACCOUNT_ID,
-            tasks.c.kind == target["kind"],
-            tasks.c.payload_json[identity_field].as_string() == target[identity_field],
-            tasks.c.payload_json["region"].as_string() == target["region"],
-            tasks.c.payload_json["cluster_id"].as_string() == target.get("cluster_id", ""),
-            tasks.c.window_start < end,
-            tasks.c.window_end > start,
-        )
-        .limit(1)
-    ).first()
-    if overlap:
-        raise ValueError("overlapping task windows require explicit repair, never double-add")
-    due = clock if target["kind"] == "machine" else max(clock, end + timedelta(minutes=10))
+    if not is_machine and connection.execute(overlap.limit(1)).first():
+        raise ValueError(overlap_error)
+    due = clock if is_machine else max(clock, end + timedelta(minutes=10))
     connection.execute(
         tasks.insert().values(
             id=key,

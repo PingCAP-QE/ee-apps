@@ -158,18 +158,22 @@ marking dispatched; DB result/done commit precedes offset acknowledgement. Faile
 attempts retry with backoff capped at five minutes until the fixed task deadline;
 there is no attempt-count expiry. Maintenance records missing usage at expiry.
 Crash replays may repeat messages or an unfinished source window but not its committed
-contribution. A bill extension at an existing window boundary only adds new,
-non-overlapping windows when the retained snapshot is unchanged. Conflicting
-specifications or overlapping shifted windows are rejected, not silently added
-as a second version. New machine planning closes at the usage day's earliest
+contribution. A bill extension adds only the uncovered tail when retained
+windows form an exact contiguous prefix with the same snapshot. Conflicting
+specifications or other overlaps are rejected, not silently added as a second
+version. New machine planning closes at the usage day's earliest
 possible task expiry, so a shifted window cannot replace a purged checkpoint.
 Do not clear done checkpoints or invent an ad-hoc repair.
 Machine planning reports per-candidate snapshot/overlap validation failures in each
 usage day's `errors` list (machine ID, region, reason), while continuing unrelated
 machines and days. Conflicts roll back the affected candidate/day transaction.
 The result separates scanned `bill_days` from the affected usage `days`.
-Nonempty `errors` or nonzero `horizon_gaps` (candidate intervals with any portion
-outside the allowed usage-day planning range) make the CLI exit 2. Retry the
+If a long fee interval has a tail after the source reporting cutoff, `deferred`
+reports the unplanned UTC range and BillDay partitions. Rerun those partitions
+with `--bill-day` after the tail's end plus the reporting allowance, before the
+relevant usage-day horizon closes; the default scan may no longer include them.
+For long tails, run periodic retries before earlier usage days close. Nonempty
+`deferred` or `errors`, or nonzero `horizon_gaps`, makes the CLI exit 2. Retry the
 relevant partition with `--bill-day` before its usage-day planning deadline; the
 default D-4/D-3 scan does not revisit older failed partitions. `BillDay` determines
 which data is read; the actual fee interval determines which Beijing dates and

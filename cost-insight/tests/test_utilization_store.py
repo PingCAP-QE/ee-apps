@@ -173,6 +173,107 @@ def test_duplicate_enqueue_and_commit_are_exactly_once(engine):
     assert store.claim_task(engine, task["id"], now=NOW) is None
 
 
+@pytest.mark.parametrize("explicit_cluster", [True, False])
+def test_machine_window_extension_only_enqueues_unplanned_tail(engine, explicit_cluster):
+    first_end = START + timedelta(minutes=15)
+    t = target(observed_from=START, observed_until=first_end)
+    if not explicit_cluster:
+        t.pop("cluster_id")
+    assert store.enqueue_windows(engine, [(t, START, first_end)], now=NOW) == {"planned": 1}
+    (original,) = store.due_tasks(engine, now=NOW)
+
+    clock = NOW + timedelta(minutes=10)
+    revised = {**t, "observed_until": NOW}
+    window = (revised, START, NOW)
+    assert store.enqueue_windows(engine, [window], now=clock) == {"planned": 1}
+    first, tail = sorted(store.due_tasks(engine, now=clock), key=lambda row: row["window_start"])
+    assert first == original
+    assert (tail["window_start"], tail["window_end"]) == (first_end, NOW)
+    contract = first["payload_json"]["contract_version"]
+    assert tail["payload_json"] == first["payload_json"]
+    assert tail["id"] == identity(
+        "machine",
+        policy.ACCOUNT_ID,
+        t["region"],
+        t.get("cluster_id", ""),
+        t["machine_id"],
+        first_end.isoformat(),
+        NOW.isoformat(),
+        contract,
+    )
+    assert tail["deadline_at"] == first["deadline_at"] + timedelta(minutes=15)
+    assert tail["due_at"] == clock
+    assert store.enqueue_windows(engine, [window, (revised, first_end, NOW)], now=clock) == {
+        "planned": 0
+    }
+    assert store.load_state(engine)["retained_rows"] == 2
+
+
+def test_machine_window_extends_multiple_fragments_with_legacy_snapshot(engine):
+    t = target()
+    second_end = END + timedelta(minutes=10)
+    # Insert in reverse order, then model an older checkpoint with saved bill bounds.
+    assert store.enqueue_windows(engine, [(t, END, second_end), (t, START, END)], now=NOW) == {
+        "planned": 2
+    }
+    first = min(store.due_tasks(engine, now=NOW), key=lambda row: row["window_start"])
+    legacy_payload = {**first["payload_json"], "observed_from": str(START), "observed_until": str(END)}
+    with engine.begin() as connection:
+        connection.execute(
+            tasks.update().where(tasks.c.id == first["id"]).values(payload_json=legacy_payload)
+        )
+    claim = store.claim_task(engine, first["id"], now=NOW)
+    assert store.complete_task(
+        engine, first["id"], claim["lease_token"], summarize_window([], t, START, END), now=NOW
+    )
+
+    revised = target(observed_from=START, observed_until=NOW)
+    assert store.enqueue_windows(engine, [(revised, START, NOW)], now=NOW) == {"planned": 1}
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(tasks.c.window_start, tasks.c.window_end, tasks.c.status).order_by(
+                tasks.c.window_start
+            )
+        ).all()
+    assert rows == [(START, END, "done"), (END, second_end, "pending"), (second_end, NOW, "pending")]
+    windows = [(revised, START, NOW), (revised, START, second_end)]
+    # Dry-run remains a candidate count, not a database-backed preview of inserts.
+    assert store.enqueue_windows(engine, windows, now=NOW, dry_run=True) == {
+        "dry_run": True,
+        "planned": 2,
+    }
+    assert store.enqueue_windows(engine, windows, now=NOW) == {"planned": 0}
+    assert store.load_state(engine)["retained_rows"] == 4  # three tasks and one fact
+
+
+@pytest.mark.parametrize("conflict", ["shrink", "shift", "gap", "capacity", "contract", "pod"])
+def test_window_overlap_without_equal_machine_prefix_rolls_back_batch(engine, conflict):
+    t = target("pod" if conflict == "pod" else "machine")
+    enqueued(engine, t)
+    start = START + timedelta(minutes=1) if conflict == "shift" else START
+    end = END - timedelta(minutes=1) if conflict == "shrink" else NOW
+    if conflict in {"gap", "capacity", "contract"}:
+        second_start = END + timedelta(minutes=1) if conflict == "gap" else END
+        second_target = {**t, "cpu_cores": 4} if conflict == "capacity" else t
+        second_end = END + timedelta(minutes=10)
+        store.enqueue_windows(engine, [(second_target, second_start, second_end)], now=NOW)
+        if conflict == "contract":
+            with engine.begin() as connection:
+                connection.execute(
+                    tasks.update()
+                    .where(tasks.c.window_start == second_start)
+                    .values(payload_json={**t, "contract_version": "older"})
+                )
+    before = store.due_tasks(engine, now=NOW)
+    # An earlier insert in the same candidate batch must not commit on a conflict.
+    with pytest.raises(ValueError, match="overlapping task windows"):
+        store.enqueue_windows(
+            engine, [(target(machine_id="ins-other"), START, END), (t, start, end)], now=NOW
+        )
+    assert store.due_tasks(engine, now=NOW) == before
+    assert store.load_state(engine)["retained_rows"] == len(before)
+
+
 def test_lease_expiry_fences_old_worker(engine):
     task = enqueued(engine)
     first = store.claim_task(engine, task["id"], now=NOW)
@@ -457,6 +558,26 @@ def test_shifted_machine_window_cannot_reopen_a_day_after_checkpoint_purge(engin
     with engine.connect() as connection:
         assert connection.execute(select(tasks)).first() is None
         assert connection.execute(select(machines.c.cpu_expected_seconds)).scalar_one() == 1800
+
+
+def test_machine_prefix_does_not_reopen_usage_day_after_checkpoint_purge(engine):
+    midnight = policy.day_start(NOW.date() - timedelta(days=1))
+    start, middle, end = (midnight + timedelta(minutes=n) for n in (10, 15, 20))
+    t = target()
+    store.enqueue_windows(
+        engine, [(t, midnight, start), (t, start, middle), (t, middle, end)], now=NOW
+    )
+    first = min(store.due_tasks(engine, now=NOW), key=lambda row: row["window_start"])
+    clock = first["deadline_at"]
+    store.maintain(engine, now=clock)
+    retained = store.due_tasks(engine, now=clock)
+    assert {row["window_start"] for row in retained} == {start, middle}
+
+    assert store.enqueue_windows(engine, [(t, start, end)], now=clock) == {"planned": 0}
+    with pytest.raises(ValueError, match="usage day has expired"):
+        store.enqueue_windows(engine, [(t, start, end + timedelta(minutes=5))], now=clock)
+    assert store.due_tasks(engine, now=clock) == retained
+    assert store.load_state(engine)["retained_rows"] == 3  # two tasks and one fact
 
 
 def test_expired_source_window_records_missing_before_task_purge(engine):

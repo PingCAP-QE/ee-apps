@@ -539,6 +539,44 @@ def test_machine_planner_scans_default_partitions_and_skips_closed_usage_day_by_
     ]
 
 
+def test_long_charge_reports_deferred_tail_and_exact_partition_for_replay(profile, planning):
+    clock = policy.day_start(DAY + timedelta(days=4)) + timedelta(hours=6, minutes=30)
+    end = policy.day_start(DAY + timedelta(days=6)) + timedelta(hours=10)
+    machine = {
+        **target("cvm"), "instance_type": "", "cpu_cores": 2, "memory_bytes": 1024,
+        "observed_from": policy.day_start(DAY),
+        "observed_until": end,
+    }
+    source = Mock(stats={})
+    source.billing_candidates.side_effect = lambda day: [machine] if day == DAY else []
+    result = runner.plan_machines(None, profile, now=clock, reader=source)
+    cutoff = clock - timedelta(minutes=10)
+    assert result["deferred"] == [{
+        "machine_id": machine["machine_id"], "region": machine["region"], "cluster_id": "",
+        "start": cutoff.isoformat(), "end": end.isoformat(), "bill_days": [str(DAY)],
+    }]
+    assert max(window[2] for call in planning.call_args_list for window in call.args[1]) == cutoff
+    later = end + timedelta(minutes=10)
+    assert not runner.plan_machines(None, profile, bill_day=DAY, now=later, reader=source)["deferred"]
+
+
+def test_cross_partition_capacity_conflict_does_not_block_unrelated_machine(profile, planning):
+    clock = policy.day_start(DAY + timedelta(days=4))
+    source = Mock(stats={})
+    start = policy.day_start(DAY) + timedelta(hours=3)
+    span = {"observed_from": start, "observed_until": start + timedelta(minutes=10),
+            "instance_type": "", "cpu_cores": 8, "memory_bytes": 1024}
+    original = {**target("tke_native"), **span}
+    healthy = {**target("cvm"), **span}
+    source.billing_candidates.side_effect = [
+        [original], [{**original, "cpu_cores": original["cpu_cores"] * 2}, healthy],
+    ]
+    result = runner.plan_machines(None, profile, now=clock, reader=source)
+    assert sum(day["planned"] for day in result["days"]) == 1
+    assert [e["machine_id"] for day in result["days"] for e in day["errors"]] == [original["machine_id"]]
+    assert planning.call_args.args[1][0][0]["machine_id"] == healthy["machine_id"]
+
+
 def test_machine_planner_requires_all_partitions_and_products_before_enqueue(profile, planning):
     clock = policy.day_start(DAY + timedelta(days=4))
     call = Mock(side_effect=lambda service, action, region, params: (
