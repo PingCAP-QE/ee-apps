@@ -5,7 +5,6 @@ Independent packages deliberately duplicate this small fixed SQL guard protocol.
 from __future__ import annotations
 
 import hashlib
-import ipaddress
 import json
 import math
 import os
@@ -50,10 +49,20 @@ CONTEXT_TTL = timedelta(hours=24)
 STALE_AFTER = timedelta(minutes=15)
 NODE_SELECTOR_MAX_NODES = 10000
 NODE_SELECTOR_REFRESH_SECONDS = 60
+INSTANCE_ID = r"(?:ins|np)-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*"
 POD_FIELDS = (
-    "account_id", "cluster_id", "namespace", "pod_uid", "pod_name", "node_query_kind",
-    "node_query_value", "cpu_request_cores", "memory_request_bytes", "labels_json",
+    "account_id", "cluster_id", "namespace", "pod_uid", "pod_name", "node_instance_id",
+    "cpu_request_cores", "memory_request_bytes", "labels_json",
 )
+
+
+class PodCollectionDisabled(ValueError):
+    """Missing V3 Pod opt-in; restarting after enable starts fresh evidence."""
+
+
+def configured_label_keys() -> set[str]:
+    configured = os.getenv("CI_DASHBOARD_UTILIZATION_LABEL_KEYS")
+    return label_keys(configured.split(",") if configured is not None else sorted(LABELS))
 
 
 def enabled(source: str) -> bool:
@@ -134,13 +143,6 @@ def stable_job(build_url: str | None) -> str:
     return urlparse(normalized_job_path_from_key(normalized)).path
 
 
-def _ip(value: str) -> str:
-    try:
-        return str(ipaddress.ip_address(value))
-    except ValueError:
-        return ""
-
-
 @dataclass(frozen=True)
 class _NodeIdentity:
     uid: str
@@ -159,8 +161,10 @@ def normalize_node(node: dict[str, Any]) -> tuple[str, _NodeIdentity] | None:
     provider = (node.get("spec") or {}).get("providerID")
     if created is None or not isinstance(provider, str):
         return None
-    match = re.fullmatch(r"(?:qcloud:///ap-beijing/)?((?:ins|np)-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)", provider)
-    return (name, _NodeIdentity(uid, created, match[1])) if match else None
+    instance_id = provider.removeprefix("qcloud:///ap-beijing/")
+    if len(instance_id) > 255 or not re.fullmatch(INSTANCE_ID, instance_id):
+        return None
+    return name, _NodeIdentity(uid, created, instance_id)
 
 
 class NodeSelectorCache:
@@ -171,6 +175,12 @@ class NodeSelectorCache:
         self._lock = threading.Lock()
         self._selectors: dict[str, _NodeIdentity] = {}
         self._listed_at = float("-inf")
+        self._disabled = False
+
+    @property
+    def disabled(self) -> bool:
+        with self._lock:
+            return self._disabled
 
     def refresh(self, nodes: list[dict], *, listed_at: float) -> None:
         if len(nodes) > self.max_nodes:
@@ -178,6 +188,8 @@ class NodeSelectorCache:
             raise ValueError("Node selector cache exceeds bound")
         selectors = dict(record for node in nodes if (record := normalize_node(node)) is not None)
         with self._lock:
+            if self._disabled:
+                return
             if time.monotonic() - self._listed_at <= self.ttl_seconds:
                 for name, node in selectors.items():
                     previous = self._selectors.get(name)
@@ -188,8 +200,9 @@ class NodeSelectorCache:
             self._selectors = selectors
             self._listed_at = listed_at
 
-    def clear(self) -> None:
+    def clear(self, *, disable: bool = False) -> None:
         with self._lock:
+            self._disabled = self._disabled or disable
             self._selectors = {}
             self._listed_at = float("-inf")
 
@@ -260,8 +273,8 @@ def normalize_pod(pod: dict[str, Any], *, linkage: dict[str, Any] | None = None,
     except (ValueError, TypeError, AttributeError, OverflowError):
         pass
     return {"account_id": ACCOUNT, "cluster_id": CLUSTER, "namespace": meta["namespace"],
-            "pod_uid": meta["uid"], "pod_name": meta["name"], "node_query_kind": "",
-            "node_query_value": "", **requests, "labels_json": labels}
+            "pod_uid": meta["uid"], "pod_name": meta["name"], "node_instance_id": None,
+            **requests, "labels_json": labels}
 
 
 def context_key(record: dict, start: datetime) -> str:
@@ -272,8 +285,7 @@ def context_key(record: dict, start: datetime) -> str:
 class MetadataExporter:
     """Finite confirmed intervals; reconnects never bridge missing evidence."""
     def __init__(self, engine: Engine, *, node_cache: NodeSelectorCache | None = None):
-        configured = os.getenv("CI_DASHBOARD_UTILIZATION_LABEL_KEYS")
-        self.selected_labels = label_keys(configured.split(",") if configured is not None else sorted(LABELS))
+        self.selected_labels = configured_label_keys()
         self.engine = engine
         self.node_cache = node_cache
         self.live: dict[str, tuple[dict[str, Any], PodNodeRef | None, _NodeIdentity | None]] = {}
@@ -283,11 +295,16 @@ class MetadataExporter:
         previous = [row for row, _, _ in self.live.values()]
         self.live.clear()
         self.last_heartbeat = None
+        if self.node_cache is not None and self.node_cache.disabled:
+            return  # Store maintenance closes and settles retained evidence after a cut.
         # Best effort only: failed exports leave finite evidence for maintenance's
         # 15-minute orphan fence. Never queue/replay failed observations.
         try:
             for offset in range(0, len(previous), 1000):
                 save_contexts(self.engine, [self._closed(row) for row in previous[offset:offset + 1000]])
+        except PodCollectionDisabled:
+            if self.node_cache is not None:
+                self.node_cache.clear(disable=True)
         except Exception:
             pass
 
@@ -303,6 +320,9 @@ class MetadataExporter:
 
     def observe(self, records: list[dict[str, Any]], *, at: datetime | None = None, deleted: bool = False,
                 heartbeat: bool = False, now: datetime | None = None) -> None:
+        if self.node_cache is not None and self.node_cache.disabled:
+            self.reset()
+            return
         try:
             clock = database_now(self.engine, now=now)  # BEFORE constructing any identities.
             if abs((_datetime(at) if at is not None else utc_now()) - clock) > timedelta(seconds=60):
@@ -333,7 +353,7 @@ class MetadataExporter:
                 source = incoming.get(uid, old)
                 record = {field: source[field] for field in POD_FIELDS}
                 candidate = nodes.get(ref.name) if ref is not None else None
-                bound = old is not None and bool(old["node_query_value"])
+                bound = old is not None and old["node_instance_id"] is not None
                 # A Pod object names a Node, not a Node UID. Use only a most-recent
                 # LIST begun after that Pod evidence, and reject Nodes created at
                 # or after scheduling: those could be replacements at the same name.
@@ -341,9 +361,9 @@ class MetadataExporter:
                         and (pinned is candidate if bound else
                              listed_at > ref.seen_at and (pinned is None or pinned == candidate))):
                     pinned = candidate
-                    record.update(node_query_kind="un_instance_id", node_query_value=pinned.instance_id)
+                    record["node_instance_id"] = pinned.instance_id
                 else:
-                    record.update(node_query_kind="", node_query_value="")
+                    record["node_instance_id"] = None
                 if old and all(old[field] == record[field] for field in POD_FIELDS):
                     row = {**old, "observed_until": clock, "expires_at": clock + CONTEXT_TTL}
                 else:
@@ -351,14 +371,14 @@ class MetadataExporter:
                     if old:
                         if clock == old["observed_from"]:
                             continue  # No room for a distinct interval at the same DB timestamp.
-                        if bound and not record["node_query_value"]:
+                        if bound and record["node_instance_id"] is None:
                             # Pod liveness still covers the gap, but neither the old
-                            # selector nor newly observed metadata applies to it.
+                            # instance ID nor newly observed metadata applies to it.
                             # Even a zero-length old row owns its start timestamp.
                             gap_start = max(old["observed_until"], old["observed_from"] + timedelta(microseconds=1))
                             updates[old["context_key"]] = self._closed(old)
                             unbound = {field: old[field] for field in POD_FIELDS}
-                            unbound.update(node_query_kind="", node_query_value="")
+                            unbound["node_instance_id"] = None
                             if unbound == record:
                                 start = gap_start
                             elif gap_start < clock:
@@ -375,9 +395,11 @@ class MetadataExporter:
             self.live = current
             if confirm:
                 self.last_heartbeat = clock
-        except Exception:
+        except Exception as exc:
             self.live.clear()
             self.last_heartbeat = None
+            if isinstance(exc, PodCollectionDisabled) and self.node_cache is not None:
+                self.node_cache.clear(disable=True)
             raise
 
 
@@ -400,15 +422,40 @@ def database_now(engine: Engine, *, now: datetime | None = None) -> datetime:
         return _clock(connection, now)
 
 
+def _guard_state(connection, *, lock: bool = False) -> dict:
+    suffix = " FOR UPDATE" if lock and connection.dialect.name != "sqlite" else ""
+    value = connection.execute(text(
+        "SELECT watermark_json FROM cost_job_state WHERE job_name=:key" + suffix
+    ), {"key": GUARD_KEY}).scalar()
+    return value if isinstance(value, dict) else json.loads(value) if value else {}
+
+
+def require_pod_collection(engine: Engine) -> None:
+    """Read-only startup/Node request gate; context writes recheck under lock."""
+    with engine.connect() as connection:
+        state = _guard_state(connection)
+        _admit(state, _clock(connection), state.get("retained_rows", 0), [])
+
+
 def _admit(state: dict, clock: datetime, projected: int, rows: list[dict]) -> None:
-    """V2 admission, synchronized with Cost Insight's shared guard."""
+    """V3 admission, synchronized with Cost Insight's shared guard."""
+    if state.get("version") != 3 or state.get("pod_collection_enabled") is not True:
+        raise PodCollectionDisabled("utilization Pod collection is not enabled in the V3 guard")
+    # A collector that missed the disable between checks must not bridge a restart.
+    # Cost Insight retains the cut and publishes its DB clock again on reopen.
+    started = state.get("pod_start_at") or state.get("pod_stop_at")
+    if started is not None:
+        start = _datetime(started)
+        if start > clock or any(row["observed_from"] < start for row in rows):
+            raise PodCollectionDisabled("Pod observation predates the current collection window")
+
     def fresh(field):
         value = state.get(field)
         return value is not None and -60 <= (clock - _datetime(value)).total_seconds() <= 14400
 
     size = state.get("observed_bytes")
     count = state.get("retained_rows")
-    if (state.get("version") != 2 or state.get("enabled") is not True or state.get("paused") is not False
+    if (state.get("enabled") is not True or state.get("paused") is not False
             or state.get("counts_reliable") is not True or not fresh("maintenance_at")
             or not fresh("bytes_observed_at") or type(size) not in (int, float)
             or not 0 <= size < 8 * 1024**3 or type(count) is not int or count < 0
@@ -443,14 +490,14 @@ def _prepare(row: dict, clock: datetime) -> dict:
         raise ValueError("invalid or unbounded Pod context interval")
     if item["context_key"] != context_key(item, start):
         raise ValueError("invalid context identity")
-    for field, limit in (("namespace", 128), ("pod_uid", 255), ("pod_name", 255), ("node_query_value", 255)):
+    for field, limit in (("namespace", 128), ("pod_uid", 255), ("pod_name", 255)):
         value = item[field]
-        if not isinstance(value, str) or len(value) > limit or (field != "node_query_value" and not value):
+        if not isinstance(value, str) or not 0 < len(value) <= limit:
             raise ValueError("invalid context identity; never truncate")
-    kind, value = item["node_query_kind"], item["node_query_value"]
-    if not ((kind == "" and value == "") or (kind == "node" and _ip(value) == value)
-            or (kind == "un_instance_id" and re.fullmatch(r"(?:ins|np)-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*", value))):
-        raise ValueError("unverified Node monitor selector")
+    instance_id = item["node_instance_id"]
+    if instance_id is not None and (not isinstance(instance_id, str) or len(instance_id) > 255
+                                    or not re.fullmatch(INSTANCE_ID, instance_id)):
+        raise ValueError("unverified Node instance ID")
     for field in ("cpu_request_cores", "memory_request_bytes"):
         value = item[field]
         if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
@@ -476,11 +523,7 @@ def save_contexts(engine: Engine, contexts: list[dict], *, now=None) -> dict:
             connection.exec_driver_sql("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
         connection.exec_driver_sql("BEGIN IMMEDIATE" if connection.dialect.name == "sqlite" else "BEGIN PESSIMISTIC")
         try:
-            suffix = " FOR UPDATE" if connection.dialect.name != "sqlite" else ""
-            value = connection.execute(text(
-                "SELECT watermark_json FROM cost_job_state WHERE job_name=:key" + suffix
-            ), {"key": GUARD_KEY}).scalar()
-            state = value if isinstance(value, dict) else json.loads(value) if value else {}
+            state = _guard_state(connection, lock=True)
             clock = _clock(connection, now)
             if now is None and abs(utc_now() - clock) > timedelta(seconds=60):
                 raise ValueError("utilization database clock skew exceeds 60s")

@@ -423,7 +423,7 @@ def build_parser() -> argparse.ArgumentParser:
                                    help="Beijing BillDay to scan, not the usage date")
     utilization_probe.set_defaults(require_database=False)
 
-    utilization_configure = subparsers.add_parser("utilization-configure", help="Explicit opt-in V2 source registry")
+    utilization_configure = subparsers.add_parser("utilization-configure", help="Explicit opt-in V3 source registry")
     utilization_configure.add_argument("--profile", required=True)
     utilization_configure.add_argument("--start-date", type=_parse_date, required=True)
     utilization_configure.add_argument("--enable", action="store_true")

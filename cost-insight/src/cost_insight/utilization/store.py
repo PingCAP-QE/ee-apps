@@ -1,4 +1,4 @@
-"""V2 durable outbox/checkpoints and small guarded transactions; no network I/O.
+"""V3 durable outbox/checkpoints and small guarded transactions; no network I/O.
 
 A task's result, daily contribution and done transition commit together. Kafka is
 at-least-once transport only. There are no weekly or fixed repo/Job rollup rows.
@@ -8,17 +8,18 @@ import json
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 
-from sqlalchemy import Integer, and_, case, cast, func, literal_column, or_, select, text
+from sqlalchemy import Integer, and_, case, cast, func, literal_column, or_, select, text, tuple_
 from sqlalchemy.exc import DBAPIError
 
 from cost_insight.jobs.state_store import checkpoint_job_watermark
 from cost_insight.utilization import policy
 from cost_insight.utilization.aggregate import identity, minute, summarize_window, validate_stats
 from cost_insight.utilization.schema import (
-    STAT_FIELDS,
+    MACHINE_STATS,
     TABLES,
+    WORKLOAD_STATS,
     contexts,
     machines,
     tasks,
@@ -27,6 +28,8 @@ from cost_insight.utilization.schema import (
 
 MAX_BATCH = 1000
 MAX_BILL_DAYS = 8
+MACHINE_FIELDS = ("region", "cluster_id", "machine_id", "resource_class")
+TERMINAL = ("done", "expired")
 
 
 @contextmanager
@@ -91,18 +94,18 @@ def _finish(connection, state, now=None, *, delta=0):
 
 
 def configure(engine, profile, *, start_date, enabled=False, dry_run=False, now=None):
-    from cost_insight.utilization.tencent import validate_profile
+    from cost_insight.utilization.tencent import collection_scope, validate_profile
 
     validate_profile(profile)
     if isinstance(start_date, str):
         start_date = date.fromisoformat(start_date)
-    scope = {
-        k: profile[k]
-        for k in ("account_id", "regions", "cluster_id", "cluster_region", "namespaces")
-    }
-    scope["labels"] = profile.get("labels", sorted(policy.LABEL_KEYS))
-    policy.label_keys(scope["labels"])
-    contracts = profile["contracts"]
+    machine_scope = collection_scope(profile)
+    pod_enabled = bool(enabled and profile.get("pod_collection_enabled", False))
+    contracts = {k: profile["contracts"][k] for k in ("cvm", "tke_native")}
+    scope = machine_scope
+    if pod_enabled:
+        contracts["pod"] = profile["contracts"]["pod"]
+        scope = collection_scope(profile, kind="pod")
     if len(json.dumps(contracts)) > 65536:
         raise ValueError("unbounded source contract")
     if enabled:
@@ -120,22 +123,47 @@ def configure(engine, profile, *, start_date, enabled=False, dry_run=False, now=
             raise ValueError("collection start is in the future")
         if state:
             if (
-                state.get("version") != 2
-                or state["contracts"] != contracts
-                or state["scope"] != scope
+                state.get("version") != policy.GUARD_VERSION
+                or state["contract_version"] != profile["contract_version"]
+                or any(state["contracts"].get(k) != contracts[k] for k in ("cvm", "tke_native"))
+                or any(state["scope"].get(k) != value for k, value in machine_scope.items())
                 or state["start_date"] != start_date.isoformat()
             ):
-                raise ValueError("incompatible registry; never reinterpret existing history")
-            state["enabled"] = bool(enabled)
+                raise ValueError("incompatible machine registry; never reinterpret existing history")
+            was_enabled = state.get("pod_collection_enabled") is True
+            if pod_enabled:
+                if was_enabled:
+                    if (
+                        state.get("pod_contract_version") != profile["pod_contract_version"]
+                        or state["contracts"].get("pod") != contracts["pod"]
+                        or state["scope"] != scope
+                    ):
+                        raise ValueError("stop and drain Pod collection before changing its contract")
+                else:
+                    if _pod_work_remaining(connection):
+                        raise ValueError("drain Pod tasks and contexts before reopening collection")
+                    state.update(
+                        contracts=contracts,
+                        scope=scope,
+                        pod_contract_version=profile["pod_contract_version"],
+                        pod_start_at=clock.replace(tzinfo=UTC).isoformat(),
+                    )
+            elif was_enabled:
+                # The guard stops writes and planning now; maintenance closes the
+                # confirmed intervals in bounded batches using this same boundary.
+                state["pod_stop_at"] = clock.replace(tzinfo=UTC).isoformat()
+            state.update(enabled=bool(enabled), pod_collection_enabled=pod_enabled)
             _save(connection, state)
         else:
             state = {
-                "version": 2,
+                "version": policy.GUARD_VERSION,
                 "enabled": bool(enabled),
                 "contracts": contracts,
                 "scope": scope,
                 "start_date": start_date.isoformat(),
                 "contract_version": profile["contract_version"],
+                "pod_collection_enabled": pod_enabled,
+                "pod_stop_at": None,
                 "maintenance_at": None,
                 "paused": True,
                 "pause_reasons": ["maintenance_uninitialized"],
@@ -144,6 +172,11 @@ def configure(engine, profile, *, start_date, enabled=False, dry_run=False, now=
                 "observed_bytes": None,
                 "bytes_observed_at": None,
             }
+            if pod_enabled:
+                state.update(
+                    pod_contract_version=profile["pod_contract_version"],
+                    pod_start_at=clock.replace(tzinfo=UTC).isoformat(),
+                )
             connection.execute(
                 text(
                     "INSERT INTO cost_job_state (job_name,watermark_json,last_status,updated_at) "
@@ -152,6 +185,19 @@ def configure(engine, profile, *, start_date, enabled=False, dry_run=False, now=
                 {"key": policy.GUARD_KEY, "state": json.dumps(state)},
             )
         return dict(state)
+
+
+def _pod_work_remaining(connection):
+    return any(
+        connection.execute(select(table.c.id).where(
+            table.c.account_id == policy.ACCOUNT_ID, predicate
+        ).limit(1)).first()
+        for table, predicate in ((contexts, True), (tasks, tasks.c.kind == "pod"))
+    )
+
+
+def _contract_version(state, kind):
+    return state["pod_contract_version" if kind == "pod" else "contract_version"]
 
 
 def _entry(state, target, metric):
@@ -245,7 +291,7 @@ def _machine_bill_block(state, target, start, end, clock):
 
 
 def _machine_snapshot(payload):
-    # The enclosing bill interval selects windows but does not change a task's snapshot.
+    # Enclosing billing bounds never change the monitor query contract or identity.
     return {k: v for k, v in payload.items() if k not in {"observed_from", "observed_until"}}
 
 
@@ -272,52 +318,59 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
         or target["region"] not in state["scope"]["regions"]
     ):
         raise ValueError("task outside configured source")
-    if target["kind"] == "pod" and (
-        target["cluster_id"] != state["scope"]["cluster_id"]
+    kind = target["kind"]
+    is_machine = kind == "machine"
+    if not is_machine and (
+        context_id is None
+        or state.get("pod_collection_enabled") is not True
+        or target["cluster_id"] != state["scope"]["cluster_id"]
         or target["namespace"] not in state["scope"]["namespaces"]
     ):
-        raise ValueError("Pod outside collection scope")
-    is_machine = target["kind"] == "machine"
-    if is_machine and (reason := _machine_bill_block(state, target, start, end, clock)):
-        raise ValueError(reason)
-    payload = {**target, "contract_version": state["contract_version"]}
+        raise ValueError("Pod tasks require an enabled, in-scope historical context")
+    contract = _contract_version(state, kind)
+    payload = {"contract_version": contract}
     if is_machine:
-        payload = _machine_snapshot(payload)
-    payload = json.loads(json.dumps(payload, default=str, allow_nan=False))
-    if len(json.dumps(payload)) > 16384:
-        raise ValueError("unbounded task payload")
+        # Billing bounds and current/historical specs are not query parameters.
+        payload.update({key: target.get(key, "") for key in MACHINE_FIELDS})
+        resource_class, machine_id = payload["resource_class"], payload["machine_id"]
+        expected_cluster = "" if resource_class == "cvm" else state["scope"]["cluster_id"]
+        if (
+            resource_class not in ("cvm", "tke_native")
+            or not isinstance(machine_id, str)
+            or not 1 <= len(machine_id) <= 255
+            or payload["cluster_id"] != expected_cluster
+            or (expected_cluster and payload["region"] != state["scope"]["cluster_region"])
+        ):
+            raise ValueError("invalid canonical machine identity or source scope")
+        if reason := _machine_bill_block(state, payload, start, end, clock):
+            raise ValueError(reason)
     selector = (
-        target["kind"],
+        kind,
         policy.ACCOUNT_ID,
         target["region"],
         target.get("cluster_id", ""),
         target.get("machine_id") or target.get("pod_uid"),
     )
-    contract = state["contract_version"]
     key = identity(*selector, start.isoformat(), end.isoformat(), contract)
-    previous = connection.execute(select(tasks.c.payload_json).where(tasks.c.id == key)).first()
+    previous = connection.execute(
+        select(tasks.c.payload_json, tasks.c.context_id).where(tasks.c.id == key)
+    ).first()
     if previous:
-        snapshot = previous.payload_json
-        if (_machine_snapshot(snapshot) if is_machine else snapshot) != payload:
+        snapshot = _machine_snapshot(previous.payload_json) if is_machine else previous.payload_json
+        if snapshot != payload or previous.context_id != context_id:
             raise ValueError("conflicting snapshot for existing window; explicit repair required")
         return 0
-    identity_field = "machine_id" if is_machine else "pod_uid"
-    cluster = tasks.c.payload_json["cluster_id"].as_string()
-    overlap = select(tasks.c.id).where(
-        tasks.c.account_id == policy.ACCOUNT_ID,
-        tasks.c.kind == target["kind"],
-        tasks.c.payload_json[identity_field].as_string() == target[identity_field],
-        tasks.c.payload_json["region"].as_string() == target["region"],
-        (func.coalesce(cluster, "") if is_machine else cluster) == target.get("cluster_id", ""),
-        tasks.c.window_start < end,
-        tasks.c.window_end > start,
-    )
-    overlap_error = "overlapping task windows require explicit repair, never double-add"
     if is_machine:
         # A growing window may reuse retained checkpoints only as an exact prefix.
         cursor = start
-        fragments = overlap.with_only_columns(
-            tasks.c.window_start, tasks.c.window_end, tasks.c.payload_json
+        fragments = select(tasks.c.window_start, tasks.c.window_end, tasks.c.payload_json).where(
+            tasks.c.account_id == policy.ACCOUNT_ID,
+            tasks.c.kind == kind,
+            tasks.c.payload_json["machine_id"].as_string() == payload["machine_id"],
+            tasks.c.payload_json["region"].as_string() == payload["region"],
+            tasks.c.payload_json["cluster_id"].as_string() == payload["cluster_id"],
+            tasks.c.window_start < end,
+            tasks.c.window_end > start,
         ).order_by(tasks.c.window_start)
         for first, stop, snapshot in connection.execute(fragments):
             if (
@@ -326,7 +379,7 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
                 or stop != minute(stop)
                 or _machine_snapshot(snapshot) != payload
             ):
-                raise ValueError(overlap_error)
+                raise ValueError("overlapping task windows require explicit repair, never double-add")
             cursor = stop
         if cursor == end:
             return 0
@@ -340,10 +393,8 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
         # Once the day's earliest checkpoint could have expired, a shifted
         # boundary must not re-add time already represented in the daily fact.
         raise ValueError("machine usage day has expired; never reopen purged checkpoints")
-    # An active context's unplanned exhausted tail is registered once while its
-    # planned_until advances atomically; maintenance records expected missing use.
-    if not is_machine and connection.execute(overlap.limit(1)).first():
-        raise ValueError(overlap_error)
+    # The Pod cursor advances atomically with each plan; different context
+    # versions are already disjoint by the watcher's interval admission rules.
     due = clock if is_machine else max(clock, end + timedelta(minutes=10))
     connection.execute(
         tasks.insert().values(
@@ -357,8 +408,6 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
             due_at=due,
             deadline_at=limit,
             status="pending",
-            attempts=0,
-            updated_at=clock,
         )
     )
     return 1
@@ -390,14 +439,25 @@ def _pod_target(row, state):
             "namespace",
             "pod_uid",
             "pod_name",
-            "node_query_kind",
-            "node_query_value",
+            "node_instance_id",
             "cpu_request_cores",
             "memory_request_bytes",
             "labels_json",
         )
     }
     return {**target, "kind": "pod", "region": state["scope"]["cluster_region"]}
+
+
+def _task_target(connection, task, state):
+    if task["kind"] == "machine":
+        target = {k: task[k] for k in ("kind", "account_id")}
+        target.update({k: task["payload_json"][k] for k in MACHINE_FIELDS})
+    else:
+        row = connection.execute(select(contexts).where(
+            contexts.c.id == task["context_id"], contexts.c.account_id == task["account_id"]
+        )).mappings().one()
+        target = _pod_target(row, state)
+    return {**target, "contract_version": task["payload_json"]["contract_version"]}
 
 
 def _context_ready_to_plan(connection, clock):
@@ -434,6 +494,8 @@ def plan_contexts(engine, *, now=None, limit=1000):
     with transaction(engine) as connection:
         state, clock = _state(connection, lock=True), database_now(connection, now)
         _admit(state, clock)
+        if state.get("pod_collection_enabled") is not True:
+            return {"planned": 0}
         # Limit new Pod tasks by real headroom; an empty planning batch must
         # still let the dispatcher publish existing tasks.
         limit = min(limit, policy.ROW_LIMIT - 1 - state["retained_rows"])
@@ -537,23 +599,21 @@ def claim_task(engine, task_id, *, now=None):
         )
         if (
             not row
-            or row["status"] in {"done", "expired"}
+            or row["status"] in TERMINAL
             or row["due_at"] > clock
             or row["deadline_at"] <= clock
             or (row["status"] == "running" and row["lease_until"] > clock)
         ):
             return None
-        token = uuid.uuid4().hex
+        target = _task_target(connection, row, state)
         values = {
             "status": "running",
-            "attempts": row["attempts"] + 1,
-            "lease_token": token,
+            "lease_token": uuid.uuid4().hex,
             "lease_until": min(row["deadline_at"], clock + timedelta(minutes=5)),
-            "updated_at": clock,
         }
         connection.execute(tasks.update().where(tasks.c.id == task_id).values(**values))
         _finish(connection, state, now)
-        return {**dict(row), **values}
+        return {**dict(row), **values, "payload_json": target}
 
 
 def _apply(connection, task, values, clock):
@@ -561,74 +621,48 @@ def _apply(connection, task, values, clock):
     machine = task["kind"] == "machine"
     validate_stats(values, machine=machine)
     day = policy.usage_date(task["window_start"])
+    minutes = (task["window_end"] - task["window_start"]) // timedelta(minutes=1)
+    keys = {"account_id": target["account_id"], "usage_date": day}
     if machine:
-        table = machines
-        identity_values = {
-            "account_id": policy.ACCOUNT_ID,
-            "region": target["region"],
-            "cluster_id": target.get("cluster_id", ""),
-            "machine_id": target["machine_id"],
-            "usage_date": day,
-        }
-        extra = {k: target.get(k) for k in ("cpu_cores", "memory_bytes")}
-        extra.update(
-            resource_class=target["resource_class"], instance_type=target.get("instance_type", "")
-        )
+        samples = [values[f"{metric}_sample_minutes"] for metric in policy.METRICS]
+        if max(samples) > minutes:
+            raise ValueError("machine samples exceed task window")
+        if not any(samples):
+            return 0
+        table, fields = machines, MACHINE_STATS
+        keys.update({k: target[k] for k in ("region", "cluster_id", "machine_id")})
+        extra = {"resource_class": target["resource_class"]}
     else:
-        table = workloads
+        if day < policy.workload_start_date(clock):
+            raise ValueError("workload day is expired")
+        if values["expected_pod_minutes"] != minutes:
+            raise ValueError("Pod expected minutes differ from task window")
+        table, fields = workloads, WORKLOAD_STATS
         labels = target["labels_json"]
         allowed = _state(connection)["scope"]["labels"]
         if (
             not isinstance(labels, dict)
             or set(labels) - set(allowed)
-            or len(json.dumps(labels)) > 8192
-            or any(not isinstance(value, str) or len(value) > 512 for value in labels.values())
+            or len(json.dumps(labels).encode()) > 8192
+            or any(not isinstance(value, str) or not value or len(value) > 512 for value in labels.values())
         ):
             raise ValueError("unbounded/unapproved labels")
-        key = identity(labels, target.get("cpu_request_cores"), target.get("memory_request_bytes"))
-        identity_values = {"account_id": policy.ACCOUNT_ID, "usage_date": day, "group_key": key}
-        extra = {
-            "labels_json": labels,
-            "cpu_request_cores": target.get("cpu_request_cores"),
-            "memory_request_bytes": target.get("memory_request_bytes"),
-            "expires_at": policy.expires_at(day),
-        }
-        if clock >= extra["expires_at"]:
-            raise ValueError("workload day is expired")
-    predicate = and_(*(table.c[k] == v for k, v in identity_values.items()))
+        keys["group_key"] = identity(labels)
+        extra = {"labels_json": labels}
+    predicate = and_(*(table.c[k] == v for k, v in keys.items()))
     previous = connection.execute(select(table).where(predicate)).mappings().first()
-    row = {
-        **identity_values,
-        **extra,
-        "updated_at": clock,
-        "cutoff": max(task["window_end"], previous["cutoff"] if previous else task["window_end"]),
-        "quality_json": sorted(
-            set(values.get("quality_json", [])) | set(previous["quality_json"] if previous else [])
-        ),
-    }
-    for metric in policy.METRICS:
-        for field in STAT_FIELDS:
-            column = f"{metric}_{field}"
-            row[column] = values[column] + (previous[column] if previous else 0)
-        if machine:
-            name = f"{metric}_peak"
-            use_old = (
-                previous
-                and previous[name] is not None
-                and (values[name] is None or previous[name] >= values[name])
-            )
-            row[name] = previous[name] if use_old else values[name]
-            row[name + "_at"] = previous[name + "_at"] if use_old else values[name + "_at"]
-    if machine and previous:
-        for key in ("cpu_cores", "memory_bytes"):
-            if previous[key] != row[key]:
-                row[key] = None  # Integrals remain correct for a resized machine.
-        if previous["instance_type"] != row["instance_type"]:
-            row["instance_type"] = "mixed"
+    stats = {field: values[field] for field in fields}
     if previous:
-        connection.execute(table.update().where(table.c.id == previous["id"]).values(**row))
+        if any(previous[k] != value for k, value in extra.items()):
+            raise ValueError("conflicting daily fact snapshot")
+        for field, value in stats.items():
+            if field.endswith("_peak_percent"):
+                stats[field] = max((v for v in (previous[field], value) if v is not None), default=None)
+            else:
+                stats[field] = previous[field] + value
+        connection.execute(table.update().where(predicate).values(**stats))
         return 0
-    connection.execute(table.insert().values(**row))
+    connection.execute(table.insert().values(**keys, **extra, **stats))
     return 1
 
 
@@ -651,13 +685,14 @@ def complete_task(engine, task_id, token, values, *, now=None):
             or clock >= row["deadline_at"]
         ):
             return False
-        if row["payload_json"].get("contract_version") != state["contract_version"]:
+        if row["payload_json"].get("contract_version") != _contract_version(state, row["kind"]):
             raise ValueError("task contract differs from registry")
-        delta = _apply(connection, row, values, clock)
+        target = _task_target(connection, row, state)
+        delta = _apply(connection, {**row, "payload_json": target}, values, clock)
         connection.execute(
             tasks.update()
             .where(tasks.c.id == task_id)
-            .values(status="done", lease_token=None, lease_until=None, updated_at=clock)
+            .values(status="done", lease_token=None, lease_until=None)
         )
         _finish(connection, state, now, delta=delta)
         # Last decision under the guard, after all writes. If either fence has
@@ -685,7 +720,7 @@ def fail_task(engine, task_id, token, *, now=None):
             or clock >= row["lease_until"]
         ):
             return False
-        # Only maintenance expires tasks at their deadline; attempts never shorten it.
+        # Only maintenance settles expired tasks; retries never change the deadline.
         connection.execute(
             tasks.update()
             .where(tasks.c.id == task_id)
@@ -694,8 +729,7 @@ def fail_task(engine, task_id, token, *, now=None):
                 lease_token=None,
                 lease_until=None,
                 dispatched_at=None,
-                due_at=clock + timedelta(seconds=min(300, 2 ** min(row["attempts"], 9))),
-                updated_at=clock,
+                due_at=min(row["deadline_at"], clock + policy.RETRY_INTERVAL),
             )
         )
         _finish(connection, state, now)
@@ -741,18 +775,22 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
     started, deleted, context_cursor = time.monotonic(), 0, 0
     with transaction(engine) as connection:
         state, clock = _state(connection, lock=True), database_now(connection, now)
-        if state.get("version") != 2:
-            raise ValueError("configure V2 before maintenance")
+        if state.get("version") != policy.GUARD_VERSION:
+            raise ValueError("configure V3 before maintenance")
     # A successful ended Pod's work is removed immediately, not retained for weeks.
     while deleted < max_rows and time.monotonic() - started < max_seconds:
         with transaction(engine) as connection:
             state, clock = _state(connection, lock=True), database_now(connection, now)
+            stop_at = state.get("pod_stop_at") if not state.get("pod_collection_enabled") else None
+            stopped = policy.utc_naive(stop_at) if stop_at is not None else None
+            retained_from = policy.workload_start_date(clock)
             rows = (
                 connection.execute(
                     select(contexts)
                     .where(
                         contexts.c.account_id == policy.ACCOUNT_ID,
                         or_(
+                            stopped is not None,
                             contexts.c.closed_at.is_not(None),
                             contexts.c.observed_until <= clock - timedelta(minutes=15),
                         ),
@@ -769,19 +807,21 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
             # Close interrupted watcher intervals in the same bounded keyset batches.
             orphan_ids = [row["id"] for row in rows if row["closed_at"] is None]
             if orphan_ids:
+                confirmed = contexts.c.observed_until
+                if stopped is not None:
+                    confirmed = case((confirmed > stopped, stopped), else_=confirmed)
                 connection.execute(
-                    contexts.update()
-                    .where(contexts.c.id.in_(orphan_ids))
-                    .values(closed_at=contexts.c.observed_until)
+                    contexts.update().where(contexts.c.id.in_(orphan_ids))
+                    .values(closed_at=confirmed, observed_until=confirmed)
                 )
             removable, finalized = [], 0
             for row in rows:
                 planned_until = row["planned_until"]
-                if row["expires_at"] <= clock and finalized < batch_size:
-                    # Expired contexts cannot return to the dispatcher. Finalize only
-                    # their unplanned whole-minute tail, even while admission is paused.
+                end = minute(min(row["observed_until"], stopped) if stopped else row["observed_until"])
+                if (stopped is not None or row["expires_at"] <= clock) and finalized < batch_size:
+                    # A stopped or expired context cannot return to the planner.
+                    # Settle only its unplanned tail even while admission is paused.
                     cursor = minute(planned_until, ceil=True)
-                    end = minute(row["observed_until"])
                     target = _pod_target(row, state)
                     while cursor < end and finalized < batch_size:
                         boundary = cursor.replace(minute=cursor.minute // 10 * 10) + timedelta(
@@ -791,10 +831,9 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
                         day = policy.usage_date(cursor)
                         if (
                             day >= date.fromisoformat(state["start_date"])
-                            and policy.expires_at(day) > clock
+                            and day >= retained_from
                         ):
                             missing = summarize_window([], target, cursor, stop)
-                            missing["quality_json"].append("collection_failed")
                             state["retained_rows"] += _apply(
                                 connection,
                                 {
@@ -817,22 +856,20 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
                 has_pending = connection.execute(
                     select(tasks.c.id)
                     .where(
-                        tasks.c.context_id == row["id"], tasks.c.status.notin_(("done", "expired"))
+                        tasks.c.context_id == row["id"], tasks.c.status.notin_(TERMINAL)
                     )
                     .limit(1)
                 ).first()
-                if not has_pending and minute(planned_until, ceil=True) >= minute(
-                    row["observed_until"]
-                ):
+                if not has_pending and minute(planned_until, ceil=True) >= end:
                     removable.append(row["id"])
-            # A failed window still contributes its known expected population.
+            # A failed Pod window still contributes its confirmed population.
             expiring = (
                 connection.execute(
                     select(tasks)
                     .where(
                         tasks.c.account_id == policy.ACCOUNT_ID,
                         tasks.c.deadline_at <= clock,
-                        tasks.c.status.notin_(("done", "expired")),
+                        tasks.c.status.notin_(TERMINAL),
                     )
                     .order_by(tasks.c.deadline_at)
                     .limit(batch_size)
@@ -842,47 +879,42 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
             )
             for task in expiring:
                 if (
-                    task["kind"] == "machine"
-                    or policy.expires_at(policy.usage_date(task["window_start"])) > clock
+                    task["kind"] == "pod"
+                    and policy.usage_date(task["window_start"]) >= retained_from
                 ):
-                    missing = summarize_window(
-                        [], task["payload_json"], task["window_start"], task["window_end"]
+                    target = _task_target(connection, task, state)
+                    missing = summarize_window([], target, task["window_start"], task["window_end"])
+                    state["retained_rows"] += _apply(
+                        connection, {**task, "payload_json": target}, missing, clock
                     )
-                    missing["quality_json"].append("collection_failed")
-                    state["retained_rows"] += _apply(connection, task, missing, clock)
                 connection.execute(
                     tasks.update()
                     .where(tasks.c.id == task["id"])
-                    .values(status="expired", updated_at=clock)
+                    .values(status="expired", lease_token=None, lease_until=None)
                 )
             # Generic expiry sweep; machine facts are deliberately not here.
             targets = [
                 (
                     tasks,
-                    and_(tasks.c.deadline_at <= clock, tasks.c.status.in_(("done", "expired"))),
+                    and_(tasks.c.deadline_at <= clock, tasks.c.status.in_(TERMINAL)),
                 ),
-                (workloads, workloads.c.expires_at <= clock),
+                (workloads, workloads.c.usage_date < retained_from),
             ]
             changed = 0
             for table, predicate in targets:
                 budget = min(batch_size, max_rows - deleted - changed)
                 if budget <= 0:
                     break
-                ids = (
-                    connection.execute(
-                        select(table.c.id)
-                        .where(table.c.account_id == policy.ACCOUNT_ID, predicate)
-                        .order_by(table.c.id)
-                        .limit(budget)
-                    )
-                    .scalars()
-                    .all()
-                )
-                if ids:
+                keys = tuple(table.primary_key.columns)
+                selected = connection.execute(
+                    select(*keys).where(table.c.account_id == policy.ACCOUNT_ID, predicate)
+                    .order_by(*keys).limit(budget)
+                ).all()
+                if selected:
+                    match = (keys[0].in_([row[0] for row in selected]) if len(keys) == 1
+                             else tuple_(*keys).in_(selected))
                     changed += connection.execute(
-                        table.delete().where(
-                            table.c.id.in_(ids), table.c.account_id == policy.ACCOUNT_ID
-                        )
+                        table.delete().where(match, table.c.account_id == policy.ACCOUNT_ID)
                     ).rowcount
             for ctx_id in removable:
                 budget = min(batch_size, max_rows - deleted - changed)
@@ -894,7 +926,7 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
                         .where(
                             tasks.c.account_id == policy.ACCOUNT_ID,
                             tasks.c.context_id == ctx_id,
-                            tasks.c.status.in_(("done", "expired")),
+                            tasks.c.status.in_(TERMINAL),
                         )
                         .limit(budget)
                     )
@@ -926,7 +958,7 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
         count = sum(
             connection.execute(
                 select(func.count()).select_from(
-                    select(table.c.id)
+                    select(table.c.account_id)
                     .where(table.c.account_id == policy.ACCOUNT_ID)
                     .limit(policy.ROW_LIMIT + 1)
                     .subquery()
@@ -943,7 +975,7 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
                 raise  # A lost DB connection cannot persist guard state in this transaction.
             size = None
         overdue = []
-        for expiry in (contexts.c.expires_at, tasks.c.deadline_at, workloads.c.expires_at):
+        for expiry in (contexts.c.expires_at, tasks.c.deadline_at):
             earliest = connection.execute(
                 select(func.min(expiry)).where(
                     expiry.table.c.account_id == policy.ACCOUNT_ID, expiry <= clock
@@ -951,7 +983,19 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
             ).scalar()
             if earliest is not None:
                 overdue.append(earliest)
+        oldest_workload = connection.execute(select(func.min(workloads.c.usage_date)).where(
+            workloads.c.account_id == policy.ACCOUNT_ID,
+            workloads.c.usage_date < policy.workload_start_date(clock),
+        )).scalar()
+        if oldest_workload is not None:
+            overdue.append(policy.expires_at(oldest_workload))
         oldest = min(overdue, default=None)
+        if (
+            not state.get("pod_collection_enabled") and "pod" in state["contracts"]
+            and not _pod_work_remaining(connection)
+        ):
+            del state["contracts"]["pod"]
+            state.pop("pod_contract_version", None)
         recovering = state.get("paused") and "maintenance_uninitialized" not in state.get(
             "pause_reasons", []
         )

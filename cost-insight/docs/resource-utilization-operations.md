@@ -1,6 +1,8 @@
-# Tencent utilization V2: opt-in operations
+# Tencent utilization V3: opt-in operations
 
-Implementation: [V2 design](resource-utilization-design-v2.md), especially §§14–17.
+Implementation: [V3 design](resource-utilization-design-v3.md). The initial version
+uses only Tencent billing detail reads for discovery; importing discovery evidence
+from Cost Insight billing is a separate, gated cutover.
 This PR does not run a migration, create a topic, deploy workloads, or enable
 collection. All four generated CronJobs are suspended. The example profile is
 intentionally unverified and cannot enable ingestion.
@@ -14,30 +16,33 @@ watcher reads Kubernetes and exports approved Pod context; Node LIST only resolv
 historical query selectors. No new usage sampler, person/disk reporting, or change
 to billing and personal allocation.
 
-V2 creates four tables instead of the rejected mixed-scope V1 tables:
+V3 retains four tables:
 
-- `machine_utilization_daily`: one machine/day, CPU and memory together, capacity
-  integrals and individual peaks. One year queryable; no separate weekly table,
-  account-class cache, or dedicated machine-cleanup service at the current scale.
-- `pod_utilization_context`: active identity/requests/selected-label intervals and
-  minimal planning progress; ended contexts are removed after bounded tail work.
-- `utilization_task`: durable outbox, lease and completion checkpoint in one row.
-  No duplicate raw response or result JSON. Kafka carries only `task_id`.
-- `workload_utilization_daily`: bounded anonymous label-set/requests sufficient
-  statistics, without Pod UID/name or group peaks. Retains current/previous
-  Beijing week; deleting ended contexts does not erase already-produced business
-  statistics. There are no additional fixed Job/repo rollup copies.
+- `machine_utilization_daily`: one machine/Beijing day; per metric sum/count/peak
+  of observed Tencent minute percentages. Missing metrics are not zero. No row
+  for an all-missing day, machine specifications, or capacity/group metrics.
+- `pod_utilization_context`: immutable query identity/requests/label snapshots for
+  confirmed intervals, with a planning cursor and bounded tail. A missing cloud
+  instance ID never falls back to an IP query.
+- `utilization_task`: durable outbox, lease and completion checkpoint. Pod tasks
+  refer to retained contexts instead of duplicating snapshots. Kafka carries
+  `task_id` only. No raw responses, result JSON, or attempt history.
+- `workload_utilization_daily`: per-date approved label combinations, not request
+  buckets or Pod history. Matching usage/request integrals give a weighted mean;
+  matched/expected Pod-minutes give time coverage, not capacity coverage. Only
+  current and previous Beijing weeks are retained. Small label groups should not
+  be called anonymous; use stable, approved non-personal values.
 
-The unapplied `sql/031_create_utilization.sql` creates V2 tables only; no automatic
-DROP/ALTER of old tables or existing cost/CI data. If someone independently ran a
-V1 migration, inspect actual schema/state and review migration separately. Never
-silently reinterpret a version-1 guard as V2.
+The unapplied `sql/031_create_utilization.sql` creates the V3 tables. No DROP/ALTER
+or automatic migration of existing data. If a prior version was independently
+applied, inspect schema and state and review a separate migration; do not enable
+against a V1/V2 schema or reinterpret its registry.
 
 ## Before opting in
 
 Validate in an isolated canary:
 
-1. Historical billing ID/region/spec mapping and complete paging. Samples from
+1. Historical billing ID/region mapping, charge intervals and complete paging. Samples from
    2026-11-20 are proven against the billing API, **not a COS export object**.
    The bounded scan cap is 30,000 rows per product/day (300 pages of 100). The
    verified `p_011691` sample had 8,804 rows: 29.3% of the cap, with 21,196 rows
@@ -57,8 +62,7 @@ Validate in an isolated canary:
 
 ## Configuration and credentials
 
-Use a read-only Tencent identity for billing, instance-type catalogue, STS and
-monitor APIs, supplied as `TENCENTCLOUD_SECRET_ID`, `TENCENTCLOUD_SECRET_KEY`, and
+Use a read-only Tencent identity for billing, STS and monitor APIs, supplied as `TENCENTCLOUD_SECRET_ID`, `TENCENTCLOUD_SECRET_KEY`, and
 optional `TENCENTCLOUD_TOKEN`. Do not put values in arguments, manifests or logs.
 
 Complete `config/tencent-utilization.example.json` with reviewed horizon/scales,
@@ -66,7 +70,10 @@ ISO verification time, evidence reference and timestamp-alignment confirmation.
 `labels` is an explicit bounded list of approved non-personal business keys;
 standard repo/job/test-project keys are defaults, not fixed schema columns.
 Configure watcher `CI_DASHBOARD_UTILIZATION_LABEL_KEYS` to the same comma-separated
-list. Empty labels and unknown requests remain valid; missing is not zero.
+list. Use stable Repo/Job values, not person or run identifiers. Empty labels
+and unknown requests remain valid; missing is not zero. `pod_collection_enabled`
+defaults to false, independently of machine collection. A machine-only profile
+can omit Pod metric settings.
 
 DB uses the existing Cost Insight database configuration. Kafka clients require:
 
@@ -90,7 +97,7 @@ Do not reuse the Jenkins topic or broaden its existing consumer ACLs.
 
 After review and explicit production approval:
 
-1. Apply the reviewed V2 migration to the correct DB; keep producers off.
+1. Apply the reviewed V3 migration to the correct DB; keep producers off.
 2. Prepare profile, scoped Kafka topic/user/CA/secret references and watcher Node
    read-only binding. No Kubernetes access is granted to Cost Insight.
 3. Initialize the disabled registry, then run independent maintenance:
@@ -114,6 +121,7 @@ After review and explicit production approval:
    Schedules: maintenance every15min; historical machine planning daily06:30;
    dispatcher and bounded worker batches everyminute, all Asia/Shanghai.
    The watcher and API opt-in remains `CI_DASHBOARD_UTILIZATION_ENABLED=true`.
+   Watcher Pod export also requires the configured V3 registry to opt in.
 
 5. After healthy cleanup/statistics and source canaries, explicitly configure the
    same registry with `--enable --confirm-source-horizons`. Unsuspend maintenance
@@ -156,22 +164,23 @@ binding requires later Node evidence and a Node that predates the assignment;
 no bare IP fallback is used. Canary must measure Kubernetes LIST volume,
 selector confirmation delay and missing-selector rates, especially for short Pods.
 
-Tasks, daily contributions and completion use the shared V2 guard and DB clock.
+Tasks, daily contributions and completion use the shared V3 guard and DB clock.
 Lease/deadline fencing rejects stale workers. Broker-confirmed publish precedes
 marking dispatched; DB result/done commit precedes offset acknowledgement. Failed
-attempts retry with backoff capped at five minutes until the fixed task deadline;
-there is no attempt-count expiry. Maintenance records missing usage at expiry.
+fetches retry after a fixed interval until the fixed task deadline. Maintenance
+never creates empty machine facts; before purging unfinished Pod work, it records
+confirmed missing Pod-minutes for dates still retained.
 Crash replays may repeat messages or an unfinished source window but not its committed
 contribution. A bill extension adds only the uncovered tail when retained
 windows form an exact contiguous prefix with the same snapshot. Conflicting
-specifications or other overlaps are rejected, not silently added as a second
+snapshots or other overlaps are rejected, not silently added as a second
 version. New machine planning closes at the usage day's earliest
 possible task expiry, so a shifted window cannot replace a purged checkpoint.
 Do not clear done checkpoints or invent an ad-hoc repair.
 Machine planning reports per-candidate snapshot/overlap validation failures in each
 usage day's `errors` list (machine ID, region, reason), while continuing unrelated
 machines and days. Conflicts roll back the affected candidate/day transaction.
-A known billing specification conflict persists across runs until a joint complete
+A known billing discovery conflict persists across runs until a joint complete
 rescan finds no conflict or the affected usage-day horizon closes. Omitting one
 of its source partitions is not resolution. A scan must also retain its guard
 generation through enqueue; rescan if another process changes conflict evidence.
@@ -215,8 +224,8 @@ maintenance calls, without repeating its committed contribution. Keep maintenanc
 running while paused until this workset drains. No permanently retained DLQ, full
 Pod export, raw-minute archive or object-store quarantine.
 
-Watch backlog/oldest due task, `collection_failed` quality gaps, source errors, per-metric
-coverage/unknown denominator, retained rows, table+index bytes, maintenance time
+Watch backlog/oldest due task, source errors, workload time coverage, retained
+rows, table+index bytes, maintenance time
 and pause reasons (`row_budget`, `byte_budget`, `bytes_unreliable`, `cleanup_backlog`).
 A failed byte-statistics query invalidates previously healthy evidence if the
 maintenance transaction can still update the guard. If the DB transaction cannot
@@ -224,11 +233,15 @@ write, the maintenance command fails instead of claiming it persisted a pause.
 The workload API flags a selected date range as partial while the account has
 unsettled Pod windows or confirmed unplanned evidence in the range; this is a
 conservative warning across label filters. Coverage then describes settled windows
-only. Machine status expects the full D-3 Beijing day from the latest
-daily06:30 planner, with a one-hour dispatch/collection allowance; historical data
-is not stale merely because its cutoff is more than eight hours old.
+only. Machine status is a latest-observed-day signal, not proof of complete
+coverage of that day or of the whole account.
 Current warning1M rows/4GiB (reported in maintenance output's `warnings` list);
 pause2M/8GiB or stale/unreliable maintenance/statistics after4h. All owned tables count toward the budget, including
-machine facts. A paused producer does not stop maintenance. Disable collection via
-`utilization-configure` without `--enable`; keep cleanup running until the active
-workset is drained. API disabled/missing-schema states must not break cost pages.
+machine facts. A paused producer does not stop maintenance. To disable only Pod
+collection, register `pod_collection_enabled: false` with `--enable` so machines
+continue. The registry stops new Pod admission at its DB cutoff; keep workers and
+maintenance running for already registered windows and confirmed unplanned tails.
+Completed workload results retain their normal query lifetime. Wait for the old
+Pod workset to drain before re-enabling or changing its metric contract. To stop
+all new collection, configure without `--enable` and keep maintenance running.
+API disabled/missing-schema states must not break cost pages.

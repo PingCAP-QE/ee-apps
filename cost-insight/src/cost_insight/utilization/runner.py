@@ -13,8 +13,16 @@ LOG = logging.getLogger(__name__)
 
 def _ready(engine, profile, now=None):
     state = store.load_state(engine)
-    if state.get("contracts") != profile["contracts"]:
-        raise ValueError("configure the exact V2 profile before collection")
+    registered = state.get("contracts", {})
+    supplied = profile["contracts"]
+    if state.get("version") != policy.GUARD_VERSION or any(
+        registered.get(kind) != supplied.get(kind) for kind in ("cvm", "tke_native")
+    ):
+        raise ValueError("configure the exact V3 machine profile before collection")
+    if state.get("pod_collection_enabled") and (
+        not supplied.get("pod") or registered.get("pod") != supplied["pod"]
+    ):
+        raise ValueError("configure the exact V3 Pod profile before collection")
     with engine.connect() as connection:
         clock = store.database_now(connection, now)
     return state, clock
@@ -166,12 +174,34 @@ def dispatch(engine, profile, producer, *, now=None, limit=100, dry_run=False):
     return {**planned, "sent": sent}
 
 
+def _worker_reader(profile, state):
+    # An off profile may omit Pod settings while previously admitted tasks drain.
+    return TencentReader({
+        **profile,
+        **state["scope"],
+        "contracts": state["contracts"],
+        "pod_contract_version": state.get("pod_contract_version"),
+        "pod_collection_enabled": bool(state.get("pod_collection_enabled")),
+    })
+
+
+def _record_result(engine, task, points, *, now):
+    try:
+        values = summarize_window(points, task["payload_json"], task["window_start"], task["window_end"])
+        done = store.complete_task(engine, task["id"], task["lease_token"], values, now=now)
+    except ValueError:
+        LOG.warning("utilization task result rejected")
+        store.fail_task(engine, task["id"], task["lease_token"], now=now)
+        return "retry"
+    return "done" if done else "fenced"
+
+
 def work_batch(engine, profile, task_ids, *, now=None, reader=None):
     """Coalesce already available compatible tasks; never delay a consumer to fill a batch."""
     if not 1 <= len(task_ids) <= 10:
         raise ValueError("worker batches contain 1..10 task references")
     state, _ = _ready(engine, profile, now)
-    reader = reader or TencentReader(profile)
+    reader = reader or _worker_reader(profile, state)
     groups, results = {}, []
     for task_id in task_ids:
         task = store.claim_task(engine, task_id, now=now)
@@ -179,9 +209,15 @@ def work_batch(engine, profile, task_ids, *, now=None, reader=None):
             results.append("ignored")
             continue
         target = task["payload_json"]
-        if target.get("contract_version") != state["contract_version"]:
+        is_pod = task["kind"] == "pod"
+        version_key = "pod_contract_version" if is_pod else "contract_version"
+        if target.get("contract_version") != state[version_key]:
             store.fail_task(engine, task["id"], task["lease_token"], now=now)
             results.append("retry")
+            continue
+        if is_pod and not target.get("node_instance_id"):
+            # This immutable context cannot acquire a selector retroactively.
+            results.append(_record_result(engine, task, [], now=now))
             continue
         key = (
             task["window_start"],
@@ -212,15 +248,7 @@ def work_batch(engine, profile, task_ids, *, now=None, reader=None):
                 store.fail_task(engine, task["id"], task["lease_token"], now=now)
                 results.append("retry")
                 continue
-            try:
-                values = summarize_window(own, target, start, end)
-                done = store.complete_task(engine, task["id"], task["lease_token"], values, now=now)
-            except ValueError:
-                LOG.warning("utilization task result rejected")
-                store.fail_task(engine, task["id"], task["lease_token"], now=now)
-                results.append("retry")
-            else:
-                results.append("done" if done else "fenced")
+            results.append(_record_result(engine, task, own, now=now))
     return results
 
 
@@ -233,7 +261,7 @@ def consume(engine, profile, consumer, *, max_messages=100, now=None, reader=Non
         raise ValueError("bounded worker batch required")
     state, clock = _ready(engine, profile, now)
     store._admit(state, clock)
-    reader = reader or TencentReader(profile)
+    reader = reader or _worker_reader(profile, state)
     counts = {"done": 0, "ignored": 0, "retry": 0, "fenced": 0, "invalid": 0}
     processed = 0
     while processed < max_messages:

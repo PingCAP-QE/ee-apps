@@ -1,4 +1,4 @@
-"""Offline V2 source and machine planning tests: SDK calls and task admission mocked."""
+"""Offline V3 source and machine planning tests: SDK calls and task admission mocked."""
 
 import json
 from datetime import UTC, date, datetime, timedelta
@@ -16,8 +16,9 @@ END = START + timedelta(minutes=10)
 
 
 @pytest.fixture
-def profile(tmp_path):
+def raw_profile():
     raw = json.loads(EXAMPLE.read_text())
+    raw["pod_collection_enabled"] = True
     raw["measurement"].update(
         verified_horizon_seconds=7 * 86400,
         horizon_verified_at=START.isoformat(),
@@ -29,13 +30,19 @@ def profile(tmp_path):
             "pod": {"cpu": 1, "memory": 1_000_000},
         },
     )
+    return raw
+
+
+@pytest.fixture
+def profile(tmp_path, raw_profile):
     path = tmp_path / "profile.json"
-    path.write_text(json.dumps(raw))
+    path.write_text(json.dumps(raw_profile))
     return tencent.load_profile(str(path))
 
 
 def repin(profile):
     profile["contract_version"] = tencent.contract_version(profile)
+    profile["pod_contract_version"] = tencent.contract_version(profile, kind="pod")
 
 
 def target(kind="cvm", **overrides):
@@ -54,8 +61,7 @@ def target(kind="cvm", **overrides):
             "namespace": "jenkins-tidb",
             "region": "ap-beijing",
             "cluster_id": "cls-9zpon9y1",
-            "node_query_kind": "node",
-            "node_query_value": "10.0.6.207",
+            "node_instance_id": "ins-historical",
         }
     return {**result, **overrides}
 
@@ -94,7 +100,7 @@ def tke_response(kind="pod", value=2, **overrides):
     dims = {"tke_cluster_instance_id": snap["cluster_id"]}
     if kind == "pod":
         dims.update(namespace=snap["namespace"], pod_name=snap["pod_name"])
-        dims[snap["node_query_kind"]] = snap["node_query_value"]
+        dims["un_instance_id"] = snap["node_instance_id"]
     else:
         dims["un_instance_id"] = snap["machine_id"]
     dims.update(overrides)
@@ -163,8 +169,6 @@ def api_call(service, action, region, params):
         return metric_metadata(params["Namespace"])
     if action == "DescribeBillDetailForOrganization":
         return {"DetailSet": [bill(params["BusinessCode"])], "Total": 1}
-    if action == "DescribeInstanceTypeConfigs":
-        return {"InstanceTypeConfigSet": [{"InstanceType": "SA9.MEDIUM4", "CPU": 2, "Memory": 4}]}
     if action == "GetMonitorData":
         return cvm_response()
     if action == "DescribeStatisticData":
@@ -177,23 +181,83 @@ def reader(profile, call=api_call, sleep=None):
     return tencent.TencentReader(profile, call=call, sleep=sleep or Mock())
 
 
-def test_profile_is_v2_scoped_stable_and_example_is_unverified(tmp_path, profile):
+def test_profile_is_v3_scoped_stable_and_example_is_unverified(tmp_path, profile):
     assert set(profile["contracts"]) == {"cvm", "tke_native", "pod"}
     assert all(set(metrics) == {"cpu", "memory"} for metrics in profile["contracts"].values())
     assert "scope_contracts" not in str(profile) and "allocatable" not in str(profile)
     assert tencent.contract_version(profile) == profile["contract_version"]
+    assert tencent.contract_version(profile, kind="pod") == profile["pod_contract_version"]
+    assert profile["pod_contract_version"] != profile["contract_version"]
     with pytest.raises(ValueError):
         tencent.load_profile(str(EXAMPLE))
     unverified = tencent.load_profile(str(EXAMPLE), probe=True)
-    assert unverified["contracts"]["pod"]["memory"]["contract"]["source_scale"] == 0
+    assert unverified["pod_collection_enabled"] is False
+    assert "pod" not in unverified["contracts"]
+    assert unverified["contracts"]["cvm"]["memory"]["contract"]["source_scale"] == 0
     changed = json.loads(EXAMPLE.read_text())
-    changed["labels"].remove("repo")
+    changed["regions"].remove("ap-hongkong")
     path = tmp_path / "changed.json"
     path.write_text(json.dumps(changed))
     assert (
         tencent.load_profile(str(path), probe=True)["contract_version"]
         != unverified["contract_version"]
     )
+
+
+def test_pod_opt_in_versions_and_default_off_drain(tmp_path, raw_profile, profile):
+    path = tmp_path / "variants.json"
+
+    def load(**kwargs):
+        path.write_text(json.dumps(raw_profile))
+        return tencent.load_profile(str(path), **kwargs)
+
+    raw_profile["pod_collection_enabled"] = False
+    draining = load()
+    assert draining["pod_contract_version"] == profile["pod_contract_version"]
+    assert draining["contract_version"] == profile["contract_version"]
+    assert tencent.collection_scope(draining, kind="pod") == tencent.collection_scope(
+        profile, kind="pod"
+    )
+    assert reader(draining).window(START, END, [target("pod")])
+
+    scales = raw_profile["measurement"]["source_scales"]
+    scales["pod"]["memory"] *= 2
+    changed = load()
+    assert changed["pod_contract_version"] != profile["pod_contract_version"]
+    assert changed["contract_version"] == profile["contract_version"]
+
+    raw_profile["labels"].remove("repo")
+    changed_scope = load()
+    assert changed_scope["pod_contract_version"] != changed["pod_contract_version"]
+    assert changed_scope["contract_version"] == profile["contract_version"]
+
+    raw_profile.pop("pod_collection_enabled")
+    scales.pop("pod")
+    pod_scope = {key: raw_profile.pop(key) for key in ("namespaces", "labels")}
+    machine_only = load()
+    assert machine_only["pod_collection_enabled"] is False
+    assert machine_only["contract_version"] == profile["contract_version"]
+    assert "pod_contract_version" not in machine_only and "pod" not in machine_only["contracts"]
+    call = Mock(side_effect=api_call)
+    source = reader(machine_only, call)
+    with pytest.raises(ValueError, match="configured Pod contract"):
+        source.window(START, END, [target("pod")])
+    call.assert_not_called()
+    assert len(source.window(START, END, [target(), target("tke_native")])) == 4
+
+    raw_profile["pod_collection_enabled"] = True
+    with pytest.raises(ValueError, match="explicit Pod contract"):
+        load()
+    scales["pod"] = {"cpu": 1, "memory": 1_000_000}
+    with pytest.raises(ValueError, match="explicit namespaces"):
+        load()
+    raw_profile.update(pod_scope)
+    raw_profile["measurement"]["evidence_reference"] = " "
+    with pytest.raises(ValueError, match="canary evidence"):
+        load(probe=True)
+    raw_profile["pod_collection_enabled"] = "false"
+    with pytest.raises(TypeError, match="must be a boolean"):
+        load()
 
 
 @pytest.mark.parametrize(
@@ -229,8 +293,8 @@ def test_invalid_profile_scope(profile, field, value):
         ("source_stat", "max"),
         ("period", 300),
         ("denominator", "allocatable"),
-        ("normalized_unit", "%"),
-        ("semantic_version", "v1"),
+        ("normalized_unit", "cores"),
+        ("semantic_version", "v2"),
         ("source_scope_hash", "wrong"),
     ],
 )
@@ -265,32 +329,57 @@ def test_contract_version_tampering_and_v1_rejected(profile):
     with pytest.raises(ValueError, match="version"):
         tencent.validate_profile(profile)
     repin(profile)
+    profile["contracts"]["pod"]["cpu"]["evidence_reference"] = "changed"
+    with pytest.raises(ValueError, match="Pod contract version"):
+        tencent.validate_profile(profile)
+    repin(profile)
     profile["contracts"]["pod"]["cpu"]["scope_contracts"] = {}
     repin(profile)
     with pytest.raises(ValueError, match="V1"):
         tencent.validate_profile(profile)
 
 
-def test_historical_billing_not_live_inventory_and_service_fee_not_additive(profile):
-    call = Mock(side_effect=api_call)
-    source = reader(profile, call)
-    rows = source.billing_candidates(DAY)
-    assert len(rows) == 2
-    cvm, native = rows
-    assert cvm["cpu_cores"] == 2 and cvm["memory_bytes"] == 4 * 1024**3
-    assert native["cpu_cores"] == 8 and native["memory_bytes"] == 32 * 1024**3
-    assert native["machine_id"] == "np-one" and native["resource_class"] == "tke_native"
-    assert native["instance_type"] == ""  # Component family is not an instance SKU.
-    assert cvm["observed_from"] == datetime(2026, 11, 20, 3, 36, 36, tzinfo=UTC).replace(
-        tzinfo=None
+def test_billing_discovery_needs_only_identity_and_fee_interval(profile):
+    cvm = bill()
+    del cvm["ComponentSet"]
+    native = bill("p_011691", ComponentSet=[{"ItemCode": "sv_011691_nn_sa9_cpu_servicefee"}])
+    storage = bill(
+        "p_011691",
+        ResourceId="cls-9zpon9y1_np-storage",
+        ComponentSet=[component("sv_011691_nn_sa9_disk")],
     )
-    assert cvm["observed_until"] == datetime(2026, 11, 20, 4, 26, 24, tzinfo=UTC).replace(
-        tzinfo=None
-    )
+
+    def reply(service, action, region, params):
+        if service == "billing":
+            rows = [cvm] if params["BusinessCode"] == "p_cvm" else [native, storage]
+            return {"DetailSet": rows, "Total": len(rows)}
+        return api_call(service, action, region, params)
+
+    call = Mock(side_effect=reply)
+    rows = reader(profile, call).billing_candidates(DAY, merge=False)
+    interval = {
+        "observed_from": datetime(2026, 11, 20, 3, 36, 36, tzinfo=UTC).replace(tzinfo=None),
+        "observed_until": datetime(2026, 11, 20, 4, 26, 24, tzinfo=UTC).replace(tzinfo=None),
+    }
+    assert rows == [
+        {
+            "machine_id": "ins-one",
+            "resource_class": "cvm",
+            "cluster_id": "",
+            "region": "ap-beijing",
+            **interval,
+        },
+        {
+            "machine_id": "np-one",
+            "resource_class": "tke_native",
+            "cluster_id": "cls-9zpon9y1",
+            "region": "ap-beijing",
+            **interval,
+        },
+    ]
     assert {c.args[1] for c in call.call_args_list} == {
         "GetCallerIdentity",
         "DescribeBillDetailForOrganization",
-        "DescribeInstanceTypeConfigs",
     }
     requests = [c.args[3] for c in call.call_args_list if c.args[0] == "billing"]
     assert {r["BusinessCode"] for r in requests} == {"p_cvm", "p_011691"}
@@ -325,7 +414,7 @@ def test_billing_requires_short_page_even_after_cached_total(
     assert offsets == list(range(0, actual + 1, 100))
 
 
-def test_billing_complete_context_pagination_partition_filter_and_capacity_cache(profile):
+def test_billing_complete_context_pagination_and_partition_filter(profile):
     calls = []
 
     def call(service, action, region, params):
@@ -344,7 +433,7 @@ def test_billing_complete_context_pagination_partition_filter_and_capacity_cache
     snapshots = reader(profile, mock).billing_candidates(DAY)
     assert {s["machine_id"] for s in snapshots} == {"ins-one", "ins-two"}
     assert len(calls) == 3
-    assert [c.args[1] for c in mock.call_args_list].count("DescribeInstanceTypeConfigs") == 1
+    assert [c.args[0] for c in mock.call_args_list] == ["sts", "billing", "billing", "billing"]
 
 
 @pytest.mark.parametrize(
@@ -357,10 +446,14 @@ def test_billing_complete_context_pagination_partition_filter_and_capacity_cache
         (lambda r: r.update(BillDay="2026-12-01"), "BillDay"),
         (lambda r: r.update(FeeEndTime=r["FeeBeginTime"]), "interval"),
         (lambda r: r.update(ResourceId="bad"), "identity"),
-        (lambda r: r["ComponentSet"][0].update(UsedAmount="9"), "Conflicting"),
-        (lambda r: r["ComponentSet"][0].update(UsedAmountUnit="MHz"), "unit"),
-        (lambda r: r["ComponentSet"][0].update(UsedAmount=True), "quantity"),
-        (lambda r: r["ComponentSet"][0].update(UsedAmount="nan"), "finite"),
+        (lambda r: r.update(ResourceId="cls-other_np-one"), "cluster"),
+        (lambda r: r.update(RegionId="5"), "cluster"),
+        (
+            lambda r: r["ComponentSet"][0].update(
+                ComponentConfig=[{"Name": "地域", "Value": "ap-hongkong"}]
+            ),
+            "Conflicting billing region",
+        ),
         (lambda r: r["ComponentSet"][0].update(ItemCode="sv_011691_unknown_cpu"), "Unreviewed"),
     ],
 )
@@ -544,7 +637,7 @@ def test_long_charge_reports_deferred_tail_and_exact_partition_for_replay(profil
     clock = policy.day_start(DAY + timedelta(days=4)) + timedelta(hours=6, minutes=30)
     end = policy.day_start(DAY + timedelta(days=6)) + timedelta(hours=10)
     machine = {
-        **target("cvm"), "instance_type": "", "cpu_cores": 2, "memory_bytes": 1024,
+        **target("cvm"),
         "observed_from": policy.day_start(DAY),
         "observed_until": end,
     }
@@ -566,7 +659,7 @@ def test_bill_partition_age_is_not_usage_date_retention(profile, planning):
     start = clock - timedelta(hours=1)
     source = Mock(stats={})
     source.billing_candidates.return_value = [{
-        **target("cvm"), "instance_type": "", "cpu_cores": 2, "memory_bytes": 1024,
+        **target("cvm"),
         "observed_from": start, "observed_until": start + timedelta(minutes=5),
     }]
     result = runner.plan_machines(None, profile, bill_days=[DAY], now=clock, reader=source)
@@ -574,16 +667,15 @@ def test_bill_partition_age_is_not_usage_date_retention(profile, planning):
     assert result["days"][0]["planned"] == 1
 
 
-def test_cross_partition_capacity_conflict_does_not_block_unrelated_machine(profile, planning):
+def test_cross_partition_identity_conflict_does_not_block_unrelated_machine(profile, planning):
     clock = policy.day_start(DAY + timedelta(days=4))
     source = Mock(stats={})
     start = policy.day_start(DAY) + timedelta(hours=3)
-    span = {"observed_from": start, "observed_until": start + timedelta(minutes=10),
-            "instance_type": "", "cpu_cores": 8, "memory_bytes": 1024}
+    span = {"observed_from": start, "observed_until": start + timedelta(minutes=10)}
     original = {**target("tke_native"), **span}
     healthy = {**target("cvm"), **span}
     source.billing_candidates.side_effect = [
-        [original], [{**original, "cpu_cores": original["cpu_cores"] * 2}, healthy],
+        [original], [{**original, "resource_class": "cvm"}, healthy],
     ]
     result = runner.plan_machines(None, profile, now=clock, reader=source)
     assert sum(day["planned"] for day in result["days"]) == 1
@@ -591,21 +683,25 @@ def test_cross_partition_capacity_conflict_does_not_block_unrelated_machine(prof
     assert planning.call_args.args[1][0][0]["machine_id"] == healthy["machine_id"]
 
 
-def test_same_partition_conflict_is_isolated_after_complete_scan(profile, planning):
+def test_billing_spec_disagreements_do_not_conflict_or_reach_machine_planning(profile, planning):
     clock = policy.day_start(DAY + timedelta(days=4))
-    native = bill("p_011691")
+    cvm, native = bill(), bill("p_011691")
+    cvm["ComponentSet"][0]["ComponentConfig"].append({"Name": "机型", "Value": "other"})
     corrected = json.loads(json.dumps(native))
-    corrected["ComponentSet"][0]["UsedAmount"] = "16"
-    corrected["ComponentSet"][1]["UsedAmount"] = "16"
+    corrected["ComponentSet"][0].update(UsedAmount="16", UsedAmountUnit="not-a-unit")
+    corrected["ComponentSet"][1]["UsedAmount"] = None
 
     def call(service, action, region, params):
-        if service == "billing" and params["BusinessCode"] == "p_011691":
-            return {"DetailSet": [native, corrected], "Total": 2}
+        if service == "billing":
+            rows = [native, corrected] if params["BusinessCode"] == "p_011691" else [cvm]
+            return {"DetailSet": rows, "Total": len(rows)}
         return api_call(service, action, region, params)
 
     result = runner.plan_machines(None, profile, bill_day=DAY, now=clock, reader=reader(profile, call))
-    assert sum(day["planned"] for day in result["days"]) > 0
-    assert [e["machine_id"] for day in result["days"] for e in day["errors"]] == ["np-one"]
+    assert result["days"][0]["planned"] == 4 and not result["days"][0]["errors"]
+    for entry in planning.call_args_list:
+        for submitted, _, _ in entry.args[1]:
+            assert not {"instance_type", "cpu_cores", "memory_bytes"} & submitted.keys()
 
 
 def test_machine_planner_requires_all_partitions_and_products_before_enqueue(profile, planning):
@@ -621,49 +717,26 @@ def test_machine_planner_requires_all_partitions_and_products_before_enqueue(pro
     planning.assert_not_called()
 
 
-def test_bill_capacity_overlap_merge_does_not_bridge_gaps_or_sum_fees():
+def test_bill_overlap_and_adjacent_merge_do_not_bridge_gaps():
     row = {
         "machine_id": "np-one",
         "region": "ap-beijing",
         "cluster_id": "cls-9zpon9y1",
         "resource_class": "tke_native",
-        "instance_type": "",
-        "cpu_cores": 8,
-        "memory_bytes": None,
         "observed_from": START,
         "observed_until": END,
     }
-    memory = {**row, "cpu_cores": None, "memory_bytes": 32 * 1024**3}
+    extend = END + timedelta(minutes=2)
+    adjacent = {**row, "observed_from": END, "observed_until": extend}
     later = {
         **row,
-        "observed_from": END + timedelta(minutes=2),
-        "observed_until": END + timedelta(minutes=5),
+        "observed_from": extend + timedelta(minutes=1),
+        "observed_until": extend + timedelta(minutes=5),
     }
-    merged = tencent.TencentReader._merge_snapshots([row, memory, row, later])
-    assert len(merged) == 2 and merged[0]["cpu_cores"] == 8
-    assert merged[0]["memory_bytes"] == 32 * 1024**3
-    with pytest.raises(ValueError, match="Conflicting"):
-        tencent.TencentReader._merge_snapshots([row, {**row, "cpu_cores": 16}])
-
-
-def test_billing_catalog_missing_unknown_capacity_and_conflicting_type_rejected(profile):
-    def call(service, action, region, params):
-        if action == "DescribeInstanceTypeConfigs":
-            return {"InstanceTypeConfigSet": []}
-        return api_call(service, action, region, params)
-
-    assert reader(profile, call).billing_candidates(DAY)[0]["cpu_cores"] is None
-    source = reader(
-        profile,
-        lambda *a: {
-            "InstanceTypeConfigSet": [
-                {"InstanceType": "TYPE", "CPU": 2, "Memory": 4},
-                {"InstanceType": "TYPE", "CPU": 4, "Memory": 4},
-            ]
-        },
-    )
-    with pytest.raises(ValueError, match="Conflicting"):
-        source._type_capacity("ap-beijing", "TYPE")
+    merged = tencent.TencentReader._merge_snapshots([later, adjacent, row, {**row, "cpu_cores": 8}])
+    assert merged == [{**row, "observed_until": extend}, later]
+    with pytest.raises(ValueError, match="Conflicting.*identity"):
+        tencent.TencentReader._merge_snapshots([row, {**row, "resource_class": "cvm"}])
 
 
 def test_machine_and_pod_queries_are_independent_exact_and_normalized(profile):
@@ -691,7 +764,7 @@ def test_machine_and_pod_queries_are_independent_exact_and_normalized(profile):
                 "tke_cluster_instance_id": ["cls-9zpon9y1"],
                 "namespace": ["jenkins-tidb"],
                 "pod_name": ["build-abc"],
-                "node": ["10.0.6.207"],
+                "un_instance_id": ["ins-historical"],
             }
             assert next(p for p in points if p["metric"] == "memory")["value"] == 2_000_000
         elif kind == "cvm":
@@ -701,6 +774,28 @@ def test_machine_and_pod_queries_are_independent_exact_and_normalized(profile):
                 n.startswith("K8sNode") for n in requests[0]["MetricNames"]
             )
         assert source.stats["points"] == 2 and source.stats["response_bytes"] > 0
+
+
+@pytest.mark.parametrize("kind", ["cvm", "tke_native"])
+def test_machine_zero_is_observed_and_null_memory_is_not(profile, kind):
+    def call(service, action, region, params):
+        if action == "GetMonitorData":
+            return cvm_response(value=0 if params["MetricName"] == "CpuUsage" else None)
+        if action == "DescribeStatisticData":
+            reply = tke_response(kind, value=0)
+            reply["Data"][1]["Points"][0]["Values"][0]["Value"] = None
+            return reply
+        return api_call(service, action, region, params)
+
+    assert reader(profile, call).window(START, END, [target(kind)]) == [
+        {
+            "entity": target(kind)["machine_id"],
+            "metric": "cpu",
+            "timestamp": START,
+            "value": 0,
+            "unit": "percent",
+        }
+    ]
 
 
 def test_ten_pods_each_get_an_exact_selector_request_and_both_metrics(profile):
@@ -724,7 +819,7 @@ def test_ten_pods_each_get_an_exact_selector_request_and_both_metrics(profile):
             "tke_cluster_instance_id": "cls-9zpon9y1",
             "namespace": "jenkins-tidb",
             "pod_name": f"build-{i}",
-            "node": "10.0.6.207",
+            "un_instance_id": "ins-historical",
         }
         for i, dims in enumerate(requests)
     )
@@ -735,20 +830,19 @@ def test_ten_pods_each_get_an_exact_selector_request_and_both_metrics(profile):
 
 
 def test_pod_instance_selector_and_uid_name_reuse_mapping(profile):
-    snap = target(
-        "pod", node_query_kind="un_instance_id", node_query_value="np-historical", pod_uid="uid-new"
-    )
+    snap = target("pod", node_instance_id="np-historical", pod_uid="uid-new")
 
     def call(service, action, region, params):
         if action == "DescribeStatisticData":
-            response = tke_response("pod", un_instance_id="np-historical")
-            for metric in response["Data"]:
-                metric["Points"][0]["Dimensions"] = [
-                    d for d in metric["Points"][0]["Dimensions"] if d["Name"] != "node"
-                ]
-            return response
+            assert {d["Key"]: d["Value"] for d in params["Conditions"]}["un_instance_id"] == [
+                "np-historical"
+            ]
+            return tke_response("pod", un_instance_id="np-historical")
+        assert service != "billing"
         return api_call(service, action, region, params)
 
+    with pytest.raises(ValueError, match="Unexpected TKE metric identity"):
+        reader(profile).window(START, END, [snap])  # Same name, different node instance ID.
     points = reader(profile, call).window(START, END, [snap])
     assert {p["entity"] for p in points} == {"uid-new"}
 
@@ -756,8 +850,10 @@ def test_pod_instance_selector_and_uid_name_reuse_mapping(profile):
 @pytest.mark.parametrize(
     "snap",
     [
-        target("pod", node_query_kind=""),
-        target("pod", node_query_value=""),
+        target("pod", node_instance_id=None, node_query_kind="node", node_query_value="10.0.6.207"),
+        target("pod", node_instance_id=None, node_query_kind="un_instance_id", node_query_value="ins-one"),
+        target("pod", node_instance_id=""),
+        target("pod", node_instance_id="10.0.6.207"),
         target("pod", namespace="unapproved"),
         target("pod", cluster_id="cls-other"),
         target("pod", region="ap-hongkong"),
@@ -940,6 +1036,7 @@ def test_account_and_readonly_actions(profile):
         source.verify_account()
     for service, action in (
         ("cvm", "DescribeInstances"),
+        ("cvm", "DescribeInstanceTypeConfigs"),
         ("cvm", "TerminateInstances"),
         ("sts", "GetMonitorData"),
         ("billing", "DescribeBillDetail"),
@@ -1045,10 +1142,10 @@ def test_probe_unverified_profile_is_readonly_billing_and_capabilities_only():
     assert result["bill_day"] == str(DAY)
     assert result["dry_run"] and result["billing_candidates"] == 2 and result["metric_metadata"]
     assert not result["full_replay_horizon_verified"] and not result["unit_conversion_verified"]
-    assert not any(
-        c.args[1] in {"GetMonitorData", "DescribeStatisticData", "DescribeInstances"}
-        for c in call.call_args_list
-    )
+    assert not any(m["metric"].startswith("K8sPod") for m in result["metric_metadata"])
+    assert {c.args[1] for c in call.call_args_list} == {
+        "DescribeBaseMetrics", "DescribeBillDetailForOrganization", "GetCallerIdentity"
+    }
 
 
 @pytest.mark.parametrize("kind", ["cvm", "tke_native"])

@@ -1,4 +1,4 @@
-"""Offline V2 crash, idempotency, lease, quality and active-workset regression tests."""
+"""Offline V3 crash, idempotency, lease and active-workset regression tests."""
 # ruff: noqa: DTZ001
 # The persistence contract deliberately uses UTC-naive business timestamps.
 
@@ -11,48 +11,51 @@ from sqlalchemy import create_engine, event, select, text
 from cost_insight.utilization import policy, runner, store
 from cost_insight.utilization.aggregate import identity, summarize_window
 from cost_insight.utilization.schema import contexts, machines, metadata, tasks, workloads
+from cost_insight.utilization.tencent import (
+    _hash,
+    build_contracts,
+    collection_scope,
+    contract_version,
+)
 
 NOW = datetime(2026, 11, 25, 4, 30)
 START = datetime(2026, 11, 25, 4)
 END = START + timedelta(minutes=10)
 
 
-def profile():
-    contracts = {}
-    for kind in ("cvm", "tke_native", "pod"):
-        contracts[kind] = {
-            metric: {
-                "contract": {
-                    "namespace": "QCE/CVM" if kind == "cvm" else "QCE/TKE2",
-                    "metric": metric,
-                    "period": 60,
-                    "source_stat": "avg",
-                    "normalized_unit": "cores" if metric == "cpu" else "bytes",
-                    "denominator": "requests" if kind == "pod" else "physical",
-                    "source_scale": 1,
-                },
-                "verified_horizon_seconds": 14 * 86400,
-                "safety_margin_seconds": 3600,
-                "timestamp_alignment_verified": True,
-                "horizon_verified_at": "2026-11-25",
-                "evidence_reference": "offline-test",
-            }
-            for metric in policy.METRICS
-        }
-    return {
+def profile(*, pod=True, pod_horizon=14 * 86400):
+    kinds = ("cvm", "tke_native", "pod") if pod else ("cvm", "tke_native")
+    result = {
         "account_id": policy.ACCOUNT_ID,
         "regions": ["ap-beijing"],
         "cluster_region": "ap-beijing",
         "cluster_id": "cls-test",
         "namespaces": ["ci"],
         "labels": ["test_project"],
-        "contracts": contracts,
+        "pod_collection_enabled": pod,
+        "contracts": build_contracts({
+            "source_scales": {kind: {metric: 1 for metric in policy.METRICS} for kind in kinds},
+            "verified_horizon_seconds": 14 * 86400,
+            "safety_margin_seconds": 3600,
+            "timestamp_alignment_verified": True,
+            "horizon_verified_at": "2020-01-01T00:00:00+00:00",
+            "evidence_reference": "offline-test",
+        }),
     }
+    for kind, entries in result["contracts"].items():
+        for entry in entries.values():
+            entry["contract"]["source_scope_hash"] = _hash(collection_scope(result, kind=kind))
+            if kind == "pod":
+                entry["verified_horizon_seconds"] = pod_horizon
+    result["contract_version"] = contract_version(result)
+    if pod:
+        result["pod_contract_version"] = contract_version(result, kind="pod")
+    return result
 
 
 @pytest.fixture
-def engine(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path}/v2.db")
+def empty_engine(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path}/v3.db")
     metadata.create_all(engine)
     with engine.begin() as connection:
         connection.execute(
@@ -61,38 +64,19 @@ def engine(tmp_path):
                 "last_status VARCHAR(32),updated_at DATETIME)"
             )
         )
-        state = {
-            "version": 2,
-            "enabled": True,
-            "paused": False,
-            "counts_reliable": True,
-            "retained_rows": 0,
-            "maintenance_at": NOW.isoformat(),
-            "bytes_observed_at": NOW.isoformat(),
-            "observed_bytes": 0,
-            "contracts": profile()["contracts"],
-            "scope": {
-                k: profile()[k]
-                for k in (
-                    "account_id",
-                    "regions",
-                    "cluster_region",
-                    "cluster_id",
-                    "namespaces",
-                    "labels",
-                )
-            },
-            "start_date": "2026-11-01",
-            "contract_version": identity(profile()["contracts"]),
-        }
-        import json
-
-        connection.execute(
-            text("INSERT INTO cost_job_state VALUES (:key,:state,'configured',CURRENT_TIMESTAMP)"),
-            {"key": policy.GUARD_KEY, "state": json.dumps(state)},
-        )
     yield engine
     engine.dispose()
+
+
+def configure(engine, supplied, *, now=NOW, enabled=True):
+    return store.configure(engine, supplied, start_date="2026-11-01", enabled=enabled, now=now)
+
+
+@pytest.fixture
+def engine(empty_engine):
+    configure(empty_engine, profile(), now=START - timedelta(days=1))
+    store.maintain(empty_engine, now=NOW)
+    return empty_engine
 
 
 def target(kind="machine", **changes):
@@ -103,9 +87,6 @@ def target(kind="machine", **changes):
         "cluster_id": "",
         "machine_id": "ins-test",
         "resource_class": "cvm",
-        "instance_type": "T.MEDIUM4",
-        "cpu_cores": 2.0,
-        "memory_bytes": 4 * 1024**3,
     }
     if kind == "pod":
         result = {
@@ -116,8 +97,7 @@ def target(kind="machine", **changes):
             "namespace": "ci",
             "pod_uid": "uid-test",
             "pod_name": "test-1",
-            "node_query_kind": "node",
-            "node_query_value": "10.0.0.1",
+            "node_instance_id": "ins-pod",
             "cpu_request_cores": 4.0,
             "memory_request_bytes": 8 * 1024**3,
             "labels_json": {"test_project": "compatibility"},
@@ -125,22 +105,41 @@ def target(kind="machine", **changes):
     return {**result, **changes}
 
 
-def points(t, *, cpu=1, memory=1024):
+def points(t, *, start=START, cpu=None, memory=None):
+    machine = t["kind"] == "machine"
+    cpu = (50 if machine else 1) if cpu is None else cpu
+    memory = (25 if machine else 1024) if memory is None else memory
     return [
         {
             "entity": t.get("machine_id") or t["pod_uid"],
             "metric": metric,
-            "timestamp": START + timedelta(minutes=i),
+            "timestamp": start + timedelta(minutes=i),
             "value": value,
-            "unit": "absolute",
+            "unit": "percent" if machine else "absolute",
         }
         for i in range(10)
         for metric, value in (("cpu", cpu), ("memory", memory))
     ]
 
 
+def insert_context(engine, t, *, end=END):
+    with engine.begin() as connection:
+        return connection.execute(contexts.insert().values(
+            **{key: value for key, value in t.items() if key in contexts.c},
+            context_key=identity(t["pod_uid"], START),
+            observed_from=START,
+            observed_until=end,
+            planned_until=START,
+            expires_at=end + timedelta(days=1),
+        )).inserted_primary_key[0]
+
+
 def enqueued(engine, t=None):
-    store.enqueue_windows(engine, [(t or target(), START, END)], now=NOW)
+    if t and t["kind"] == "pod":
+        insert_context(engine, t)
+        store.plan_contexts(engine, now=NOW)
+    else:
+        store.enqueue_windows(engine, [(t or target(), START, END)], now=NOW)
     with engine.connect() as connection:
         return connection.execute(select(tasks)).mappings().one()
 
@@ -153,8 +152,12 @@ def test_schema_contains_only_machine_days_generic_workload_active_context_and_t
         "utilization_task",
     }
     assert not {"repo", "job_name", "scope", "week_start", "vendor"} & set(machines.c.keys())
-    assert not any("peak" in column.name for column in workloads.c)
-    assert "pod_uid" not in workloads.c
+    assert len(machines.c) == 13
+    assert len(workloads.c) == 11
+    assert list(workloads.primary_key.columns.keys()) == ["account_id", "usage_date", "group_key"]
+    assert len(tasks.c) == 13
+    assert not {"attempts", "updated_at"} & set(tasks.c.keys())
+    assert "node_instance_id" in contexts.c and "node_query_value" not in contexts.c
 
 
 def test_duplicate_enqueue_and_commit_are_exactly_once(engine):
@@ -167,8 +170,8 @@ def test_duplicate_enqueue_and_commit_are_exactly_once(engine):
     assert not store.complete_task(engine, task["id"], claimed["lease_token"], result, now=NOW)
     with engine.connect() as connection:
         fact = connection.execute(select(machines)).mappings().one()
-        assert fact["cpu_used"] == 600 and fact["cpu_capacity"] == 1200
-        assert fact["cpu_peak"] == 50
+        assert fact["cpu_percent_sum"] == 500 and fact["cpu_sample_minutes"] == 10
+        assert fact["cpu_peak_percent"] == 50
         assert connection.execute(select(tasks.c.status)).scalar_one() == "done"
     assert store.claim_task(engine, task["id"], now=NOW) is None
 
@@ -176,14 +179,14 @@ def test_duplicate_enqueue_and_commit_are_exactly_once(engine):
 @pytest.mark.parametrize("explicit_cluster", [True, False])
 def test_machine_window_extension_only_enqueues_unplanned_tail(engine, explicit_cluster):
     first_end = START + timedelta(minutes=15)
-    t = target(observed_from=START, observed_until=first_end)
+    t = target(observed_from=START, observed_until=first_end, cpu_cores=8, instance_type="old")
     if not explicit_cluster:
         t.pop("cluster_id")
     assert store.enqueue_windows(engine, [(t, START, first_end)], now=NOW) == {"planned": 1}
     (original,) = store.due_tasks(engine, now=NOW)
 
     clock = NOW + timedelta(minutes=10)
-    revised = {**t, "observed_until": NOW}
+    revised = {**t, "observed_until": NOW, "cpu_cores": 16, "instance_type": "new"}
     window = (revised, START, NOW)
     assert store.enqueue_windows(engine, [window], now=clock) == {"planned": 1}
     first, tail = sorted(store.due_tasks(engine, now=clock), key=lambda row: row["window_start"])
@@ -191,6 +194,9 @@ def test_machine_window_extension_only_enqueues_unplanned_tail(engine, explicit_
     assert (tail["window_start"], tail["window_end"]) == (first_end, NOW)
     contract = first["payload_json"]["contract_version"]
     assert tail["payload_json"] == first["payload_json"]
+    assert set(first["payload_json"]) == {
+        "region", "cluster_id", "machine_id", "resource_class", "contract_version"
+    }
     assert tail["id"] == identity(
         "machine",
         policy.ACCOUNT_ID,
@@ -209,22 +215,17 @@ def test_machine_window_extension_only_enqueues_unplanned_tail(engine, explicit_
     assert store.load_state(engine)["retained_rows"] == 2
 
 
-def test_machine_window_extends_multiple_fragments_with_legacy_snapshot(engine):
+def test_machine_window_extends_multiple_retained_fragments(engine):
     t = target()
     second_end = END + timedelta(minutes=10)
-    # Insert in reverse order, then model an older checkpoint with saved bill bounds.
+    # Insert in reverse order and confirm even terminal checkpoints form a safe prefix.
     assert store.enqueue_windows(engine, [(t, END, second_end), (t, START, END)], now=NOW) == {
         "planned": 2
     }
     first = min(store.due_tasks(engine, now=NOW), key=lambda row: row["window_start"])
-    legacy_payload = {**first["payload_json"], "observed_from": str(START), "observed_until": str(END)}
-    with engine.begin() as connection:
-        connection.execute(
-            tasks.update().where(tasks.c.id == first["id"]).values(payload_json=legacy_payload)
-        )
     claim = store.claim_task(engine, first["id"], now=NOW)
     assert store.complete_task(
-        engine, first["id"], claim["lease_token"], summarize_window([], t, START, END), now=NOW
+        engine, first["id"], claim["lease_token"], summarize_window(points(t), t, START, END), now=NOW
     )
 
     revised = target(observed_from=START, observed_until=NOW)
@@ -246,24 +247,25 @@ def test_machine_window_extends_multiple_fragments_with_legacy_snapshot(engine):
     assert store.load_state(engine)["retained_rows"] == 4  # three tasks and one fact
 
 
-@pytest.mark.parametrize("conflict", ["shrink", "shift", "gap", "capacity", "contract", "pod"])
+@pytest.mark.parametrize("conflict", ["shrink", "shift", "gap", "class", "contract"])
 def test_window_overlap_without_equal_machine_prefix_rolls_back_batch(engine, conflict):
-    t = target("pod" if conflict == "pod" else "machine")
+    t = target()
     enqueued(engine, t)
     start = START + timedelta(minutes=1) if conflict == "shift" else START
     end = END - timedelta(minutes=1) if conflict == "shrink" else NOW
-    if conflict in {"gap", "capacity", "contract"}:
+    if conflict in {"gap", "class", "contract"}:
         second_start = END + timedelta(minutes=1) if conflict == "gap" else END
-        second_target = {**t, "cpu_cores": 4} if conflict == "capacity" else t
         second_end = END + timedelta(minutes=10)
-        store.enqueue_windows(engine, [(second_target, second_start, second_end)], now=NOW)
-        if conflict == "contract":
+        store.enqueue_windows(engine, [(t, second_start, second_end)], now=NOW)
+        if conflict != "gap":
             with engine.begin() as connection:
-                connection.execute(
-                    tasks.update()
-                    .where(tasks.c.window_start == second_start)
-                    .values(payload_json={**t, "contract_version": "older"})
-                )
+                task = tasks.c.window_start == second_start
+                payload = connection.execute(select(tasks.c.payload_json).where(task)).scalar_one()
+                if conflict == "class":
+                    payload["resource_class"] = "tke_native"
+                else:
+                    payload["contract_version"] = "older"
+                connection.execute(tasks.update().where(task).values(payload_json=payload))
     before = store.due_tasks(engine, now=NOW)
     # An earlier insert in the same candidate batch must not commit on a conflict.
     with pytest.raises(ValueError, match="overlapping task windows"):
@@ -294,8 +296,123 @@ def test_workload_labels_not_fixed_job_and_no_instance_persistence(engine):
     with engine.connect() as connection:
         row = connection.execute(select(workloads)).mappings().one()
         assert row["labels_json"] == {"test_project": "compatibility"}
-        assert row["cpu_used"] / row["cpu_capacity"] == 0.25
+        assert row["cpu_used"] / row["cpu_requested"] == 0.25
+        assert row["expected_pod_minutes"] == 10
         assert connection.execute(select(machines)).first() is None
+
+
+def test_pod_claim_reads_immutable_context_and_combines_requests_by_label(engine):
+    old = target("pod", node_instance_id="ins-old")
+    new = {**old, "node_instance_id": "ins-new", "cpu_request_cores": 8.0,
+           "memory_request_bytes": None}
+    old_id = insert_context(engine, old)
+    with engine.begin() as connection:
+        connection.execute(contexts.update().where(contexts.c.id == old_id).values(closed_at=END))
+        connection.execute(contexts.insert().values(
+            **{key: value for key, value in new.items() if key in contexts.c},
+            context_key=identity(new["pod_uid"], END), observed_from=END,
+            observed_until=END + timedelta(minutes=10), planned_until=END,
+            expires_at=NOW + timedelta(days=1),
+        ))
+    assert store.plan_contexts(engine, now=NOW)["planned"] == 2
+    pending = sorted(store.due_tasks(engine, now=NOW), key=lambda row: row["window_start"])
+    for task, observed in zip(pending, (old, new), strict=True):
+        assert task["payload_json"] == {"contract_version": profile()["pod_contract_version"]}
+        claim = store.claim_task(engine, task["id"], now=NOW)
+        payload = claim["payload_json"]
+        assert payload == {**observed, **task["payload_json"]}
+        start, end = task["window_start"], task["window_end"]
+        values = summarize_window(points(observed, start=start), payload, start, end)
+        assert store.complete_task(engine, task["id"], claim["lease_token"], values, now=NOW)
+    with engine.connect() as connection:
+        row = connection.execute(select(workloads)).mappings().one()
+        assert row["group_key"] == identity(old["labels_json"])
+        assert row["expected_pod_minutes"] == row["cpu_matched_pod_minutes"] == 20
+        assert row["cpu_used"] == 1200 and row["cpu_requested"] == 7200
+        assert row["memory_matched_pod_minutes"] == 10
+        assert row["memory_used"] == 600 * 1024
+        assert row["memory_requested"] == 600 * 8 * 1024**3
+
+
+def test_pod_work_cannot_be_created_without_context(engine):
+    with pytest.raises(ValueError, match="require an enabled, in-scope historical context"):
+        store.enqueue_windows(engine, [(target("pod"), START, END)], now=NOW)
+    assert store.due_tasks(engine, now=NOW) == []
+
+
+def test_machine_only_then_pod_stop_drains_before_reopening(empty_engine):
+    engine = empty_engine
+    machine_only = profile(pod=False)
+    for key in ("pod_collection_enabled", "labels", "namespaces"):
+        del machine_only[key]
+    default = configure(engine, machine_only, now=START - timedelta(hours=1))
+    assert default["version"] == 3 and default["enabled"] and not default["pod_collection_enabled"]
+    assert "pod" not in default["contracts"] and "pod_contract_version" not in default
+    store.maintain(engine, now=NOW)
+    assert store.plan_contexts(engine, now=NOW) == {"planned": 0}
+    machine = enqueued(engine)
+
+    active = configure(engine, profile(), now=START)
+    assert active["pod_collection_enabled"] and active["contract_version"] == default["contract_version"]
+    pod = target("pod")
+    ctx_id = insert_context(engine, pod)
+    assert store.plan_contexts(engine, now=NOW) == {"planned": 1}
+    with engine.begin() as connection:
+        # Stop does not extend evidence to the toggle clock or count a partial minute.
+        last_confirmed = END + timedelta(minutes=3, seconds=59)
+        connection.execute(contexts.update().values(observed_until=last_confirmed))
+        task_id = connection.execute(select(tasks.c.id).where(tasks.c.kind == "pod")).scalar_one()
+    stop = NOW + timedelta(seconds=15)
+    off = configure(engine, machine_only, now=stop)
+    assert not off["pod_collection_enabled"] and off["enabled"] and off["pod_stop_at"].endswith("+00:00")
+    assert policy.utc_naive(off["pod_stop_at"]) == stop
+    assert off["pod_contract_version"] == active["pod_contract_version"]
+    assert configure(engine, machine_only, now=stop + timedelta(seconds=1))["pod_stop_at"] == off["pod_stop_at"]
+    replacement = profile(pod_horizon=12 * 86400)
+    with pytest.raises(ValueError, match="drain Pod"):
+        configure(engine, replacement, now=stop)
+    assert store.plan_contexts(engine, now=stop) == {"planned": 0}
+    assert {task["id"] for task in store.due_tasks(engine, now=stop)} == {task_id, machine["id"]}
+    store.maintain(engine, now=stop)
+    with engine.connect() as connection:
+        row = connection.execute(select(contexts).where(contexts.c.id == ctx_id)).mappings().one()
+        assert row["closed_at"] == row["observed_until"] == last_confirmed
+        assert connection.execute(select(workloads.c.expected_pod_minutes)).scalar_one() == 3
+    assert store.load_state(engine)["pod_contract_version"] == active["pod_contract_version"]
+    claimed = store.claim_task(engine, task_id, now=stop)
+    assert claimed["payload_json"]["contract_version"] == active["pod_contract_version"]
+    values = summarize_window(points(pod), claimed["payload_json"], START, END)
+    assert store.complete_task(engine, task_id, claimed["lease_token"], values, now=stop)
+    store.maintain(engine, now=stop)
+    assert store.claim_task(engine, task_id, now=stop) is None
+    assert "pod_contract_version" not in store.load_state(engine)
+    with engine.connect() as connection:
+        row = connection.execute(select(workloads)).mappings().one()
+        assert row["expected_pod_minutes"] == 13 and row["cpu_matched_pod_minutes"] == 10
+    reopen = stop + timedelta(minutes=10)
+    active = configure(engine, replacement, now=reopen)
+    assert active["pod_contract_version"] == replacement["pod_contract_version"]
+    assert active["contract_version"] == default["contract_version"]
+    assert policy.utc_naive(active["pod_start_at"]) == reopen
+
+
+def test_no_observation_creates_no_machine_fact_but_real_zero_does(engine):
+    t = target()
+    store.enqueue_windows(engine, [(t, START, END), (t, END, END + timedelta(minutes=10))], now=NOW)
+    first, second = sorted(store.due_tasks(engine, now=NOW), key=lambda row: row["window_start"])
+    claimed = store.claim_task(engine, first["id"], now=NOW)
+    assert store.complete_task(engine, first["id"], claimed["lease_token"],
+                               summarize_window([], t, START, END), now=NOW)
+    with engine.connect() as connection:
+        assert connection.execute(select(machines)).first() is None
+    claimed = store.claim_task(engine, second["id"], now=NOW)
+    samples = [point for point in points(t, start=END, cpu=0) if point["metric"] == "cpu"]
+    values = summarize_window(samples, t, END, END + timedelta(minutes=10))
+    assert store.complete_task(engine, second["id"], claimed["lease_token"], values, now=NOW)
+    with engine.connect() as connection:
+        row = connection.execute(select(machines)).mappings().one()
+        assert row["cpu_sample_minutes"] == 10 and row["cpu_peak_percent"] == 0
+        assert row["memory_sample_minutes"] == 0 and row["memory_peak_percent"] is None
 
 
 def test_failure_persisted_before_message_ack_and_retry(engine):
@@ -312,18 +429,19 @@ def test_failure_persisted_before_message_ack_and_retry(engine):
         assert connection.execute(select(machines)).first() is None
 
 
-def test_transient_failures_retry_beyond_five_attempts_then_recover(engine):
+def test_transient_failures_retry_at_fixed_interval_then_recover(engine):
     task = enqueued(engine)
     reader = Mock()
     reader.window.side_effect = RuntimeError("upstream")
     clock = NOW
-    for attempt in range(1, 13):
+    for _ in range(12):
         assert runner.work_one(engine, profile(), task["id"], now=clock, reader=reader) == "retry"
         with engine.connect() as connection:
             row = connection.execute(select(tasks)).mappings().one()
-            assert row["status"] == "retry" and row["attempts"] == attempt
+            assert row["status"] == "retry"
             assert row["deadline_at"] == task["deadline_at"]
-            assert row["due_at"] == clock + timedelta(seconds=min(300, 2**attempt))
+            assert row["due_at"] == clock + timedelta(minutes=5)
+            assert row["dispatched_at"] is None
             assert connection.execute(select(machines)).first() is None
         clock = row["due_at"]
     reader.window.side_effect = None
@@ -331,11 +449,10 @@ def test_transient_failures_retry_beyond_five_attempts_then_recover(engine):
     assert runner.work_one(engine, profile(), task["id"], now=clock, reader=reader) == "done"
     with engine.connect() as connection:
         row = connection.execute(select(machines)).mappings().one()
-        assert row["cpu_observed_seconds"] == 600
-        assert "collection_failed" not in row["quality_json"]
+        assert row["cpu_sample_minutes"] == 10
 
 
-def test_retry_remains_open_until_deadline_then_maintenance_records_gap(engine):
+def test_machine_retry_caps_due_at_deadline_then_expires_without_fact(engine):
     task = enqueued(engine)
     deadline = NOW + timedelta(seconds=20)
     with engine.begin() as connection:
@@ -343,13 +460,11 @@ def test_retry_remains_open_until_deadline_then_maintenance_records_gap(engine):
     claim = store.claim_task(engine, task["id"], now=NOW)
     assert store.fail_task(engine, task["id"], claim["lease_token"], now=NOW)
     with engine.connect() as connection:
-        assert connection.execute(select(tasks.c.status)).scalar_one() == "retry"
+        assert connection.execute(select(tasks.c.status, tasks.c.due_at)).one() == ("retry", deadline)
         assert connection.execute(select(machines)).first() is None
     store.maintain(engine, now=deadline)
     with engine.connect() as connection:
-        row = connection.execute(select(machines)).mappings().one()
-        assert row["cpu_observed_seconds"] == 0 and row["cpu_expected_seconds"] == 600
-        assert "collection_failed" in row["quality_json"]
+        assert connection.execute(select(machines)).first() is None
         assert connection.execute(select(tasks)).first() is None
 
 
@@ -488,7 +603,10 @@ def test_ineligible_contexts_do_not_consume_dispatch_batch(engine, blocked):
     store.maintain(engine, now=clock)
     with engine.connect() as connection:
         task = connection.execute(select(tasks)).mappings().one()
-        assert task["payload_json"]["pod_uid"] == row["pod_uid"]
+        assert task["payload_json"] == {"contract_version": profile()["pod_contract_version"]}
+        assert connection.execute(select(contexts.c.pod_uid).where(
+            contexts.c.id == task["context_id"]
+        )).scalar_one() == row["pod_uid"]
         if blocked == "no_whole_minute":
             assert connection.execute(select(contexts.c.pod_uid)).scalars().all() == [row["pod_uid"]]
 
@@ -532,18 +650,21 @@ def test_at_row_headroom_zero_existing_fact_can_still_be_updated(engine, monkeyp
             # updates that day without creating a fourth row.
             monkeypatch.setattr(policy, "ROW_LIMIT", 4)
         claim = store.claim_task(engine, task["id"], now=NOW)
-        result = summarize_window([], t, task["window_start"], task["window_end"])
+        start, end = task["window_start"], task["window_end"]
+        result = summarize_window(points(t, start=start, cpu=0 if index else 50), t, start, end)
         assert store.complete_task(engine, task["id"], claim["lease_token"], result, now=NOW)
     with engine.connect() as connection:
-        assert connection.execute(select(machines.c.cpu_expected_seconds)).scalar_one() == 1200
+        row = connection.execute(select(machines)).mappings().one()
+        assert row["cpu_sample_minutes"] == 20
+        assert row["cpu_percent_sum"] == 500 and row["cpu_peak_percent"] == 50
     assert store.load_state(engine)["retained_rows"] == 3
 
 
 def test_machine_bill_conflict_survives_partition_roll_and_requires_joint_replay(engine):
     day = policy.usage_date(START)
     prior = day - timedelta(days=1)
-    old = {**target(), "observed_from": START, "observed_until": END}
-    corrected = {**old, "cpu_cores": 4}
+    corrected = {**target(), "observed_from": START, "observed_until": END}
+    old = {**corrected, "resource_class": "tke_native"}
     reader = Mock(stats={})
     snapshots = {prior: [old], day: [corrected]}
     reader.billing_candidates.side_effect = lambda part, **_: snapshots[part]
@@ -584,7 +705,7 @@ def test_machine_billing_generation_fences_unresolved_scans_and_prior_write_atte
     for generation in (before, pending):
         with pytest.raises(ValueError, match="conflicts changed during scan"):
             store.enqueue_windows(engine, [(target(), START, END)], billing_generation=generation, now=NOW)
-    assert store.enqueue_windows(engine, [(target(cpu_cores=4), START, END)],
+    assert store.enqueue_windows(engine, [(target(), START, END)],
                                  billing_generation=resolved, now=NOW)["planned"] == 1
 
 
@@ -596,7 +717,8 @@ def test_shifted_machine_window_cannot_reopen_a_day_after_checkpoint_purge(engin
     task = store.due_tasks(engine, now=NOW)[0]
     claimed = store.claim_task(engine, task["id"], now=NOW)
     assert store.complete_task(
-        engine, task["id"], claimed["lease_token"], summarize_window([], t, start, end), now=NOW
+        engine, task["id"], claimed["lease_token"],
+        summarize_window(points(t, start=start), t, start, end), now=NOW
     )
     expired = task["deadline_at"]
     store.maintain(engine, now=expired)
@@ -606,7 +728,7 @@ def test_shifted_machine_window_cannot_reopen_a_day_after_checkpoint_purge(engin
         store.enqueue_windows(engine, [(t, start + timedelta(minutes=15), end)], now=expired)
     with engine.connect() as connection:
         assert connection.execute(select(tasks)).first() is None
-        assert connection.execute(select(machines.c.cpu_expected_seconds)).scalar_one() == 1800
+        assert connection.execute(select(machines.c.cpu_sample_minutes)).scalar_one() == 10
 
 
 def test_machine_prefix_does_not_reopen_usage_day_after_checkpoint_purge(engine):
@@ -626,20 +748,23 @@ def test_machine_prefix_does_not_reopen_usage_day_after_checkpoint_purge(engine)
     with pytest.raises(ValueError, match="usage day has expired"):
         store.enqueue_windows(engine, [(t, start, end + timedelta(minutes=5))], now=clock)
     assert store.due_tasks(engine, now=clock) == retained
-    assert store.load_state(engine)["retained_rows"] == 3  # two tasks and one fact
+    assert store.load_state(engine)["retained_rows"] == 2  # two tasks, no machine fact
 
 
 def test_expired_source_window_records_missing_before_task_purge(engine):
-    enqueued(engine)
+    task = enqueued(engine, target("pod"))
     later = NOW + timedelta(hours=1)
     with engine.begin() as connection:
         connection.execute(tasks.update().values(deadline_at=NOW - timedelta(seconds=1)))
     store.maintain(engine, now=later)
     with engine.connect() as connection:
-        row = connection.execute(select(machines)).mappings().one()
-        assert row["cpu_expected_seconds"] == 600 and row["cpu_observed_seconds"] == 0
-        assert "collection_failed" in row["quality_json"]
+        row = connection.execute(select(workloads)).mappings().one()
+        assert row["expected_pod_minutes"] == 10 and row["cpu_matched_pod_minutes"] == 0
         assert connection.execute(select(tasks)).first() is None
+    assert store.claim_task(engine, task["id"], now=later) is None
+    store.maintain(engine, now=later)
+    with engine.connect() as connection:
+        assert connection.execute(select(workloads.c.expected_pod_minutes)).scalar_one() == 10
 
 
 @pytest.mark.parametrize(
@@ -661,6 +786,7 @@ def test_maintenance_drains_expired_tasks_before_purging_their_population(engine
         connection.execute(tasks.delete())
         context_id = None
         if kind == "pod":
+            connection.execute(contexts.delete())
             context_id = connection.execute(
                 contexts.insert().values(
                     **{k: v for k, v in t.items() if k not in {"kind", "region"}},
@@ -706,12 +832,14 @@ def test_maintenance_drains_expired_tasks_before_purging_their_population(engine
             .mappings()
             .one()
         )
-        for metric in policy.METRICS:
-            assert row[f"{metric}_expected_seconds"] == 2400
-            assert row[f"{metric}_observed_seconds"] == 600
-        assert row["cpu_expected_capacity"] == 2400 * (2 if kind == "machine" else 4)
-        assert row["memory_expected_capacity"] == 2400 * (4 if kind == "machine" else 8) * 1024**3
-        assert "collection_failed" in row["quality_json"]
+        if kind == "machine":
+            assert row["cpu_sample_minutes"] == row["memory_sample_minutes"] == 10
+            assert row["cpu_percent_sum"] == 500 and row["memory_percent_sum"] == 250
+        else:
+            assert row["expected_pod_minutes"] == 40
+            assert row["cpu_matched_pod_minutes"] == row["memory_matched_pod_minutes"] == 10
+            assert row["cpu_requested"] == 600 * 4
+            assert row["memory_requested"] == 600 * 8 * 1024**3
         assert connection.execute(select(tasks)).first() is None
         assert connection.execute(select(contexts)).first() is None
 
@@ -739,7 +867,7 @@ def test_live_context_still_plans_source_expired_windows_for_missing_accounting(
     store.maintain(engine, now=NOW)
     with engine.connect() as connection:
         row = connection.execute(select(workloads)).mappings().one()
-        assert row["cpu_expected_seconds"] == 600 and row["cpu_observed_seconds"] == 0
+        assert row["expected_pod_minutes"] == 10 and row["cpu_matched_pod_minutes"] == 0
         assert (
             connection.execute(select(contexts.c.planned_until)).scalar_one() == task["window_end"]
         )
@@ -761,18 +889,10 @@ def test_expired_unplanned_context_tail_lowers_prior_workload_coverage(engine, c
     tail_end = END + timedelta(minutes=20, seconds=47)
     later = NOW + timedelta(hours=25)
     with engine.begin() as connection:
-        context_id = connection.execute(
-            contexts.insert().values(
-                **{k: v for k, v in t.items() if k not in {"kind", "region"}},
-                context_key="e" * 64,
-                observed_from=START,
-                observed_until=tail_end,
-                planned_until=END,
-                closed_at=tail_end if closed else None,
-                expires_at=NOW + timedelta(hours=24),
-            )
-        ).inserted_primary_key[0]
-        connection.execute(tasks.update().values(context_id=context_id))
+        connection.execute(contexts.update().where(contexts.c.id == task["context_id"]).values(
+            observed_until=tail_end, closed_at=tail_end if closed else None,
+            expires_at=NOW + timedelta(hours=24),
+        ))
         state = store._state(connection)
         state.update(paused=True, pause_reasons=["cleanup_backlog"])
         store._save(connection, state)
@@ -782,19 +902,12 @@ def test_expired_unplanned_context_tail_lowers_prior_workload_coverage(engine, c
     store.maintain(engine, now=later)
     with engine.connect() as connection:
         row = connection.execute(select(workloads)).mappings().one()
+        assert row["expected_pod_minutes"] == 30
         for metric in policy.METRICS:
-            assert row[f"{metric}_expected_seconds"] == 1800
-            assert row[f"{metric}_observed_seconds"] == 600
-            assert row[f"{metric}_usage_seconds"] == 600
-            assert min(
-                row[f"{metric}_capacity"] / row[f"{metric}_expected_capacity"],
-                row[f"{metric}_observed_seconds"] / row[f"{metric}_expected_seconds"],
-            ) == pytest.approx(1 / 3)
-        assert row["cpu_expected_capacity"] == 1800 * 4
-        assert row["memory_expected_capacity"] == 1800 * 8 * 1024**3
+            assert row[f"{metric}_matched_pod_minutes"] / row["expected_pod_minutes"] == pytest.approx(1 / 3)
+        assert row["cpu_requested"] == 600 * 4
+        assert row["memory_requested"] == 600 * 8 * 1024**3
         assert row["cpu_used"] == 600
-        assert "collection_failed" in row["quality_json"]
-        assert row["cutoff"] == START + timedelta(minutes=30)
         assert connection.execute(select(contexts)).first() is None
         assert connection.execute(select(tasks)).first() is None
 
@@ -849,8 +962,8 @@ def test_expired_unplanned_tail_drains_in_bounded_atomic_day_windows(engine, mon
                 .mappings()
                 .all()
             )
-            total_seconds = sum(row["cpu_expected_seconds"] for row in rows)
-            assert total_seconds == sum((end - start).total_seconds() for start, end in windows)
+            total_minutes = sum(row["expected_pod_minutes"] for row in rows)
+            assert total_minutes == sum((end - start) // timedelta(minutes=1) for start, end in windows)
             assert connection.execute(select(tasks)).first() is None
     assert len(windows) == len(set(windows))
     assert windows[0][0] == datetime(2026, 11, 25, 15, 58)
@@ -863,11 +976,9 @@ def test_expired_unplanned_tail_drains_in_bounded_atomic_day_windows(engine, mon
         rows = (
             connection.execute(select(workloads).order_by(workloads.c.usage_date)).mappings().all()
         )
-        assert [row["cpu_expected_seconds"] for row in rows] == [120, 53 * 60]
+        assert [row["expected_pod_minutes"] for row in rows] == [2, 53]
         for row in rows:
-            assert row["cpu_unknown_seconds"] == row["cpu_expected_seconds"]
-            assert row["memory_zero_seconds"] == row["memory_expected_seconds"]
-            assert row["cpu_observed_seconds"] == row["memory_observed_seconds"] == 0
+            assert row["cpu_matched_pod_minutes"] == row["memory_matched_pod_minutes"] == 0
     store.maintain(engine, now=later, batch_size=2)
     assert len(windows) == 7
 
@@ -909,7 +1020,7 @@ def test_expired_tail_window_budget_is_shared_across_contexts(engine, monkeypatc
     assert len(applied) == len(set(applied)) == 6
     with engine.connect() as connection:
         assert connection.execute(select(contexts)).first() is None
-        assert connection.execute(select(workloads.c.cpu_expected_seconds)).scalar_one() == 3600
+        assert connection.execute(select(workloads.c.expected_pod_minutes)).scalar_one() == 60
 
 
 def test_expired_tail_does_not_overlap_pending_task_expiry(engine):
@@ -918,29 +1029,20 @@ def test_expired_tail_does_not_overlap_pending_task_expiry(engine):
     tail_end = END + timedelta(minutes=20)
     later = NOW + timedelta(hours=25)
     with engine.begin() as connection:
-        context_id = connection.execute(
-            contexts.insert().values(
-                **{k: v for k, v in t.items() if k not in {"kind", "region"}},
-                context_key="1" * 64,
-                observed_from=START,
-                observed_until=tail_end,
-                planned_until=END,
-                closed_at=tail_end,
-                expires_at=NOW + timedelta(hours=24),
-            )
-        ).inserted_primary_key[0]
-        connection.execute(tasks.update().values(context_id=context_id))
+        connection.execute(contexts.update().where(contexts.c.id == task["context_id"]).values(
+            observed_until=tail_end, closed_at=tail_end, expires_at=NOW + timedelta(hours=24),
+        ))
     for _ in range(2):
         store.maintain(engine, now=later, batch_size=1)
     with engine.connect() as connection:
         row = connection.execute(select(workloads)).mappings().one()
-        assert row["cpu_expected_seconds"] == row["memory_expected_seconds"] == 1800
-        assert row["cpu_observed_seconds"] == 0
+        assert row["expected_pod_minutes"] == 30
+        assert row["cpu_matched_pod_minutes"] == 0
         assert connection.execute(select(contexts)).first() is None
         assert connection.execute(select(tasks).where(tasks.c.id == task["id"])).first() is None
     store.maintain(engine, now=later, batch_size=1)
     with engine.connect() as connection:
-        assert connection.execute(select(workloads.c.cpu_expected_seconds)).scalar_one() == 1800
+        assert connection.execute(select(workloads.c.expected_pod_minutes)).scalar_one() == 30
 
 
 def test_expired_tail_skips_out_of_retention_workload_days(engine):
@@ -969,8 +1071,8 @@ def test_expired_tail_skips_out_of_retention_workload_days(engine):
     with engine.connect() as connection:
         row = connection.execute(select(workloads)).mappings().one()
         assert row["usage_date"] == policy.usage_date(retained_start)
-        assert row["cpu_expected_seconds"] == row["memory_expected_seconds"] == 600
-        assert row["cpu_observed_seconds"] == 0
+        assert row["expected_pod_minutes"] == 10
+        assert row["cpu_matched_pod_minutes"] == 0
         assert connection.execute(select(contexts)).first() is None
 
 
@@ -1089,7 +1191,8 @@ def test_maintenance_pauses_for_overdue_task_or_workload(engine, kind):
     else:
         for i in range(2):
             t = target("pod", pod_uid=f"uid-{i}", labels_json={"test_project": f"proj-{i}"})
-            store.enqueue_windows(engine, [(t, START, END)], now=NOW)
+            insert_context(engine, t)
+        store.plan_contexts(engine, now=NOW)
         for task in store.due_tasks(engine, now=NOW):
             claim = store.claim_task(engine, task["id"], now=NOW)
             assert store.complete_task(
@@ -1100,7 +1203,7 @@ def test_maintenance_pauses_for_overdue_task_or_workload(engine, kind):
                 now=NOW,
             )
         with engine.begin() as connection:
-            connection.execute(workloads.update().values(expires_at=NOW - timedelta(hours=5)))
+            connection.execute(workloads.update().values(usage_date=policy.workload_start_date(NOW) - timedelta(days=1)))
     assert store.maintain(engine, now=NOW, max_rows=1, batch_size=1)["paused"]
     assert store.load_state(engine)["pause_reasons"] == ["cleanup_backlog"]
     assert not store.maintain(engine, now=NOW)["paused"]

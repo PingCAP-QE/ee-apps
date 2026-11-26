@@ -247,11 +247,13 @@ class _KubernetesClient:
     def list_collection(self, *, namespace_name: str, resource: str) -> tuple[list[dict[str, Any]], str | None]:
         return self._list_pages(namespace_name=namespace_name, resource=resource)
 
-    def list_nodes(self) -> tuple[list[dict[str, Any]], str | None]:
+    def list_nodes(self, *, check_admission: Callable[[], None]) -> tuple[list[dict[str, Any]], str | None]:
         """Nodes are cluster scoped, never /namespaces/.../nodes."""
-        return self._list_pages(namespace_name=None, resource="nodes")
+        return self._list_pages(namespace_name=None, resource="nodes", check_admission=check_admission)
 
-    def _list_pages(self, *, namespace_name: str | None, resource: str) -> tuple[list[dict[str, Any]], str | None]:
+    def _list_pages(
+        self, *, namespace_name: str | None, resource: str, check_admission: Callable[[], None] | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
         items: list[dict[str, Any]] = []
         continue_token: str | None = None
         resource_version: str | None = None
@@ -265,6 +267,9 @@ class _KubernetesClient:
             if continue_token:
                 query["continue"] = continue_token
             for auth_attempt in range(2):
+                # Recheck even on continuation pages or a token retry after a cut.
+                if check_admission is not None:
+                    check_admission()
                 try:
                     response = _get_json(
                         self._collection_url(namespace_name=namespace_name, resource=resource, query=query),
@@ -395,8 +400,15 @@ def run_watch_pods(
         }
         mark_job_started(connection, context.job_name, watermark)
 
-    node_cache = (utilization_metadata.NodeSelectorCache()
-                  if utilization_metadata.enabled(context.source_project) else None)
+    node_cache = None
+    if namespaces and utilization_metadata.enabled(context.source_project):
+        # ponytail: enable requires restarting the watcher, not a new poller.
+        try:
+            utilization_metadata.configured_label_keys()
+            utilization_metadata.require_pod_collection(engine)
+            node_cache = utilization_metadata.NodeSelectorCache()
+        except Exception as exc:
+            logger.info("utilization not started; restart after enabling a healthy V3 guard: %s", exc)
     threads: list[threading.Thread] = []
     for namespace_name in namespaces:
         pod_stream_key = _stream_key(namespace_name, "pods")
@@ -453,11 +465,11 @@ def run_watch_pods(
             )
         )
 
-    if utilization_metadata.enabled(context.source_project):
+    if node_cache is not None:
         threads.append(threading.Thread(
             target=_run_utilization_node_worker,
             name="utilization-node-list",
-            kwargs={"node_cache": node_cache, "client": client, "stop_event": stop_event},
+            kwargs={"engine": engine, "node_cache": node_cache, "client": client, "stop_event": stop_event},
             daemon=True,
         ))
 
@@ -525,7 +537,7 @@ def _run_pod_worker(
     node_cache: utilization_metadata.NodeSelectorCache | None = None,
 ) -> None:
     exporter = None
-    if utilization_metadata.enabled(context.source_project):
+    if node_cache is not None and not node_cache.disabled:
         try:
             exporter = utilization_metadata.MetadataExporter(engine, node_cache=node_cache)
         except ValueError:
@@ -553,7 +565,7 @@ def _run_pod_worker(
 
     def export_objects(objects, rows, *, deleted=False):
         nonlocal pending_count, pending_since, watch_continuous
-        if exporter is None:
+        if exporter is None or node_cache.disabled:
             return
         seen_at = time.monotonic()
         by_uid = {obj.get("metadata", {}).get("uid"): obj for obj in objects}
@@ -582,6 +594,9 @@ def _run_pod_worker(
                 watch_continuous = False
 
     while not stop_event.is_set():
+        if exporter is not None and node_cache.disabled:
+            exporter = None
+            resume_watch = False
         watch_continuous = True
         try:
             if not resume_watch:
@@ -712,6 +727,9 @@ def _export_utilization(exporter, records, *, deleted=False, heartbeat=False) ->
     try:
         exporter.observe(records, at=utilization_metadata.utc_now(), deleted=deleted, heartbeat=heartbeat)
         return True
+    except utilization_metadata.PodCollectionDisabled:
+        logger.info("utilization Pod collection stopped; restart after enabling the V3 guard")
+        return False
     except Exception:
         # No backlog and no lifecycle failure when the independent utilization guard is closed.
         exporter.reset()
@@ -719,14 +737,23 @@ def _export_utilization(exporter, records, *, deleted=False, heartbeat=False) ->
         return False
 
 
-def _run_utilization_node_worker(*, node_cache, client, stop_event) -> None:
+def _run_utilization_node_worker(*, engine, node_cache, client, stop_event) -> None:
+    def check_admission():
+        if node_cache.disabled:
+            raise utilization_metadata.PodCollectionDisabled("utilization Pod collection already stopped")
+        utilization_metadata.require_pod_collection(engine)
+
     while not stop_event.is_set():
         try:
             # A paginated, Most Recent LIST takes its snapshot at the first
             # request, which must follow the Pod evidence for a new binding.
             listed_at = time.monotonic()
-            items, _ = client.list_nodes()
+            items, _ = client.list_nodes(check_admission=check_admission)
             node_cache.refresh(items, listed_at=listed_at)
+        except utilization_metadata.PodCollectionDisabled:
+            node_cache.clear(disable=True)
+            logger.info("utilization Node LIST stopped; restart after enabling the V3 guard")
+            return
         except Exception:
             node_cache.clear()
             logger.warning("utilization Node LIST unavailable; selector cache cleared", exc_info=True)

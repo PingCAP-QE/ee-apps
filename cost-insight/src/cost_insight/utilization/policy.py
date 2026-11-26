@@ -1,4 +1,4 @@
-"""Small V2 clock, source-window and fail-closed admission rules."""
+"""V3 clock, source-window and fail-closed admission rules."""
 
 import math
 import re
@@ -8,12 +8,11 @@ from zoneinfo import ZoneInfo
 BEIJING = ZoneInfo("Asia/Shanghai")
 ACCOUNT_ID = "100050658403"
 GUARD_KEY = f"utilization:tencent:{ACCOUNT_ID}"
+GUARD_VERSION = 3
+RETRY_INTERVAL = timedelta(minutes=5)
 ROW_WARNING, ROW_LIMIT = 1_000_000, 2_000_000
 BYTE_WARNING, BYTE_LIMIT = 4 * 1024**3, 8 * 1024**3
 METRICS = ("cpu", "memory")
-LABEL_KEYS = frozenset(
-    {"repo", "job", "test_project", "test_suite", "environment", "project", "service"}
-)
 PERSONAL_KEYS = frozenset(
     {"author", "owner", "email", "user", "username", "employee", "employee_id"}
 )
@@ -23,13 +22,13 @@ def label_keys(keys):
     if (
         not isinstance(keys, list)
         or not 1 <= len(keys) <= 32
-        or len(set(keys)) != len(keys)
         or any(
             not isinstance(key, str)
             or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,62}", key)
             or key.lower() in PERSONAL_KEYS
             for key in keys
         )
+        or len(set(keys)) != len(keys)
     ):
         raise ValueError("explicit bounded non-personal label keys required")
     return keys
@@ -52,6 +51,12 @@ def usage_date(value):
 def expires_at(day):
     day = usage_date(day) if isinstance(day, datetime) else day
     return day_start(day - timedelta(days=day.weekday()) + timedelta(days=14))
+
+
+def workload_start_date(now):
+    """First retained Beijing usage day (Monday of the previous week)."""
+    day = usage_date(now)
+    return day - timedelta(days=day.weekday() + 7)
 
 
 def finite(value, *, nullable=False):
@@ -77,7 +82,7 @@ def validate_source_window(entry):
 def health(state, now, *, projected_rows=None):
     now = utc_naive(now)
     reasons, warnings = [], []
-    if state.get("version") != 2 or not state.get("enabled"):
+    if state.get("version") != GUARD_VERSION or not state.get("enabled"):
         reasons.append("disabled_or_unconfigured")
     if state.get("paused"):
         reasons.append("paused")

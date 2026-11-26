@@ -5,13 +5,13 @@
   "cluster_id": "cls-9zpon9y1",
   "namespaces": ["prow-test-pods", "jenkins-agents", "jenkins-pd", "jenkins-ticdc", "jenkins-tidb", "jenkins-tiflash", "jenkins-tiflow", "jenkins-tikv"],
   "labels": ["repo", "job", "test_project", "test_suite", "environment", "project", "service"],
+  "pod_collection_enabled": false,
   "measurement": {
     "verified_horizon_seconds": 0,
     "safety_margin_seconds": 3600,
     "source_scales": {
       "cvm": {"cpu": 0, "memory": 0},
-      "tke_native": {"cpu": 0, "memory": 0},
-      "pod": {"cpu": 0, "memory": 0}
+      "tke_native": {"cpu": 0, "memory": 0}
     },
     "horizon_verified_at": null,
     "evidence_reference": null,

@@ -3,9 +3,10 @@ from __future__ import annotations
 import copy
 import json
 import threading
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import Mock
+from urllib.error import HTTPError
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -38,7 +39,8 @@ def context(at=NOW, **changes):
 
 
 def state(**changes):
-    return {"version": 2, "enabled": True, "paused": False, "pause_reasons": [], "counts_reliable": True,
+    return {"version": 3, "enabled": True, "pod_collection_enabled": True, "pod_stop_at": None,
+            "paused": False, "pause_reasons": [], "counts_reliable": True,
             "contracts": {"pod": {}}, "retained_rows": 0, "observed_bytes": 0,
             "maintenance_at": NOW.isoformat(), "bytes_observed_at": NOW.isoformat(),
             "scope": {"account_id": u.ACCOUNT, "cluster_id": u.CLUSTER, "cluster_region": "ap-beijing",
@@ -51,11 +53,11 @@ def db():
     engine = create_engine("sqlite://")
     with engine.begin() as c:
         c.exec_driver_sql("CREATE TABLE cost_job_state (job_name TEXT PRIMARY KEY, watermark_json TEXT)")
-        # Literal V2 schema: CI Dashboard must not import the independent Cost Insight package.
+        # Literal V3 schema: CI Dashboard must not import the independent Cost Insight package.
         c.exec_driver_sql("""CREATE TABLE pod_utilization_context (
             id INTEGER PRIMARY KEY, context_key TEXT NOT NULL UNIQUE, account_id TEXT NOT NULL,
             cluster_id TEXT NOT NULL, namespace TEXT NOT NULL, pod_uid TEXT NOT NULL, pod_name TEXT NOT NULL,
-            node_query_kind TEXT NOT NULL, node_query_value TEXT NOT NULL,
+            node_instance_id TEXT,
             cpu_request_cores FLOAT, memory_request_bytes FLOAT, labels_json TEXT NOT NULL,
             observed_from DATETIME NOT NULL, observed_until DATETIME NOT NULL, closed_at DATETIME,
             planned_until DATETIME NOT NULL, expires_at DATETIME NOT NULL)""")
@@ -103,7 +105,7 @@ def test_custom_label_and_real_native_selector_are_preserved(db, monkeypatch):
     observe(exporter, [record])
     saved = rows(db)[0]
     assert json.loads(saved["labels_json"]) == {"test_campaign": "compatibility"}
-    assert saved["node_query_value"] == "np-244kqxxd-j5swq"
+    assert saved["node_instance_id"] == "np-244kqxxd-j5swq"
 
 
 def test_label_configuration_is_validated_once_per_exporter(monkeypatch):
@@ -207,7 +209,7 @@ def test_without_stable_jenkins_evidence_raw_job_does_not_become_a_dimension():
 
 @pytest.mark.parametrize(("node_created", "expected"), [
     ("2026-11-24T03:30:00Z", "np-123"),  # Autoscaler added the node while the Pod was Pending.
-    ("2026-11-24T03:59:30Z", ""),        # A replacement at the same name after scheduling.
+    ("2026-11-24T03:59:30Z", None),      # A replacement at the same name after scheduling.
 ])
 def test_pod_scheduled_evidence_disambiguates_nodes_created_after_pod(db, node_created, expected):
     obj = pod()
@@ -220,7 +222,7 @@ def test_pod_scheduled_evidence_disambiguates_nodes_created_after_pod(db, node_c
     cache.refresh([target], listed_at=listed_at)
     exporter = u.MetadataExporter(db, node_cache=cache)
     observe(exporter, [pod_evidence(obj, listed_at - 1)])
-    assert rows(db)[0]["node_query_value"] == expected
+    assert rows(db)[0]["node_instance_id"] == expected
 
 
 def test_node_selector_cache_bounded_expiring_and_provider_preferred(monkeypatch):
@@ -254,7 +256,7 @@ def test_stable_change_enrichment_heartbeat_and_ended_tail(db):
     enriched = pod_evidence(pod(), u.time.monotonic())
     observe(exporter, [enriched], NOW + timedelta(minutes=2), heartbeat=True)
     old, current = rows(db)
-    assert old["node_query_kind"] == "" and current["node_query_value"] == "np-123"
+    assert old["node_instance_id"] is None and current["node_instance_id"] == "np-123"
     assert u._datetime(old["closed_at"]) == NOW + timedelta(minutes=2)
     assert u._datetime(current["observed_from"]) == NOW + timedelta(minutes=2)
     # Dispatcher progress must survive every watcher renewal/closure.
@@ -302,13 +304,13 @@ def test_selector_loss_and_metadata_change_keep_old_metadata_until_observed(db, 
     observe(exporter, [], end, heartbeat=True)
 
     saved = rows(db)
-    expected = [(NOW, last_bound, "un_instance_id", "np-123", "first", 2.1, 2 * 1024**3)]
+    expected = [(NOW, last_bound, "np-123", "first", 2.1, 2 * 1024**3)]
     if gap_minutes:
-        expected.append((last_bound, changed, "", "", "first", 2.1, 2 * 1024**3))
-    expected += [(changed, rebound, "", "", "second", 4.0, 4 * 1024**3),
-                 (rebound, end, "un_instance_id", "np-123", "second", 4.0, 4 * 1024**3)]
+        expected.append((last_bound, changed, None, "first", 2.1, 2 * 1024**3))
+    expected += [(changed, rebound, None, "second", 4.0, 4 * 1024**3),
+                 (rebound, end, "np-123", "second", 4.0, 4 * 1024**3)]
     assert [(u._datetime(row["observed_from"]), u._datetime(row["observed_until"]),
-             row["node_query_kind"], row["node_query_value"], json.loads(row["labels_json"])["service"],
+             row["node_instance_id"], json.loads(row["labels_json"])["service"],
              row["cpu_request_cores"], row["memory_request_bytes"]) for row in saved] == expected
     assert len(saved) == retained(db)
     assert u._datetime(saved[0]["planned_until"]) == last_bound
@@ -339,7 +341,7 @@ def test_selector_loss_without_room_for_a_gap_does_not_collide_with_initial_cont
     assert u._datetime(old["closed_at"]) == NOW
     assert u._datetime(new["observed_from"]) == u._datetime(new["observed_until"]) == next_tick
     assert new["context_key"] == u.context_key(new, next_tick)
-    assert new["node_query_value"] == "" and json.loads(new["labels_json"])["service"] == "second"
+    assert new["node_instance_id"] is None and json.loads(new["labels_json"])["service"] == "second"
 
 
 def test_no_week_slicing_and_stale_heartbeat_does_not_bridge(db):
@@ -379,7 +381,8 @@ def test_terminal_only_does_not_invent_context(db):
 
 
 @pytest.mark.parametrize("changes", [
-    {"enabled": False}, {"paused": True}, {"counts_reliable": False}, {"version": 1},
+    {"enabled": False}, {"paused": True}, {"counts_reliable": False}, {"version": 2},
+    {"pod_collection_enabled": False}, {"pod_collection_enabled": None}, {"pod_collection_enabled": 1},
     {"maintenance_at": None}, {"maintenance_at": (NOW - timedelta(hours=4, seconds=1)).isoformat()},
     {"maintenance_at": (NOW + timedelta(seconds=61)).isoformat()},
     {"bytes_observed_at": (NOW - timedelta(hours=5)).isoformat()}, {"observed_bytes": None},
@@ -391,6 +394,41 @@ def test_guard_fail_closed_and_atomic_caps(db, changes):
     with pytest.raises(ValueError):
         u.save_contexts(db, [context()], now=NOW)
     assert not rows(db)
+
+
+def test_db_cut_rejects_heartbeat_closure_and_new_contexts(db):
+    exporter = u.MetadataExporter(db)
+    first = u.normalize_pod(pod())
+    observe(exporter, [first])
+    saved = rows(db)
+    cutoff = NOW + timedelta(minutes=1)
+    stopped = cutoff.replace(tzinfo=UTC).isoformat()
+    replace_state(db, pod_collection_enabled=False, pod_stop_at=stopped, retained_rows=1)
+
+    later = cutoff + timedelta(minutes=1)
+    with pytest.raises(u.PodCollectionDisabled):
+        observe(exporter, [], later, heartbeat=True)
+    with pytest.raises(u.PodCollectionDisabled):
+        u.save_contexts(db, [context(closed_at=NOW)], now=later)
+    with pytest.raises(u.PodCollectionDisabled):
+        u.save_contexts(db, [context(later)], now=later)
+    assert rows(db) == saved and retained(db) == 1 and not exporter.live
+
+
+def test_reopening_does_not_admit_stale_observations(db):
+    exporter = u.MetadataExporter(db)
+    observe(exporter, [u.normalize_pod(pod())])
+    saved = rows(db)
+    cutoff = NOW + timedelta(minutes=1)
+    resumed = NOW + timedelta(minutes=3)
+    # The store retains pod_stop_at and publishes a fresh pod_start_at on reopen.
+    replace_state(db, pod_stop_at=cutoff.replace(tzinfo=UTC).isoformat(),
+                  pod_start_at=resumed.replace(tzinfo=UTC).isoformat(), retained_rows=1)
+    with pytest.raises(u.PodCollectionDisabled, match="current collection window"):
+        observe(exporter, [], resumed, heartbeat=True)
+    with pytest.raises(u.PodCollectionDisabled):
+        u.save_contexts(db, [context(cutoff)], now=resumed)
+    assert rows(db) == saved and not exporter.live
 
 
 def test_namespace_and_labels_guard_scope(db):
@@ -423,7 +461,10 @@ def test_missing_guard_and_rollback_counter(db):
 @pytest.mark.parametrize("changes", [
     {"cpu_request_cores": -1}, {"memory_request_bytes": float("inf")}, {"pod_uid": "x" * 256},
     {"labels_json": {"author": "person"}}, {"labels_json": {"service": "x" * 513}},
-    {"node_query_kind": "node", "node_query_value": "node-a"}, {"context_key": "x" * 64},
+    {"node_query_kind": "node", "node_query_value": "10.0.0.8"},
+    {"node_instance_id": "10.0.0.8"}, {"node_instance_id": "::1"}, {"node_instance_id": ""},
+    {"node_instance_id": "qcloud:///ap-beijing/ins-abc"}, {"node_instance_id": "ins-" + "a" * 252},
+    {"context_key": "x" * 64},
     {"observed_until": NOW + timedelta(seconds=1)}, {"closed_at": NOW - timedelta(seconds=1)},
     {"expires_at": NOW + timedelta(days=14)}, {"cpu_limit": 4},
 ])
@@ -539,7 +580,9 @@ def test_node_pagination_reuses_token_provider_and_ca(monkeypatch):
         return {"items": [node()], "metadata": {"continue": "next" if len(calls) == 1 else "", "resourceVersion": "rv"}}
     monkeypatch.setattr(watcher, "_get_json", get)
     client = watcher._KubernetesClient(base_url="https://kube", token_provider=lambda: next(tokens), ca_file="existing-ca", watch_timeout_seconds=300)
-    items, rv = client.list_nodes()
+    admission = Mock()
+    items, rv = client.list_nodes(check_admission=admission)
+    assert admission.call_count == len(calls) == 2
     assert len(items) == 2 and rv == "rv"
     assert calls[0][0] == "https://kube/api/v1/nodes?limit=500"
     assert "continue=next" in calls[1][0] and "/namespaces/" not in calls[1][0]
@@ -547,7 +590,8 @@ def test_node_pagination_reuses_token_provider_and_ca(monkeypatch):
     assert calls[1][1] == {"Authorization": "Bearer rotated"} and calls[1][2] == "existing-ca"
 
 
-def test_node_worker_is_cache_only_and_clears_on_error():
+def test_node_worker_is_cache_only_and_clears_on_error(db, monkeypatch):
+    monkeypatch.setattr(u, "_clock", lambda *args: NOW)
     cache = u.NodeSelectorCache()
     class Stop:
         stopped = False
@@ -558,21 +602,81 @@ def test_node_worker_is_cache_only_and_clears_on_error():
             self.waits.append(seconds)
             self.stopped = True
     class Client:
-        def list_nodes(self):
+        def list_nodes(self, *, check_admission):
+            check_admission()
             return [node()], "rv"
     stop = Stop()
-    watcher._run_utilization_node_worker(node_cache=cache, client=Client(), stop_event=stop)
+    watcher._run_utilization_node_worker(engine=db, node_cache=cache, client=Client(), stop_event=stop)
     assert stop.waits == [60] and cache.snapshot()[1]["node-a"].instance_id == "np-123"
     class FailingClient:
-        def list_nodes(self):
+        def list_nodes(self, *, check_admission):
+            check_admission()
             raise RuntimeError("offline")
-    watcher._run_utilization_node_worker(node_cache=cache, client=FailingClient(), stop_event=Stop())
+    watcher._run_utilization_node_worker(engine=db, node_cache=cache, client=FailingClient(), stop_event=Stop())
     assert cache.snapshot()[1] == {}
+
+
+@pytest.mark.parametrize("auth_retry", [False, True])
+def test_node_worker_stops_at_db_cut_even_mid_list(db, monkeypatch, auth_retry):
+    monkeypatch.setattr(u, "_clock", lambda *args: NOW)
+    cache = u.NodeSelectorCache()
+    cache.refresh([node()], listed_at=u.time.monotonic())
+    stop = threading.Event()
+    calls = []
+
+    def get(url, **kwargs):
+        calls.append(url)
+        replace_state(db, pod_collection_enabled=False, pod_stop_at=NOW.replace(tzinfo=UTC).isoformat())
+        stop.set()  # Avoid another worker cycle even if LIST never notices the cut.
+        if auth_retry:
+            raise RuntimeError("Kubernetes API returned HTTP 401") from HTTPError(url, 401, "expired", None, None)
+        return {"items": [node()], "metadata": {"continue": "next" if len(calls) == 1 else ""}}
+
+    monkeypatch.setattr(watcher, "_get_json", get)
+    client = watcher._KubernetesClient(base_url="https://kube", token="offline", ca_file=None, watch_timeout_seconds=300)
+    watcher._run_utilization_node_worker(engine=db, node_cache=cache, client=client, stop_event=stop)
+    assert calls == ["https://kube/api/v1/nodes?limit=500"]
+    assert cache.disabled and cache.snapshot()[1] == {} and not rows(db)
+
+
+@pytest.mark.parametrize("gate", ["env-off", "other-source", "missing", "v2", "pod-off", "paused", "invalid-labels", "enabled"])
+def test_watcher_provisions_shared_node_worker_and_exporters_only_with_v3_gate(db, monkeypatch, gate):
+    monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_ENABLED", "false" if gate == "env-off" else "true")
+    monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_LABEL_KEYS", "owner" if gate == "invalid-labels" else "repo")
+    if gate == "missing":
+        with db.begin() as conn:
+            conn.exec_driver_sql("DELETE FROM cost_job_state")
+    elif gate == "v2":
+        replace_state(db, version=2)
+    elif gate == "pod-off":
+        replace_state(db, pod_collection_enabled=False, contracts={})
+    elif gate == "paused":
+        replace_state(db, paused=True)
+
+    source = "gcp:other" if gate == "other-source" else u.SOURCE
+    monkeypatch.setattr(watcher, "_load_runtime_context", lambda: watcher.WatchRuntimeContext(source, u.CLUSTER, "ap-beijing"))
+    monkeypatch.setattr(watcher, "_get_kubernetes_api_url", lambda: "https://kube")
+    monkeypatch.setattr(watcher, "_get_kubernetes_api_ca_file", lambda: None)
+    monkeypatch.setattr(watcher, "_load_target_namespaces", lambda connection: ["a", "b"])
+    monkeypatch.setattr(watcher, "_start_health_server", lambda health: None)
+    monkeypatch.setattr(watcher, "mark_job_started", Mock())
+    monkeypatch.setattr(watcher, "mark_job_succeeded", Mock())
+    monkeypatch.setattr(u, "_clock", lambda *args: NOW)
+
+    pods, events, nodes = {}, set(), []
+    monkeypatch.setattr(watcher, "_run_pod_worker", lambda **kw: pods.update({kw["namespace_name"]: kw["node_cache"]}))
+    monkeypatch.setattr(watcher, "_run_event_worker", lambda **kw: events.add(kw["namespace_name"]))
+    monkeypatch.setattr(watcher, "_run_utilization_node_worker", lambda **kw: nodes.append(kw["node_cache"]))
+    watcher.run_watch_pods(db, None)
+    assert set(pods) == events == {"a", "b"}
+    if gate == "enabled":
+        assert len(nodes) == 1 and isinstance(nodes[0], u.NodeSelectorCache) and set(pods.values()) == set(nodes)
+    else:
+        assert nodes == [] and set(pods.values()) == {None}
 
 
 def _run_enabled_watch(monkeypatch, events, *, initial=None, client=None, stop=None, health_state=None, node_cache=None):
     """Real normalization/exporter, injected lifecycle and offline watch transport."""
-    monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_ENABLED", "true")
     stop = stop or threading.Event()
     lifecycle = []
     class Client:
@@ -596,7 +700,7 @@ def _run_enabled_watch(monkeypatch, events, *, initial=None, client=None, stop=N
         context=watcher.WatchRuntimeContext(u.SOURCE, u.CLUSTER, "ap-beijing", "TENCENT"),
         namespace_name="jenkins-tidb", stream_key="pods",
         health_state=health_state or watcher.WatchHealthState(stale_after_seconds=720), recorder=Recorder(),
-        jenkins_prefix_cache=None, stop_event=stop, node_cache=node_cache,
+        jenkins_prefix_cache=None, stop_event=stop, node_cache=node_cache or u.NodeSelectorCache(),
     )
     return lifecycle
 
@@ -675,6 +779,27 @@ def test_clean_eof_last_rv_continuation_and_no_terminal_phantom(db, monkeypatch,
     assert u._datetime(saved["ending"]["closed_at"]) == NOW  # Terminal event is not live evidence.
 
 
+def test_db_disable_keeps_lifecycle_updates_in_active_watch(db, monkeypatch):
+    clock = _offline_clock(monkeypatch, db)
+    cache = u.NodeSelectorCache()
+
+    def events():
+        clock[0] += timedelta(minutes=1)
+        replace_state(db, pod_collection_enabled=False, retained_rows=1,
+                      pod_stop_at=clock[0].replace(tzinfo=UTC).isoformat())
+        yield {"type": "BOOKMARK"}  # First rejected renewal fences all exporters sharing the cache.
+        for uid in ("after-cut", "still-watching"):
+            obj = pod()
+            obj["metadata"]["uid"] = uid
+            yield {"type": "ADDED", "object": obj}
+
+    lifecycle = _run_enabled_watch(monkeypatch, events(), initial=[pod()], node_cache=cache)
+    assert [item.pod_uid for item in lifecycle] == ["pod-uid", "after-cut", "still-watching"]
+    saved, = rows(db)
+    assert u._datetime(saved["observed_until"]) == NOW and saved["closed_at"] is None
+    assert cache.disabled and retained(db) == 1
+
+
 def test_reused_node_ip_requires_new_evidence_and_bookmarks_do_not_renew_old_binding(db, monkeypatch):
     clock = _offline_clock(monkeypatch, db)
     monkeypatch.setattr(watcher.time, "monotonic", lambda: (clock[0] - NOW).total_seconds())
@@ -707,12 +832,12 @@ def test_reused_node_ip_requires_new_evidence_and_bookmarks_do_not_renew_old_bin
 
     lifecycle = _run_enabled_watch(monkeypatch, events(), initial=[old_pod], node_cache=cache)
     assert len(lifecycle) == 2  # No object update after refresh for either Pod.
-    assert [(row["pod_uid"], row["node_query_value"], u._datetime(row["observed_from"]),
+    assert [(row["pod_uid"], row["node_instance_id"], u._datetime(row["observed_from"]),
              u._datetime(row["observed_until"])) for row in rows(db)] == [
-        ("pod-uid", "", NOW, NOW + timedelta(minutes=1)),
+        ("pod-uid", None, NOW, NOW + timedelta(minutes=1)),
         ("pod-uid", "ins-old", NOW + timedelta(minutes=1), NOW + timedelta(minutes=2)),
-        ("new", "", NOW + timedelta(minutes=2), NOW + timedelta(minutes=3)),
-        ("pod-uid", "", NOW + timedelta(minutes=2), NOW + timedelta(minutes=45)),
+        ("new", None, NOW + timedelta(minutes=2), NOW + timedelta(minutes=3)),
+        ("pod-uid", None, NOW + timedelta(minutes=2), NOW + timedelta(minutes=45)),
         ("new", "ins-next", NOW + timedelta(minutes=3), NOW + timedelta(minutes=45)),
     ]
 
@@ -734,7 +859,7 @@ def test_read_burst_coalescing_bound_and_stop_flush(monkeypatch, repeated):
     assert len(_run_enabled_watch(monkeypatch, events())) == 1001
     assert [len(batch) for batch in batches] == ([1, 1] if repeated else [1000, 1])
     assert batches[-1][0]["_node_ref"].name == "10.0.3.232"
-    assert batches[-1][0]["node_query_value"] == ""
+    assert batches[-1][0]["node_instance_id"] is None
 
 
 def test_event_processing_deadline_flushes(monkeypatch):

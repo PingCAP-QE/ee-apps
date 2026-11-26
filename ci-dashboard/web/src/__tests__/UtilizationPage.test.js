@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
 import { after, before, test } from "node:test";
 
 import React from "react";
@@ -7,67 +8,78 @@ import { MemoryRouter } from "react-router-dom";
 import { createServer } from "vite";
 
 let server;
+let cacheDir;
 let UtilizationPage;
 let App;
 let utilizationPercent;
 
 before(async () => {
-  server = await createServer({ root: process.cwd(), appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  cacheDir = await mkdtemp("/tmp/ci-utilization-vite-");
+  server = await createServer({
+    root: process.cwd(), appType: "custom", logLevel: "silent", server: { middlewareMode: true },
+    configLoader: "runner", cacheDir,
+  });
   ({ default: UtilizationPage, utilizationPercent } = await server.ssrLoadModule("/src/pages/UtilizationPage.jsx"));
   ({ default: App } = await server.ssrLoadModule("/src/App.jsx"));
 });
 
-after(async () => { await server?.close(); });
+after(async () => {
+  await server?.close();
+  if (cacheDir) await rm(cacheDir, { recursive: true, force: true });
+});
 
 const readyStatus = {
-  available: true, configured: true, collection_enabled: true, stale: false, healthy: false,
-  latest_cutoff: "2026-11-24T04:00:00Z", workload_cutoff: "2026-11-24T03:00:00Z",
+  version: 3, available: true, configured: true, collection_enabled: true, healthy: false,
+  latest_machine_usage_date: "2026-11-23", pod_collection_enabled: true, workload_history_available: false,
   maintenance_stale: false, paused: true, pause_reasons: ["budget"], active_contexts: 12,
   task_backlog: { pending: 2, running: 1, retry: 3 },
-  label_keys: ["repo", "job", "test_project", "test_suite", "environment", "project", "service"],
+  label_keys: ["repo", "job", "test_project", "test_plan", "environment", "project", "service"],
   machine_window: { start_date: "2025-11-25", end_date: "2026-11-24" },
   default_window: { start_date: "2026-11-16", end_date: "2026-11-24" },
   workload_window: { start_date: "2026-11-16", end_date: "2026-11-24" },
 };
-const metric = {
-  avg: null, coverage: 0.53, total_used: 70, used: 50, capacity: 200,
-  expected_capacity: 300, observed_seconds: 40, expected_seconds: 60,
-  usage_seconds: 60, unknown_seconds: 10, zero_seconds: 10,
-};
+const missingMachineMetric = { avg: null, peak: null, sample_minutes: 0 };
 const machineData = {
   available: true, has_more: true, kind: "machine", items: [{
-    usage_date: "2026-11-24", machine_id: "np-actual-machine", region: "ap-beijing",
-    cluster_id: "cls-example", resource_class: "tke_native", instance_type: "4c8g",
-    cpu_cores: 4, memory_bytes: 8589934592, cutoff: "2026-11-24T04:00:00Z",
-    metrics: { cpu: { ...metric, peak: 143.12, peak_at: "2026-11-24T03:00:00Z" } },
+    usage_date: "2026-11-23", machine_id: "np-actual-machine", region: "ap-beijing",
+    cluster_id: "cls-example", resource_class: "tke_native",
+    metrics: { cpu: { avg: 0, peak: 0, sample_minutes: 17 }, memory: missingMachineMetric },
   }],
 };
 const workloadData = {
   available: true, has_more: false, kind: "workload", group_by: null,
   start_date: "2026-11-16", end_date: "2026-11-24",
-  items: [{ group_value: null, cutoff: "2026-11-24T03:00:00Z", metrics: { cpu: metric, memory: metric } }],
+  items: [{ group_value: null, metrics: { cpu: { avg: 55.5, coverage: 0.53 }, memory: { avg: null, coverage: 0 } } }],
 };
+
+function text(node) {
+  return typeof node === "string" ? node : node.children.map(text).join("");
+}
 
 function field(renderer, label) {
   return renderer.root.findAllByType("label").find((node) => node.findByType("span").children.join("") === label)
     .findAll((node) => node.type === "input" || node.type === "select")[0];
 }
 
-function response(url, machine = machineData, workload = workloadData) {
+function response(url, machine = machineData, workload = workloadData, status = readyStatus) {
   const parsed = new URL(url, "http://localhost");
-  const data = parsed.pathname.endsWith("/status") ? readyStatus
+  const data = parsed.pathname.endsWith("/status") ? status
     : parsed.searchParams.get("kind") === "machine" ? machine : workload;
   return { ok: true, json: async () => data };
 }
 
-for (const reason of ["disabled", "missing_schema", "database_unavailable", "unconfigured"]) {
+for (const reason of ["disabled", "missing_schema", "database_unavailable", "unconfigured", "legacy_backend"]) {
   test(`${reason} is informative, queries only status, and preserves other App routes`, async () => {
     const originalFetch = globalThis.fetch;
     const requests = [];
     let renderer;
     globalThis.fetch = async (url) => {
       requests.push(String(url));
-      return { ok: true, json: async () => ({ available: reason === "unconfigured", configured: false, reason }) };
+      const status = reason === "legacy_backend" ? { ...readyStatus, version: 2 } : {
+        version: 3, available: reason === "unconfigured", configured: false, reason,
+        pod_collection_enabled: true, workload_history_available: false,
+      };
+      return { ok: true, json: async () => status };
     };
     try {
       await act(async () => {
@@ -79,7 +91,7 @@ for (const reason of ["disabled", "missing_schema", "database_unavailable", "unc
       assert.match(content, /Tencent machine history and workload labels/);
       assert.doesNotMatch(content, /account weekly summaries/i);
       assert.match(content, /Tencent CICD/);
-      assert.doesNotMatch(content, /Mean 0\.0%/);
+      assert.doesNotMatch(content, /Mean 0\.0%|Workload business labels/);
       assert.equal(renderer.root.findAllByType("input").length, 0, "no unrelated CI filters");
       const links = renderer.root.findAllByType("a");
       assert.ok(links.some((node) => node.props.href === "/utilization"));
@@ -91,7 +103,7 @@ for (const reason of ["disabled", "missing_schema", "database_unavailable", "unc
   });
 }
 
-test("machine identity, dates, peaks and workload absolute usage are separate; no weekly requests", async () => {
+test("V3 machine observations and workload ratios stay separate while filters and paging are preserved", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
   let renderer;
@@ -106,14 +118,21 @@ test("machine identity, dates, peaks and workload absolute usage are separate; n
     assert.ok(requests.some((url) => url.includes("kind=workload")));
     assert.ok(!requests.some((url) => url.includes("/weekly")));
     const content = JSON.stringify(renderer.toJSON());
-    for (const text of ["np-actual-machine", "cls-example", "ap-beijing", "2026-11-24", "N/A", "143.1%", "53.0%", "Absolute usage:", "70", "core·s", "byte·s", "Collection paused:", "Task backlog:", "Last machine cutoff:", "Last workload cutoff:"]) {
+    for (const text of ["np-actual-machine", "cls-example", "ap-beijing", "tke_native", "Collection paused:", "Maintenance: ", "Health: ", "Task backlog:", "Active Pod contexts:", "machines and Pods", "largest observed one-minute mean"]) {
       assert.ok(content.includes(text), text);
     }
-    assert.doesNotMatch(content, /Mean 0\.0%|Account weekly|Observed subset|Full peak|repo →/);
-    assert.match(content, /Precise Job cost: unavailable/);
+    assert.match(content, /Latest saved machine observation \(Beijing date\): .*2026-11-23.*This is not a measure of data completeness/);
+    assert.doesNotMatch(content, /cutoff|refresh window|absolute usage|expected capacity|historical spec|account weekly|core·s|byte·s/i);
+    assert.match(content, /do not measure machine utilization or allocate costs/);
     assert.match(content, /Partial data:.*Coverage shown is for settled windows only/);
-    const workload = renderer.root.findByProps({ "aria-label": "Workload utilization" });
-    assert.ok(!workload.findAllByType("div").some((node) => node.children.join("").includes("peak")));
+    const machineCells = renderer.root.findByProps({ "aria-label": "Machine utilization" }).findAllByType("td");
+    assert.equal(text(machineCells[0]), "2026-11-23");
+    assert.equal(text(machineCells[3]), "Mean 0.0% · Peak 0.0% · Sample minutes: 17");
+    assert.equal(text(machineCells[4]), "Mean N/A · Peak N/A · Sample minutes: 0");
+    const workloadCells = renderer.root.findByProps({ "aria-label": "Workload utilization" }).findAllByType("td");
+    assert.equal(workloadCells.length, 3);
+    assert.equal(text(workloadCells[1]), "Mean 55.5% · Coverage 53.0%");
+    assert.equal(text(workloadCells[2]), "Mean N/A · Coverage 0.0%");
     assert.equal(renderer.root.findAllByType("svg").length, 0, "no weekly chart");
     assert.equal(utilizationPercent(null), "N/A");
     assert.equal(utilizationPercent(0), "0.0%");
@@ -163,7 +182,7 @@ test("machine interval summary is scoped by cluster and stays separate from page
       ...(secondPage ? { has_more: false, items: [] } : {}),
       interval_summary: scoped ? {
         account_id: "100050658403", machine_id: "np-actual-machine", region: "ap-beijing", cluster_id: "cls-example",
-        days_with_facts: 2, metrics: { cpu: { avg: 31.25, peak: 143.12 }, memory: { avg: null, peak: 27 } },
+        days_with_facts: 2, metrics: { cpu: { avg: 31.25, peak: 81.12, sample_minutes: 29 }, memory: missingMachineMetric },
       } : { reason: "ambiguous_machine" },
     });
   };
@@ -177,12 +196,12 @@ test("machine interval summary is scoped by cluster and stays separate from page
     assert.equal(renderer.root.findAllByProps({ "aria-label": "Machine utilization" }).length, 1);
 
     await act(async () => field(renderer, "Cluster ID").props.onChange({ target: { value: "cls-example" } }));
-    const summaryText = () => overview()[0].findAllByType("p").map((node) => node.children.join("")).join(" | ");
+    const summaryText = () => overview()[0].findAllByType("p").map(text).join(" | ");
     const summary = summaryText();
     assert.match(summary, /np-actual-machine.*ap-beijing.*cls-example/);
-    assert.match(summary, /2026-11-16.*2026-11-24.*Days with facts: 2/);
-    assert.match(summary, /CPU weighted mean 31\.25% · Peak 143\.12%/);
-    assert.match(summary, /Memory weighted mean N\/A · Peak 27\.00%/);
+    assert.match(summary, /2026-11-16.*2026-11-24.*Days with facts: 2.*weight each observed minute equally/);
+    assert.match(summary, /CPU: Mean 31\.25% · Peak 81\.12% · Sample minutes: 29/);
+    assert.match(summary, /Memory: Mean N\/A · Peak N\/A · Sample minutes: 0/);
     assert.equal(renderer.root.findAllByProps({ "aria-label": "Machine utilization" }).length, 1);
 
     const next = renderer.root.findAllByType("button").find((node) => node.children[0] === "Next");
@@ -221,46 +240,72 @@ test("failed machine request leaves workloads visible, and changed filters hide 
   }
 });
 
-test("unknown and zero requests preserve usage; unobserved usage is N/A and measured zero is zero", async () => {
-  const originalFetch = globalThis.fetch;
-  let renderer;
-  const data = structuredClone(workloadData);
-  data.group_by = "service";
-  data.items = [
-    { group_value: "unknown-requests", metrics: { cpu: { ...metric, avg: null, unknown_seconds: 60, zero_seconds: 0 }, memory: { ...metric, avg: null, unknown_seconds: 0, zero_seconds: 60 } } },
-    { group_value: null, metrics: { cpu: { ...metric, avg: null, usage_seconds: 0, total_used: 0 }, memory: { ...metric, avg: 0, usage_seconds: 60, total_used: 0 } } },
-  ];
-  globalThis.fetch = async (url) => response(url, machineData, data);
-  try {
-    await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
-    const rows = renderer.root.findByProps({ "aria-label": "Workload utilization" }).findByType("tbody").findAllByType("tr");
-    const cells = rows[1].findAllByType("td");
-    const cellText = (cell) => cell.findAllByType("div").map((node) => node.children.join("")).join(" | ");
-    assert.match(cellText(rows[0].findAllByType("td")[1]), /Mean N\/A.*Absolute usage: 70 core·s/);
-    assert.match(cellText(rows[0].findAllByType("td")[2]), /Mean N\/A.*Absolute usage: 70 byte·s/);
-    assert.match(cellText(cells[1]), /N\/A \(no usage observations\)/);
-    assert.match(cellText(cells[2]), /Absolute usage: 0 byte·s/);
-    assert.match(cellText(cells[2]), /Mean 0\.0%/);
-    assert.match(JSON.stringify(renderer.toJSON()), /\(missing label\)/);
-  } finally {
-    await act(async () => renderer?.unmount());
-    globalThis.fetch = originalFetch;
-  }
-});
+for (const history of [false, true]) {
+  test(`Pod collection off ${history ? "with" : "without"} retained statistics`, async () => {
+    const originalFetch = globalThis.fetch;
+    const requests = [];
+    let renderer;
+    const { active_contexts, workload_window, label_keys, ...machineStatus } = readyStatus;
+    const status = {
+      ...machineStatus, latest_machine_usage_date: null, pod_collection_enabled: false,
+      workload_history_available: history, ...(history ? { workload_window, label_keys } : {}),
+    };
+    const workload = {
+      ...workloadData,
+      items: [{ group_value: null, metrics: { cpu: { avg: 0, coverage: 1 }, memory: { avg: null, coverage: null } } }],
+    };
+    globalThis.fetch = async (url) => {
+      requests.push(String(url));
+      const group_by = new URL(url, "http://localhost").searchParams.get("group_by");
+      return response(url, { ...machineData, items: [] }, { ...workload, group_by }, status);
+    };
+    try {
+      await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
+      const content = JSON.stringify(renderer.toJSON());
+      assert.match(content, /Latest saved machine observation \(Beijing date\): .*None saved/);
+      assert.match(content, /Pod collection: .*not enabled/);
+      assert.match(content, /Task backlog: .*machines only/);
+      assert.match(content, /No machine facts for these dates and filters/);
+      assert.doesNotMatch(content, /Active Pod contexts/);
+      assert.ok(requests.some((url) => url.includes("kind=machine")));
+      assert.equal(requests.some((url) => url.includes("kind=workload")), history);
+      if (history) {
+        assert.match(content, /Workload results are retained history/);
+        assert.equal(field(renderer, "Workload start").props.min, "2026-11-16");
+        await act(async () => field(renderer, "Group by label").props.onChange({ target: { value: "service" } }));
+        const cells = renderer.root.findByProps({ "aria-label": "Workload utilization" }).findAllByType("td");
+        assert.match(text(cells[0]), /service: \(unlabelled\)/);
+        assert.equal(text(cells[1]), "Mean 0.0% · Coverage 100.0%");
+        assert.equal(text(cells[2]), "Mean N/A · Coverage N/A");
+      } else {
+        assert.doesNotMatch(content, /Workload business labels|Group by label|Mean 0\.0%/);
+      }
+    } finally {
+      await act(async () => renderer?.unmount());
+      globalThis.fetch = originalFetch;
+    }
+  });
+}
 
-for (const reason of ["query_too_large", "missing_schema", "invalid_data"]) {
+for (const [reason, message] of Object.entries({
+  query_too_large: /10,000 workload label-set rows/,
+  missing_schema: /V3 utilization tables are not installed/,
+  invalid_data: /Stored measurements are invalid/,
+  pod_collection_disabled: /Pod collection is not enabled and no retained workload statistics are available/,
+})) {
   test(`${reason} workload response is informative, not a partial or zero summary`, async () => {
     const originalFetch = globalThis.fetch;
     let renderer;
-    globalThis.fetch = async (url) => response(url, machineData, { available: false, reason, items: [] });
+    const status = reason === "pod_collection_disabled"
+      ? { ...readyStatus, pod_collection_enabled: false, workload_history_available: true } : readyStatus;
+    globalThis.fetch = async (url) => response(url, machineData, { available: false, reason, items: [] }, status);
     try {
       await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
       assert.equal(renderer.root.findAllByProps({ "aria-label": "Workload utilization" }).length, 0);
       assert.equal(renderer.root.findAllByProps({ "aria-label": "Machine utilization" }).length, 1);
       const content = JSON.stringify(renderer.toJSON());
-      if (reason === "query_too_large") assert.match(content, /10,000 workload label-set rows/);
-      if (reason === "missing_schema") assert.match(content, /V2 utilization tables are not installed/);
-      if (reason === "invalid_data") assert.match(content, /Stored measurements are invalid/);
+      assert.match(content, message);
+      assert.doesNotMatch(content, /Partial data:/);
     } finally {
       await act(async () => renderer?.unmount());
       globalThis.fetch = originalFetch;

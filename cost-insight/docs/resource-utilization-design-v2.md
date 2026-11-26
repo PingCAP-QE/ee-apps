@@ -1,5 +1,7 @@
 # 腾讯云资源利用率 V2：历史机器清单与异步窗口采集
 
+> 设计历史：本文件保留 V2 审查依据；当前实现和部署边界以 [V3](resource-utilization-design-v3.md) 及[操作说明](resource-utilization-operations.md)为准。
+
 状态：**V2 实现中，尚未部署；变更需独立 review 与回归通过后推送现有 PR**。讨论与只读验证日期：2026-11-25。
 范围：仅腾讯 CICD 账号 `100050658403` 的 CPU / memory；不发现其他组织账号。
 

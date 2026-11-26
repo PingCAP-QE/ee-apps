@@ -1,4 +1,4 @@
-"""Small offline V2 end-to-end planner -> Kafka reference -> result tests."""
+"""Offline V3 planner -> Kafka reference -> result tests."""
 # ruff: noqa: DTZ001
 
 import importlib.util
@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, select, text
 
 from cost_insight.jobs import cli
 from cost_insight.utilization import policy, runner, store, tencent, transport
-from cost_insight.utilization.schema import machines, metadata, tasks
+from cost_insight.utilization.schema import contexts, machines, metadata, tasks, workloads
 
 NOW = datetime(2026, 11, 25, 4, 30)
 
@@ -30,6 +30,7 @@ def configured(tmp_path):
         evidence_reference="offline-only",
         source_scales={kind: {"cpu": 1, "memory": 1} for kind in ("cvm", "tke_native", "pod")},
     )
+    raw["pod_collection_enabled"] = True
     path = tmp_path / "profile.json"
     path.write_text(json.dumps(raw))
     profile = tencent.load_profile(str(path))
@@ -56,9 +57,6 @@ def candidate(day):
         "region": "ap-beijing",
         "cluster_id": "",
         "resource_class": "cvm",
-        "instance_type": "SA9.MEDIUM4",
-        "cpu_cores": 2,
-        "memory_bytes": 4 * 1024**3,
         "observed_from": start,
         "observed_until": start + timedelta(minutes=30),
     }
@@ -95,8 +93,8 @@ def test_historical_plan_dispatch_consume_is_idempotent(configured):
     with engine.connect() as c:
         row = c.execute(select(machines)).mappings().one()
         assert row["machine_id"] == "ins-one" and row["usage_date"] == day
-        assert row["cpu_used"] / row["cpu_capacity"] == 0.25
-        assert row["cpu_peak"] == 25
+        assert row["cpu_percent_sum"] == 750 and row["cpu_sample_minutes"] == 30
+        assert row["cpu_peak_percent"] == 25
     # Query tasks are short-lived; their expiry never deletes a machine fact.
     store.maintain(engine, now=NOW + timedelta(days=20))
     with engine.connect() as c:
@@ -129,7 +127,7 @@ def test_late_bill_partition_enqueues_prior_usage_day_and_replay_is_idempotent(c
         ]
 
 
-@pytest.mark.parametrize("revision", ["interval_extension", "overlap", "capacity_change"])
+@pytest.mark.parametrize("revision", ["interval_extension", "overlap"])
 def test_machine_bill_revision_deduplicates_unchanged_windows_and_isolates_conflicts(
     configured, revision
 ):
@@ -146,11 +144,9 @@ def test_machine_bill_revision_deduplicates_unchanged_windows_and_isolates_confl
         revised = {**original}
         if revision == "interval_extension":
             revised["observed_until"] += timedelta(minutes=30)
-        elif revision == "overlap":
+        else:
             revised["observed_from"] += timedelta(minutes=1)
             revised["observed_until"] -= timedelta(minutes=1)
-        else:
-            revised["cpu_cores"] = 8
         return [revised, {**original, "machine_id": "ins-unaffected"}]
 
     if revision == "interval_extension":
@@ -175,8 +171,7 @@ def test_machine_bill_revision_deduplicates_unchanged_windows_and_isolates_confl
             assert day["planned"] == 1 and len(day["errors"]) == 1
             error = day["errors"][0]
             assert error["machine_id"] == "ins-one" and error["region"] == "ap-beijing"
-            expected_error = "overlapping" if revision == "overlap" else "conflicting snapshot"
-            assert expected_error in error["error"]
+            assert "overlapping" in error["error"]
     with engine.connect() as connection:
         rows = connection.execute(select(tasks)).mappings().all()
         assert len(rows) == (6 if revision == "interval_extension" else 4)
@@ -208,50 +203,71 @@ def test_ready_compatible_machine_tasks_share_one_monitor_read(configured):
         assert len(connection.execute(select(machines)).all()) == 2
 
 
-def test_unresolved_pod_selector_does_not_retry_healthy_pods_in_same_poll(configured):
+def test_unresolved_pod_selector_is_settled_without_a_monitor_query(configured):
     engine, profile, _ = configured
     start, end = NOW - timedelta(minutes=30), NOW - timedelta(minutes=20)
-    unresolved = {
-        "kind": "pod", "region": profile["cluster_region"],
-        "cluster_id": profile["cluster_id"], "namespace": profile["namespaces"][0],
-        "pod_uid": "uid-unresolved", "pod_name": "pending-pod",
-        "node_query_kind": "", "node_query_value": "",
-        "cpu_request_cores": 1, "memory_request_bytes": 1024, "labels_json": {},
-    }
-    healthy = {
-        **unresolved, "pod_uid": "uid-healthy", "pod_name": "running-pod",
-        "node_query_kind": "node", "node_query_value": "10.0.0.10",
-    }
-    store.enqueue_windows(
-        engine, [(target, start, end) for target in (unresolved, healthy)], now=NOW
-    )
+    with engine.begin() as connection:
+        for uid, node in (("uid-unresolved", None), ("uid-healthy", "ins-pod")):
+            connection.execute(contexts.insert().values(
+                context_key=uid, account_id=profile["account_id"], cluster_id=profile["cluster_id"],
+                namespace=profile["namespaces"][0], pod_uid=uid, pod_name=uid, node_instance_id=node,
+                cpu_request_cores=1, memory_request_bytes=1024, labels_json={},
+                observed_from=start, observed_until=end, planned_until=start, closed_at=end,
+                expires_at=end + timedelta(days=1),
+            ))
+    assert store.plan_contexts(engine, now=NOW)["planned"] == 2
     with engine.connect() as connection:
-        ids = {
-            row["payload_json"]["pod_uid"]: row["id"]
-            for row in connection.execute(select(tasks)).mappings()
-        }
-    source = tencent.TencentReader(profile, call=Mock(side_effect=AssertionError("no cloud calls")))
+        rows = connection.execute(select(tasks).order_by(tasks.c.context_id)).mappings().all()
+        assert all(set(row["payload_json"]) == {"contract_version"} for row in rows)
+        ids = [row["id"] for row in rows]
 
     def query_window(start, end, targets):
-        for target in targets:
-            source._target(target)  # The real source rejects unresolved watcher selectors.
-        return [
-            {"entity": target["pod_uid"], "metric": metric, "timestamp": start,
-             "value": value, "unit": "absolute"}
-            for target in targets for metric, value in (("cpu", 1), ("memory", 1024))
-        ]
+        assert [target["node_instance_id"] for target in targets] == ["ins-pod"]
+        return [{"entity": "uid-healthy", "metric": "cpu", "timestamp": start,
+                 "value": 0.5, "unit": "absolute"}]
 
     reader = Mock()
     reader.window.side_effect = query_window
-    assert runner.work_batch(
-        engine, profile, [ids["uid-unresolved"], ids["uid-healthy"]], now=NOW, reader=reader
-    ) == ["retry", "done"]
+    assert runner.work_batch(engine, profile, ids, now=NOW, reader=reader) == ["done", "done"]
+    reader.window.assert_called_once()
     with engine.connect() as connection:
-        statuses = {
-            row["payload_json"]["pod_uid"]: row["status"]
-            for row in connection.execute(select(tasks)).mappings()
-        }
-        assert statuses == {"uid-unresolved": "retry", "uid-healthy": "done"}
+        result = connection.execute(select(workloads)).mappings().one()
+    assert result["expected_pod_minutes"] == 20
+    assert result["cpu_matched_pod_minutes"] == 1 and result["memory_matched_pod_minutes"] == 0
+
+
+def test_pod_off_keeps_old_work_replayable_and_settles_only_confirmed_tail(configured):
+    engine, profile, _ = configured
+    start = NOW - timedelta(minutes=30)
+    planned_end = start + timedelta(minutes=10)
+    with engine.begin() as connection:
+        connection.execute(contexts.insert().values(
+            context_key="cutoff", account_id=profile["account_id"], cluster_id=profile["cluster_id"],
+            namespace=profile["namespaces"][0], pod_uid="uid-test", pod_name="test",
+            node_instance_id="ins-pod", cpu_request_cores=1, memory_request_bytes=1024, labels_json={},
+            observed_from=start, observed_until=planned_end, planned_until=start,
+            expires_at=NOW + timedelta(days=1),
+        ))
+    assert store.plan_contexts(engine, now=NOW)["planned"] == 1
+    with engine.begin() as connection:
+        connection.execute(contexts.update().values(observed_until=planned_end + timedelta(minutes=3)))
+        task_id = connection.execute(select(tasks.c.id)).scalar_one()
+    off = {**profile, "pod_collection_enabled": False}
+    stopped = NOW + timedelta(seconds=1)
+    store.configure(engine, off, start_date=NOW.date() - timedelta(days=10), enabled=True, now=stopped)
+    assert store.plan_contexts(engine, now=stopped)["planned"] == 0
+    reader = Mock()
+    reader.window.return_value = [{"entity": "uid-test", "metric": "cpu", "timestamp": start,
+                                   "value": 0.5, "unit": "absolute"}]
+    assert runner.work_one(engine, off, task_id, now=stopped, reader=reader) == "done"
+    store.maintain(engine, now=stopped)
+    with engine.connect() as connection:
+        result = connection.execute(select(workloads)).mappings().one()
+        assert result["expected_pod_minutes"] == 13
+        assert result["cpu_matched_pod_minutes"] == 1
+        assert connection.execute(select(contexts.c.id)).first() is None
+    assert runner.work_one(engine, off, task_id, now=stopped, reader=reader) == "ignored"
+    reader.window.assert_called_once()
 
 
 def test_oversized_multi_partition_poll_is_chunked_before_ack(configured):
@@ -310,7 +326,7 @@ def test_per_task_rejection_persists_retry_and_does_not_block_other_tasks(config
         def invalid_result(points, target, start, end):
             values = summarize(points, target, start, end)
             if target["machine_id"] == "ins-one":
-                values["cpu_used"] = -1
+                values["cpu_percent_sum"] = -1
             return values
 
         monkeypatch.setattr(runner, "summarize_window", invalid_result)

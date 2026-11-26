@@ -10,7 +10,6 @@ import os
 import re
 import threading
 import time
-from collections import Counter
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -18,13 +17,11 @@ from cost_insight.utilization.policy import ACCOUNT_ID, label_keys
 
 VERSIONS = {
     "billing": "2018-07-09",
-    "cvm": "2017-03-12",
     "monitor": "2018-07-24",
     "sts": "2018-08-13",
 }
 ACTIONS = {
     "billing": {"DescribeBillDetailForOrganization"},
-    "cvm": {"DescribeInstanceTypeConfigs"},
     "monitor": {"GetMonitorData", "DescribeStatisticData", "DescribeBaseMetrics"},
     "sts": {"GetCallerIdentity"},
 }
@@ -38,7 +35,7 @@ BILLING_ROW_LIMIT = 30_000  # Per product scan, including non-target rows in a m
 BEIJING = ZoneInfo("Asia/Shanghai")
 # Exact observed resource/service components, not a speculative family-name matcher.
 NATIVE_COMPONENTS = {
-    f"sv_011691_{family}_{metric}{suffix}": ("cpu" if metric == "cpu" else "memory")
+    f"sv_011691_{family}_{metric}{suffix}"
     for family, fee in (("hn_sa2", "_fee"), ("nn_bf1", ""), ("nn_sa9", ""))
     for metric in ("cpu", "mem")
     for suffix in (fee, "_servicefee")
@@ -65,37 +62,57 @@ def _number(value, *, positive=False):
     return float(value)
 
 
-def collection_scope(profile):
-    return {
+def collection_scope(profile, *, kind="machine"):
+    scope = {
         **{k: profile.get(k) for k in ("account_id", "cluster_id", "cluster_region")},
-        **{k: sorted(profile.get(k, [])) for k in ("regions", "namespaces", "labels")},
+        "regions": sorted(profile.get("regions", [])),
     }
+    if kind == "pod":
+        scope.update({k: sorted(profile.get(k, [])) for k in ("namespaces", "labels")})
+    return scope
 
 
-def contract_version(profile):
-    return _hash({"contracts": profile["contracts"], "scope": collection_scope(profile)})
+def contract_version(profile, *, kind="machine"):
+    """Pin each reader contract independently of Pod admission and draining."""
+    contracts = profile["contracts"]
+    if kind == "machine":
+        contracts = {name: contracts[name] for name in ("cvm", "tke_native")}
+    elif kind == "pod":
+        if "pod" not in contracts:
+            return None
+        contracts = {"pod": contracts["pod"]}
+    else:
+        raise ValueError("Unsupported collection contract kind")
+    return _hash({"contracts": contracts, "scope": collection_scope(profile, kind=kind)})
+
+
+def _metric_contract(kind, metric):
+    return {
+        "namespace": "QCE/CVM" if kind == "cvm" else "QCE/TKE2",
+        "metric": ALLOWED_METRICS[kind][metric],
+        "period": 60,
+        "source_stat": "avg",
+        "unit": "%" if kind != "pod" else "None" if metric == "cpu" else "MBytes",
+        "normalized_unit": "%" if kind != "pod" else "cores" if metric == "cpu" else "bytes",
+        "denominator": "requests" if kind == "pod" else "physical",
+        "semantic_version": "v3",
+        "timestamp_alignment": "bucket_start",
+    }
 
 
 def build_contracts(measurement: dict) -> dict:
     """No verified scale, alignment or horizon is inferred from a successful sample."""
+    scales = measurement.get("source_scales", {})
     result = {}
     for kind, metrics in ALLOWED_METRICS.items():
+        if kind == "pod" and kind not in scales:
+            continue
         result[kind] = {}
-        for metric, name in metrics.items():
+        for metric in metrics:
             result[kind][metric] = {
                 "contract": {
-                    "namespace": "QCE/CVM" if kind == "cvm" else "QCE/TKE2",
-                    "metric": name,
-                    "period": 60,
-                    "source_stat": "avg",
-                    "unit": "%" if kind != "pod" else "None" if metric == "cpu" else "MBytes",
-                    "normalized_unit": "cores" if metric == "cpu" else "bytes",
-                    "denominator": "requests" if kind == "pod" else "physical",
-                    "semantic_version": "v2",
-                    "timestamp_alignment": "bucket_start",
-                    "source_scale": measurement.get("source_scales", {})
-                    .get(kind, {})
-                    .get(metric, 0),
+                    **_metric_contract(kind, metric),
+                    "source_scale": scales.get(kind, {}).get(metric, 0),
                     "values_avg_verified": False,
                 },
                 "verified_horizon_seconds": measurement.get("verified_horizon_seconds", 0),
@@ -112,12 +129,16 @@ def build_contracts(measurement: dict) -> dict:
 def load_profile(path: str, *, probe=False) -> dict:
     with open(path, encoding="utf-8") as handle:
         profile = json.load(handle)
+    profile.setdefault("pod_collection_enabled", False)
     profile["contracts"] = build_contracts(profile.pop("measurement"))
-    scope_hash = _hash(collection_scope(profile))
-    for metrics in profile["contracts"].values():
+    for kind, metrics in profile["contracts"].items():
+        scope_hash = _hash(collection_scope(profile, kind=kind))
         for entry in metrics.values():
             entry["contract"]["source_scope_hash"] = scope_hash
     profile["contract_version"] = contract_version(profile)
+    profile.pop("pod_contract_version", None)
+    if "pod" in profile["contracts"]:
+        profile["pod_contract_version"] = contract_version(profile, kind="pod")
     validate_profile(profile, require_conversion=not probe)
     return profile
 
@@ -125,7 +146,18 @@ def load_profile(path: str, *, probe=False) -> dict:
 def validate_profile(profile: dict, *, require_conversion=True) -> None:
     if profile.get("account_id") != ACCOUNT_ID:
         raise ValueError("Only the explicit Tencent CICD account is supported")
+    contracts = profile.get("contracts", {})
+    if not {"cvm", "tke_native"} <= set(contracts) <= set(ALLOWED_METRICS):
+        raise ValueError("Both machine contracts are required; only Pod is optional")
+    pod_enabled = profile.get("pod_collection_enabled", False)
+    if not isinstance(pod_enabled, bool):
+        raise TypeError("pod_collection_enabled must be a boolean")
+    has_pod_contract = "pod" in contracts
+    if pod_enabled and not has_pod_contract:
+        raise ValueError("Pod collection requires an explicit Pod contract")
     for field, limit in (("regions", 4), ("namespaces", 32), ("labels", 32)):
+        if field != "regions" and field not in profile and not has_pod_contract:
+            continue
         values = profile.get(field)
         if (
             not isinstance(values, list)
@@ -142,33 +174,27 @@ def validate_profile(profile: dict, *, require_conversion=True) -> None:
     ):
         raise ValueError("One explicit cluster and its region are required")
     if any(
-        not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", n) for n in profile["namespaces"]
+        not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", n)
+        for n in profile.get("namespaces", ())
     ):
         raise ValueError("Invalid namespace")
-    label_keys(profile["labels"])
-    contracts = profile.get("contracts", {})
-    if set(contracts) != set(ALLOWED_METRICS):
-        raise ValueError("Only cvm, tke_native and pod CPU/memory contracts are supported")
-    scope_hash = _hash(collection_scope(profile))
+    if "labels" in profile:
+        label_keys(profile["labels"])
     for kind, metrics in contracts.items():
+        scope_hash = _hash(collection_scope(profile, kind=kind))
         if set(metrics) != {"cpu", "memory"}:
             raise ValueError("Only CPU and memory contracts are supported")
-        expected = build_contracts({})[kind]
         for metric, entry in metrics.items():
             contract = entry["contract"]
-            if any(
-                contract.get(k) != v
-                for k, v in expected[metric]["contract"].items()
-                if k not in {"source_scale", "values_avg_verified"}
-            ):
-                raise ValueError("Metric contract differs from pinned V2 semantics")
+            if any(contract.get(k) != v for k, v in _metric_contract(kind, metric).items()):
+                raise ValueError("Metric contract differs from pinned V3 semantics")
             if contract.get("source_scope_hash") != scope_hash:
                 raise ValueError("Contract collection scope hash mismatch")
             if not isinstance(contract.get("values_avg_verified"), bool):
                 raise TypeError("Values average semantics must be explicitly verified")
             if "scope_contracts" in entry or "consumer_only" in entry:
                 raise ValueError("V1 group/consumer contracts are unsupported")
-            if require_conversion:
+            if require_conversion or (kind == "pod" and pod_enabled):
                 scale = _number(contract.get("source_scale"), positive=True)
                 if (kind != "pod" or metric == "cpu") and scale != 1:
                     raise ValueError("Percent and CPU core source_scale must equal 1")
@@ -176,7 +202,12 @@ def validate_profile(profile: dict, *, require_conversion=True) -> None:
                 margin = _number(entry.get("safety_margin_seconds"))
                 if margin >= horizon or entry.get("timestamp_alignment_verified") is not True:
                     raise ValueError("Unverified source horizon/alignment")
-                if not entry.get("horizon_verified_at") or not entry.get("evidence_reference"):
+                evidence = entry.get("evidence_reference")
+                if (
+                    not isinstance(evidence, str)
+                    or not evidence.strip()
+                    or not entry.get("horizon_verified_at")
+                ):
                     raise ValueError("Source horizon canary evidence is required")
                 verified = datetime.fromisoformat(entry["horizon_verified_at"])
                 if verified.tzinfo is None or _utc(verified) > datetime.now(UTC) + timedelta(
@@ -184,7 +215,9 @@ def validate_profile(profile: dict, *, require_conversion=True) -> None:
                 ):
                     raise ValueError("Invalid source horizon verification time")
     if profile.get("contract_version") != contract_version(profile):
-        raise ValueError("Contract version does not match contracts and collection scope")
+        raise ValueError("Machine contract version does not match contracts and collection scope")
+    if profile.get("pod_contract_version") != contract_version(profile, kind="pod"):
+        raise ValueError("Pod contract version does not match contract and collection scope")
 
 
 class TencentReader:
@@ -200,7 +233,6 @@ class TencentReader:
         self._account_verified = False
         self._lock = threading.Lock()
         self._last_attempt = None
-        self._type_cache = {}
         self.stats = {"calls": 0, "response_bytes": 0, "points": 0}
 
     def _sdk_call(self, service, action, region, params):
@@ -426,38 +458,46 @@ class TencentReader:
         )
 
     def _bill_snapshot(self, row, product):
-        components = row.get("ComponentSet")
-        if not isinstance(components, list) or not components:
-            raise ValueError("Missing billing components")
-        configs = {}
+        components = row.get("ComponentSet", [])
+        if not isinstance(components, list) or (product == "p_011691" and not components):
+            raise ValueError("Missing or invalid billing components")
+        if product == "p_011691":
+            native_compute = False
+            for component in components:
+                code = component.get("ItemCode")
+                if isinstance(code, str):
+                    if code in NATIVE_COMPONENTS:
+                        native_compute = True
+                    elif re.search(r"_(cpu|mem)(?:_|$)", code):
+                        raise ValueError("Unreviewed native compute component")
+            if not native_compute:
+                return None  # Disk/network-only rows do not identify billable machines.
+
+        regions = set()
         for component in components:
             values = component.get("ComponentConfig") or []
             if not isinstance(values, list):
                 raise TypeError("Invalid billing component config")
             for item in values:
-                name, value = item.get("Name"), item.get("Value")
-                if name in {"地域", "机型"}:
-                    if name in configs and configs[name] != value:
-                        raise ValueError("Conflicting billing component config")
-                    configs[name] = value
-        region = configs.get("地域") or REGION_IDS.get(str(row.get("RegionId")))
+                if item.get("Name") == "地域":
+                    value = item.get("Value")
+                    if not isinstance(value, str):
+                        raise ValueError("Invalid billing region evidence")
+                    regions.add(value)
+        if len(regions) > 1:
+            raise ValueError("Conflicting billing region evidence")
+        mapped = REGION_IDS.get(str(row.get("RegionId")))
+        region = next(iter(regions), None) or mapped
         if not region:
             raise ValueError("Unsupported billing region mapping")
         if region not in self.profile["regions"]:
             raise ValueError("Billing region is outside configured scope")
-        mapped = REGION_IDS.get(str(row.get("RegionId")))
         if mapped and mapped != region:
             raise ValueError("Conflicting billing region evidence")
         resource = row.get("ResourceId", "")
-        instance_type = configs.get("机型", "")
-        if not isinstance(instance_type, str) or len(instance_type) > 128:
-            raise ValueError("Invalid historical machine instance type")
         if product == "p_cvm":
             if not isinstance(resource, str) or not re.fullmatch(r"ins-[a-z0-9]+", resource):
                 raise ValueError("Invalid CVM billing identity")
-            cpu, memory = (
-                self._type_capacity(region, instance_type) if instance_type else (None, None)
-            )
             cluster, kind, machine = "", "cvm", resource
         else:
             if not isinstance(resource, str) or not re.fullmatch(
@@ -467,116 +507,41 @@ class TencentReader:
             cluster, machine = resource.split("_", 1)
             if cluster != self.profile["cluster_id"] or region != self.profile["cluster_region"]:
                 raise ValueError("Native billing machine is outside configured cluster")
-            capacities = {}
-            for component in components:
-                code = component.get("ItemCode", "")
-                metric = NATIVE_COMPONENTS.get(code)
-                if metric is None:
-                    if isinstance(code, str) and re.search(r"_(cpu|mem)(?:_|$)", code):
-                        raise ValueError("Unreviewed native capacity component")
-                    continue  # Disk/network charges are never capacity evidence.
-                unit = "核" if metric == "cpu" else "GiB"
-                if component.get("UsedAmountUnit") != unit:
-                    raise ValueError("Native billing capacity unit mismatch")
-                try:
-                    value = float(component["UsedAmount"])
-                except (KeyError, TypeError, ValueError):
-                    raise ValueError("Invalid native billing capacity quantity") from None
-                if isinstance(component["UsedAmount"], bool):
-                    raise TypeError("Invalid native billing capacity quantity")
-                value = _number(_number(value, positive=True) * (1 if metric == "cpu" else 1024**3), positive=True)
-                if metric in capacities and capacities[metric] != value:
-                    raise ValueError("Conflicting native resource/service capacity quantities")
-                capacities[metric] = value
-            if not capacities:
-                return None
-            cpu, memory = capacities.get("cpu"), capacities.get("memory")
             kind = "tke_native"
         return {
             "machine_id": machine,
             "region": region,
             "cluster_id": cluster,
             "resource_class": kind,
-            "instance_type": instance_type,
-            "cpu_cores": cpu,
-            "memory_bytes": memory,
         }
-
-    def _type_capacity(self, region, instance_type):
-        key = (region, instance_type)
-        if key not in self._type_cache:
-            response = self.call(
-                "cvm",
-                "DescribeInstanceTypeConfigs",
-                region,
-                Filters=[{"Name": "instance-type", "Values": [instance_type]}],
-            )
-            entries = response.get("InstanceTypeConfigSet")
-            if not isinstance(entries, list):
-                raise ValueError("Incomplete historical instance type catalogue")
-            capacities = set()
-            for item in entries:
-                if item.get("InstanceType") != instance_type:
-                    raise ValueError("Unexpected instance type catalogue identity")
-                capacities.add(
-                    (
-                        _number(item.get("CPU"), positive=True),
-                        _number(_number(item.get("Memory"), positive=True) * 1024**3, positive=True),
-                    )
-                )
-            if len(capacities) > 1:
-                raise ValueError("Conflicting historical instance type capacity")
-            self._type_cache[key] = next(iter(capacities), (None, None))
-        return self._type_cache[key]
 
     @staticmethod
     def _merge_snapshots(snapshots):
-        # Partition by every charge boundary so separate CPU/memory bill rows can
-        # complement each other without bridging gaps or summing service fees.
+        # Union overlapping or adjacent charge intervals, never bridge gaps.
+        identity_fields = ("region", "cluster_id", "machine_id")
         groups = {}
         for row in snapshots:
-            key = tuple(row[k] for k in ("region", "cluster_id", "machine_id"))
+            key = tuple(row[k] for k in identity_fields)
             groups.setdefault(key, []).append(row)
         result = []
         for rows in groups.values():
-            fields = ("resource_class", "instance_type", "cpu_cores", "memory_bytes")
-            events = {}
-            for row in rows:
-                events.setdefault(row["observed_from"], []).append((1, row))
-                events.setdefault(row["observed_until"], []).append((-1, row))
-            counts = {field: Counter() for field in fields}
-            active = 0
-            bounds = sorted(events)
-            for index, left in enumerate(bounds[:-1]):
-                right = bounds[index + 1]
-                for delta, row in events[left]:
-                    active += delta
-                    for field in fields:
-                        value = row[field]
-                        if value is None or value == "":
-                            continue
-                        counts[field][value] += delta
-                        if counts[field][value] == 0:
-                            del counts[field][value]
-                if not active:
-                    continue
-                merged = {**rows[0], "observed_from": left, "observed_until": right}
-                for field, values in counts.items():
-                    if len(values) > 1:
-                        raise ValueError("Conflicting overlapping historical machine capacities")
-                    merged[field] = next(iter(values), "" if field == "instance_type" else None)
-                if (
-                    result
-                    and all(
-                        result[-1][k] == v
-                        for k, v in merged.items()
-                        if k not in {"observed_from", "observed_until"}
-                    )
-                    and result[-1]["observed_until"] == left
-                ):
-                    result[-1]["observed_until"] = right
-                else:
-                    result.append(merged)
+            previous = None
+            for row in sorted(rows, key=lambda r: r["observed_from"]):
+                left, right = row["observed_from"], row["observed_until"]
+                kind = row["resource_class"]
+                if previous is not None and left <= previous["observed_until"]:
+                    if kind == previous["resource_class"]:
+                        previous["observed_until"] = max(right, previous["observed_until"])
+                        continue
+                    if left < previous["observed_until"]:
+                        raise ValueError("Conflicting overlapping historical machine identity")
+                previous = {
+                    **{k: row[k] for k in identity_fields},
+                    "resource_class": kind,
+                    "observed_from": left,
+                    "observed_until": right,
+                }
+                result.append(previous)
         return result
 
     def _target(self, target):
@@ -596,6 +561,9 @@ class TencentReader:
                 return kind, entity
         elif target.get("kind") == "pod":
             kind, entity = "pod", target.get("pod_uid")
+            # The off switch stops new work; a retained contract can drain old tasks.
+            if kind not in self.profile["contracts"]:
+                raise ValueError("Pod monitoring requires a configured Pod contract")
             if (
                 not isinstance(entity, str)
                 or not entity
@@ -605,15 +573,13 @@ class TencentReader:
                 or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,252}", target["pod_name"])
             ):
                 raise ValueError("Invalid Pod target identity")
-            selector = target.get("node_query_value")
-            if target.get("node_query_kind") not in {"node", "un_instance_id"} or (
-                not isinstance(selector, str) or not selector or len(selector) > 255
+            selector = target.get("node_instance_id")
+            if (
+                not isinstance(selector, str)
+                or len(selector) > 255
+                or not re.fullmatch(r"ins-[a-z0-9]+|np-[a-z0-9]+(?:-[a-z0-9]+)*", selector)
             ):
-                raise ValueError("Pod requires a validated historical node selector")
-            if target["node_query_kind"] == "un_instance_id" and not re.fullmatch(
-                r"(?:np|ins)-[a-z0-9-]+", selector
-            ):
-                raise ValueError("Invalid historical instance selector")
+                raise ValueError("Pod requires a validated historical node instance ID")
         else:
             raise ValueError("Unsupported collection target kind")
         if (
@@ -682,8 +648,12 @@ class TencentReader:
                     continue
                 if kind == "pod":
                     entity, target = next(iter(batch.items()))
-                    dims = {"tke_cluster_instance_id": cluster, "namespace": target["namespace"], "pod_name": target["pod_name"],
-                            target["node_query_kind"]: target["node_query_value"]}
+                    dims = {
+                        "tke_cluster_instance_id": cluster,
+                        "namespace": target["namespace"],
+                        "pod_name": target["pod_name"],
+                        "un_instance_id": target["node_instance_id"],
+                    }
                     conditions = [{"Key": key, "Operator": "=", "Value": [value]} for key, value in dims.items()]
                 else:
                     conditions = [{"Key": "tke_cluster_instance_id", "Operator": "=", "Value": [cluster]},
