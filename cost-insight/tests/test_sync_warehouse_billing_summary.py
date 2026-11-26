@@ -101,9 +101,14 @@ def run(engine, vendor, **extra):
         account_ids=[ACCOUNT], project=PROJECT, tcms_allocation_table=RULES, **extra)
 
 
-def state(engine, vendor):
+def job_name(vendor, account=ACCOUNT):
+    base = f"sync_{vendor}_warehouse_daily"
+    return f"{base}:aws:{account}" if vendor == "aws" else base
+
+
+def state(engine, vendor, account=ACCOUNT):
     with engine.connect() as c:
-        return state_store.get_job_state(c, f"sync_{vendor}_warehouse_daily")
+        return state_store.get_job_state(c, job_name(vendor, account))
 
 
 def test_both_routes_catch_up_and_publish_without_touching_unrequested_identity(engine, vendor):
@@ -121,7 +126,7 @@ def test_both_routes_catch_up_and_publish_without_touching_unrequested_identity(
 
 def test_dry_run_is_select_only_even_with_existing_failed_latch(engine, vendor):
     with engine.begin() as c:
-        state_store.mark_job_failed(c, f"sync_{vendor}_warehouse_daily", {"run_id": "old"}, "existing failure")
+        state_store.mark_job_failed(c, job_name(vendor), {"run_id": "old"}, "existing failure")
     old = state(engine, vendor)
     statements = []
     event.listen(engine, "before_cursor_execute", lambda c, cur, sql, p, ctx, many: statements.append(sql.strip().upper()))
@@ -286,9 +291,11 @@ def test_terminal_commit_ack_loss_keeps_succeeded_latch(engine, vendor, monkeypa
 def test_running_legacy_operational_key_cannot_be_bypassed(engine, vendor):
     with engine.begin() as c:
         state_store.mark_job_started(c, f"sync_{vendor}_warehouse_daily", {"run_id": "legacy-configmap-worker"})
-    with pytest.raises(ValueError, match="running"):
+    with pytest.raises(ValueError, match="running|pod_name"):
         run(engine, vendor)
-    assert state(engine, vendor).watermark["run_id"] == "legacy-configmap-worker"
+    with engine.connect() as c:
+        legacy = state_store.get_job_state(c, f"sync_{vendor}_warehouse_daily")
+    assert legacy.watermark["run_id"] == "legacy-configmap-worker"
 
 
 @pytest.mark.parametrize("field,value", [("is_active", 0), ("source_schema_version", "aws_split_cost_v1"),
@@ -592,7 +599,7 @@ def test_failed_run_preserves_old_window_and_replays_only_unfinished_days(engine
         # Real ordinary workers before the F04 cutover omitted source_profile.
         old = {k: v for k, v in failed.watermark.items() if k not in ("source_profile", "pod_uid", "pod_namespace")}
         with engine.begin() as c:
-            state_store.mark_job_failed(c, f"sync_{vendor}_warehouse_daily", old, "old worker failure")
+            state_store.mark_job_failed(c, job_name(vendor), old, "old worker failure")
         failed = state(engine, vendor)
     assert failed.watermark["completed_account_days"] == [f"{ACCOUNT}/{START}", f"{ACCOUNT}/{START + timedelta(days=1)}"]
     fetches = []
@@ -618,7 +625,7 @@ def test_failed_run_preserves_old_window_and_replays_only_unfinished_days(engine
             assert total["n"] == 1 and total["net_cost"] == 8
             job._verify_publication(c, vendor, ACCOUNT, day)
     with pytest.raises(ValueError, match="ownership"):
-        job._checkpoint(engine, f"sync_{vendor}_warehouse_daily", failed.watermark)
+        job._checkpoint(engine, job_name(vendor), failed.watermark)
 
 
 @pytest.mark.parametrize("running", [False, True])
@@ -626,7 +633,7 @@ def test_dry_run_does_not_reclaim_or_write_valid_recovery_state(engine, vendor, 
     failed = fail_mid_window(engine, vendor, monkeypatch)
     if running:
         with engine.begin() as c:
-            state_store.mark_job_started(c, f"sync_{vendor}_warehouse_daily", failed.watermark)
+            state_store.mark_job_started(c, job_name(vendor), failed.watermark)
     before = state(engine, vendor)
     statements = []
     event.listen(engine, "before_cursor_execute",
@@ -675,7 +682,7 @@ def test_completed_days_are_verified_before_skipping_or_replacing_any_pending_da
 
 def test_running_owner_requires_proof_and_rechecks_state_after_pod_lookup(engine, vendor, monkeypatch):
     failed = fail_mid_window(engine, vendor, monkeypatch)
-    name = f"sync_{vendor}_warehouse_daily"
+    name = job_name(vendor)
     with engine.begin() as c:
         state_store.mark_job_started(c, name, failed.watermark)
     old = state(engine, vendor)
@@ -705,7 +712,7 @@ def test_running_owner_requires_proof_and_rechecks_state_after_pod_lookup(engine
 def test_dead_running_owner_is_resumed_and_records_new_pod_identity(engine, vendor, monkeypatch):
     failed = fail_mid_window(engine, vendor, monkeypatch)
     with engine.begin() as c:
-        state_store.mark_job_started(c, f"sync_{vendor}_warehouse_daily", failed.watermark)
+        state_store.mark_job_started(c, job_name(vendor), failed.watermark)
     guard = Mock()
     monkeypatch.setattr(job, "assert_owner_stopped", guard)
     monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", publish)
@@ -726,7 +733,7 @@ def test_dead_running_owner_is_resumed_and_records_new_pod_identity(engine, vend
 def test_recovery_refuses_changed_or_corrupt_persisted_scope(engine, vendor, monkeypatch, change):
     failed = fail_mid_window(engine, vendor, monkeypatch)
     with engine.begin() as c:
-        state_store.mark_job_failed(c, f"sync_{vendor}_warehouse_daily", {**failed.watermark, **change}, "old")
+        state_store.mark_job_failed(c, job_name(vendor), {**failed.watermark, **change}, "old")
     fetch = Mock()
     monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
     with pytest.raises(ValueError):
@@ -744,7 +751,7 @@ def test_malformed_recovery_window_is_actionable_and_keeps_checkpoint(
         engine, vendor, monkeypatch, bad_window):
     failed = fail_mid_window(engine, vendor, monkeypatch)
     with engine.begin() as c:
-        state_store.mark_job_failed(c, f"sync_{vendor}_warehouse_daily",
+        state_store.mark_job_failed(c, job_name(vendor),
             {**failed.watermark, "windows": [bad_window]}, "original write failure")
     before = state(engine, vendor)
     fetch = Mock()
@@ -764,13 +771,18 @@ def test_empty_completions_do_not_allow_scope_reset_after_summary_commit(engine,
     assert before.watermark["completed_account_days"] == []
     with engine.connect() as c:
         assert job._table_totals(c, job.SUMMARY, vendor, ACCOUNT, START)["n"] == 1
-    fetch = Mock()
+    fetch = Mock(side_effect=lambda client, **kw: window(vendor, kw["account_id"]))
     monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
-    with pytest.raises(ValueError, match="original account scope"):
+    with pytest.raises(ValueError, match="original account scope|first summary commit"):
         job.run_sync_warehouse_billing_summary(engine, client=Mock(), vendor=vendor,
             account_ids=[ACCOUNT, "account-b"], project=PROJECT, tcms_allocation_table=RULES)
-    assert state(engine, vendor) == before
-    fetch.assert_not_called()
+    if vendor == "aws":
+        # The account keeps its pending window even when the requested sibling set changes.
+        assert state(engine, vendor).watermark["windows"] == before.watermark["windows"]
+        assert fetch.call_args_list[0].kwargs["recovery_window"] == (START, END)
+    else:
+        assert state(engine, vendor) == before
+        fetch.assert_not_called()
 
 
 def test_two_failed_state_contenders_cannot_both_acquire(tmp_path, monkeypatch):
@@ -854,6 +866,332 @@ def test_f04_preflight_crash_preserves_explicit_window_and_requires_profile(f04_
     result = run_f04(f04_engine)
     assert result["completed_account_days"] == [f"{F04_ACCOUNT}/{START}"]
     assert result["percent"] == 100
+
+
+@pytest.fixture
+def ordinary_aws_engine(engine, vendor):
+    if vendor != "aws":
+        pytest.skip("Ordinary AWS account isolation")
+    return engine
+
+
+def run_accounts(engine, **extra):
+    return job.run_sync_warehouse_billing_summary(engine, client=Mock(), vendor="aws",
+        account_ids=[ACCOUNT, "account-b"], project=PROJECT, tcms_allocation_table=RULES, **extra)
+
+
+def legacy_checkpoint():
+    return {"run_id": "legacy-run", "vendor": "aws", "project": PROJECT,
+            "accounts": [ACCOUNT, "account-b"], "pod_name": "legacy-pod",
+            "windows": [{"account_id": a, "start": str(START), "end": str(END)}
+                        for a in (ACCOUNT, "account-b")],
+            "phase": "write", "current_account_day": f"{ACCOUNT}/{START}",
+            "completed_account_days": []}
+
+
+def test_all_ordinary_accounts_complete_with_distinct_ownership(ordinary_aws_engine):
+    engine = ordinary_aws_engine
+    results = run_accounts(engine)["account_results"]
+    assert all(result["status"] == "succeeded" for result in results.values())
+    states = [state(engine, "aws", account) for account in (ACCOUNT, "account-b")]
+    assert all(s.last_status == "succeeded" and len(s.watermark["completed_account_days"]) == 5 for s in states)
+    assert states[0].watermark["run_id"] != states[1].watermark["run_id"]
+
+
+@pytest.mark.parametrize("failure", ["fetch", "registry", "currency", "backlog", "unverified_latch"])
+def test_account_local_preflight_and_failed_latch_do_not_block_sibling(ordinary_aws_engine, monkeypatch, failure):
+    engine = ordinary_aws_engine
+    before = None
+    if failure == "unverified_latch":
+        with engine.begin() as c:
+            state_store.mark_job_failed(c, job_name("aws"), {"run_id": "unverified"}, "inspect me")
+        before = state(engine, "aws")
+    elif failure == "registry":
+        with engine.begin() as c:
+            c.execute(text("UPDATE cost_sources SET is_active=0 WHERE account_id=:a"), {"a": ACCOUNT})
+    elif failure == "backlog":
+        with engine.begin() as c:
+            c.execute(text(f"DELETE FROM {job.SUMMARY} WHERE account_id=:a"), {"a": ACCOUNT})
+    def fetch(client, **kw):
+        account = kw["account_id"]
+        if account == ACCOUNT and failure == "fetch":
+            raise RuntimeError("source unavailable for A")
+        w = window("aws", account)
+        if account == ACCOUNT and failure == "currency":
+            return WarehouseWindow(w.start, w.end, ({**w.rows[0], "currency": "EUR"}, *w.rows[1:]),
+                                   w.controls, w.snapshots)
+        return w
+    fetcher = Mock(side_effect=fetch)
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetcher)
+    with pytest.raises(job.WarehouseAccountFailures) as raised:
+        run_accounts(engine)
+    results = raised.value.summary["account_results"]
+    assert results[ACCOUNT]["status"] == "failed" and results[ACCOUNT]["error"]
+    assert results["account-b"]["status"] == "succeeded"
+    assert state(engine, "aws", "account-b").last_status == "succeeded"
+    if before:
+        assert state(engine, "aws") == before  # No automatic reset of unverified state.
+        assert [c.kwargs["account_id"] for c in fetcher.call_args_list] == ["account-b"]
+    else:
+        assert state(engine, "aws").last_status == "failed"
+    with engine.connect() as c:
+        for day in job._dates(START, END):
+            job._verify_publication(c, "aws", "account-b", day)
+
+
+def test_account_keys_can_be_running_independently_but_same_account_is_exclusive(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    db = create_engine(f"sqlite:///{tmp_path / 'accounts.db'}")
+    with db.begin() as c:
+        c.execute(text('''CREATE TABLE cost_job_state(job_name TEXT PRIMARY KEY,watermark_json TEXT,
+            last_started_at TEXT,last_succeeded_at TEXT,last_status TEXT,last_error TEXT,updated_at TEXT)'''))
+    def acquire(account):
+        progress = {**legacy_checkpoint(), "run_id": f"run-{account}", "source_profile": "ordinary",
+                    "accounts": (account,), "windows": [], "completed_account_days": [], "phase": "preflight"}
+        job._acquire(db, job_name("aws", account), progress)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            list(pool.map(acquire, (ACCOUNT, "account-b")))
+        before = [state(db, "aws", account) for account in (ACCOUNT, "account-b")]
+        assert [s.last_status for s in before] == ["running", "running"]
+        monkeypatch.setattr(job, "assert_owner_stopped", Mock(side_effect=ValueError("live owner")))
+        with pytest.raises(ValueError, match="running"):
+            acquire(ACCOUNT)
+        assert [state(db, "aws", account) for account in (ACCOUNT, "account-b")] == before
+    finally:
+        db.dispose()
+
+
+def test_two_legacy_migrations_cannot_overwrite_scoped_checkpoints(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    db = create_engine(f"sqlite:///{tmp_path / 'migration.db'}")
+    with db.begin() as c:
+        c.execute(text('''CREATE TABLE cost_job_state(job_name TEXT PRIMARY KEY,watermark_json TEXT,
+            last_started_at TEXT,last_succeeded_at TEXT,last_status TEXT,last_error TEXT,updated_at TEXT)'''))
+        state_store.mark_job_failed(c, "sync_aws_warehouse_daily", legacy_checkpoint(), "A failed")
+    barrier = Barrier(2)
+    resume = job._resume_progress
+    def synchronized(*args):
+        resume(*args)
+        barrier.wait(timeout=5)
+    monkeypatch.setattr(job, "_resume_progress", synchronized)
+    def migrate(_):
+        try:
+            job._migrate_ordinary_aws_state(db, PROJECT)
+            return True
+        except ValueError as exc:
+            assert "state changed" in str(exc)
+            return False
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            assert sorted(pool.map(migrate, (1, 2))) == [False, True]
+        with db.connect() as c:
+            assert state_store.get_job_state(c, "sync_aws_warehouse_daily").last_status == "account_scoped"
+            assert c.execute(text("SELECT COUNT(*) FROM cost_job_state")).scalar_one() == 3
+        assert all(state(db, "aws", account).last_status == "failed" for account in (ACCOUNT, "account-b"))
+    finally:
+        db.dispose()
+
+
+def test_live_account_owner_does_not_block_other_account(ordinary_aws_engine, monkeypatch):
+    engine = ordinary_aws_engine
+    progress = {**legacy_checkpoint(), "accounts": (ACCOUNT,),
+                "windows": [legacy_checkpoint()["windows"][0]], "source_profile": "ordinary"}
+    job._migrate_ordinary_aws_state(engine, PROJECT)
+    job._acquire(engine, job_name("aws"), progress)
+    before = state(engine, "aws")
+    guard = Mock(side_effect=ValueError("owner Pod is still alive"))
+    monkeypatch.setattr(job, "assert_owner_stopped", guard)
+    with pytest.raises(job.WarehouseAccountFailures, match="running"):
+        run_accounts(engine)
+    assert state(engine, "aws") == before
+    assert state(engine, "aws", "account-b").last_status == "succeeded"
+    guard.assert_called_once_with(before.watermark)
+
+
+@pytest.mark.parametrize("running", [False, True])
+def test_legacy_migration_preserves_pending_windows_and_completed_days(ordinary_aws_engine, monkeypatch, running):
+    engine = ordinary_aws_engine
+    write_summary_rows(engine, [normalized("aws", day=START)], dry_run=False)
+    publish(engine, source=job.CostAttributionSource("aws", ACCOUNT), start_date=START,
+            end_date=START, tcms_allocation_table=RULES)
+    old = {**legacy_checkpoint(), "completed_account_days": [f"{ACCOUNT}/{START}"],
+           "current_account_day": f"{ACCOUNT}/{START + timedelta(days=1)}"}
+    with engine.begin() as c:
+        if running:
+            state_store.mark_job_started(c, "sync_aws_warehouse_daily", old)
+        else:
+            state_store.mark_job_failed(c, "sync_aws_warehouse_daily", old, "A crashed")
+    guard = Mock()
+    monkeypatch.setattr(job, "assert_owner_stopped", guard)
+    fetches = []
+    def fetch(client, **kw):
+        fetches.append(kw)
+        assert kw["recovery_window"] == (START, END)
+        return window("aws", kw["account_id"])
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    def fail_a(engine, **kw):
+        if kw["source"].account_id == ACCOUNT:
+            raise RuntimeError("A still fails")
+        publish(engine, **kw)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", fail_a)
+    with pytest.raises(job.WarehouseAccountFailures, match="A still fails"):
+        run_accounts(engine)
+    assert len(fetches) == 2
+    assert state(engine, "aws").watermark["completed_account_days"] == old["completed_account_days"]
+    assert state(engine, "aws").watermark["windows"] == [old["windows"][0]]
+    assert state(engine, "aws", "account-b").last_status == "succeeded"
+    with engine.connect() as c:
+        fence = state_store.get_job_state(c, "sync_aws_warehouse_daily")
+    assert fence.last_status == "account_scoped" and fence.watermark == old
+    # Even a PR954/old-key caller cannot acquire after migration.
+    with pytest.raises(ValueError, match="account_scoped"):
+        job._acquire(engine, "sync_aws_warehouse_daily", {**old, "accounts": tuple(old["accounts"])})
+    assert guard.call_count == int(running)
+
+
+def test_migration_requested_subset_keeps_unrequested_pending_account(ordinary_aws_engine):
+    engine = ordinary_aws_engine
+    old = legacy_checkpoint()
+    with engine.begin() as c:
+        state_store.mark_job_failed(c, "sync_aws_warehouse_daily", old, "A failed")
+    result = job.run_sync_warehouse_billing_summary(engine, client=Mock(), vendor="aws",
+        account_ids=["account-b"], project=PROJECT, tcms_allocation_table=RULES)
+    assert result["windows"] == [old["windows"][1]] and result["percent"] == 100
+    pending = state(engine, "aws")
+    assert pending.last_status == "failed" and pending.watermark["run_id"] == old["run_id"]
+    assert pending.watermark["windows"] == [old["windows"][0]]
+    assert "Interrupted legacy checkpoint" in pending.last_error
+
+
+def test_overlapping_legacy_and_account_state_rolls_back_entire_migration(ordinary_aws_engine, monkeypatch):
+    engine = ordinary_aws_engine
+    with engine.begin() as c:
+        state_store.mark_job_failed(c, "sync_aws_warehouse_daily", legacy_checkpoint(), "A failed")
+        state_store.mark_job_failed(c, job_name("aws", "account-b"), {"run_id": "other"}, "other checkpoint")
+        before = c.execute(text("SELECT * FROM cost_job_state ORDER BY job_name")).all()
+    fetch = Mock()
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    with pytest.raises(ValueError, match="overlap"):
+        run_accounts(engine)
+    with engine.connect() as c:
+        assert c.execute(text("SELECT * FROM cost_job_state ORDER BY job_name")).all() == before
+    fetch.assert_not_called()
+
+
+@pytest.mark.parametrize("change", [
+    {"phase": "preflight", "current_account_day": None}, {"current_account_day": None},
+    {"current_account_day": "unknown/2026-10-25"}, {"windows": []},
+    {"project": "wrong-project"}, {"accounts": ["account-b", ACCOUNT]},
+])
+def test_unattributed_or_corrupt_legacy_failure_is_globally_fail_closed(ordinary_aws_engine, monkeypatch, change):
+    engine = ordinary_aws_engine
+    with engine.begin() as c:
+        state_store.mark_job_failed(c, "sync_aws_warehouse_daily", {**legacy_checkpoint(), **change}, "unknown failure")
+        before = state_store.get_job_state(c, "sync_aws_warehouse_daily")
+    fetch = Mock()
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    with pytest.raises(ValueError, match="inspect before recovery"):
+        run_accounts(engine)
+    with engine.connect() as c:
+        assert state_store.get_job_state(c, "sync_aws_warehouse_daily") == before
+        assert c.execute(text("SELECT COUNT(*) FROM cost_job_state")).scalar_one() == 1
+    fetch.assert_not_called()
+
+
+@pytest.mark.parametrize("changed_owner", [False, True])
+def test_legacy_running_owner_proof_and_migration_cas_cannot_be_bypassed(ordinary_aws_engine, monkeypatch, changed_owner):
+    engine = ordinary_aws_engine
+    old = legacy_checkpoint()
+    with engine.begin() as c:
+        state_store.mark_job_started(c, "sync_aws_warehouse_daily", old)
+    def guard(progress):
+        if not changed_owner:
+            raise ValueError("owner still alive or unprovable")
+        with engine.begin() as c:
+            state_store.mark_job_started(c, "sync_aws_warehouse_daily", {**progress, "run_id": "other-owner"})
+    monkeypatch.setattr(job, "assert_owner_stopped", guard)
+    fetch = Mock()
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    with pytest.raises(ValueError, match="running|state changed"):
+        run_accounts(engine)
+    with engine.connect() as c:
+        assert state_store.get_job_state(c, "sync_aws_warehouse_daily").last_status == "running"
+        assert c.execute(text("SELECT COUNT(*) FROM cost_job_state")).scalar_one() == 1
+    fetch.assert_not_called()
+
+
+def test_multi_account_dry_run_never_fences_or_reclaims_any_latch(ordinary_aws_engine, monkeypatch):
+    engine = ordinary_aws_engine
+    with engine.begin() as c:
+        state_store.mark_job_failed(c, "sync_aws_warehouse_daily", legacy_checkpoint(), "legacy failure")
+        state_store.mark_job_failed(c, job_name("aws"), {"run_id": "unknown"}, "account failure")
+        before = c.execute(text("SELECT * FROM cost_job_state ORDER BY job_name")).all()
+    guard = Mock()
+    monkeypatch.setattr(job, "assert_owner_stopped", guard)
+    statements = []
+    event.listen(engine, "before_cursor_execute", lambda c, cur, sql, p, ctx, many: statements.append(sql.strip().upper()))
+    result = run_accounts(engine, dry_run=True)
+    assert all(r["status"] == "dry_run" for r in result["account_results"].values())
+    with engine.connect() as c:
+        assert c.execute(text("SELECT * FROM cost_job_state ORDER BY job_name")).all() == before
+    assert statements and all(s.startswith("SELECT") for s in statements)
+    guard.assert_not_called()
+
+
+def test_shared_source_change_stops_all_pending_accounts(ordinary_aws_engine, monkeypatch):
+    engine = ordinary_aws_engine
+    monkeypatch.setattr(job, "assert_snapshot", Mock(side_effect=[None, None, ValueError("shared snapshot changed")]))
+    with pytest.raises(ValueError, match="shared snapshot changed"):
+        run_accounts(engine)
+    assert state(engine, "aws").watermark["completed_account_days"] == [f"{ACCOUNT}/{START}"]
+    assert state(engine, "aws", "account-b").last_status == "failed"
+    with engine.connect() as c:
+        assert job._table_totals(c, job.SUMMARY, "aws", "account-b", START)["n"] == 0
+
+
+def test_cli_reports_partial_failure_as_nonzero(ordinary_aws_engine, monkeypatch, capsys):
+    import json
+
+    engine = ordinary_aws_engine
+    settings = load_settings({"COST_INSIGHT_DB_URL": "sqlite://", "COST_INSIGHT_BILLING_BQ_PROJECT": PROJECT,
+                              "COST_INSIGHT_BILLING_BQ_LOCATION": "us-west1"})
+    monkeypatch.setattr(cli, "get_settings", lambda **kw: settings)
+    monkeypatch.setattr(cli, "configure_logging", Mock())
+    monkeypatch.setattr(cli, "build_engine", Mock(return_value=engine))
+    monkeypatch.setattr(cli, "build_billing_bigquery_client", Mock(return_value=Mock()))
+    monkeypatch.setattr(engine, "dispose", Mock())
+    with engine.begin() as c:
+        state_store.mark_job_failed(c, job_name("aws"), {"run_id": "unknown"}, "unverified")
+    assert cli.main(["sync-warehouse-billing-summary", "--vendor", "aws",
+                     "--account-id", ACCOUNT, "--account-id", "account-b"]) == 1
+    results = json.loads(capsys.readouterr().out)["account_results"]
+    assert results[ACCOUNT]["status"] == "failed" and results[ACCOUNT]["error"]
+    assert results["account-b"]["status"] == "succeeded"
+    engine.dispose.assert_called_once()
+
+
+def test_ordinary_aws_account_write_failure_does_not_stop_sibling(engine, vendor, monkeypatch):
+    if vendor != "aws":
+        pytest.skip("Ordinary AWS account isolation")
+    def fail_one(engine, **kw):
+        if kw["source"].account_id == ACCOUNT:
+            raise RuntimeError("account-a publication failed")
+        publish(engine, **kw)
+    monkeypatch.setattr(job, "run_refresh_cost_attribution_from_summary", fail_one)
+    with pytest.raises((ValueError, RuntimeError), match="account-a publication failed"):
+        job.run_sync_warehouse_billing_summary(engine, client=Mock(), vendor=vendor,
+            account_ids=[ACCOUNT, "account-b"], project=PROJECT, tcms_allocation_table=RULES)
+    with engine.connect() as c:
+        for day in job._dates(START, END):
+            job._verify_publication(c, vendor, "account-b", day)
+        failed = state_store.get_job_state(c, "sync_aws_warehouse_daily:aws:account-a")
+        succeeded = state_store.get_job_state(c, "sync_aws_warehouse_daily:aws:account-b")
+    assert failed.last_status == "failed" and "publication failed" in failed.last_error
+    assert succeeded.last_status == "succeeded"
 
 
 def test_recovery_after_transport_fault_still_replaces_not_adds(engine, vendor, monkeypatch):
