@@ -11,10 +11,11 @@ import hashlib
 import json
 import logging
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from functools import partial
 from itertools import islice
 from typing import Any
 
@@ -22,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 
 from cost_insight.common.config import TENCENT_CI_SOURCE
+from cost_insight.common.db_retry import replay_safe_transaction
 from cost_insight.common.row_utils import bind_decimal_rows, tencent_ci_pool_key
 
 _AMOUNT_QUANTUM = Decimal("0.000000001")
@@ -102,6 +104,9 @@ def run_materialize_resource_serving(
             params = dict(window)
             is_tencent_ci = (params["vendor"], params["account_id"]) == TENCENT_CI_SOURCE
             with engine.begin() as connection:
+                previous_version = None if dry_run else connection.execute(
+                    _SELECT_PUBLICATION, {**params, "basis_key": basis_key},
+                ).scalar_one_or_none()
                 source_rows = _load_source_rows(connection, **params)
                 detail_rows = () if is_tencent_ci else _load_detail_rows(connection, **params)
                 tencent_summary_rows = (
@@ -112,7 +117,8 @@ def run_materialize_resource_serving(
                 if is_tencent_ci
                 else build_resource_serving_rows
             )
-            serving_rows = builder(
+            serving_rows = partial(
+                builder,
                 source_rows=source_rows,
                 **(
                     {"summary_rows": tencent_summary_rows}
@@ -124,9 +130,9 @@ def run_materialize_resource_serving(
                 calculated_at=(now or datetime.now(UTC)).replace(tzinfo=None),
             )
             totals: dict[str, dict[str, Any]] = {}
-            checked_rows = _checked_serving_rows(source_rows, serving_rows, totals)
+            checked_rows = partial(_checked_serving_rows, source_rows, serving_rows, totals)
             if dry_run:
-                row_count = sum(1 for _ in checked_rows)
+                row_count = sum(1 for _ in checked_rows())
             else:
                 row_count = _replace_staged_window(
                     engine,
@@ -134,6 +140,7 @@ def run_materialize_resource_serving(
                     materialization_version=version,
                     basis_key=basis_key,
                     batch_size=batch_size,
+                    private_version=materialization_version is None,
                     **params,
                 )
                 _publish_window(
@@ -142,6 +149,7 @@ def run_materialize_resource_serving(
                     materialization_version=version,
                     rows=tuple(totals.values()),
                     source_rows=source_rows,
+                    previous_version=previous_version,
                     **params,
                 )
             windows_published += 0 if dry_run else 1
@@ -739,7 +747,7 @@ def _load_tencent_summary_rows(
 
 def _replace_staged_window(
     engine: Engine,
-    rows: Iterable[Mapping[str, Any]],
+    rows: Callable[[], Iterator[Mapping[str, Any]]],
     *,
     materialization_version: str,
     basis_key: str,
@@ -747,30 +755,51 @@ def _replace_staged_window(
     vendor: str,
     account_id: str,
     batch_size: int,
+    private_version: bool,
 ) -> int:
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
-    row_count = 0
-    iterator = iter(rows)
-    with engine.begin() as connection:
-        connection.execute(_DELETE_STAGED, {
-            "materialization_version": materialization_version, "basis_key": basis_key,
-            "usage_date": usage_date, "vendor": vendor, "account_id": account_id,
-        })
+    params = {
+        "materialization_version": materialization_version, "basis_key": basis_key,
+        "usage_date": usage_date, "vendor": vendor, "account_id": account_id,
+    }
+
+    validated_count = 0
+
+    def replace(connection: Connection) -> int:
+        nonlocal validated_count
+        if connection.execute(_SELECT_ACTIVE_CANDIDATE, params).scalar_one_or_none():
+            raise ValueError("Cannot stage over the active resource serving version")
+        if private_version and validated_count:
+            # A generated version has no previous rows. Staging is atomic, so
+            # a matching count proves that the validated attempt committed.
+            stored_count = connection.execute(_COUNT_STAGED, params).scalar_one()
+            if stored_count == validated_count:
+                LOG.info("Confirmed resource serving stage after a lost commit acknowledgement")
+                return validated_count
+        validated_count = 0
+        deleted = connection.execute(_DELETE_STAGED, params).rowcount
+        row_count = 0
+        iterator = rows()
         while batch := [dict(row) for row in islice(iterator, batch_size)]:
             row_count += len(batch)
             if connection.dialect.name == "sqlite":
                 batch = bind_decimal_rows(batch)
             connection.execute(_INSERT_SERVING, batch)
-    return row_count
+        validated_count = row_count if deleted == 0 else 0
+        return row_count
+
+    return replay_safe_transaction(engine, replace)
 
 
 def _checked_serving_rows(
     source_rows: Sequence[Mapping[str, Any]],
-    rows: Iterable[Mapping[str, Any]],
+    rows: Callable[[], Iterable[Mapping[str, Any]]],
     totals: dict[str, dict[str, Any]],
 ) -> Iterator[Mapping[str, Any]]:
-    for row in rows:
+    # Each staging attempt starts a new iterator over fixed inputs.
+    totals.clear()
+    for row in rows():
         currency = _currency(row)
         total = totals.setdefault(currency, {"currency": currency})
         for name in (*_AMOUNTS, "detail_list_cost", "fallback_list_cost"):
@@ -787,28 +816,54 @@ def _publish_window(
     materialization_version: str,
     rows: Sequence[Mapping[str, Any]],
     source_rows: Sequence[Mapping[str, Any]],
+    previous_version: str | None,
     usage_date: date,
     vendor: str,
     account_id: str,
 ) -> None:
-    with engine.begin() as connection:
-        currencies = {_currency(row) for row in rows}
-        if len(currencies) > 1:
-            raise ValueError(
-                f"Resource serving window mixes currencies: {sorted(currencies)}"
-            )
-        params = {
-            "basis_key": basis_key, "vendor": vendor, "account_id": account_id,
-            "usage_date": usage_date, "materialization_version": materialization_version,
-            "detail_list_cost": sum((_decimal(row.get("detail_list_cost")) for row in rows), Decimal()),
-            "total_list_cost": sum((_decimal(row.get("list_cost")) for row in source_rows), Decimal()),
-            "source_row_count": sum((int(row.get("source_rows") or 1) for row in source_rows)),
-            "currency": next(iter(currencies), "USD"),
-        }
-        connection.execute(
-            _UPSERT_PUBLICATION_SQLITE if connection.dialect.name == "sqlite" else _UPSERT_PUBLICATION_MYSQL,
-            bind_decimal_rows([params])[0] if connection.dialect.name == "sqlite" else params,
-        )
+    if previous_version == materialization_version:
+        raise ValueError("Resource serving publication requires a new version")
+    currencies = {_currency(row) for row in rows}
+    if len(currencies) > 1:
+        raise ValueError(f"Resource serving window mixes currencies: {sorted(currencies)}")
+    params = {
+        "basis_key": basis_key, "vendor": vendor, "account_id": account_id,
+        "usage_date": usage_date, "materialization_version": materialization_version,
+        "detail_list_cost": sum((_decimal(row.get("detail_list_cost")) for row in rows), Decimal()),
+        "total_list_cost": sum((_decimal(row.get("list_cost")) for row in source_rows), Decimal()),
+        "source_row_count": sum(int(row.get("source_rows") or 1) for row in source_rows),
+        "currency": next(iter(currencies), "USD"), "previous_version": previous_version,
+    }
+    write_acknowledged = False
+
+    def publish(connection: Connection) -> None:
+        nonlocal write_acknowledged
+        bound = bind_decimal_rows([params])[0] if connection.dialect.name == "sqlite" else params
+        current = connection.execute(_SELECT_PUBLICATION, params).mappings().one_or_none()
+        active = current["active_materialization_version"] if current else None
+        if active == materialization_version and write_acknowledged:
+            # A lost COMMIT ACK must not reset downstream TiFlash readiness.
+            if (
+                current["currency"] == params["currency"]
+                and current["source_row_count"] == params["source_row_count"]
+                and all(
+                    abs(_decimal(current[key]) - _decimal(bound[key])) <= _AMOUNT_QUANTUM
+                    for key in ("detail_list_cost", "total_list_cost")
+                )
+            ):
+                return
+            raise RuntimeError("Resource serving commit readback does not match staged totals")
+        if active != previous_version:
+            raise RuntimeError("Resource serving publication changed; rebuild from current inputs")
+        if active is None and write_acknowledged:
+            # A failed commit and a concurrent invalidation look identical here.
+            raise RuntimeError("Cannot confirm first resource serving publication; rebuild from current inputs")
+        statement = _INSERT_PUBLICATION if previous_version is None else _UPDATE_PUBLICATION
+        if connection.execute(statement, bound).rowcount != 1:
+            raise RuntimeError("Resource serving publication changed; rebuild from current inputs")
+        write_acknowledged = True
+
+    replay_safe_transaction(engine, publish)
 
 
 def _assert_conserved(source_rows: Iterable[Mapping[str, Any]], serving_rows: Iterable[Mapping[str, Any]]) -> None:
@@ -904,11 +959,12 @@ FROM cost_bq_export_summary_daily
 WHERE usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
 ORDER BY source_row_hash
 """)
-_DELETE_STAGED = text("""
-DELETE FROM cost_resource_serving_daily
-WHERE materialization_version = :materialization_version AND basis_key = :basis_key
-  AND usage_date = :usage_date AND vendor = :vendor AND account_id = :account_id
-""")
+_PUBLICATION_WINDOW = (
+    "basis_key = :basis_key AND vendor = :vendor AND account_id = :account_id AND usage_date = :usage_date"
+)
+_STAGED_WINDOW = "materialization_version = :materialization_version AND " + _PUBLICATION_WINDOW
+_DELETE_STAGED = text(f"DELETE FROM cost_resource_serving_daily WHERE {_STAGED_WINDOW}")
+_COUNT_STAGED = text(f"SELECT COUNT(*) FROM cost_resource_serving_daily WHERE {_STAGED_WINDOW}")
 _INSERT_SERVING = text("""
 INSERT INTO cost_resource_serving_daily (
   materialization_version, basis_key, usage_date, vendor, account_id, owner_key, owner,
@@ -924,21 +980,15 @@ INSERT INTO cost_resource_serving_daily (
   :net_cost, :currency, :source_row_count, :calculated_at
 )
 """)
-_UPSERT_PUBLICATION_SQLITE = text("""
-INSERT INTO cost_resource_serving_publication (
-  basis_key, vendor, account_id, usage_date, active_materialization_version,
-  detail_list_cost, total_list_cost, currency, source_row_count, tiflash_ready_at
-) VALUES (
-  :basis_key, :vendor, :account_id, :usage_date, :materialization_version,
-  :detail_list_cost, :total_list_cost, :currency, :source_row_count, NULL
-)
-ON CONFLICT(basis_key, vendor, account_id, usage_date) DO UPDATE SET
-  active_materialization_version = excluded.active_materialization_version,
-  detail_list_cost = excluded.detail_list_cost, total_list_cost = excluded.total_list_cost,
-  currency = excluded.currency, source_row_count = excluded.source_row_count,
-  published_at = CURRENT_TIMESTAMP, tiflash_ready_at = NULL
+_SELECT_PUBLICATION = text(f"""
+SELECT active_materialization_version, detail_list_cost, total_list_cost, currency, source_row_count
+FROM cost_resource_serving_publication WHERE {_PUBLICATION_WINDOW}
 """)
-_UPSERT_PUBLICATION_MYSQL = text("""
+_SELECT_ACTIVE_CANDIDATE = text(f"""
+SELECT 1 FROM cost_resource_serving_publication
+WHERE {_PUBLICATION_WINDOW} AND active_materialization_version = :materialization_version
+""")
+_INSERT_PUBLICATION = text("""
 INSERT INTO cost_resource_serving_publication (
   basis_key, vendor, account_id, usage_date, active_materialization_version,
   detail_list_cost, total_list_cost, currency, source_row_count, tiflash_ready_at
@@ -946,9 +996,12 @@ INSERT INTO cost_resource_serving_publication (
   :basis_key, :vendor, :account_id, :usage_date, :materialization_version,
   :detail_list_cost, :total_list_cost, :currency, :source_row_count, NULL
 )
-ON DUPLICATE KEY UPDATE
-  active_materialization_version = VALUES(active_materialization_version),
-  detail_list_cost = VALUES(detail_list_cost), total_list_cost = VALUES(total_list_cost),
-  currency = VALUES(currency), source_row_count = VALUES(source_row_count),
+""")
+_UPDATE_PUBLICATION = text(f"""
+UPDATE cost_resource_serving_publication SET
+  active_materialization_version = :materialization_version,
+  detail_list_cost = :detail_list_cost, total_list_cost = :total_list_cost,
+  currency = :currency, source_row_count = :source_row_count,
   published_at = CURRENT_TIMESTAMP, tiflash_ready_at = NULL
+WHERE {_PUBLICATION_WINDOW} AND active_materialization_version = :previous_version
 """)
