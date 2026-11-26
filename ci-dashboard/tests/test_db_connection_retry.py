@@ -11,9 +11,9 @@ from ci_dashboard.common import db
 from ci_dashboard.common.config import load_settings
 
 
-def mysql_engine(monkeypatch, outcomes):
+def mysql_engine(monkeypatch, outcomes, **engine_opts):
     settings = load_settings({"CI_DASHBOARD_DB_URL": "mysql+pymysql://ci:secret@db/dashboard"})
-    engine = db.build_engine(settings)
+    engine = db.build_engine(settings, **engine_opts)
     connect = Mock(side_effect=outcomes)
     monkeypatch.setattr(engine.dialect.loaded_dbapi, "connect", connect)
     monkeypatch.setattr(time, "sleep", lambda _: None)
@@ -67,6 +67,35 @@ def test_nontransient_or_timeout_connection_errors_not_retried(monkeypatch, erro
     assert exc.value is error
     assert connect.call_count == 1
     engine.dispose()
+
+
+@pytest.mark.parametrize("code", [2003, 2013])
+def test_api_retries_only_a_fresh_transport_timeout_with_budget_left(monkeypatch, code):
+    timeout = pymysql.OperationalError(code, "connect or greeting timed out")
+    connection = SimpleNamespace(_read_timeout=5, _write_timeout=5)
+    engine, connect = mysql_engine(monkeypatch, [timeout, connection], retry_connect_timeout=True)
+    monkeypatch.setattr(time, "monotonic", Mock(side_effect=[0, 0, 2.5, 2.6, 2.6]))
+    try:
+        assert open_dbapi(engine) is connection
+        first, second = connect.call_args_list
+        assert first.kwargs["read_timeout"] == 2.5
+        assert second.kwargs["read_timeout"] == pytest.approx(2.4)
+        assert connection._read_timeout == 35
+    finally:
+        engine.dispose()
+
+
+def test_api_does_not_start_second_handshake_after_deadline(monkeypatch):
+    timeout = pymysql.OperationalError(2013, "greeting timed out")
+    engine, connect = mysql_engine(monkeypatch, [timeout], retry_connect_timeout=True)
+    monkeypatch.setattr(time, "monotonic", Mock(side_effect=[0, 0, 5]))
+    try:
+        with pytest.raises(pymysql.OperationalError) as exc:
+            open_dbapi(engine)
+        assert exc.value is timeout
+        assert connect.call_count == 1
+    finally:
+        engine.dispose()
 
 
 def test_connection_retry_not_started_when_budget_spent(monkeypatch):

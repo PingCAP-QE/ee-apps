@@ -45,6 +45,7 @@ CASE_NAME_PATTERN = re.compile(
     r"^flaky test(?::\s*|\s+)(.+?)(?:\s+in\s+.+)?$",
     re.IGNORECASE,
 )
+LEGACY_CASE_NAME_PATTERN = re.compile(r"(`[^`]+`|[^\s`]+)\s+is flaky", re.IGNORECASE)
 BRANCH_PATTERN = re.compile(r"- Branch:\s*([^\n<\"]+)")
 BODY_PR_LIST_PATTERN = re.compile(r"\bPRs?:\s*([0-9][0-9,\s]*)", re.IGNORECASE)
 GITHUB_PR_URL_PATTERN = re.compile(
@@ -624,6 +625,9 @@ def _parse_case_name(title: str) -> str:
     match = CASE_NAME_PATTERN.match(title.strip())
     if match is not None:
         return match.group(1).strip()
+    match = LEGACY_CASE_NAME_PATTERN.fullmatch(title.strip())
+    if match is not None:
+        return match.group(1).strip("`").strip()
     if ":" in title:
         return title.split(":", 1)[1].strip()
     return title.strip()

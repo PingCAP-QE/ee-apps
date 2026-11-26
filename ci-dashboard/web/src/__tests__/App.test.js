@@ -151,7 +151,7 @@ test("Flaky All issues stays selected and does not send a closed-only API filter
     for (const value of ["", "open", "closed"]) {
       await act(async () => statusSelect().props.onChange({ target: { value } }));
       assert.equal(statusSelect().props.value, value);
-      const request = requests.findLast((url) => url.pathname === "/api/v1/pages/flaky");
+      const request = requests.findLast((url) => url.pathname === "/api/v1/pages/flaky/issue_case_rates");
       assert.equal(request.searchParams.get("issue_status"), value || null);
       const link = renderer.root.findAllByType("a").find((node) => node.props.href.startsWith("/flaky?"));
       assert.equal(new URL(link.props.href, "http://localhost").searchParams.get("issue_status"), value);
@@ -378,7 +378,7 @@ test("top cases load independently, follow global filters and sit below Scope sw
   globalThis.fetch = async (url) => {
     const parsed = new URL(url, "http://localhost");
     requests.push(parsed);
-    if (parsed.pathname === "/api/v1/pages/flaky") {
+    if (parsed.pathname.startsWith("/api/v1/pages/flaky/")) {
       return { ok: false, status: 503, statusText: "Unavailable" };
     }
     return { ok: true, json: async () => ({ rows: [{
@@ -402,7 +402,7 @@ test("top cases load independently, follow global filters and sit below Scope sw
     }
     assert.equal(request.searchParams.get("issue_status"), null);
     let rendered = JSON.stringify(renderer.toJSON());
-    assert.match(rendered, /503 Unavailable/);
+    assert.match(rendered, /Section unavailable \(HTTP 503\)/);
     assert.match(rendered, /ReleaseCase/);
     assert.match(rendered, /all repos\/branches when unset/);
     assert.ok(rendered.indexOf("Scope switch") < rendered.indexOf("Top flaky cases"));
