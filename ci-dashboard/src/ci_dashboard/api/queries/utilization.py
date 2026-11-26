@@ -18,15 +18,15 @@ ACCOUNT_ID = "100050658403"
 STATE_KEY = f"utilization:{VENDOR}:{ACCOUNT_ID}"
 BEIJING = ZoneInfo("Asia/Shanghai")
 IDENTITY_KEYS = {
-    "author", "owner", "email", "user", "username", "employee", "employee_id",
-    "pod_uid", "pod_name", "build_id", "build_number", "run_id", "execution_id",
-    "test_execution_id", "job_uid", "job_run_id",
+    "author", "owner", "email", "user", "username", "employee", "employeeid",
+    "poduid", "podname", "buildid", "buildnumber", "runid", "executionid",
+    "testexecutionid", "jobuid", "jobrunid",
 }
 
 
 def _label_key(key):
     return (isinstance(key, str) and bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,62}", key))
-            and key.lower().replace(".", "_").replace("-", "_") not in IDENTITY_KEYS)
+            and re.sub(r"[._-]", "", key.lower()) not in IDENTITY_KEYS)
 
 
 METRICS = ("cpu", "memory")

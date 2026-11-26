@@ -130,7 +130,7 @@ def test_label_configuration_is_validated_once_per_exporter(monkeypatch):
 
 @pytest.mark.parametrize("key", [
     "pod_uid", "Pod.Name", "build-id", "BUILD_NUMBER", "run.id", "execution_id",
-    "test.execution-id", "job_uid", "JOB.RUN-ID", "Employee.ID",
+    "test.execution-id", "job_uid", "JOB.RUN-ID", "Employee.ID", "podUID", "testExecutionId",
 ])
 def test_run_and_pod_identity_labels_are_rejected(monkeypatch, key):
     monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_LABEL_KEYS", f"test_campaign,{key}")
@@ -452,6 +452,32 @@ def test_purged_predecessor_cannot_extend_or_create_a_selector_free_gap(db, even
         assert new["node_instance_id"] is None  # Old Node evidence cannot bind the new interval.
         assert u._datetime(new["observed_from"]) == u._datetime(new["planned_until"]) == changed
         assert json.loads(new["labels_json"])["service"] == ("first" if event == "renew" else "second")
+
+
+@pytest.mark.parametrize("same_pod", [False, True])
+def test_expired_retained_context_does_not_block_new_observation(db, same_pod):
+    exporter = u.MetadataExporter(db)
+    old = u.normalize_pod(pod())
+    observe(exporter, [old])
+    last = NOW + timedelta(minutes=10)
+    observe(exporter, [], last, heartbeat=True)
+    # Maintenance may have closed and settled the old interval without deleting it yet.
+    with db.begin() as connection:
+        connection.execute(text("UPDATE pod_utilization_context "
+                                "SET closed_at=observed_until, planned_until=observed_until"))
+    before, = rows(db)
+    new_at = last + u.CONTEXT_TTL
+    replace_state(db, retained_rows=1, maintenance_at=new_at.isoformat(), bytes_observed_at=new_at.isoformat())
+    new = old if same_pod else {**old, "pod_uid": "another-pod", "pod_name": "another"}
+    observe(exporter, [new], new_at, heartbeat=True)
+    end = new_at + timedelta(minutes=2)
+    observe(exporter, [], end, heartbeat=True)
+    observe(exporter, [new], end + timedelta(minutes=1), deleted=True)
+    original, fresh = rows(db)
+    assert original == before and retained(db) == 2
+    assert fresh["context_key"] == u.context_key(new, new_at)
+    assert u._datetime(fresh["observed_from"]) == u._datetime(fresh["planned_until"]) == new_at
+    assert u._datetime(fresh["closed_at"]) == end
 
 
 def test_selector_loss_rolls_back_close_and_both_inserts_if_guard_write_fails(db):

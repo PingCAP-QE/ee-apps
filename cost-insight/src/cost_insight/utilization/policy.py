@@ -16,9 +16,9 @@ METRICS = ("cpu", "memory")
 # This denylist is mirrored in the dashboard writer and reader. Operators must
 # still choose stable business labels, not encode run identities in their values.
 IDENTITY_KEYS = frozenset({
-    "author", "owner", "email", "user", "username", "employee", "employee_id",
-    "pod_uid", "pod_name", "build_id", "build_number", "run_id", "execution_id",
-    "test_execution_id", "job_uid", "job_run_id",
+    "author", "owner", "email", "user", "username", "employee", "employeeid",
+    "poduid", "podname", "buildid", "buildnumber", "runid", "executionid",
+    "testexecutionid", "jobuid", "jobrunid",
 })
 
 
@@ -29,7 +29,7 @@ def label_keys(keys):
         or any(
             not isinstance(key, str)
             or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,62}", key)
-            or key.lower().replace("-", "_").replace(".", "_") in IDENTITY_KEYS
+            or re.sub(r"[._-]", "", key.lower()) in IDENTITY_KEYS
             for key in keys
         )
         or len(set(keys)) != len(keys)

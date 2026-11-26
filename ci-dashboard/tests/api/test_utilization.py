@@ -628,7 +628,8 @@ def test_labels_must_also_be_enabled_in_guard_scope(client, engine):
 def test_identity_labels_cannot_be_advertised_filtered_or_grouped(client, engine):
     canonical = ["pod_uid", "pod_name", "build_id", "build_number", "run_id", "execution_id",
                  "test_execution_id", "job_uid", "job_run_id"]
-    denied = [*canonical, *(key.upper().replace("_", ".", 1).replace("_", "-") for key in canonical), "Author", "Employee-ID"]
+    denied = [*canonical, *(key.upper().replace("_", ".", 1).replace("_", "-") for key in canonical),
+              "Author", "Employee-ID", "podUID", "testExecutionId"]
     allowed = ["repo", "job", "test_project", "test_plan", "job_name", "service.name"]
     configure(engine, scope={"account_id": queries.ACCOUNT_ID, "labels": [*denied, *allowed]})
     status = client.get("/api/v1/utilization/status").json()

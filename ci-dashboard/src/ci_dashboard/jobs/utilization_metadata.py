@@ -34,16 +34,16 @@ ACCOUNT = "100050658403"
 GUARD_KEY = f"utilization:tencent:{ACCOUNT}"
 LABELS = frozenset({"repo", "job", "test_project", "test_suite", "environment", "project", "service"})
 IDENTITY_KEYS = frozenset({
-    "author", "owner", "email", "user", "username", "employee", "employee_id",
-    "pod_uid", "pod_name", "build_id", "build_number", "run_id", "execution_id",
-    "test_execution_id", "job_uid", "job_run_id",
+    "author", "owner", "email", "user", "username", "employee", "employeeid",
+    "poduid", "podname", "buildid", "buildnumber", "runid", "executionid",
+    "testexecutionid", "jobuid", "jobrunid",
 })
 
 
 def label_keys(keys):
     if (not isinstance(keys, list) or not 1 <= len(keys) <= 32
             or any(not isinstance(key, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,62}", key)
-                   or key.lower().replace(".", "_").replace("-", "_") in IDENTITY_KEYS for key in keys)
+                   or re.sub(r"[._-]", "", key.lower()) in IDENTITY_KEYS for key in keys)
             or len(set(keys)) != len(keys)):
         raise ValueError("bounded non-personal, non-identity configured label keys required")
     return set(keys)
@@ -576,7 +576,10 @@ def save_contexts(engine: Engine, contexts: list[dict], *,
                 previous = connection.execute(text(
                     "SELECT * FROM pod_utilization_context WHERE context_key=:context_key"
                 ), row).mappings().first()
-                if previous is None and row["context_key"] not in create_keys:
+                if (previous is None and row["context_key"] not in create_keys
+                        or previous is not None and _datetime(previous["expires_at"]) <= clock):
+                    # Maintenance owns expired rows even before it removes them.
+                    # Do not renew them or reject unrelated Pods in this batch.
                     missing.add(uid)
                     continue
                 prepared.append((_prepare(row, clock), previous))

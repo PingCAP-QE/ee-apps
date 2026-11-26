@@ -204,7 +204,9 @@ def test_profile_is_v3_scoped_stable_and_example_is_unverified(tmp_path, profile
     )
 
 
-@pytest.mark.parametrize("key", ["Author", "pod_uid", "test_execution_id", "Run-ID", "job.run.id"])
+@pytest.mark.parametrize("key", [
+    "Author", "pod_uid", "test_execution_id", "Run-ID", "job.run.id", "podUID", "testExecutionId",
+])
 def test_profile_rejects_personal_or_per_execution_labels(tmp_path, raw_profile, key):
     path = tmp_path / "identity-labels.json"
     raw_profile["labels"] = ["test_project", key]
