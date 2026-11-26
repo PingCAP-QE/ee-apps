@@ -10,6 +10,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -464,8 +465,8 @@ def run_sync_warehouse_billing_summary(
             scope["owned"] = False
         _log("account_failed", accounts=scope["progress"]["accounts"], error=repr(exc))
 
-    def heartbeat():
-        # Only the account currently being fetched can fail this source read.
+    def heartbeat(scope):
+        # Only this read's scope gets checkpointed.
         # Other acquired accounts remain protected by the same live Pod owner.
         if scope.get("owned") and time.monotonic() - scope.get("last_heartbeat", 0) >= 60:
             _checkpoint(engine, scope["name"], scope["progress"])
@@ -498,7 +499,7 @@ def run_sync_warehouse_billing_summary(
                 bounds = ({"recovery_window": expected} if expected else
                           {"start_date": start_date, "end_date": end_date} if start_date is not None else {})
                 window = fetch_warehouse_window(client, vendor=vendor, account_id=account, project=project,
-                                                 today=resolved_today, heartbeat=heartbeat,
+                                                 today=resolved_today, heartbeat=partial(heartbeat, scope),
                                                  **({"f04": True} if f04 else {}), **bounds)
                 requested_window = expected if expected is not None else (
                     (start_date, end_date) if start_date is not None else None)

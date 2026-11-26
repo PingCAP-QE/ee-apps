@@ -315,9 +315,9 @@ days require a separately reviewed repair rather than a wider automatic scan.
 writes. Removing it enables writes **inside GKE only**. Ordinary AWS progress and
 errors use `sync_aws_warehouse_daily:aws:<account_id>`; Azure keeps
 `sync_azure_warehouse_daily`, and F04 keeps `sync_aws_f04_warehouse_daily`.
-Each account retains ownership checks and the validated checkpoint recovery
-[described above](#database-transport-resilience-jobs): the next invocation can resume
-its original unfinished window, never silently skip it. An unverified failed or
+Under the [checkpoint recovery and ownership rules](docs/warehouse-resume-operations.md#automatic-recovery),
+the next invocation can resume an account's validated checkpoint in its original
+unfinished window, never silently skip it. An unverified failed or
 live/unknown running account blocks only itself. Multi-account CLI output includes
 per-account status/error/progress even after a shared snapshot abort, and any
 account failure returns a nonzero exit.
@@ -333,6 +333,13 @@ is retained. Multi-account legacy failures without a valid write-phase
 `current_account_day`, malformed scope/checkpoints, or overlapping old/new state
 fail closed **globally** before source reads or fact writes and require operator
 inspection. Do not clear the fence/latches or run an old-key worker to bypass them.
+After the fence is set, rolling back the image alone cannot restore ordinary AWS
+writes: the previous image cannot acquire `sync_aws_warehouse_daily`. Keep an
+account-scoped image for writes unless an operator explicitly approves a rollback
+plan that reconciles the saved account checkpoints.
+For diagnosis, extend the [resume runbook's query](docs/warehouse-resume-operations.md#scope-changes-and-failed-checkpoints)
+with the affected `sync_aws_warehouse_daily:aws:<account_id>` keys; keep the
+singleton row in the query to inspect the fence.
 
 Deploy the application image first, validate both dry runs, then switch both ops
 CronJobs to this command and remove mounted workers. Preserve legacy-source holds

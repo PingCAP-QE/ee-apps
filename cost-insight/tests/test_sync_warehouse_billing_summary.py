@@ -889,6 +889,27 @@ def legacy_checkpoint():
             "completed_account_days": []}
 
 
+def test_heartbeat_stays_bound_to_its_account(ordinary_aws_engine, monkeypatch):
+    checkpoint = Mock(wraps=job._checkpoint)
+    monkeypatch.setattr(job, "_checkpoint", checkpoint)
+    monkeypatch.setattr(job, "time", Mock(monotonic=lambda: 60))
+    first_heartbeat = None
+
+    def fetch(client, *, account_id, heartbeat, **kw):
+        nonlocal first_heartbeat
+        if account_id == ACCOUNT:
+            first_heartbeat = heartbeat
+        else:
+            checkpoint.reset_mock()
+            first_heartbeat()
+            assert checkpoint.call_count == 1
+            assert checkpoint.call_args.args[1] == job_name("aws", ACCOUNT)
+        return window("aws", account_id)
+
+    monkeypatch.setattr(job, "fetch_warehouse_window", fetch)
+    run_accounts(ordinary_aws_engine)
+
+
 def test_all_ordinary_accounts_complete_with_distinct_ownership(ordinary_aws_engine):
     engine = ordinary_aws_engine
     results = run_accounts(engine)["account_results"]
