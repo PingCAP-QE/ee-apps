@@ -23,6 +23,10 @@ github:
 cache:
   ttl_margin: 5m
   max_entries: 1000
+  # Least lifetime a caller may be handed. Cache entries are shared by every
+  # caller requesting the same repository set and permissions, so a token minted
+  # for one caller can reach another much later.
+  min_remaining: 15m
 
 rate_limit:
   # Per-caller fixed window; 0 disables the limit.

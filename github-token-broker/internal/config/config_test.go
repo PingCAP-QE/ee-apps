@@ -54,6 +54,11 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Cache.TTLMargin != 5*time.Minute || cfg.Cache.MaxEntries != 1000 {
 		t.Fatalf("unexpected cache defaults: %#v", cfg.Cache)
 	}
+	// Callers share cache entries, so a token must still have a usable lifetime
+	// when the last of them receives it.
+	if cfg.Cache.MinRemaining != 15*time.Minute {
+		t.Fatalf("unexpected cache min_remaining default: %#v", cfg.Cache)
+	}
 	if cfg.RateLimit.PerMinute != 120 {
 		t.Fatalf("unexpected rate limit default: %#v", cfg.RateLimit)
 	}
@@ -68,6 +73,19 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.HasFallback() {
 		t.Fatal("did not expect a fallback PAT")
+	}
+}
+
+func TestLoadCacheMinRemaining(t *testing.T) {
+	cfg, err := Load(writeConfig(t, minimalConfig+`
+cache:
+  min_remaining: 30m
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Cache.MinRemaining != 30*time.Minute {
+		t.Fatalf("unexpected min_remaining: %v", cfg.Cache.MinRemaining)
 	}
 }
 
@@ -152,6 +170,19 @@ policy:
           max_permissions: {contents: read}
 `},
 		{name: "unknown field", content: minimalConfig + "\nunknown_field: true\n"},
+		{name: "negative cache min_remaining", content: `
+github:
+  app_id: 1
+  private_key_path: /tmp/key.pem
+cache:
+  min_remaining: -1m
+policy:
+  rules:
+    - caller: {namespace: ci, service_account: checkout}
+      allow:
+        - owner: example-org
+          max_permissions: {contents: read}
+`},
 		{name: "negative rate limit", content: `
 github:
   app_id: 1

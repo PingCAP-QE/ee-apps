@@ -52,10 +52,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	tokenCache := cache.New(cfg.Cache.TTLMargin, cfg.Cache.MaxEntries)
+	tokenCache.SetMinRemaining(cfg.Cache.MinRemaining)
 	tokenService := impl.NewToken(impl.TokenOptions{
 		Config:    store,
 		Minter:    minter,
-		Cache:     cache.New(cfg.Cache.TTLMargin, cfg.Cache.MaxEntries),
+		Cache:     tokenCache,
 		Metrics:   brokerMetrics,
 		Logger:    logger,
 		Readiness: reviewer.Ready,

@@ -63,6 +63,11 @@ type GitHub struct {
 type Cache struct {
 	TTLMargin  time.Duration `yaml:"ttl_margin"`
 	MaxEntries int           `yaml:"max_entries"`
+	// MinRemaining is the least lifetime a caller may be handed. Entries are
+	// shared by every caller asking for the same repository set and
+	// permissions, so a token minted for one caller can be handed to another
+	// long after it was minted.
+	MinRemaining time.Duration `yaml:"min_remaining"`
 }
 
 // Auth configures how the broker authenticates callers through TokenReview.
@@ -144,6 +149,9 @@ func (c *Config) applyDefaults() {
 	if c.Cache.MaxEntries == 0 {
 		c.Cache.MaxEntries = 1000
 	}
+	if c.Cache.MinRemaining == 0 {
+		c.Cache.MinRemaining = 15 * time.Minute
+	}
 	if c.Auth.TokenFile == "" {
 		c.Auth.TokenFile = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	}
@@ -188,6 +196,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Cache.MaxEntries <= 0 {
 		return fmt.Errorf("cache.max_entries must be positive")
+	}
+	if c.Cache.MinRemaining < 0 {
+		return fmt.Errorf("cache.min_remaining must not be negative")
 	}
 	if c.RateLimit.PerMinute < 0 {
 		return fmt.Errorf("rate_limit.per_minute must not be negative")
