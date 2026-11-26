@@ -1173,3 +1173,40 @@ def test_get_jenkins_prefixes_if_needed_respects_namespace(sqlite_engine, monkey
         }
 
     assert load_calls == 1
+
+
+def test_opt_in_read_burst_flushes_before_next_blocking_read(monkeypatch):
+    class Response:
+        chunks = iter([
+            b'{"type":"ADDED"}\n{"type":"MODIFIED"}\n{"ty',
+            b'pe":"BOOKMARK"}\n\n',
+            b'{"type":"DELETED"}',
+            b'',
+        ])
+        reads = 0
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def read1(self, size):
+            assert size == 64 * 1024
+            self.reads += 1
+            return next(self.chunks)
+    response = Response()
+    monkeypatch.setattr(watcher.urllib_request, "urlopen", lambda *args, **kwargs: response)
+    events = iter(watcher._stream_watch_json(
+        "https://k8s/watch", token="offline", ca_file=None, timeout_seconds=60,
+        utilization_batches=True,
+    ))
+    assert next(events)["type"] == "ADDED"
+    assert next(events)["type"] == "MODIFIED"
+    assert next(events)["type"] == watcher.UTILIZATION_BATCH_END
+    assert response.reads == 1  # Complete records cannot remain pending on idle read.
+    assert next(events)["type"] == "BOOKMARK"
+    assert next(events)["type"] == watcher.UTILIZATION_BATCH_END
+    assert response.reads == 2
+    assert next(events)["type"] == watcher.UTILIZATION_BATCH_END
+    assert response.reads == 3
+    assert next(events)["type"] == "DELETED"  # Preserve a final line without newline.
+    assert next(events)["type"] == watcher.UTILIZATION_BATCH_END
+    assert list(events) == []

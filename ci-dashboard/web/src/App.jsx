@@ -10,6 +10,7 @@ import RuntimeInsightsPage from "./pages/RuntimeInsightsPage";
 import CostPage from "./pages/CostPage";
 import WeeklyCostPage from "./pages/WeeklyCostPage";
 import CICostWeeklyPage from "./pages/CICostWeeklyPage";
+import UtilizationPage from "./pages/UtilizationPage";
 import {
   buildCostSourceOptions,
   buildScopeLabel,
@@ -25,6 +26,7 @@ import {
   DEFAULT_COST_SOURCE,
   MIGRATE_STATUS_PATH,
   WEEKLY_COST_PATH,
+  UTILIZATION_PATH,
   readFiltersFromSearch,
   RUNTIME_INSIGHTS_PATH,
   sameFilters,
@@ -59,6 +61,8 @@ export default function App() {
   const isWeeklySummaryPage = location.pathname === "/";
   const isWeeklyCostPage = location.pathname === WEEKLY_COST_PATH;
   const isCIWeeklyCostPage = location.pathname === CI_WEEKLY_COST_PATH;
+  const isUtilizationPage = location.pathname === UTILIZATION_PATH;
+  const needsCIFilters = !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage && !isUtilizationPage;
 
   useEffect(() => {
     const urlFilters = readFiltersFromSearch(defaultRange, location.pathname, location.search);
@@ -98,7 +102,7 @@ export default function App() {
       start_date: filters.start_date,
       end_date: filters.end_date,
     },
-    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage,
+    needsCIFilters,
   );
   const branches = useApiData(
     "/api/v1/filters/branches",
@@ -107,7 +111,7 @@ export default function App() {
       start_date: filters.start_date,
       end_date: filters.end_date,
     },
-    !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage,
+    needsCIFilters,
   );
   const cloudPhases = useApiData("/api/v1/filters/cloud-phases", {
     repo: filters.repo,
@@ -115,7 +119,7 @@ export default function App() {
     job_name: filters.job_name,
     start_date: filters.start_date,
     end_date: filters.end_date,
-  }, !isCostPage && !isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage);
+  }, needsCIFilters);
   const costSources = useApiData(
     "/api/v1/pages/cost-sources",
     {},
@@ -182,7 +186,7 @@ export default function App() {
       onFilterChange={handleFilterChange}
       filterOptions={filterOptions}
       navSearchByPath={navSearchByPath}
-      showFilters={!isWeeklySummaryPage && !isWeeklyCostPage && !isCIWeeklyCostPage}
+      showFilters={needsCIFilters || isCostPage}
       costBreakdownGroupBy={costBreakdownGroupBy}
       onCostBreakdownGroupByChange={setCostBreakdownGroupBy}
     >
@@ -207,6 +211,7 @@ export default function App() {
         />
         <Route path={WEEKLY_COST_PATH} element={<WeeklyCostPage />} />
         <Route path={CI_WEEKLY_COST_PATH} element={<CICostWeeklyPage />} />
+        <Route path={UTILIZATION_PATH} element={<UtilizationPage />} />
       </Routes>
     </DashboardLayout>
   );

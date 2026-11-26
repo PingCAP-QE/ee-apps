@@ -29,6 +29,7 @@ from ci_dashboard.jobs.pod_source import (
     cloud_phase_for_source,
     validate_watch_source,
 )
+from ci_dashboard.jobs import utilization_metadata
 from ci_dashboard.jobs.state_store import mark_job_failed, mark_job_started, mark_job_succeeded
 from ci_dashboard.jobs.sync_pods import (
     POD_EVENT_REASONS,
@@ -71,6 +72,10 @@ DEFAULT_DB_RETRY_MAX_DELAY_MS = 5000
 RETRYABLE_MYSQL_ERROR_CODES = frozenset({1205, 1213})
 POD_WATCH_TYPES = frozenset({"ADDED", "MODIFIED", "DELETED"})
 EVENT_WATCH_TYPES = frozenset({"ADDED", "MODIFIED"})
+UTILIZATION_BATCH_END = "UTILIZATION_BATCH_END"
+UTILIZATION_GAP = "UTILIZATION_GAP"
+UTILIZATION_BATCH_RECORDS = 1000
+UTILIZATION_BATCH_SECONDS = 1.0
 TENCENT_POD_EVENT_REASONS = frozenset({
     "FailedMount",
     "FailedAttachVolume",
@@ -240,14 +245,31 @@ class _KubernetesClient:
         return token.strip()
 
     def list_collection(self, *, namespace_name: str, resource: str) -> tuple[list[dict[str, Any]], str | None]:
+        return self._list_pages(namespace_name=namespace_name, resource=resource)
+
+    def list_nodes(self, *, check_admission: Callable[[], None]) -> tuple[list[dict[str, Any]], str | None]:
+        """Nodes are cluster scoped, never /namespaces/.../nodes."""
+        return self._list_pages(namespace_name=None, resource="nodes", check_admission=check_admission)
+
+    def _list_pages(
+        self, *, namespace_name: str | None, resource: str, check_admission: Callable[[], None] | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
         items: list[dict[str, Any]] = []
         continue_token: str | None = None
         resource_version: str | None = None
+        node_pages = 0
         while True:
+            if resource == "nodes":
+                node_pages += 1
+                if node_pages > utilization_metadata.NODE_SELECTOR_MAX_NODES // 500:
+                    raise ValueError("Node selector LIST exceeds page bound")
             query = {"limit": "500"}
             if continue_token:
                 query["continue"] = continue_token
             for auth_attempt in range(2):
+                # Recheck even on continuation pages or a token retry after a cut.
+                if check_admission is not None:
+                    check_admission()
                 try:
                     response = _get_json(
                         self._collection_url(namespace_name=namespace_name, resource=resource, query=query),
@@ -261,6 +283,8 @@ class _KubernetesClient:
             raw_items = response.get("items")
             if isinstance(raw_items, list):
                 items.extend(item for item in raw_items if isinstance(item, dict))
+                if resource == "nodes" and len(items) > utilization_metadata.NODE_SELECTOR_MAX_NODES:
+                    raise ValueError("Node selector LIST exceeds row bound")
 
             metadata = response.get("metadata")
             continue_token = None
@@ -276,6 +300,7 @@ class _KubernetesClient:
         namespace_name: str,
         resource: str,
         resource_version: str | None,
+        utilization_batches: bool = False,
     ) -> Iterable[dict[str, Any]]:
         for auth_attempt in range(2):
             query = {
@@ -292,6 +317,7 @@ class _KubernetesClient:
                     token=self._read_token(),
                     ca_file=self._ca_file,
                     timeout_seconds=self._watch_timeout_seconds + 30,
+                    **({"utilization_batches": True} if utilization_batches else {}),
                 )) as events:
                     for event in events:
                         obj = event.get("object")
@@ -301,6 +327,8 @@ class _KubernetesClient:
                             and str(obj.get("code")) == "401"
                             and auth_attempt == 0
                         ):
+                            if utilization_batches:
+                                yield {"type": UTILIZATION_GAP}
                             break
                         yield event
                         # The consumer has persisted/processed the yielded object before
@@ -314,10 +342,16 @@ class _KubernetesClient:
             except RuntimeError as exc:
                 if auth_attempt or not _is_unauthorized(exc):
                     raise
+                if utilization_batches:
+                    yield {"type": UTILIZATION_GAP}
 
-    def _collection_url(self, *, namespace_name: str, resource: str, query: dict[str, str]) -> str:
-        namespace = urllib_parse.quote(namespace_name, safe="")
+    def _collection_url(self, *, namespace_name: str | None, resource: str, query: dict[str, str]) -> str:
         encoded_query = urllib_parse.urlencode(query)
+        if namespace_name is None:
+            if resource != "nodes":
+                raise ValueError("only nodes may be listed cluster-wide")
+            return f"{self._base_url}/api/v1/nodes?{encoded_query}"
+        namespace = urllib_parse.quote(namespace_name, safe="")
         return f"{self._base_url}/api/v1/namespaces/{namespace}/{resource}?{encoded_query}"
 
 
@@ -366,6 +400,15 @@ def run_watch_pods(
         }
         mark_job_started(connection, context.job_name, watermark)
 
+    node_cache = None
+    if namespaces and utilization_metadata.enabled(context.source_project):
+        # ponytail: enable requires restarting the watcher, not a new poller.
+        try:
+            utilization_metadata.configured_label_keys()
+            utilization_metadata.require_pod_collection(engine)
+            node_cache = utilization_metadata.NodeSelectorCache()
+        except Exception as exc:
+            logger.info("utilization not started; restart after enabling a healthy V3 guard: %s", exc)
     threads: list[threading.Thread] = []
     for namespace_name in namespaces:
         pod_stream_key = _stream_key(namespace_name, "pods")
@@ -387,6 +430,7 @@ def run_watch_pods(
                         "context": context,
                         "namespace_name": namespace_name,
                         "stream_key": pod_stream_key,
+                        "node_cache": node_cache,
                         "health_state": health_state,
                         "recorder": recorder,
                         "jenkins_prefix_cache": jenkins_prefix_cache,
@@ -420,6 +464,14 @@ def run_watch_pods(
                 daemon=True,
             )
         )
+
+    if node_cache is not None:
+        threads.append(threading.Thread(
+            target=_run_utilization_node_worker,
+            name="utilization-node-list",
+            kwargs={"engine": engine, "node_cache": node_cache, "client": client, "stop_event": stop_event},
+            daemon=True,
+        ))
 
     health_server = _start_health_server(health_state)
     for thread in threads:
@@ -482,43 +534,119 @@ def _run_pod_worker(
     recorder: _ProgressRecorder,
     jenkins_prefix_cache: _JenkinsPodNameUrlPrefixCache,
     stop_event: threading.Event,
+    node_cache: utilization_metadata.NodeSelectorCache | None = None,
 ) -> None:
-    while not stop_event.is_set():
+    exporter = None
+    if node_cache is not None and not node_cache.disabled:
         try:
-            items, resource_version = client.list_collection(
-                namespace_name=namespace_name,
-                resource="pods",
-            )
-            health_state.heartbeat(stream_key)
-            snapshots = [
-                snapshot
-                for snapshot in (
-                    _normalize_pod_object(item, context=context) for item in items
+            exporter = utilization_metadata.MetadataExporter(engine, node_cache=node_cache)
+        except ValueError:
+            logger.warning("invalid utilization label configuration; export disabled", exc_info=True)
+
+    # ponytail: coalesce only the current read burst, <=1000 incoming records;
+    # flush before the next blocking read, or after 1s of event processing. No timer,
+    # queue, retry backlog or idle buffer. Lifecycle writes remain independent.
+    pending: dict[str, dict[str, Any]] = {}
+    pending_count = 0
+    pending_since: float | None = None
+    resume_watch = False
+    watch_continuous = True
+    resource_version = None
+
+    def flush_utilization():
+        nonlocal pending_count, pending_since, watch_continuous
+        if pending:
+            records = list(pending.values())
+            pending.clear()  # Clear before I/O: a failed flush must never be replayed.
+            pending_count = 0
+            pending_since = None
+            if _export_utilization(exporter, records, heartbeat=True) is False:
+                watch_continuous = False
+
+    def export_objects(objects, rows, *, deleted=False):
+        nonlocal pending_count, pending_since, watch_continuous
+        if exporter is None or node_cache.disabled:
+            return
+        seen_at = time.monotonic()
+        by_uid = {obj.get("metadata", {}).get("uid"): obj for obj in objects}
+        ended = []
+        for row in rows:
+            obj = by_uid.get(row.get("pod_uid"))
+            record = (utilization_metadata.normalize_pod(
+                obj, linkage=row, selected_labels=exporter.selected_labels
+            ) if obj is not None else None)
+            if record is not None:
+                terminal = (obj.get("status") or {}).get("phase") in {"Succeeded", "Failed"}
+                if deleted or terminal:
+                    ended.append(record)
+                else:
+                    if pending_since is None:
+                        pending_since = time.monotonic()
+                    record["_node_ref"] = utilization_metadata.pod_node_ref(obj, seen_at)
+                    pending[record["pod_uid"]] = record
+                    pending_count += 1
+                    if (pending_count >= UTILIZATION_BATCH_RECORDS
+                            or time.monotonic() - pending_since >= UTILIZATION_BATCH_SECONDS):
+                        flush_utilization()
+        if ended:
+            flush_utilization()  # Never coalesce a terminal/deletion past live evidence.
+            if _export_utilization(exporter, ended, deleted=True, heartbeat=True) is False:
+                watch_continuous = False
+
+    while not stop_event.is_set():
+        if exporter is not None and node_cache.disabled:
+            exporter = None
+            resume_watch = False
+        watch_continuous = True
+        try:
+            if not resume_watch:
+                if exporter is not None:
+                    exporter.reset()  # A new LIST never proves the preceding disconnected interval.
+                items, resource_version = client.list_collection(
+                    namespace_name=namespace_name,
+                    resource="pods",
                 )
-                if snapshot is not None
-            ]
-            lifecycle_count = _persist_pod_snapshots(
-                engine,
-                settings,
-                snapshots,
-                jenkins_prefix_cache=jenkins_prefix_cache,
-                on_batch_persisted=lambda: health_state.heartbeat(stream_key),
-            )
-            recorder.add(
-                pod_snapshots_seen=len(snapshots),
-                lifecycle_rows_upserted=lifecycle_count,
-                pods_touched=len(snapshots),
-            )
+                health_state.heartbeat(stream_key)
+                snapshots = [
+                    snapshot
+                    for snapshot in (
+                        _normalize_pod_object(item, context=context) for item in items
+                    )
+                    if snapshot is not None
+                ]
+                lifecycle_count = _persist_pod_snapshots(
+                    engine,
+                    settings,
+                    snapshots,
+                    jenkins_prefix_cache=jenkins_prefix_cache,
+                    on_batch_persisted=lambda: health_state.heartbeat(stream_key),
+                    **({"on_lifecycle_rows": lambda rows: export_objects(items, rows)} if exporter is not None else {}),
+                )
+                flush_utilization()  # LIST is a complete batch, not a continuity promise.
+                recorder.add(
+                    pod_snapshots_seen=len(snapshots),
+                    lifecycle_rows_upserted=lifecycle_count,
+                    pods_touched=len(snapshots),
+                )
+            resume_watch = False
 
             for watch_event in client.stream_collection(
                 namespace_name=namespace_name,
                 resource="pods",
                 resource_version=resource_version,
+                **({"utilization_batches": True} if exporter is not None else {}),
             ):
                 if stop_event.is_set():
                     break
-                health_state.heartbeat(stream_key)
                 event_type = _coerce_str(watch_event.get("type"))
+                if event_type in {UTILIZATION_BATCH_END, UTILIZATION_GAP}:
+                    flush_utilization()
+                    if event_type == UTILIZATION_GAP and exporter is not None:
+                        break  # Auth/disconnection gap needs a fresh LIST, not a resumed baseline.
+                    continue
+                if pending_since is not None and time.monotonic() - pending_since >= UTILIZATION_BATCH_SECONDS:
+                    flush_utilization()
+                health_state.heartbeat(stream_key)
                 if event_type == "ERROR":
                     if _is_resource_version_expired_watch_error(watch_event):
                         recorder.add(watch_restarts=1)
@@ -528,9 +656,17 @@ def _run_pod_worker(
                         )
                         break
                     raise RuntimeError(_format_watch_error(watch_event))
-                if event_type not in POD_WATCH_TYPES:
-                    continue
                 pod_object = watch_event.get("object")
+                if exporter is not None and isinstance(pod_object, dict):
+                    metadata = pod_object.get("metadata")
+                    if isinstance(metadata, dict):
+                        resource_version = _coerce_str(metadata.get("resourceVersion")) or resource_version
+                if event_type not in POD_WATCH_TYPES:
+                    if exporter is not None and event_type == "BOOKMARK":
+                        flush_utilization()
+                        if _export_utilization(exporter, [], heartbeat=True) is False:
+                            watch_continuous = False
+                    continue
                 if not isinstance(pod_object, dict):
                     continue
                 snapshot = _normalize_pod_object(
@@ -545,13 +681,34 @@ def _run_pod_worker(
                     [snapshot],
                     jenkins_prefix_cache=jenkins_prefix_cache,
                     on_batch_persisted=lambda: health_state.heartbeat(stream_key),
+                    **({"on_lifecycle_rows": lambda rows: export_objects(
+                        [pod_object], rows, deleted=event_type == "DELETED"
+                    )} if exporter is not None else {}),
                 )
                 recorder.add(
                     pod_snapshots_seen=1,
                     lifecycle_rows_upserted=lifecycle_count,
                     pods_touched=1,
                 )
+            else:
+                # Clean server timeout: retain confirmed-live evidence and resume
+                # the LAST event/BOOKMARK cursor. Never bridge a gap with a LIST.
+                resume_watch = (exporter is not None and resource_version is not None
+                                and not stop_event.is_set())
+            flush_utilization()  # EOF, expired watch, reconnect or orderly stop.
+            if exporter is not None:
+                if resume_watch and watch_continuous:
+                    health_state.heartbeat(stream_key)
+                    resume_watch = _export_utilization(exporter, [], heartbeat=True) is not False
+                else:
+                    resume_watch = False
+                if not resume_watch:
+                    exporter.reset()
         except Exception as exc:
+            resume_watch = False
+            flush_utilization()  # Drop failed exports before the retry wait/gap.
+            if exporter is not None:
+                exporter.reset()
             if stop_event.is_set():
                 break
             recorder.add(watch_restarts=1)
@@ -564,6 +721,43 @@ def _run_pod_worker(
                 exc,
             )
             _sleep_until_retry(stop_event)
+
+
+def _export_utilization(exporter, records, *, deleted=False, heartbeat=False) -> bool:
+    try:
+        exporter.observe(records, at=utilization_metadata.utc_now(), deleted=deleted, heartbeat=heartbeat)
+        return True
+    except utilization_metadata.PodCollectionDisabled:
+        logger.info("utilization Pod collection stopped; restart after enabling the V3 guard")
+        return False
+    except Exception:
+        # No backlog and no lifecycle failure when the independent utilization guard is closed.
+        exporter.reset()
+        logger.warning("utilization metadata export unavailable; evidence dropped", exc_info=True)
+        return False
+
+
+def _run_utilization_node_worker(*, engine, node_cache, client, stop_event) -> None:
+    def check_admission():
+        if node_cache.disabled:
+            raise utilization_metadata.PodCollectionDisabled("utilization Pod collection already stopped")
+        utilization_metadata.require_pod_collection(engine)
+
+    while not stop_event.is_set():
+        try:
+            # A paginated, Most Recent LIST takes its snapshot at the first
+            # request, which must follow the Pod evidence for a new binding.
+            listed_at = time.monotonic()
+            items, _ = client.list_nodes(check_admission=check_admission)
+            node_cache.refresh(items, listed_at=listed_at)
+        except utilization_metadata.PodCollectionDisabled:
+            node_cache.clear(disable=True)
+            logger.info("utilization Node LIST stopped; restart after enabling the V3 guard")
+            return
+        except Exception:
+            node_cache.clear()
+            logger.warning("utilization Node LIST unavailable; selector cache cleared", exc_info=True)
+        stop_event.wait(utilization_metadata.NODE_SELECTOR_REFRESH_SECONDS)
 
 
 def _run_event_worker(
@@ -668,6 +862,7 @@ def _persist_pod_snapshots(
     *,
     jenkins_prefix_cache: _JenkinsPodNameUrlPrefixCache | None = None,
     on_batch_persisted: Callable[[], None] | None = None,
+    on_lifecycle_rows: Callable[[list[dict[str, Any]]], None] | None = None,
 ) -> int:
     if not snapshots:
         return 0
@@ -675,6 +870,7 @@ def _persist_pod_snapshots(
     rows_written = 0
     for batch in chunked(snapshots, _db_batch_size(settings)):
         batch = list(batch)
+        committed_rows: list[dict[str, Any]] = []
         def _persist_batch(connection: Connection) -> int:
             jenkins_prefixes = _get_jenkins_prefixes_if_needed(
                 connection,
@@ -693,6 +889,7 @@ def _persist_pod_snapshots(
             )
             if lifecycle_rows:
                 _upsert_pod_lifecycle(connection, lifecycle_rows)
+            committed_rows[:] = lifecycle_rows
             return len(lifecycle_rows)
 
         rows_written += _run_db_transaction_with_retry(
@@ -702,6 +899,8 @@ def _persist_pod_snapshots(
         )
         if on_batch_persisted is not None:
             on_batch_persisted()
+        if on_lifecycle_rows is not None:
+            on_lifecycle_rows(committed_rows)
     return rows_written
 
 
@@ -1120,6 +1319,7 @@ def _stream_watch_json(
     token: str,
     ca_file: str | None,
     timeout_seconds: int,
+    utilization_batches: bool = False,
 ) -> Iterable[dict[str, Any]]:
     request = urllib_request.Request(
         url,
@@ -1133,13 +1333,29 @@ def _stream_watch_json(
     context = ssl.create_default_context(cafile=ca_file) if ca_file else None
     try:
         with urllib_request.urlopen(request, timeout=timeout_seconds, context=context) as response:
-            while True:
-                line = response.readline()
-                if line == b"":
-                    break
-                if not line.strip():
-                    continue
-                yield _decode_json_object(line, error_context="Kubernetes watch")
+            if utilization_batches:
+                # read1 returns the available burst, unlike readline/read(n) which
+                # can wait for more events. Flush complete events BEFORE blocking
+                # again, even when the next JSON line is only partially received.
+                remainder = b""
+                while chunk := response.read1(64 * 1024):
+                    lines = (remainder + chunk).split(b"\n")
+                    remainder = lines.pop()
+                    for line in lines:
+                        if line.strip():
+                            yield _decode_json_object(line, error_context="Kubernetes watch")
+                    yield {"type": UTILIZATION_BATCH_END}
+                if remainder.strip():
+                    yield _decode_json_object(remainder, error_context="Kubernetes watch")
+                yield {"type": UTILIZATION_BATCH_END}
+            else:
+                while True:
+                    line = response.readline()
+                    if line == b"":
+                        break
+                    if not line.strip():
+                        continue
+                    yield _decode_json_object(line, error_context="Kubernetes watch")
     except urllib_error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Kubernetes watch failed: HTTP {exc.code}: {body}") from exc

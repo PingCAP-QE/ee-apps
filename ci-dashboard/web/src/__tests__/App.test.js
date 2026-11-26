@@ -212,7 +212,7 @@ test("compact primary navigation keeps all tabs and puts descriptions in hover t
     const links = renderer.root.findByProps({ "aria-label": "Primary" }).findAllByType("a");
     assert.deepEqual(links.map((link) => link.findByType("span").children.join("")), [
       "Weekly Summary", "CI Status", "Flaky", "Tencent Migration",
-      "QA Cost Weekly", "CI Cost Weekly", "Cost", "CI details insight",
+      "QA Cost Weekly", "CI Cost Weekly", "Resource Utilization", "Cost", "CI details insight",
     ]);
     assert.ok(links.every((link) => link.props.title));
     assert.equal(links.find((link) => link.props.href === "/cost").props["aria-current"], "page");

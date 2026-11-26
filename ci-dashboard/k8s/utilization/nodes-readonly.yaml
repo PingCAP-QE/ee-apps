@@ -1,0 +1,23 @@
+# Optional add-on for the existing watcher identity; review namespace/name before apply.
+# Does not enable CI_DASHBOARD_UTILIZATION_ENABLED or grant any Kubernetes writes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ci-dashboard-utilization-nodes-readonly
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ci-dashboard-utilization-nodes-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ci-dashboard-utilization-nodes-readonly
+subjects:
+  - kind: ServiceAccount
+    name: ci-dashboard
+    namespace: apps
