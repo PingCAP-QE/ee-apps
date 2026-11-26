@@ -6,8 +6,10 @@ import json
 import re
 
 
-def render(namespace, image, db_secret, credential_secret, profile_configmap):
-    for value in (namespace, db_secret, credential_secret, profile_configmap):
+def render(namespace, image, db_secret, credential_secret, profile_configmap,
+           kafka_secret, kafka_ca_secret):
+    for value in (namespace, db_secret, credential_secret, profile_configmap,
+                  kafka_secret, kafka_ca_secret):
         if not re.fullmatch(r"[a-z0-9](?:[-a-z0-9.]{0,251}[a-z0-9])?", value):
             raise ValueError("Explicit valid Kubernetes names are required")
     if not image or any(char.isspace() for char in image):
@@ -15,8 +17,9 @@ def render(namespace, image, db_secret, credential_secret, profile_configmap):
     items = []
     for name, schedule, command, cloud in (
         ("maintenance", "*/15 * * * *", "utilization-maintain", False),
-        ("inventory", "*/30 * * * *", "sync-tencent-utilization-inventory", True),
-        ("daily", "30 0,6,12,18 * * *", "sync-tencent-utilization", True),
+        ("machines", "30 6 * * *", "sync-tencent-utilization", True),
+        ("dispatch", "* * * * *", "utilization-dispatch", True),
+        ("worker", "* * * * *", "utilization-worker", True),
     ):
         container = {
             "name": "job",
@@ -41,11 +44,17 @@ def render(namespace, image, db_secret, credential_secret, profile_configmap):
         }
         if cloud:
             container["args"].extend(["--profile", "/etc/utilization/profile.json"])
-            container["envFrom"].append({"secretRef": {"name": credential_secret}})
+            if name in {"machines", "worker"}:
+                container["envFrom"].append({"secretRef": {"name": credential_secret}})
             container["volumeMounts"] = [
                 {"name": "profile", "mountPath": "/etc/utilization", "readOnly": True}
             ]
             pod["volumes"] = [{"name": "profile", "configMap": {"name": profile_configmap}}]
+        if name in {"dispatch", "worker"}:
+            container["envFrom"].append({"secretRef": {"name": kafka_secret}})
+            container["env"] = [{"name": "UTILIZATION_KAFKA_CA_FILE", "value": "/etc/kafka/ca.crt"}]
+            container["volumeMounts"].append({"name": "kafka-ca", "mountPath": "/etc/kafka", "readOnly": True})
+            pod["volumes"].append({"name": "kafka-ca", "secret": {"secretName": kafka_ca_secret}})
         items.append(
             {
                 "apiVersion": "batch/v1",
@@ -75,7 +84,8 @@ def render(namespace, image, db_secret, credential_secret, profile_configmap):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("namespace", "image", "db-secret", "credential-secret", "profile-configmap"):
+    for name in ("namespace", "image", "db-secret", "credential-secret", "profile-configmap",
+                 "kafka-secret", "kafka-ca-secret"):
         parser.add_argument("--" + name, required=True)
     print(json.dumps(render(**vars(parser.parse_args())), indent=2))
 

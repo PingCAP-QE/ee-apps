@@ -255,7 +255,12 @@ class _KubernetesClient:
         items: list[dict[str, Any]] = []
         continue_token: str | None = None
         resource_version: str | None = None
+        node_pages = 0
         while True:
+            if resource == "nodes":
+                node_pages += 1
+                if node_pages > utilization_metadata.NODE_SELECTOR_MAX_NODES // 500:
+                    raise ValueError("Node selector LIST exceeds page bound")
             query = {"limit": "500"}
             if continue_token:
                 query["continue"] = continue_token
@@ -273,6 +278,8 @@ class _KubernetesClient:
             raw_items = response.get("items")
             if isinstance(raw_items, list):
                 items.extend(item for item in raw_items if isinstance(item, dict))
+                if resource == "nodes" and len(items) > utilization_metadata.NODE_SELECTOR_MAX_NODES:
+                    raise ValueError("Node selector LIST exceeds row bound")
 
             metadata = response.get("metadata")
             continue_token = None
@@ -388,6 +395,8 @@ def run_watch_pods(
         }
         mark_job_started(connection, context.job_name, watermark)
 
+    node_cache = (utilization_metadata.NodeSelectorCache()
+                  if utilization_metadata.enabled(context.source_project) else None)
     threads: list[threading.Thread] = []
     for namespace_name in namespaces:
         pod_stream_key = _stream_key(namespace_name, "pods")
@@ -409,6 +418,7 @@ def run_watch_pods(
                         "context": context,
                         "namespace_name": namespace_name,
                         "stream_key": pod_stream_key,
+                        "node_cache": node_cache,
                         "health_state": health_state,
                         "recorder": recorder,
                         "jenkins_prefix_cache": jenkins_prefix_cache,
@@ -447,7 +457,7 @@ def run_watch_pods(
         threads.append(threading.Thread(
             target=_run_utilization_node_worker,
             name="utilization-node-list",
-            kwargs={"engine": engine, "client": client, "stop_event": stop_event},
+            kwargs={"node_cache": node_cache, "client": client, "stop_event": stop_event},
             daemon=True,
         ))
 
@@ -512,9 +522,14 @@ def _run_pod_worker(
     recorder: _ProgressRecorder,
     jenkins_prefix_cache: _JenkinsPodNameUrlPrefixCache,
     stop_event: threading.Event,
+    node_cache: utilization_metadata.NodeSelectorCache | None = None,
 ) -> None:
-    exporter = (utilization_metadata.MetadataExporter(engine)
-                if utilization_metadata.enabled(context.source_project) else None)
+    exporter = None
+    if utilization_metadata.enabled(context.source_project):
+        try:
+            exporter = utilization_metadata.MetadataExporter(engine)
+        except ValueError:
+            logger.warning("invalid utilization label configuration; export disabled", exc_info=True)
 
     # ponytail: coalesce only the current read burst, <=1000 incoming records;
     # flush before the next blocking read, or after 1s of event processing. No timer,
@@ -544,7 +559,9 @@ def _run_pod_worker(
         ended = []
         for row in rows:
             obj = by_uid.get(row.get("pod_uid"))
-            record = utilization_metadata.normalize_pod(obj, linkage=row) if obj is not None else None
+            record = (utilization_metadata.normalize_pod(
+                obj, linkage=row, node_cache=node_cache, selected_labels=exporter.selected_labels
+            ) if obj is not None else None)
             if record is not None:
                 terminal = (obj.get("status") or {}).get("phase") in {"Succeeded", "Failed"}
                 if deleted or terminal:
@@ -552,7 +569,7 @@ def _run_pod_worker(
                 else:
                     if pending_since is None:
                         pending_since = time.monotonic()
-                    pending[record["resource_id"]] = record
+                    pending[record["pod_uid"]] = record
                     pending_count += 1
                     if (pending_count >= UTILIZATION_BATCH_RECORDS
                             or time.monotonic() - pending_since >= UTILIZATION_BATCH_SECONDS):
@@ -700,21 +717,14 @@ def _export_utilization(exporter, records, *, deleted=False, heartbeat=False) ->
         return False
 
 
-def _run_utilization_node_worker(*, engine, client, stop_event) -> None:
-    exporter = utilization_metadata.MetadataExporter(engine)
+def _run_utilization_node_worker(*, node_cache, client, stop_event) -> None:
     while not stop_event.is_set():
         try:
             items, _ = client.list_nodes()
-            records = [record for item in items
-                       if (record := utilization_metadata.normalize_node(item)) is not None]
-            present = {record["resource_id"] for record in records}
-            now = utilization_metadata.utc_now()
-            exporter.live = {uid: row for uid, row in exporter.live.items()
-                             if uid in present and (now - row["last_seen"]).total_seconds() <= 2100}
-            _export_utilization(exporter, records)
+            node_cache.refresh(items)  # Selectors only; no Node database observations.
         except Exception:
-            exporter.reset()
-            logger.warning("utilization Node LIST unavailable; evidence gap", exc_info=True)
+            node_cache.clear()
+            logger.warning("utilization Node LIST unavailable; selector cache cleared", exc_info=True)
         stop_event.wait(1800)
 
 

@@ -1,29 +1,19 @@
 import { useState } from "react";
 
-import { EmptyState, PageIntro, Panel, TrendChart } from "../components/charts";
+import { EmptyState, PageIntro, Panel } from "../components/charts";
 import { useApiData } from "../lib/api";
 
 const REASONS = {
   disabled: "Utilization is disabled. An operator must opt in with CI_DASHBOARD_UTILIZATION_ENABLED=true after collection readiness checks.",
-  missing_schema: "Utilization tables are not installed. Existing dashboard pages are unaffected.",
+  missing_schema: "V2 utilization tables are not installed. Existing dashboard pages are unaffected.",
   database_unavailable: "The utilization database is unavailable. No measurements are assumed to be zero.",
-  unconfigured: "Utilization collection is not configured. No measurements are available yet.",
+  unconfigured: "V2 utilization collection is not configured. No measurements are available yet.",
+  query_too_large: "More than 10,000 workload label-set rows match. Narrow the dates or label filter; no partial aggregation is shown.",
+  invalid_data: "Stored measurements are invalid. No partial aggregation is shown.",
 };
 
 export function utilizationPercent(value, fraction = false) {
   return value == null ? "N/A" : `${(Number(value) * (fraction ? 100 : 1)).toFixed(1)}%`;
-}
-
-export function weeklyTrendPoints(items) {
-  if (!items.length) return [];
-  const byWeek = new Map(items.map((item) => [item.week_start, item.status === "final_missing" ? null : item.values?.avg ?? null]));
-  const weeks = [...byWeek.keys()].sort();
-  const points = [];
-  for (const day = new Date(`${weeks[0]}T00:00:00Z`); day.toISOString().slice(0, 10) <= weeks.at(-1); day.setUTCDate(day.getUTCDate() + 7)) {
-    const label = day.toISOString().slice(0, 10);
-    points.push([label, byWeek.get(label) ?? null]);
-  }
-  return points;
 }
 
 function numeric(value) {
@@ -40,100 +30,90 @@ function timestamp(value) {
 export default function UtilizationPage() {
   const status = useApiData("/api/v1/utilization/status");
   const ready = Boolean(status.data?.available && status.data?.configured);
-  const [filters, setFilters] = useState({ scope: "job", repo: "", job_name: "", resource_class: "", resource_spec: "" });
-  const [dates, setDates] = useState({});
-  const [page, setPage] = useState(1);
-  const [weeklyFilters, setWeeklyFilters] = useState({ resource_class: "tke_native", metric: "cpu" });
-  const [weeklyDates, setWeeklyDates] = useState({});
-  const [weeklyPage, setWeeklyPage] = useState(1);
-  const dailyDates = { ...status.data?.daily_window, ...dates };
-  const daily = useApiData("/api/v1/utilization/daily", { ...dailyDates, ...filters, page, page_size: 50 }, ready);
-  const weekly = useApiData("/api/v1/utilization/weekly", { ...weeklyDates, ...weeklyFilters, page: weeklyPage, page_size: 100 }, ready);
-  const dailyItems = daily.data?.items || [];
-  const weeklyItems = weekly.data?.items || [];
-
-  function changeFilter(key, value) {
-    setPage(1);
-    setFilters((current) => key === "scope"
-      ? { ...current, scope: value, repo: "", job_name: "", resource_spec: "" }
-      : { ...current, [key]: value });
-  }
+  const [machineFilters, setMachineFilters] = useState({ machine_id: "", region: "", resource_class: "" });
+  const [machineDates, setMachineDates] = useState({});
+  const [machinePage, setMachinePage] = useState(1);
+  const [workloadFilters, setWorkloadFilters] = useState({ label_key: "", label_value: "", group_by: "" });
+  const [workloadDates, setWorkloadDates] = useState({});
+  const [workloadPage, setWorkloadPage] = useState(1);
+  const machineWindow = { ...status.data?.default_window, ...machineDates };
+  const workloadWindow = { ...status.data?.workload_window, ...workloadDates };
+  const machineParams = { kind: "machine", ...machineWindow, ...machineFilters, page: machinePage, page_size: 50 };
+  const workloadParams = {
+    kind: "workload", ...workloadWindow, group_by: workloadFilters.group_by,
+    ...(workloadFilters.label_key && workloadFilters.label_value
+      ? { label_key: workloadFilters.label_key, label_value: workloadFilters.label_value } : {}),
+    page: workloadPage, page_size: 50,
+  };
+  const machine = useApiData("/api/v1/utilization/daily", machineParams, ready);
+  const workload = useApiData("/api/v1/utilization/daily", workloadParams, ready);
+  const machineLoading = machine.loading || machine.responseKey !== JSON.stringify(machineParams);
+  const workloadLoading = workload.loading || workload.responseKey !== JSON.stringify(workloadParams);
+  const labels = status.data?.label_keys || [];
 
   return (
     <div className="page-stack">
-      <PageIntro
-        eyebrow="Resource Utilization"
-        title="Tencent CICD · 100050658403"
-        description="Beijing dates and Monday weeks. Daily summaries refresh at 00:30 / 06:30 / 12:30 / 18:30, not in real time. Only the current and previous week retain repo / Job details; older history is account + resource class only."
-      />
+      <PageIntro eyebrow="Resource Utilization" title="Tencent CICD · 100050658403"
+        description="Beijing dates. Machine-day facts retain one year; workload label statistics retain the current and previous Beijing week. Physical machine usage and workload consumption are separate, never added together. Missing measurements are not zero." />
       <Panel title="Collection status" loading={status.loading} error={status.error}>
-        {!ready ? <EmptyState message={REASONS[status.data?.reason] || "Utilization is not ready."} /> : (
-          <>
-            <p>Data cutoff: {timestamp(status.data.latest_cutoff)} Beijing · {status.data.stale ? "Stale / missing" : "Within refresh window"}</p>
-            <p>Collection: {status.data.collection_enabled ? "enabled" : "disabled"} · Maintenance: {status.data.maintenance_stale ? "stale / missing" : "healthy"}</p>
-            {status.data.paused && <p role="status">Collection paused: {(status.data.pause_reasons || []).join(", ") || "reason unavailable"}</p>}
-            <p>Missing account-summary dates: {status.data.missing_daily_dates?.join(", ") || "None reported"}. Recent final incomplete / missing scopes (up to 100 in the past year): {status.data.collection_gaps?.length ?? "Unknown"}.</p>
-            <p>Unknown repo and Job usage is retained, not redistributed. Metric coverage and quality are shown below; metadata field counts are not usage-weighted attribution coverage.</p>
-          </>
-        )}
+        {!ready ? <EmptyState message={REASONS[status.data?.reason] || "Utilization is not ready."} /> : <>
+          <p>Last machine cutoff: {timestamp(status.data.latest_cutoff)} Beijing · {status.data.stale ? "Stale / missing" : "Within refresh window"}</p>
+          <p>Last workload cutoff: {timestamp(status.data.workload_cutoff)} Beijing</p>
+          <p>Collection: {status.data.collection_enabled ? "enabled" : "disabled"} · Maintenance: {status.data.maintenance_stale ? "stale / missing" : "current"} · Health: {status.data.healthy ? "healthy" : "unhealthy"}</p>
+          {!status.data.healthy && <p>Health checks: {status.data.health_reasons?.join(", ") || "unavailable"}</p>}
+          {status.data.paused && <p role="status">Collection paused: {(status.data.pause_reasons || []).join(", ") || "reason unavailable"}</p>}
+          <p>Active Pod contexts: {numeric(status.data.active_contexts)} · Task backlog: pending {numeric(status.data.task_backlog?.pending)}, running {numeric(status.data.task_backlog?.running)}, retry {numeric(status.data.task_backlog?.retry)}</p>
+        </>}
       </Panel>
       {ready && <>
-        <Panel title="Daily optimization · repo → stable Job → resource spec"
-          subtitle="Job / repo utilization uses requests; physical resource / account-class utilization uses physical capacity. These scopes are never added together. Full-coverage and observed-subset peaks are separate synchronous minute-mean maxima, never sums of individual peaks.">
+        <Panel title="Machine daily detail" subtitle="Physical-capacity basis. Up to 365 days per query; each row is one identified machine on one date. Peaks apply only to that machine, never a resource group.">
           <div className="filter-grid">
-            <Field label="Daily start"><input type="date" min={status.data.daily_window.start_date} max={status.data.daily_window.end_date} value={dailyDates.start_date || ""} onChange={(event) => { setDates({ ...dailyDates, start_date: event.target.value }); setPage(1); }} /></Field>
-            <Field label="Daily end"><input type="date" min={status.data.daily_window.start_date} max={status.data.daily_window.end_date} value={dailyDates.end_date || ""} onChange={(event) => { setDates({ ...dailyDates, end_date: event.target.value }); setPage(1); }} /></Field>
-            <Field label="Stored scope"><select value={filters.scope} onChange={(event) => changeFilter("scope", event.target.value)}>
-              <option value="job">Stable Job · requests basis</option><option value="repo">Repo · requests basis</option>
-              <option value="resource">Physical resource · capacity basis</option><option value="account_class">Account class · capacity basis</option>
+            <Dates prefix="Machine" dates={machineWindow} bounds={status.data.machine_window} onChange={(key, value) => { setMachineDates({ ...machineWindow, [key]: value }); setMachinePage(1); }} />
+            <Field label="Machine ID"><input value={machineFilters.machine_id} maxLength={512} placeholder="All machines" onChange={(event) => { setMachineFilters({ ...machineFilters, machine_id: event.target.value }); setMachinePage(1); }} /></Field>
+            <Field label="Region"><input value={machineFilters.region} maxLength={512} placeholder="All regions" onChange={(event) => { setMachineFilters({ ...machineFilters, region: event.target.value }); setMachinePage(1); }} /></Field>
+            <Field label="Machine class"><select value={machineFilters.resource_class} onChange={(event) => { setMachineFilters({ ...machineFilters, resource_class: event.target.value }); setMachinePage(1); }}>
+              <option value="">All classes</option><option value="cvm">CVM</option><option value="tke_native">TKE native node</option>
             </select></Field>
-            <Field label="Resource class"><input value={filters.resource_class} maxLength={512} onChange={(event) => changeFilter("resource_class", event.target.value)} placeholder="All classes" /></Field>
-            {["job", "repo"].includes(filters.scope) && <Field label="Repo"><input value={filters.repo} maxLength={512} onChange={(event) => changeFilter("repo", event.target.value)} placeholder="org/repo or unknown_repo" /></Field>}
-            {filters.scope === "job" && <Field label="Stable Job"><input value={filters.job_name} maxLength={512} onChange={(event) => changeFilter("job_name", event.target.value)} placeholder="Stable path or unknown_job" /></Field>}
-            {["job", "resource"].includes(filters.scope) && <Field label="Resource spec"><input value={filters.resource_spec} maxLength={512} onChange={(event) => changeFilter("resource_spec", event.target.value)} placeholder="Exact stored spec" /></Field>}
           </div>
-          <p>Precise Job cost: unavailable (no verified same-dimension cost evidence). No projected personal chargeback or savings estimate is used.</p>
-          <p>Attribution evidence stops at the displayed cutoff. Late metadata does not automatically improve successfully published dates after next-day 18:30.</p>
+          <Panel title="Machine CPU / memory" loading={machineLoading} error={machine.error}>
+            <Measurements data={machine.data} empty="No machine facts for these dates and filters.">
+              <div className="table-scroll"><table className="data-table data-table--compact" aria-label="Machine utilization">
+                <thead><tr>{["Beijing date", "Machine identity", "Class / historical spec", "CPU", "Memory", "Cutoff (Beijing)"].map((label) => <th key={label}>{label}</th>)}</tr></thead>
+                <tbody>{(machine.data?.items || []).map((item) => <tr key={`${item.usage_date}:${item.region}:${item.cluster_id}:${item.machine_id}`}>
+                  <td>{item.usage_date}</td><td>{item.machine_id}<br />{item.region}<br />{item.cluster_id || "No cluster (CVM)"}</td>
+                  <td>{item.resource_class}<br />{item.instance_type || "N/A"}<br />{numeric(item.cpu_cores)} cores / {numeric(item.memory_bytes)} bytes</td>
+                  <td><Metric value={item.metrics?.cpu} unit="core·s" machine /></td><td><Metric value={item.metrics?.memory} unit="byte·s" machine /></td>
+                  <td>{timestamp(item.cutoff)}</td>
+                </tr>)}</tbody>
+              </table></div>
+            </Measurements>
+            <Pagination page={machinePage} hasMore={machine.data?.has_more} onChange={setMachinePage} />
+          </Panel>
         </Panel>
-        <Panel title="Daily CPU / memory" loading={daily.loading} error={daily.error}>
-          {daily.data?.available === false ? <EmptyState message={REASONS[daily.data.reason] || "Measurements unavailable."} /> : !dailyItems.length ? <EmptyState message="No stored summaries for this scope. Missing measurements are not 0%." /> : (
-            <div className="table-scroll"><table className="data-table data-table--compact" aria-label="Daily utilization">
-              <thead><tr>{["Date / state", "Repo → stable Job", "Resource class / spec", "CPU", "Memory", "Cutoff / evidence (Beijing)"].map((label) => <th key={label}>{label}</th>)}</tr></thead>
-              <tbody>{dailyItems.map((item) => <tr key={`${item.usage_date}:${item.resource_key}`}>
-                <td>{item.usage_date}<br />{item.status}</td>
-                <td>{item.repo || "Not applicable"}<br />{item.job_name || "Not applicable"}</td>
-                <td>{item.resource_class}<br />{item.resource_spec || "N/A"}<br />{item.namespace} {item.region}</td>
-                <td><Metric value={item.metrics?.cpu} /></td><td><Metric value={item.metrics?.memory} /></td>
-                <td>{timestamp(item.cutoff)}<br />Evidence: {timestamp(item.evidence_cutoff)}</td>
-              </tr>)}</tbody>
-            </table></div>
-          )}
-          <Pagination page={page} hasMore={daily.data?.has_more} onChange={setPage} />
-        </Panel>
-        <Panel title="Account weekly trends" subtitle="Physical account-class summaries only; no historical Job detail or Pod curves. Select one class and metric. Nulls and final_missing are gaps, never zero.">
+        <Panel title="Workload business labels" subtitle="Requests basis. Filter any approved business label and optionally group by one label across the selected dates. Averages use summed matched integrals, not averages of percentages. No workload or group peaks.">
           <div className="filter-grid">
-            <Field label="Weekly resource class"><select value={weeklyFilters.resource_class} onChange={(event) => { setWeeklyFilters({ ...weeklyFilters, resource_class: event.target.value }); setWeeklyPage(1); }}>
-              <option value="tke_native">TKE native nodes</option><option value="tke_cvm">TKE CVM-backed nodes</option><option value="cvm">CVM</option>
+            <Dates prefix="Workload" dates={workloadWindow} bounds={status.data.workload_window} onChange={(key, value) => { setWorkloadDates({ ...workloadWindow, [key]: value }); setWorkloadPage(1); }} />
+            <Field label="Label key"><select value={workloadFilters.label_key} onChange={(event) => { setWorkloadFilters({ ...workloadFilters, label_key: event.target.value, label_value: "" }); setWorkloadPage(1); }}>
+              <option value="">No label filter</option>{labels.map((key) => <option key={key} value={key}>{key}</option>)}
             </select></Field>
-            <Field label="Weekly metric"><select value={weeklyFilters.metric} onChange={(event) => { setWeeklyFilters({ ...weeklyFilters, metric: event.target.value }); setWeeklyPage(1); }}>
-              <option value="cpu">CPU</option><option value="memory">Memory</option>
+            <Field label="Label value"><input value={workloadFilters.label_value} disabled={!workloadFilters.label_key} maxLength={512} placeholder="Exact label value" onChange={(event) => { setWorkloadFilters({ ...workloadFilters, label_value: event.target.value }); setWorkloadPage(1); }} /></Field>
+            <Field label="Group by label"><select value={workloadFilters.group_by} onChange={(event) => { setWorkloadFilters({ ...workloadFilters, group_by: event.target.value }); setWorkloadPage(1); }}>
+              <option value="">All matched workloads</option>{labels.map((key) => <option key={key} value={key}>{key}</option>)}
             </select></Field>
-            <Field label="Weekly start"><input type="date" value={weeklyDates.start_date || ""} onChange={(event) => { setWeeklyDates({ ...weeklyDates, start_date: event.target.value }); setWeeklyPage(1); }} /></Field>
-            <Field label="Weekly end"><input type="date" value={weeklyDates.end_date || ""} onChange={(event) => { setWeeklyDates({ ...weeklyDates, end_date: event.target.value }); setWeeklyPage(1); }} /></Field>
           </div>
-          <p>Default: last 52 Beijing weeks. Supply both dates for a custom range of less than one calendar year; dates select week starts. Pagination is capped at 100 pages; narrow filters for larger result sets.</p>
-        </Panel>
-        <Panel title="Weekly CPU / memory · selected class" loading={weekly.loading} error={weekly.error}>
-          {weekly.data?.available === false ? <EmptyState message={REASONS[weekly.data.reason] || "Measurements unavailable."} /> : !weeklyItems.length ? <EmptyState message="No account weekly measurements for this class." /> : <>
-            <TrendChart series={[{ key: "average", label: `${weeklyFilters.resource_class} ${weeklyFilters.metric} mean`, color: "#1f4e79", type: "line", points: weeklyTrendPoints(weeklyItems) }]} yFormatter={utilizationPercent} ariaLabel="Account weekly utilization trend" />
-            <div className="table-scroll"><table className="data-table data-table--compact" aria-label="Weekly utilization"><thead><tr><th>Beijing week</th><th>Class / metric / basis</th><th>Mean / peak / coverage</th><th>State / finalization</th></tr></thead><tbody>
-              {weeklyItems.map((item) => <tr key={`${item.week_start}:${item.resource_class}:${item.metric}`}>
-                <td>{item.week_start}</td><td>{item.resource_class} / {item.metric}<br />{item.contract?.denominator || "Unknown basis"}</td>
-                <td><Metric value={{ ...item.values, contract: item.contract }} /></td><td>{item.status}<br />{timestamp(item.finalized_at)}</td>
-              </tr>)}
-            </tbody></table></div>
-          </>}
-          <Pagination page={weeklyPage} hasMore={weekly.data?.has_more} onChange={setWeeklyPage} />
+          <p>Missing labels do not discard usage. Unknown or zero requests make efficiency unavailable, but known absolute usage remains visible. No individual Pod history or personal attribution. Precise Job cost: unavailable.</p>
+          <Panel title="Workload CPU / memory" loading={workloadLoading} error={workload.error}>
+            <Measurements data={workload.data} empty="No retained workload statistics for these dates and labels.">
+              <div className="table-scroll"><table className="data-table data-table--compact" aria-label="Workload utilization">
+                <thead><tr><th>Dates / business group</th><th>CPU</th><th>Memory</th><th>Oldest contributing cutoff (Beijing)</th></tr></thead>
+                <tbody>{(workload.data?.items || []).map((item) => <tr key={item.group_value ?? "missing"}>
+                  <td>{workload.data.start_date} – {workload.data.end_date}<br />{workload.data.group_by ? `${workload.data.group_by}: ${item.group_value ?? "(missing label)"}` : "All matched workloads"}</td>
+                  <td><Metric value={item.metrics?.cpu} unit="core·s" /></td><td><Metric value={item.metrics?.memory} unit="byte·s" /></td><td>{timestamp(item.cutoff)}</td>
+                </tr>)}</tbody>
+              </table></div>
+            </Measurements>
+            <Pagination page={workloadPage} hasMore={workload.data?.has_more} onChange={setWorkloadPage} />
+          </Panel>
         </Panel>
       </>}
     </div>
@@ -144,30 +124,32 @@ function Field({ label, children }) {
   return <label className="filter-field"><span>{label}</span>{children}</label>;
 }
 
-function Pagination({ page, hasMore, onChange }) {
-  return <div className="panel__actions"><button disabled={page <= 1} onClick={() => onChange(page - 1)}>Previous</button><span>Page {page}</span><button disabled={!hasMore || page >= 100} onClick={() => onChange(page + 1)}>Next</button></div>;
+function Dates({ prefix, dates, bounds, onChange }) {
+  return ["start", "end"].map((key) => <Field key={key} label={`${prefix} ${key}`}><input type="date" min={bounds?.start_date} max={bounds?.end_date} value={dates[`${key}_date`] || ""} onChange={(event) => { if (event.target.value) onChange(`${key}_date`, event.target.value); }} /></Field>);
 }
 
-function Metric({ value }) {
+function Measurements({ data, empty, children }) {
+  if (data?.available === false) return <EmptyState message={REASONS[data.reason] || "Measurements unavailable."} />;
+  if (!data?.items?.length) return <EmptyState message={`${empty} Missing measurements are not 0%.`} />;
+  return children;
+}
+
+function Pagination({ page, hasMore, onChange }) {
+  return <div className="panel__actions"><button disabled={page <= 1} onClick={() => onChange(page - 1)}>Previous</button><span>Page {page}</span><button disabled={!hasMore || page >= 1000} onClick={() => onChange(page + 1)}>Next</button></div>;
+}
+
+function Metric({ value, unit, machine = false }) {
   if (!value) return <>N/A · no measurement</>;
-  const fullPeak = value.peak_coverage === 1 ? value.peak : null;
-  const subset = value.peak_subset ?? (value.peak_coverage !== 1 ? value.peak : null);
-  const subsetCoverage = value.peak_subset != null ? value.peak_subset_coverage : value.peak_coverage;
-  const usageObserved = value.usage_observed_seconds ?? value.observed_seconds;
-  const actualKnown = usageObserved > 0 || (value.coverage === 1 && value.expected_seconds === 0 && value.quality?.includes("verified_empty"));
   return <>
-    <div>Mean {utilizationPercent(value.avg)} · Full peak {utilizationPercent(fullPeak)}</div>
-    {subset != null && <div>Observed subset peak {utilizationPercent(subset)} · coverage {utilizationPercent(subsetCoverage, true)} (not a full-population peak)</div>}
-    <div>Coverage {utilizationPercent(value.coverage, true)} · Peak coverage {utilizationPercent(value.peak_coverage, true)}</div>
-    <details><summary>Actual / denominator / quality</summary>
-      <div>Basis: {value.contract?.denominator || "Unknown"} · {value.contract?.normalized_unit || "unknown unit"}·s</div>
-      <div>Observed actual integral: {actualKnown ? numeric(value.total_used_integral) : "N/A (no usage observations)"}</div>
-      <div>Matched actual / capacity integrals: {numeric(value.used_integral)} / {numeric(value.capacity_integral)}</div>
+    <div>Mean {utilizationPercent(value.avg)} · Coverage {utilizationPercent(value.coverage, true)}</div>
+    {machine && <div>Machine peak {utilizationPercent(value.peak)} at {timestamp(value.peak_at)} Beijing</div>}
+    <div>Absolute usage: {value.usage_seconds > 0 ? numeric(value.total_used) : "N/A (no usage observations)"} {unit}</div>
+    <details><summary>Integrals / coverage / requests quality</summary>
+      <div>Matched usage / capacity: {numeric(value.used)} / {numeric(value.capacity)} {unit}</div>
+      <div>Expected capacity: {numeric(value.expected_capacity)} {unit}</div>
       <div>Matched / expected seconds: {numeric(value.observed_seconds)} / {numeric(value.expected_seconds)}</div>
-      <div>Usage-observed seconds: {numeric(value.usage_observed_seconds ?? value.observed_seconds)}</div>
-      <div>Full peak at: {timestamp(fullPeak != null ? value.peak_at : null)} Beijing</div>
-      {subset != null && <div>Subset peak at: {timestamp(value.peak_subset_at ?? value.peak_at)} Beijing</div>}
-      <div>Quality: {value.quality?.join(", ") || "Not reported"}</div>
+      <div>Usage-observed seconds: {numeric(value.usage_seconds)}</div>
+      <div>Unknown denominator seconds: {numeric(value.unknown_seconds)} · Zero denominator seconds: {numeric(value.zero_seconds)}</div>
     </details>
   </>;
 }

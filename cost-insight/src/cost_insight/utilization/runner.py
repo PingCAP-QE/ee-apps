@@ -1,306 +1,215 @@
-"""Utilization orchestration: bounded transient windows, atomic daily replacement."""
+"""Tencent-only planners and Kafka workers. Timers live in DB, never per-Pod threads."""
 
-from __future__ import annotations
-
-import copy
-from datetime import date, timedelta
-
-from sqlalchemy import text
+import json
+import logging
+from datetime import timedelta
 
 from cost_insight.utilization import policy, store
-from cost_insight.utilization.aggregate import aggregate_day, day_bounds, resource_class, utc
+from cost_insight.utilization.aggregate import minute, summarize_window
 from cost_insight.utilization.tencent import TencentReader
 
+LOG = logging.getLogger(__name__)
 
-def database_now(engine, now=None):
-    if now is not None:
-        if engine.dialect.name != "sqlite":
-            raise ValueError("Clock injection is only supported in offline SQLite tests")
-        return utc(now)
+
+def _ready(engine, profile, now=None):
+    state = store.load_state(engine)
+    if state.get("contracts") != profile["contracts"]:
+        raise ValueError("configure the exact V2 profile before collection")
     with engine.connect() as connection:
-        statement = (
-            "SELECT CURRENT_TIMESTAMP"
-            if engine.dialect.name == "sqlite"
-            else "SELECT UTC_TIMESTAMP(6)"
-        )
-        return utc(connection.execute(text(statement)).scalar_one())
+        clock = store.database_now(connection, now)
+    return state, clock
 
 
-def merge_window_rows(target: dict, rows: list[dict]) -> None:
-    """Merge non-overlapping windows only; maxima remain synchronous minute means."""
-    for row in rows:
-        key = (row["scope"], row["resource_key"])
-        if key not in target:
-            target[key] = copy.deepcopy(row)
+def _horizon_open(state, day, clock):
+    for cls in ("cvm", "tke_native"):
+        for entry in state["contracts"][cls].values():
+            policy.validate_source_window(entry)
+            if clock >= policy.day_start(day) + timedelta(
+                seconds=entry["verified_horizon_seconds"] - entry.get("safety_margin_seconds", 0)
+            ):
+                return False
+    return True
+
+
+def plan_machines(engine, profile, *, usage_date=None, dry_run=False, now=None, reader=None):
+    state, clock = _ready(engine, profile, now)
+    if not dry_run:
+        store._admit(state, clock)
+    days = (
+        [usage_date]
+        if usage_date
+        else [policy.usage_date(clock) - timedelta(days=n) for n in (4, 3)]
+    )
+    reader = reader or TencentReader(profile)
+    reader.verify_account()
+    result = []
+    for day in days:
+        if day > policy.usage_date(clock) or day < policy.usage_date(clock) - timedelta(days=365):
+            raise ValueError("machine date outside retained year")
+        # Reject exhausted sources before doing a potentially large bill scan.
+        if not _horizon_open(state, day, clock):
+            if usage_date is not None:
+                raise ValueError("machine date exceeds verified source horizon")
+            result.append({"usage_date": day.isoformat(), "skipped": "source_horizon"})
             continue
-        existing = target[key]
-        if row["cutoff"] <= existing["cutoff"]:
-            raise ValueError("Aggregation windows must be ordered and non-overlapping")
-        existing["cutoff"] = row["cutoff"]
-        existing["status"] = row["status"]
-        if existing["resource_spec"] != row["resource_spec"]:
-            existing["resource_spec"] = "mixed"
-        for metric, body in row["metrics_json"].items():
-            if metric not in existing["metrics_json"]:
-                existing["metrics_json"][metric] = copy.deepcopy(body)
-                continue
-            previous = existing["metrics_json"][metric]
-            if previous["contract"] != body["contract"]:
-                raise ValueError("Cannot merge incompatible daily window contracts")
-            previous["usage_observed_seconds"] = previous.get(
-                "usage_observed_seconds", previous["observed_seconds"]
-            ) + body.get("usage_observed_seconds", body["observed_seconds"])
-            for field in (
-                "used_integral",
-                "capacity_integral",
-                "total_used_integral",
-                "expected_capacity_integral",
-                "expected_seconds",
-                "observed_seconds",
-                "unknown_seconds",
-                "zero_capacity_seconds",
-            ):
-                previous[field] = previous.get(field, 0) + body.get(field, 0)
-            previous["avg"] = (
-                100 * previous["used_integral"] / previous["capacity_integral"]
-                if previous["capacity_integral"]
-                else None
+        candidates = reader.billing_candidates(day)
+        planned, errors = 0, []
+        for candidate in candidates:
+            windows = []
+            target = {**candidate, "kind": "machine", "account_id": policy.ACCOUNT_ID}
+            start = max(policy.day_start(day), minute(candidate["observed_from"], ceil=True))
+            end = min(
+                policy.day_start(day + timedelta(days=1)),
+                minute(candidate["observed_until"]),
+                minute(clock - timedelta(minutes=10)),
             )
-            previous["coverage"] = (
-                min(
-                    previous["capacity_integral"] / previous["expected_capacity_integral"]
-                    if previous["expected_capacity_integral"]
-                    else 1.0,
-                    previous["observed_seconds"] / previous["expected_seconds"],
+            while start < end:
+                stop = min(
+                    end, start.replace(minute=start.minute // 30 * 30) + timedelta(minutes=30)
                 )
-                if previous["expected_seconds"]
-                else None
-            )
-            if body["peak"] is not None and (
-                previous["peak"] is None or body["peak"] > previous["peak"]
-            ):
-                previous.update({f: body[f] for f in ("peak", "peak_at", "peak_coverage")})
-            if body.get("peak_subset") is not None and (
-                previous.get("peak_subset") is None or body["peak_subset"] > previous["peak_subset"]
-            ):
-                previous.update(
+                windows.append((target, start, stop))
+                start = stop
+            # One candidate has at most 48 windows. A revised immutable snapshot
+            # must not block unrelated machines or the next usage day.
+            try:
+                planned += store.enqueue_windows(engine, windows, now=now, dry_run=dry_run)[
+                    "planned"
+                ]
+            except ValueError as exc:
+                errors.append(
                     {
-                        field: body.get(field)
-                        for field in ("peak_subset", "peak_subset_at", "peak_subset_coverage")
+                        "machine_id": target["machine_id"],
+                        "region": target["region"],
+                        "error": str(exc),
                     }
                 )
-            if body["as_of"] is not None:
-                previous.update({f: body[f] for f in ("latest", "as_of")})
-            previous["quality"] = sorted(set(previous["quality"]) | set(body["quality"]))
+        result.append(
+            {
+                "usage_date": day.isoformat(),
+                "candidates": len(candidates),
+                "planned": planned,
+                "errors": errors,
+            }
+        )
+    return {"days": result, "source": reader.stats, "dry_run": dry_run}
 
 
-def sync_inventory(engine, profile, *, dry_run=False, now=None, reader=None):
-    now = database_now(engine, now)
-    if not dry_run:
-        state = store.load_state(engine)
-        if not policy.health(state, policy.utc_naive(now))["allowed"]:
-            raise ValueError(
-                "Utilization writes are disabled/unhealthy; maintenance must run first"
-            )
+def dispatch(engine, profile, producer, *, now=None, limit=100, dry_run=False):
+    _ready(engine, profile, now)
+    if dry_run:
+        return {"dry_run": True, "sent": 0}
+    planned = store.plan_contexts(engine, now=now, limit=limit)
+    sent = 0
+    for task in store.due_tasks(engine, now=now, limit=limit):
+        producer.publish({"task_id": task["id"]})  # Broker acknowledgement before marking sent.
+        store.mark_dispatched(engine, task["id"], now=now)
+        sent += 1
+    return {**planned, "sent": sent}
+
+
+def work_batch(engine, profile, task_ids, *, now=None, reader=None):
+    """Coalesce already available compatible tasks; never delay a consumer to fill a batch."""
+    if not 1 <= len(task_ids) <= 10:
+        raise ValueError("worker batches contain 1..10 task references")
+    state, _ = _ready(engine, profile, now)
     reader = reader or TencentReader(profile)
-    reader.verify_account()
-    rows = reader.inventory(now)
-    results = [
-        store.save_observations(
-            engine,
-            rows[offset : offset + 1000],
-            now=policy.utc_naive(now) if engine.dialect.name == "sqlite" else None,
-            dry_run=dry_run,
-        )
-        for offset in range(0, len(rows), 1000)
-    ]
-    return {
-        "inventory": {
-            "rows": sum(result["rows"] for result in results),
-            "batches": len(results),
-            "dry_run": dry_run,
-        },
-        "source": reader.stats,
-    }
-
-
-def sync_daily(
-    engine,
-    profile,
-    *,
-    dry_run=False,
-    usage_date: date | None = None,
-    repair=False,
-    now=None,
-    reader=None,
-    empty_proof: dict | None = None,
-):
-    now = database_now(engine, now)
-    if empty_proof is not None and (usage_date is None or not repair):
-        raise ValueError("Verified empty proof requires an explicit --date --repair")
-    state = store.load_state(engine)
-    if not state or state.get("contracts") != profile["contracts"]:
-        raise ValueError("Initialize an exact, disabled contract registry before collection")
-    if not dry_run and not policy.health(state, policy.utc_naive(now))["allowed"]:
-        raise ValueError("Utilization writes are disabled/unhealthy; maintenance must run first")
-    today = now.astimezone(policy.BEIJING).date()
-    if usage_date is not None and not repair:
-        raise ValueError(
-            "Explicit dates require --repair; regular refresh only recuts current/previous day"
-        )
-    days = [usage_date] if usage_date else [today - timedelta(days=1), today]
-    reader = reader or TencentReader(profile)
-    reader.verify_account()
-    results = []
-    # One common cutoff prevents different scopes seeing different prefixes.
-    cutoff = (now - timedelta(minutes=10)).replace(second=0, microsecond=0)
-    if empty_proof is not None:
-        if empty_proof.get("usage_date") != usage_date.isoformat() or len(str(empty_proof)) > 8192:
-            raise ValueError("Empty proof must be bounded and match the selected date")
-        proof_cutoff = utc(empty_proof["cutoff"])
-        if proof_cutoff > cutoff or proof_cutoff.second or proof_cutoff.microsecond:
-            raise ValueError("Empty proof cannot exceed the common completed-minute cutoff")
-        cutoff = proof_cutoff
-    for day in days:
-        if day > today or not policy.writable_week(
-            state, policy.week_start(day), policy.utc_naive(now)
-        ):
-            if usage_date is not None:
-                raise ValueError("Date is outside the explicitly open retention calendar")
-            results.append(
-                {
-                    "usage_date": day.isoformat(),
-                    "skipped": True,
-                    "reason": "outside_collection_calendar",
-                }
-            )
+    groups, results = {}, []
+    for task_id in task_ids:
+        task = store.claim_task(engine, task_id, now=now)
+        if task is None:
+            results.append("ignored")
             continue
-        if cutoff <= utc(policy.day_start(day)):
-            results.append(
-                {"usage_date": day.isoformat(), "skipped": True, "reason": "no_completed_minutes"}
-            )
+        target = task["payload_json"]
+        if target.get("contract_version") != state["contract_version"]:
+            store.fail_task(engine, task["id"], task["lease_token"], now=now)
+            results.append("retry")
             continue
-        if not all(
-            policy.replay_allowed(day, entry, policy.utc_naive(now))
-            for entries in state["contracts"].values()
-            for entry in entries.values()
-        ):
-            # Store retains the last trusted result; dry runs never mark it stale.
-            outcome = (
-                {"dry_run": True, "rows": 0}
-                if dry_run
-                else store.replace_day(
-                    engine,
-                    day,
-                    [],
-                    now=policy.utc_naive(now) if engine.dialect.name == "sqlite" else None,
-                )
-            )
-            results.append(
-                {
-                    **outcome,
-                    "usage_date": day.isoformat(),
-                    "published": False,
-                    "reason": "unverified_or_exhausted_source_horizon",
-                }
-            )
-            continue
-        start, end = day_bounds(day, cutoff)
-        observations = store.read_observations(
-            engine, policy.utc_naive(start), policy.utc_naive(end)
+        key = (
+            task["window_start"],
+            task["window_end"],
+            task["kind"],
+            target["region"],
+            target.get("cluster_id", ""),
+            target.get("resource_class", "pod"),
+            # Pod queries have exact selectors, not a provider-side batch. An
+            # unresolved Pending Pod must not poison a healthy Pod's attempt.
+            target.get("pod_uid", ""),
         )
-        combined = {}
-        cursor = start
-        point_count = 0
+        groups.setdefault(key, []).append(task)
+    for (start, end, *_), batch in groups.items():
         try:
+            reader.verify_account()
             reader.verify_contracts()
-            while cursor < end:
-                window_end = min(end, cursor + timedelta(minutes=30))
-                points = reader.window(cursor, window_end, observations)
-                point_count += len(points)
-                if empty_proof is not None:
-                    for point in points:
-                        if point["kind"] != "pod":
-                            continue  # Store checks deduplicated physical rows, not alias series.
-                        node = str(point.get("node_id") or "")
-                        cls = resource_class(node) if node.startswith(("np-", "ins-")) else None
-                        if cls == "tke_cvm" and profile["contracts"][cls]["cpu"].get(
-                            "consumer_only"
-                        ):
-                            cls = "cvm"
-                        if cls in empty_proof.get("resource_classes", []):
-                            raise ValueError("Monitoring resource contradicts verified-empty scope")
-                merge_window_rows(
-                    combined,
-                    aggregate_day(
-                        day,
-                        points,
-                        observations,
-                        profile["contracts"],
-                        cutoff=window_end,
-                        window_start=cursor,
-                    ),
-                )
-                if len(combined) > store.MAX_DAY_ROWS:
-                    raise ValueError(
-                        "Daily stable-key cardinality exceeds canary publication ceiling"
-                    )
-                cursor = window_end
-            if point_count == 0 and empty_proof is None:
-                raise ValueError("No monitoring points; missing is not zero")
-        except Exception as exc:  # noqa: BLE001 -- failure boundary: preserve last trusted day
-            outcome = (
-                {"dry_run": True, "rows": 0}
-                if dry_run
-                else store.replace_day(
-                    engine,
-                    day,
-                    [],
-                    now=policy.utc_naive(now) if engine.dialect.name == "sqlite" else None,
-                )
-            )
-            results.append(
-                {
-                    **outcome,
-                    "usage_date": day.isoformat(),
-                    "published": False,
-                    "reason": "collection_failed",
-                    "error_type": type(exc).__name__,
-                }
-            )
+            points = reader.window(start, end, [task["payload_json"] for task in batch])
+        except Exception as exc:  # noqa: BLE001 -- durable retry, no source payload in logs
+            LOG.warning("utilization source attempt failed: %s", type(exc).__name__)
+            for task in batch:
+                store.fail_task(engine, task["id"], task["lease_token"], now=now)
+                results.append("retry")
             continue
-        rows = list(combined.values())
-        unmapped = reader.stats.get("unmapped_node_series", 0) > 0
-        for row in rows:
-            if unmapped and row["scope"] in {"resource", "account_class"}:
-                for body in row["metrics_json"].values():
-                    body["quality"] = sorted(set(body["quality"]) | {"unmapped_physical_source"})
-                    body["peak_coverage"] = None
-            row.update(
-                cutoff=policy.utc_naive(end),
-                evidence_cutoff=policy.utc_naive(now),
-                status="partial"
-                if end < utc(policy.day_start(day + timedelta(days=1)))
-                else "complete",
-            )
-        proof = (
-            {**empty_proof, "source_quality": ["unmapped_physical_source"] if unmapped else []}
-            if empty_proof is not None
-            else None
-        )
-        results.append(
-            store.replace_day(
-                engine,
-                day,
-                rows,
-                now=policy.utc_naive(now) if engine.dialect.name == "sqlite" else None,
-                dry_run=dry_run,
-                verified_empty=proof,
-            )
-        )
-    return {
-        "days": results,
-        "source": reader.stats,
-        "cutoff": cutoff.isoformat(),
-        "dry_run": dry_run,
-    }
+        for task in batch:
+            target = task["payload_json"]
+            entity = target.get("machine_id") or target["pod_uid"]
+            own = [point for point in points if point["entity"] == entity]
+            if not any(point.get("value") is not None for point in own):
+                store.fail_task(engine, task["id"], task["lease_token"], now=now)
+                results.append("retry")
+                continue
+            try:
+                values = summarize_window(own, target, start, end)
+                done = store.complete_task(engine, task["id"], task["lease_token"], values, now=now)
+            except ValueError:
+                LOG.warning("utilization task result rejected")
+                store.fail_task(engine, task["id"], task["lease_token"], now=now)
+                results.append("retry")
+            else:
+                results.append("done" if done else "fenced")
+    return results
+
+
+def work_one(engine, profile, task_id, *, now=None, reader=None):
+    return work_batch(engine, profile, [task_id], now=now, reader=reader)[0]
+
+
+def consume(engine, profile, consumer, *, max_messages=100, now=None, reader=None):
+    if not 1 <= max_messages <= 1000:
+        raise ValueError("bounded worker batch required")
+    state, clock = _ready(engine, profile, now)
+    store._admit(state, clock)
+    reader = reader or TencentReader(profile)
+    counts = {"done": 0, "ignored": 0, "retry": 0, "fenced": 0, "invalid": 0}
+    processed = 0
+    while processed < max_messages:
+        batches = consumer.poll(timeout_ms=1000, max_records=min(10, max_messages - processed))
+        if not batches:
+            break
+        references = []
+        for records in batches.values():
+            for record in records:
+                message = record.value
+                try:
+                    if isinstance(message, (str, bytes)):
+                        if len(message) > 256:
+                            raise ValueError("oversized task reference")
+                        message = json.loads(message)
+                    key = message["task_id"]
+                    if (
+                        set(message) != {"task_id"}
+                        or len(key) != 64
+                        or any(c not in "0123456789abcdef" for c in key)
+                    ):
+                        raise ValueError("invalid task reference")
+                except (ValueError, KeyError, TypeError):
+                    counts["invalid"] += 1
+                else:
+                    references.append(key)
+                processed += 1
+        for offset in range(0, len(references), 10):
+            for result in work_batch(
+                engine, profile, references[offset : offset + 10], now=now, reader=reader
+            ):
+                counts[result] += 1
+        # A DB failure escapes before this commit; all fetched references have
+        # either an idempotent committed result or a durable retry disposition.
+        consumer.commit()
+    return {"processed": processed, **counts}

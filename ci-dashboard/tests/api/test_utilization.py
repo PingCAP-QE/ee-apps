@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +13,10 @@ from ci_dashboard.api.queries import utilization as queries
 from ci_dashboard.api.routes import utilization as routes
 
 NOW = datetime(2026, 11, 24, 5, tzinfo=UTC)
+FIELDS = (
+    "used", "capacity", "total_used", "expected_capacity", "expected_seconds",
+    "observed_seconds", "usage_seconds", "unknown_seconds", "zero_seconds",
+)
 
 
 @pytest.fixture
@@ -20,24 +24,31 @@ def engine():
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
+    stats = ",".join(f"{metric}_{field} REAL" for metric in ("cpu", "memory") for field in FIELDS)
     with engine.begin() as connection:
-        connection.execute(
-            text("""CREATE TABLE cost_utilization_daily (
-            id INTEGER PRIMARY KEY, vendor TEXT, account_id TEXT, usage_date DATE, week_start DATE,
-            expires_at DATETIME, scope TEXT, resource_key TEXT, resource_class TEXT, resource_spec TEXT,
-            repo TEXT, job_name TEXT, namespace TEXT, region TEXT, metrics_json JSON,
-            cutoff DATETIME, evidence_cutoff DATETIME, status TEXT, updated_at DATETIME)""")
-        )
-        connection.execute(
-            text("""CREATE TABLE cost_utilization_weekly (
-            id INTEGER PRIMARY KEY, vendor TEXT, account_id TEXT, week_start DATE,
-            resource_class TEXT, metric TEXT, contract_json JSON, values_json JSON,
-            status TEXT, quality_checkpoint_at DATETIME, finalized_at DATETIME, updated_at DATETIME)
-        """)
-        )
-        connection.execute(
-            text("CREATE TABLE cost_job_state (job_name TEXT PRIMARY KEY, watermark_json JSON)")
-        )
+        connection.execute(text(f"""CREATE TABLE machine_utilization_daily (
+            id INTEGER PRIMARY KEY, account_id TEXT, region TEXT, cluster_id TEXT,
+            machine_id TEXT, usage_date DATE, resource_class TEXT, instance_type TEXT,
+            cpu_cores REAL, memory_bytes REAL, cutoff DATETIME, updated_at DATETIME,
+            quality_json JSON, {stats}, cpu_peak REAL, cpu_peak_at DATETIME,
+            memory_peak REAL, memory_peak_at DATETIME)"""))
+        connection.execute(text(f"""CREATE TABLE workload_utilization_daily (
+            id INTEGER PRIMARY KEY, account_id TEXT, usage_date DATE, group_key TEXT,
+            labels_json JSON, cpu_request_cores REAL, memory_request_bytes REAL,
+            cutoff DATETIME, updated_at DATETIME, expires_at DATETIME, quality_json JSON, {stats})"""))
+        connection.execute(text("""CREATE TABLE pod_utilization_context (
+            id INTEGER PRIMARY KEY, account_id TEXT, closed_at DATETIME, expires_at DATETIME)"""))
+        connection.execute(text("""CREATE TABLE utilization_task (
+            id TEXT PRIMARY KEY, account_id TEXT, status TEXT, deadline_at DATETIME)"""))
+        connection.execute(text(
+            "CREATE TABLE cost_job_state (job_name TEXT PRIMARY KEY, watermark_json JSON)"
+        ))
+    configure(engine)
+
+    def no_legacy_reads(_conn, _cursor, statement, *_args):
+        assert "cost_utilization_" not in statement, "V2 must never access legacy fact tables"
+
+    event.listen(engine, "before_cursor_execute", no_legacy_reads)
     yield engine
     engine.dispose()
 
@@ -52,197 +63,316 @@ def client(engine, monkeypatch):
         yield client
 
 
-def metric(avg=25, denominator="requests"):
-    return {
-        "contract": {
-            "namespace": "QCE/TKE2",
-            "metric": "cpu",
-            "period": 60,
-            "source_stat": "avg",
-            "unit": "cores",
-            "normalized_unit": "cores",
-            "semantic_version": "v1",
-            "denominator": denominator,
-        },
-        "used_integral": 50,
-        "capacity_integral": 200,
-        "total_used_integral": 70,
-        "expected_capacity_integral": 300,
-        "expected_seconds": 60,
-        "observed_seconds": 40,
-        "avg": avg,
-        "peak": 143.12,
-        "peak_at": "2026-11-24T04:00:00Z",
-        "coverage": 0.5,
-        "peak_coverage": 1,
-        "latest": None,
-        "as_of": "2026-11-24T04:00:00Z",
-        "quality": ["unknown_requests"],
-    }
-
-
-def insert_daily(
-    engine,
-    *,
-    key="job",
-    scope="job",
-    repo="unknown_repo",
-    job="unknown_job",
-    account=queries.ACCOUNT_ID,
-    expires="2026-12-06 16:00:00",
-    usage="2026-11-24",
-):
-    with engine.begin() as connection:
-        connection.execute(
-            text("""INSERT INTO cost_utilization_daily
-            (vendor,account_id,usage_date,week_start,expires_at,scope,resource_key,resource_class,
-             resource_spec,repo,job_name,namespace,region,metrics_json,cutoff,evidence_cutoff,
-             status,updated_at) VALUES
-            ('tencent',:account,:usage,'2026-11-23',:expires,:scope,:key,'tke_native','2c/4GiB',
-             :repo,:job,'jenkins-tidb','ap-beijing',:metrics,'2026-11-24 04:00:00',
-             '2026-11-24 03:00:00','partial','2026-11-24 04:01:00')"""),
-            {
-                "account": account,
-                "usage": usage,
-                "expires": expires,
-                "scope": scope,
-                "key": key,
-                "repo": repo,
-                "job": job,
-                "metrics": json.dumps(
-                    {"cpu": metric(None), "memory": metric(0), "disk": {"avg": 99}}
-                ),
-            },
-        )
-
-
-def insert_weekly(engine, *, metric_name="cpu", status="final_incomplete"):
-    with engine.begin() as connection:
-        connection.execute(
-            text("""INSERT INTO cost_utilization_weekly
-            (vendor,account_id,week_start,resource_class,metric,contract_json,values_json,status,
-             quality_checkpoint_at,finalized_at,updated_at) VALUES
-            ('tencent',:account,'2026-11-16','tke_native',:metric,:contract,:values,:status,
-             '2026-11-24 00:00:00',NULL,'2026-11-24 00:00:00')"""),
-            {
-                "account": queries.ACCOUNT_ID,
-                "metric": metric_name,
-                "contract": json.dumps(metric(denominator="physical")["contract"]),
-                "values": json.dumps(metric(None, "physical")),
-                "status": status,
-            },
-        )
-
-
 def configure(engine, **extra):
     state = {
-        "version": 1,
-        "enabled": True,
-        "collection_start_week": "2026-11-16",
-        "contracts": {"tke_native": {"cpu": {"contract": metric()["contract"]}}},
-        "maintenance_at": "2026-11-24T04:00:00",
-        "paused": True,
-        "pause_reasons": ["budget"],
-        **extra,
+        "version": 2, "enabled": True,
+        "contracts": {"cvm": {"cpu": {"contract": {"denominator": "physical"}}}},
+        "scope": {"account_id": queries.ACCOUNT_ID,
+                  "labels": ["repo", "job", "test_project", "test_suite", "environment", "project", "service"]},
+        "maintenance_at": "2026-11-24T04:00:00", "paused": False,
+        "pause_reasons": [], "counts_reliable": True, "retained_rows": 0,
+        "observed_bytes": 0, "bytes_observed_at": "2026-11-24T04:00:00", **extra,
     }
     with engine.begin() as connection:
-        connection.execute(
-            text("INSERT INTO cost_job_state VALUES (:key,:state)"),
-            {"key": queries.STATE_KEY, "state": json.dumps(state)},
-        )
+        connection.execute(text("DELETE FROM cost_job_state"))
+        connection.execute(text("INSERT INTO cost_job_state VALUES (:key,:state)"),
+                           {"key": queries.STATE_KEY, "state": json.dumps(state)})
 
 
-def test_disabled_requires_no_database_or_migration(monkeypatch):
+def metric(**extra):
+    return {"used": 50, "capacity": 200, "total_used": 70, "expected_capacity": 300,
+            "expected_seconds": 60, "observed_seconds": 40, "usage_seconds": 60,
+            "unknown_seconds": 10, "zero_seconds": 10, **extra}
+
+
+def insert(engine, kind="machine", cpu=None, memory=None, **extra):
+    row = {
+        "account_id": queries.ACCOUNT_ID, "usage_date": "2026-11-24",
+        "cutoff": "2026-11-24 04:00:00", "updated_at": "2026-11-24 04:01:00",
+        "quality_json": "[]",
+    }
+    for prefix, values in (("cpu", cpu), ("memory", memory)):
+        row.update({f"{prefix}_{key}": value for key, value in (values or metric()).items()})
+    if kind == "machine":
+        row.update(region="ap-beijing", cluster_id="", machine_id="ins-example", resource_class="cvm",
+                   instance_type="S5.LARGE8", cpu_cores=4, memory_bytes=8 * 1024**3,
+                   cpu_peak=143.12, cpu_peak_at="2026-11-24 03:00:00", memory_peak=None,
+                   memory_peak_at=None)
+    else:
+        row.update(group_key="anonymous-label-snapshot", labels_json=json.dumps({"service": "build"}),
+                   cpu_request_cores=2, memory_request_bytes=None, expires_at="2026-11-29 16:00:00")
+    row.update(extra)
+    with engine.begin() as connection:
+        connection.execute(text(
+            f"INSERT INTO {kind}_utilization_daily ({','.join(row)}) "
+            f"VALUES ({','.join(':' + key for key in row)})"
+        ), row)
+
+
+def test_disabled_needs_no_database_and_weekly_is_retired(monkeypatch):
     monkeypatch.delenv("CI_DASHBOARD_UTILIZATION_ENABLED", raising=False)
-    monkeypatch.setattr(routes, "get_engine", lambda: pytest.fail("disabled must not build engine"))
+    monkeypatch.setattr(routes, "get_engine", lambda: pytest.fail("must not build engine"))
     with TestClient(create_app()) as client:
-        for path in ("status", "daily", "weekly"):
+        for path in ("status", "daily"):
             payload = client.get(f"/api/v1/utilization/{path}").json()
-            assert payload["enabled"] is False
+            assert payload["enabled"] is False and payload["available"] is False
             assert payload["reason"] == "disabled"
-            assert payload["available"] is False
+        assert client.get("/api/v1/utilization/weekly").json()["reason"] == "not_supported"
     assert queries.get_daily(None)["reason"] == "disabled"
-    assert queries.get_weekly(None)["reason"] == "disabled"
+    assert queries.get_status(None)["reason"] == "disabled"
+    monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_ENABLED", "true")
+    with TestClient(create_app()) as client:
+        assert client.get("/api/v1/utilization/weekly").json()["reason"] == "not_supported"
 
 
-def test_daily_scope_filters_no_fanout_or_zero_fill(client, engine):
-    for scope in queries.SCOPES:
-        insert_daily(engine, key=scope, scope=scope)
-    insert_daily(engine, key="other", account="another-account")
-    insert_daily(engine, key="expired", expires="2026-11-24 04:00:00")
-    insert_daily(engine, key="old", usage="2026-11-01")
-    response = client.get(
-        "/api/v1/utilization/daily",
-        params={
-            "scope": "job",
-            "repo": "unknown_repo",
-            "job_name": "unknown_job",
-            "resource_class": "tke_native",
-            "resource_spec": "2c/4GiB",
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
+def test_machine_identity_physical_peak_and_derived_metrics(client, engine):
+    insert(engine)
+    insert(engine, account_id="other-account")
+    insert(engine, machine_id="np-other", resource_class="tke_native")
+    payload = client.get("/api/v1/utilization/daily", params={
+        "kind": "machine", "machine_id": "ins-example", "region": "ap-beijing",
+        "resource_class": "cvm",
+    }).json()
+    assert payload["available"] is True and payload["kind"] == "machine"
     assert len(payload["items"]) == 1
     row = payload["items"][0]
-    assert row["scope"] == "job"
-    assert row["repo"] == "unknown_repo" and row["job_name"] == "unknown_job"
-    assert row["metrics"]["cpu"]["avg"] is None
-    assert row["metrics"]["memory"]["avg"] == 0
+    assert row["machine_id"] == "ins-example" and row["region"] == "ap-beijing"
+    assert row["cluster_id"] == "" and row["usage_date"] == "2026-11-24"
+    assert row["instance_type"] == "S5.LARGE8"
+    assert row["cutoff"] == "2026-11-24T04:00:00+00:00"
+    assert row["metrics"]["cpu"]["avg"] == 25
+    assert row["metrics"]["cpu"]["coverage"] == pytest.approx(2 / 3)
     assert row["metrics"]["cpu"]["peak"] == 143.12
-    assert row["metrics"]["cpu"]["total_used_integral"] == 70
-    assert "disk" not in row["metrics"]
-    assert row["evidence_cutoff"] == "2026-11-24T03:00:00+00:00"
+    assert row["metrics"]["memory"]["peak"] is None
+    assert row["metrics"]["cpu"]["total_used"] == 70
+    assert {"repo", "job", "job_name", "scope", "pod_uid"}.isdisjoint(row)
     assert payload["cost"]["available"] is False
-    assert payload["start_date"] == "2026-11-16"
-    for scope in queries.SCOPES:
-        params = {"scope": scope}
-        if scope == "resource":
-            params["resource_key"] = "resource"
-        assert len(client.get("/api/v1/utilization/daily", params=params).json()["items"]) == 1
-    assert (
-        client.get("/api/v1/utilization/daily", params={"repo": "' OR 1=1 --"}).json()["items"]
-        == []
-    )
+    assert client.get("/api/v1/utilization/daily", params={"machine_id": "' OR 1=1 --"}).json()["items"] == []
 
 
-def test_daily_pagination_is_bounded(client, engine):
-    for key in ("a", "b", "c"):
-        insert_daily(engine, key=key)
-    first = client.get("/api/v1/utilization/daily?page_size=2").json()
-    second = client.get("/api/v1/utilization/daily?page_size=2&page=2").json()
-    assert first["has_more"] is True and second["has_more"] is False
-    assert len(first["items"]) == 2 and len(second["items"]) == 1
-    assert first["items"][0]["resource_key"] != second["items"][0]["resource_key"]
+def test_machine_reads_365_days_with_direct_pagination(client, engine):
+    first = NOW.date() - timedelta(days=364)
+    insert(engine, usage_date=first.isoformat(), machine_id="old-machine")
+    insert(engine, machine_id="new-machine")
+    params = {"start_date": first.isoformat(), "end_date": NOW.date().isoformat(), "page_size": 1}
+    payload = client.get("/api/v1/utilization/daily", params=params).json()
+    assert payload["items"][0]["machine_id"] == "new-machine" and payload["has_more"] is True
+    payload = client.get("/api/v1/utilization/daily", params={**params, "page": 2}).json()
+    assert payload["items"][0]["machine_id"] == "old-machine" and payload["has_more"] is False
+    params["start_date"] = (first - timedelta(days=1)).isoformat()
+    assert client.get("/api/v1/utilization/daily", params=params).status_code == 422
 
 
-@pytest.mark.parametrize(
-    "path,params",
-    [
-        ("daily", {"page": 101}),
-        ("daily", {"page_size": 101}),
-        ("daily", {"page": 0}),
-        ("daily", {"scope": "person"}),
-        ("daily", {"owner": "someone"}),
-        ("daily", {"start_date": "2026-11-16"}),
-        ("daily", {"start_date": "2026-11-15", "end_date": "2026-11-24"}),
-        ("daily", {"start_date": "2026-11-24", "end_date": "2026-11-25"}),
-        ("daily", {"start_date": "2026-11-24", "end_date": "2026-11-23"}),
-        ("daily", {"start_date": "0001-01-01", "end_date": "2026-11-23"}),
-        ("daily", {"scope": "account_class", "repo": "pingcap/tidb"}),
-        ("daily", {"scope": "repo", "job_name": "stable"}),
-        ("daily", {"scope": "repo", "resource_spec": "2c"}),
-        ("daily", {"scope": "job", "resource_key": "node"}),
-        ("daily", {"repo": "x" * 513}),
-        ("daily", {"start_date": "not-a-date"}),
-        ("weekly", {"repo": "pingcap/tidb"}),
-        ("weekly", {"metric": "disk"}),
-        ("weekly", {"start_date": "2025-01-01", "end_date": "2026-01-01"}),
-        ("weekly", {"end_date": "2026-11-24"}),
-        ("weekly", {"page_size": 0}),
-        ("status", {"owner": "someone"}),
-    ],
-)
+def test_generic_workload_groups_sum_integrals_not_percentages(client, engine):
+    insert(engine, "workload", labels_json=json.dumps({"service": "build", "test_suite": "unit"}),
+           cpu=metric(used=10, capacity=20, expected_capacity=100, observed_seconds=30))
+    insert(engine, "workload", labels_json=json.dumps({"service": "build", "test_suite": "integration"}),
+           cpu=metric(used=9, capacity=180, expected_capacity=300, observed_seconds=60),
+           cutoff="2026-11-24 03:00:00")
+    insert(engine, "workload", labels_json="{}")
+    insert(engine, "workload", labels_json=json.dumps({"service": "expired"}),
+           expires_at="2026-11-24 04:00:00")
+    insert(engine, "workload", account_id="other-account")
+    payload = client.get("/api/v1/utilization/daily?kind=workload&group_by=service").json()
+    assert len(payload["items"]) == 2
+    assert payload["items"][0]["group_value"] is None  # Unlabeled work is not discarded.
+    group = payload["items"][1]
+    assert group["group_value"] == "build"
+    assert group["metrics"]["cpu"]["avg"] == 9.5  # Not mean(50%, 5%).
+    assert group["metrics"]["cpu"]["coverage"] == 0.5  # min(200/400, 90/120).
+    assert group["metrics"]["cpu"]["total_used"] == 140
+    assert group["cutoff"] == "2026-11-24T03:00:00+00:00"
+    assert "peak" not in json.dumps(payload) and "pod_uid" not in json.dumps(payload)
+    total = client.get("/api/v1/utilization/daily?kind=workload").json()["items"]
+    assert len(total) == 1 and total[0]["metrics"]["cpu"]["used"] == 69
+    first = client.get("/api/v1/utilization/daily?kind=workload&group_by=service&page_size=1").json()
+    assert first["has_more"] is True
+    second = client.get("/api/v1/utilization/daily?kind=workload&group_by=service&page_size=1&page=2").json()
+    assert second["items"][0]["group_value"] == "build" and second["has_more"] is False
+
+
+def test_business_label_values_and_json_paths_are_bound(client, engine):
+    value = "' OR 1=1 --"
+    insert(engine, "workload", labels_json=json.dumps({"test_project": value}))
+    insert(engine, "workload")
+    reads = []
+
+    def record(_conn, _cursor, statement, params, *_args):
+        reads.append((statement, params))
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        payload = client.get("/api/v1/utilization/daily", params={
+            "kind": "workload", "label_key": "test_project", "label_value": value,
+        }).json()
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["metrics"]["cpu"]["total_used"] == 70
+    sql, params = reads[-1]
+    assert value not in sql and 'test_project' not in sql
+    assert value in params and '$."test_project"' in params
+
+
+@pytest.mark.parametrize("requests,unknown,zero", [(None, 60, 0), (0, 0, 60)])
+def test_unknown_and_known_zero_requests_keep_absolute_usage(client, engine, requests, unknown, zero):
+    insert(engine, "workload", cpu_request_cores=requests, cpu=metric(
+        used=0, capacity=0, expected_capacity=0, observed_seconds=0,
+        total_used=70, unknown_seconds=unknown, zero_seconds=zero,
+    ))
+    row = client.get("/api/v1/utilization/daily?kind=workload").json()["items"][0]["metrics"]["cpu"]
+    assert row["avg"] is None and row["coverage"] == 0
+    assert row["total_used"] == 70 and row["usage_seconds"] == 60
+    assert row["unknown_seconds"] == unknown and row["zero_seconds"] == zero
+
+
+def test_missing_metric_is_not_invented_zero(client, engine):
+    insert(engine, cpu={field: None for field in FIELDS}, memory=metric(used=0, total_used=0))
+    row = client.get("/api/v1/utilization/daily").json()["items"][0]
+    assert row["metrics"]["cpu"]["avg"] is None and row["metrics"]["cpu"]["coverage"] is None
+    assert row["metrics"]["cpu"]["total_used"] is None
+    assert row["metrics"]["memory"]["avg"] == 0 and row["metrics"]["memory"]["total_used"] == 0
+
+
+def test_workload_null_integrals_cannot_be_treated_as_zero_in_group_averages(client, engine):
+    insert(engine, "workload", cpu=metric(used=None, total_used=None))
+    insert(engine, "workload")
+    row = client.get("/api/v1/utilization/daily?kind=workload").json()["items"][0]
+    assert row["metrics"]["cpu"]["used"] is None and row["metrics"]["cpu"]["avg"] is None
+    assert row["metrics"]["cpu"]["total_used"] is None
+    assert row["metrics"]["memory"]["used"] == 100
+
+
+def test_mysql_json_filter_expression_is_bound(client, engine, monkeypatch):
+    # Exercise the production JSON_UNQUOTE branch offline with an equivalent SQLite function.
+    with engine.connect() as connection:
+        connection.connection.driver_connection.create_function("JSON_UNQUOTE", 1, lambda value: value)
+    monkeypatch.setattr(engine.dialect, "name", "mysql")
+    insert(engine, "workload")
+    payload = client.get("/api/v1/utilization/daily", params={
+        "kind": "workload", "label_key": "service", "label_value": "build",
+    }).json()
+    assert payload["available"] is True and len(payload["items"]) == 1
+
+
+def test_workload_scan_fail_closed_without_partial_totals(client, engine, monkeypatch):
+    assert queries.WORKLOAD_ROW_LIMIT == 10_000
+    monkeypatch.setattr(queries, "WORKLOAD_ROW_LIMIT", 2)
+    for _ in range(3):
+        insert(engine, "workload")
+    payload = client.get("/api/v1/utilization/daily?kind=workload").json()
+    assert payload["reason"] == "query_too_large" and payload["items"] == []
+    assert payload["row_limit"] == 2
+
+
+@pytest.mark.parametrize("bad_labels", ["invalid-json", "[]", '{"service":123}'])
+def test_invalid_stored_labels_fail_closed(client, engine, bad_labels):
+    insert(engine, "workload", labels_json=bad_labels)
+    payload = client.get("/api/v1/utilization/daily?kind=workload&group_by=service").json()
+    assert payload["reason"] == "invalid_data" and payload["items"] == []
+
+
+@pytest.mark.parametrize("kind", ["machine", "workload"])
+def test_invalid_stored_integrals_fail_closed(client, engine, kind):
+    insert(engine, kind, cpu=metric(used=-1))
+    assert client.get(f"/api/v1/utilization/daily?kind={kind}").json()["reason"] == "invalid_data"
+
+
+def test_nonfinite_peaks_or_overflowed_ratios_fail_closed(client, engine):
+    insert(engine, cpu_peak=float("inf"))
+    assert client.get("/api/v1/utilization/daily").json()["reason"] == "invalid_data"
+    insert(engine, "workload", cpu=metric(used=1e308, capacity=1e-308))
+    assert client.get("/api/v1/utilization/daily?kind=workload").json()["reason"] == "invalid_data"
+
+
+def test_status_uses_v2_guard_active_contexts_backlog_and_cutoffs(client, engine):
+    # Today's successful planner has collected the full D-3 Beijing day.
+    insert(engine, usage_date="2026-11-21", cutoff="2026-11-21 16:00:00")
+    insert(engine, "workload")
+    with engine.begin() as connection:
+        for closed, expires, account in ((None, "2026-11-25", queries.ACCOUNT_ID),
+                                         ("2026-11-24", "2026-11-25", queries.ACCOUNT_ID),
+                                         (None, "2026-11-23", queries.ACCOUNT_ID),
+                                         (None, "2026-11-25", "other")):
+            connection.execute(text("INSERT INTO pod_utilization_context "
+                                    "(account_id,closed_at,expires_at) VALUES (:a,:c,:e)"),
+                               {"a": account, "c": closed, "e": expires})
+        for index, status in enumerate(("pending", "retry", "running", "done", "expired")):
+            connection.execute(text("INSERT INTO utilization_task VALUES (:id,:a,:s,'2026-11-25')"),
+                               {"id": str(index), "a": queries.ACCOUNT_ID, "s": status})
+        connection.execute(text("INSERT INTO utilization_task VALUES "
+                                "('past',:a,'retry','2026-11-23')"), {"a": queries.ACCOUNT_ID})
+    payload = client.get("/api/v1/utilization/status").json()
+    assert payload["configured"] is True and payload["healthy"] is True
+    assert payload["active_contexts"] == 1
+    assert payload["task_backlog"] == {"pending": 1, "running": 1, "retry": 1}
+    assert payload["latest_cutoff"] == "2026-11-21T16:00:00+00:00"
+    assert payload["stale"] is False and payload["maintenance_stale"] is False
+    assert payload["label_keys"] == ["repo", "job", "test_project", "test_suite", "environment", "project", "service"]
+    assert payload["machine_window"] == {"start_date": "2025-11-25", "end_date": "2026-11-24"}
+    assert payload["workload_window"]["start_date"] == "2026-11-16"
+    assert "contracts" not in payload and "scope" not in payload and "payload_json" not in payload
+    configure(engine, paused=True, pause_reasons=["budget"])
+    payload = client.get("/api/v1/utilization/status").json()
+    assert payload["reason"] == "unhealthy" and payload["paused"] is True
+    assert payload["pause_reasons"] == ["budget"]
+
+
+@pytest.mark.parametrize("clock,cutoff,stale", [
+    ("2026-11-23T22:29:59+00:00", "2026-11-20 16:00:00", False),
+    ("2026-11-23T23:29:59+00:00", "2026-11-20 16:00:00", False),
+    ("2026-11-23T23:30:00+00:00", "2026-11-20 16:00:00", True),
+    ("2026-11-24T05:00:00+00:00", "2026-11-21 16:00:00", False),
+    ("2026-11-24T21:00:00+00:00", "2026-11-21 16:00:00", False),
+    ("2026-11-24T05:00:00+00:00", "2026-11-21 15:59:59", True),
+])
+def test_status_staleness_follows_daily_historical_planner(client, engine, monkeypatch, clock, cutoff, stale):
+    clock = datetime.fromisoformat(clock)
+    monkeypatch.setattr(queries, "utc_now", lambda: clock)
+    configure(engine, maintenance_at=clock.isoformat(), bytes_observed_at=clock.isoformat())
+    insert(engine, usage_date=cutoff[:10], cutoff=cutoff)
+    payload = client.get("/api/v1/utilization/status").json()
+    assert payload["healthy"] is True
+    assert payload["stale"] is stale
+
+
+@pytest.mark.parametrize("extra", [
+    {"version": 1}, {"contracts": {}}, {"scope": {}}, {"scope": {"account_id": "other"}},
+])
+def test_v1_or_incomplete_guard_cannot_configure_v2(client, engine, extra):
+    configure(engine, **extra)
+    payload = client.get("/api/v1/utilization/status").json()
+    assert payload["configured"] is False and payload["reason"] == "unconfigured"
+    assert client.get("/api/v1/utilization/daily").json()["reason"] == "unconfigured"
+
+
+@pytest.mark.parametrize("maintenance", [None, "bad", "2026-11-23T00:00:00Z"])
+def test_status_missing_or_stale_maintenance_is_unhealthy(client, engine, maintenance):
+    configure(engine, maintenance_at=maintenance)
+    payload = client.get("/api/v1/utilization/status").json()
+    assert payload["reason"] == "unhealthy" and payload["maintenance_stale"] is True
+    assert payload["latest_cutoff"] is None and payload["stale"] is True
+
+
+@pytest.mark.parametrize("path,params", [
+    ("daily", {"page": 1001}), ("daily", {"page_size": 0}), ("daily", {"kind": "person"}),
+    ("daily", {"scope": "job"}), ("daily", {"repo": "org/repo"}),
+    ("daily", {"job_name": "stable"}), ("daily", {"owner": "someone"}),
+    ("daily", {"start_date": "2026-11-16"}),
+    ("daily", {"start_date": "2026-11-24", "end_date": "2026-11-25"}),
+    ("daily", {"start_date": "2026-11-24", "end_date": "2026-11-23"}),
+    ("daily", {"start_date": "0001-01-01", "end_date": "2026-11-23"}),
+    ("daily", {"kind": "workload", "start_date": "2026-11-15", "end_date": "2026-11-24"}),
+    ("daily", {"kind": "workload", "machine_id": "node"}),
+    ("daily", {"kind": "machine", "group_by": "service"}),
+    ("daily", {"kind": "workload", "group_by": "author"}),
+    ("daily", {"kind": "workload", "label_key": 'repo\") OR 1=1 --', "label_value": "x"}),
+    ("daily", {"kind": "workload", "label_key": "service"}),
+    ("daily", {"kind": "workload", "label_value": "build"}),
+    ("daily", {"resource_class": "pod"}), ("daily", {"machine_id": "x" * 513}),
+    ("daily", {"start_date": "not-a-date"}), ("weekly", {"metric": "cpu"}),
+    ("status", {"owner": "someone"}),
+])
 def test_invalid_inputs_do_not_query_database(client, engine, path, params):
     reads = []
 
@@ -257,68 +387,51 @@ def test_invalid_inputs_do_not_query_database(client, engine, path, params):
     assert reads == []
 
 
-def test_beijing_week_boundary_and_calendar_year():
-    # Sunday UTC has already become Monday in Beijing.
-    assert queries.date_range(None, None, now=datetime(2026, 11, 22, 16, tzinfo=UTC)) == (
-        date(2026, 11, 16),
-        date(2026, 11, 23),
-    )
-    assert queries.date_range(date(2024, 2, 29), date(2025, 2, 27), weekly=True, now=NOW)
-    with pytest.raises(ValueError):
-        queries.date_range(date(2024, 2, 29), date(2025, 2, 28), weekly=True, now=NOW)
-
-
-def test_weekly_passes_sufficient_statistics_and_final_missing(client, engine):
-    insert_weekly(engine)
-    insert_weekly(engine, metric_name="memory", status="final_missing")
-    insert_weekly(engine, metric_name="disk", status="final_missing")
-    assert len(client.get("/api/v1/utilization/weekly").json()["items"]) == 2
-    payload = client.get(
-        "/api/v1/utilization/weekly",
-        params={"resource_class": "tke_native", "metric": "cpu", "page_size": 1},
-    ).json()
-    assert payload["scope"] == "account_class"
-    assert len(payload["items"]) == 1 and payload["has_more"] is False
-    row = payload["items"][0]
-    assert row["contract"]["denominator"] == "physical"
-    assert row["values"]["avg"] is None
-    assert row["values"]["capacity_integral"] == 200
-    assert row["status"] == "final_incomplete"
-    assert row["finalized_at"] is None
-    all_rows = client.get("/api/v1/utilization/weekly?page_size=1").json()
-    assert all_rows["has_more"] is True
-    assert (
-        client.get("/api/v1/utilization/weekly?metric=memory").json()["items"][0]["status"]
-        == "final_missing"
-    )
-
-
-def test_status_reports_unconfigured_and_quality_without_mixing_scopes(client, engine):
-    empty = client.get("/api/v1/utilization/status").json()
-    assert empty["configured"] is False and empty["reason"] == "unconfigured"
-    assert empty["stale"] is True and empty["missing_daily_dates"] is None
-    configure(engine, collection_stop_week="2026-11-16")
-    insert_daily(engine)
-    insert_daily(engine, scope="account_class", key="account", usage="2026-11-16")
-    insert_weekly(engine)
+@pytest.mark.parametrize("extra,reason", [
+    ({"counts_reliable": False}, "counts_unreliable"),
+    ({"retained_rows": 2_000_000}, "row_budget"),
+    ({"observed_bytes": None}, "bytes_unreliable"),
+    ({"observed_bytes": 8 * 1024**3}, "byte_budget"),
+    ({"enabled": False}, "collection_disabled"),
+    ({"bytes_observed_at": None}, "bytes_observed_at_stale"),
+    ({"maintenance_at": "2026-11-24T06:00:00Z"}, "maintenance_at_stale"),
+])
+def test_status_guard_budget_and_clock_health(client, engine, extra, reason):
+    configure(engine, **extra)
     payload = client.get("/api/v1/utilization/status").json()
-    assert payload["configured"] is True and payload["collection_enabled"] is True
-    assert payload["paused"] is True and payload["pause_reasons"] == ["budget"]
-    assert payload["stale"] is False and payload["maintenance_stale"] is False
-    assert payload["missing_daily_dates"] == [f"2026-11-{day}" for day in range(17, 23)]
-    assert len(payload["quality"]) == 2
-    assert payload["quality"][1]["unknown_repo_rows"] == 1
-    assert payload["collection_gaps"][0]["status"] == "final_incomplete"
+    assert payload["configured"] is True and payload["healthy"] is False
+    assert payload["reason"] == "unhealthy" and reason in payload["health_reasons"]
 
 
-def test_missing_migration_is_informative(client, engine):
+def test_invalid_guard_json_is_unconfigured(client, engine):
     with engine.begin() as connection:
-        for table in ("cost_utilization_daily", "cost_utilization_weekly", "cost_job_state"):
-            connection.execute(text(f"DROP TABLE {table}"))
-    for path in ("daily", "weekly", "status"):
-        response = client.get(f"/api/v1/utilization/{path}")
-        assert response.status_code == 200
-        assert response.json()["reason"] == "missing_schema"
+        connection.execute(text("UPDATE cost_job_state SET watermark_json='bad-json'"))
+    assert client.get("/api/v1/utilization/status").json()["reason"] == "unconfigured"
+
+
+def test_labels_must_also_be_enabled_in_guard_scope(client, engine):
+    configure(engine, scope={"account_id": queries.ACCOUNT_ID, "labels": ["service"]})
+    assert client.get("/api/v1/utilization/daily?kind=workload&group_by=repo").status_code == 422
+
+
+def test_beijing_week_boundary():
+    assert queries.date_range(None, None, kind="workload", now=datetime(2026, 11, 22, 16, tzinfo=UTC)) == (
+        date(2026, 11, 16), date(2026, 11, 23),
+    )
+
+
+@pytest.mark.parametrize("table", [
+    "machine_utilization_daily", "workload_utilization_daily", "pod_utilization_context",
+    "utilization_task", "cost_job_state",
+])
+def test_missing_v2_schema_is_informative(client, engine, table):
+    with engine.begin() as connection:
+        connection.execute(text(f"DROP TABLE {table}"))
+    assert client.get("/api/v1/utilization/status").json()["reason"] == "missing_schema"
+    assert client.get("/api/v1/utilization/weekly").json()["reason"] == "not_supported"
+    if table in {"machine_utilization_daily", "workload_utilization_daily", "cost_job_state"}:
+        kind = "workload" if table == "workload_utilization_daily" else "machine"
+        assert client.get(f"/api/v1/utilization/daily?kind={kind}").json()["reason"] == "missing_schema"
     assert client.get("/healthz").status_code == 200
 
 
@@ -331,38 +444,31 @@ def test_database_construction_failure_is_informative(monkeypatch):
     monkeypatch.setattr(routes, "get_engine", fail)
     with TestClient(create_app()) as client:
         assert client.get("/api/v1/utilization/status").json()["reason"] == "database_unavailable"
-    for function in (queries.get_daily, queries.get_weekly, queries.get_status):
-        assert function(None)["reason"] == "database_unavailable"
+    assert queries.get_daily(None)["reason"] == "database_unavailable"
+    assert queries.get_status(None)["reason"] == "database_unavailable"
 
 
 def test_database_read_failure_is_not_reported_as_missing_schema(client, engine):
     def fail(*_args):
         from sqlalchemy.exc import OperationalError
-
         raise OperationalError("SELECT", {}, Exception("connection refused"))
 
     event.listen(engine, "before_cursor_execute", fail)
     try:
         assert client.get("/api/v1/utilization/status").json()["reason"] == "database_unavailable"
+        assert client.get("/api/v1/utilization/daily").json()["reason"] == "database_unavailable"
     finally:
         event.remove(engine, "before_cursor_execute", fail)
 
 
-@pytest.mark.parametrize(
-    "function,params",
-    [
-        (queries.get_daily, {"scope": "bogus"}),
-        (queries.get_daily, {"page": 101}),
-        (queries.get_daily, {"repo": "x" * 513}),
-        (queries.get_weekly, {"metric": "disk"}),
-        (queries.get_weekly, {"page": 101}),
-        (queries.get_weekly, {"resource_class": "x" * 513}),
-    ],
-)
-def test_direct_query_validation(engine, monkeypatch, function, params):
+@pytest.mark.parametrize("params", [
+    {"kind": "bogus"}, {"page": 1001}, {"machine_id": "x" * 513},
+    {"resource_class": "pod"}, {"kind": "workload", "label_key": "author", "label_value": "x"},
+])
+def test_direct_query_validation(engine, monkeypatch, params):
     monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_ENABLED", "true")
     with pytest.raises(ValueError):
-        function(engine, **params)
+        queries.get_daily(engine, **params)
 
 
 def test_utilization_keeps_existing_company_auth_gate(monkeypatch):
@@ -372,4 +478,5 @@ def test_utilization_keeps_existing_company_auth_gate(monkeypatch):
     monkeypatch.delenv("CI_DASHBOARD_OIDC_CLIENT_ID", raising=False)
     get_identity_verifier.cache_clear()
     with TestClient(create_app()) as client:
-        assert client.get("/api/v1/utilization/status").status_code == 503
+        for path in ("status", "daily", "weekly"):
+            assert client.get(f"/api/v1/utilization/{path}").status_code == 503

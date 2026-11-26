@@ -16,6 +16,7 @@ dependencies = [
   "protobuf>=5.28.0",
   "PyMySQL>=1.1.0",
   "SQLAlchemy>=2.0.0",
+  "kafka-python-ng>=2.2.3",
   "tencentcloud-sdk-python-billing>=3.1.169",
   "tencentcloud-sdk-python-common>=3.1.169",
 ]

@@ -1,207 +1,87 @@
-# ruff: noqa: DTZ001 -- DB contract deliberately uses UTC-naive timestamps.
-from copy import deepcopy
-from datetime import date, datetime, timedelta
+"""V2 numeric/calendar contracts; no fixed-week machine retention or group peaks."""
+# ruff: noqa: DTZ001
+# The persistence contract deliberately uses UTC-naive business timestamps.
+
+from datetime import datetime, timedelta
 
 import pytest
 
 from cost_insight.utilization import policy
+from cost_insight.utilization.aggregate import summarize_window
 
-NOW = datetime(2026, 11, 18, 4)
+START = datetime(2026, 11, 25, 4)
+END = START + timedelta(minutes=10)
 
 
-def state():
-    return {
-        "version": 1,
-        "enabled": True,
-        "counts_reliable": True,
-        "reconciled_at": NOW.isoformat(),
-        "maintenance_at": NOW.isoformat(),
-        "observed_bytes": 100,
-        "bytes_observed_at": NOW.isoformat(),
-        "retained_rows": 10,
-        "oldest_expired_at": None,
-        "paused": False,
-        "collection_start_week": "2026-11-16",
-        "collection_stop_week": None,
-        "finalized_through_week": None,
+@pytest.mark.parametrize("capacity", [None, 0, 4])
+def test_unknown_zero_and_positive_requests_keep_absolute_usage(capacity):
+    target = {
+        "kind": "pod",
+        "pod_uid": "uid",
+        "cpu_request_cores": capacity,
+        "memory_request_bytes": 1024,
     }
+    points = [
+        {"entity": "uid", "metric": "cpu", "timestamp": START, "value": 2, "unit": "absolute"}
+    ]
+    result = summarize_window(points, target, START, END)
+    assert result["cpu_total_used"] == 120 and result["cpu_usage_seconds"] == 60
+    assert result["cpu_capacity"] == (240 if capacity == 4 else 0)
+    assert result["cpu_observed_seconds"] == (60 if capacity == 4 else 0)
+    assert result["cpu_unknown_seconds"] == (600 if capacity is None else 0)
+    assert result["cpu_zero_seconds"] == (600 if capacity == 0 else 0)
+    assert not any("peak" in key for key in result)
 
 
-def contract(denominator="physical"):
-    return {
-        "namespace": "QCE/CVM",
-        "metric": "CpuUsage",
-        "period": 60,
-        "source_stat": "avg",
-        "unit": "percent",
-        "normalized_unit": "cores",
-        "semantic_version": "v1",
-        "denominator": denominator,
-    }
-
-
-def test_beijing_boundaries_and_fixed_expiry():
-    monday = date(2026, 11, 16)
-    sunday = monday + timedelta(days=6)
-    assert policy.week_start(datetime(2026, 11, 15, 15, 59)) == monday - timedelta(days=7)
-    assert policy.week_start(datetime(2026, 11, 15, 16)) == monday
-    assert policy.week_start(sunday) == monday
-    assert policy.expires_at(monday) == datetime(2026, 11, 29, 16)
-    assert policy.expires_at(monday) - policy.day_start(monday) == timedelta(days=14)
-    assert policy.expires_at(sunday) - policy.day_start(sunday) == timedelta(days=8)
-    assert policy.expires_at(monday) - policy.day_start(monday + timedelta(days=1)) == timedelta(
-        days=13
+def test_machine_percentage_is_converted_with_its_own_capacity():
+    target = {"kind": "machine", "machine_id": "ins-a", "cpu_cores": 2, "memory_bytes": 1024}
+    result = summarize_window(
+        [{"entity": "ins-a", "metric": "cpu", "timestamp": START, "value": 50, "unit": "percent"}],
+        target,
+        START,
+        END,
     )
-    assert policy.expires_at(sunday) - policy.day_start(sunday + timedelta(days=1)) == timedelta(
-        days=7
-    )
-    assert policy.utc_naive("2026-11-16T00:00:00+08:00") == policy.day_start(monday)
-    assert policy.utc_naive("2026-11-15T16:00:00Z") == policy.day_start(monday)
+    assert result["cpu_used"] == 60 and result["cpu_capacity"] == 120
+    assert result["cpu_peak"] == 50 and result["cpu_peak_at"] == START
+    assert result["cpu_expected_capacity"] == 1200
 
 
 @pytest.mark.parametrize(
-    ("field", "value", "reason"),
+    "field,value",
     [
-        ("enabled", False, "disabled_or_unconfigured"),
-        ("counts_reliable", False, "counts_unreliable"),
-        ("reconciled_at", None, "counts_stale"),
-        ("reconciled_at", (NOW - timedelta(hours=27)).isoformat(), "counts_stale"),
-        ("maintenance_at", None, "maintenance_uninitialized"),
-        ("maintenance_at", (NOW - timedelta(hours=5)).isoformat(), "maintenance_stale"),
-        ("maintenance_at", (NOW + timedelta(minutes=2)).isoformat(), "maintenance_stale"),
-        ("oldest_expired_at", (NOW - timedelta(hours=5)).isoformat(), "expiry_overdue"),
-        ("retained_rows", -1, "counts_unreliable"),
-        ("retained_rows", 2_000_000, "row_budget"),
-        ("observed_bytes", 8 * 1024**3, "byte_budget"),
-        ("observed_bytes", None, "bytes_unreliable"),
-        ("bytes_observed_at", None, "bytes_unreliable"),
-        ("bytes_observed_at", (NOW - timedelta(hours=5)).isoformat(), "bytes_stale"),
-        ("paused", True, "paused"),
+        ("verified_horizon_seconds", 0),
+        ("verified_horizon_seconds", float("inf")),
+        ("safety_margin_seconds", -1),
+        ("safety_margin_seconds", 100),
+        ("timestamp_alignment_verified", False),
     ],
 )
-def test_health_failclosed(field, value, reason):
-    payload = state()
-    payload[field] = value
-    result = policy.health(payload, NOW)
-    assert not result["allowed"]
-    assert reason in result["reasons"]
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "warning"),
-    [
-        ("retained_rows", 1_000_000, "row_budget"),
-        ("observed_bytes", 4 * 1024**3, "byte_budget"),
-        ("maintenance_at", (NOW - timedelta(hours=2)).isoformat(), "maintenance_stale"),
-        ("oldest_expired_at", (NOW - timedelta(hours=3)).isoformat(), "expiry_overdue"),
-    ],
-)
-def test_warning_thresholds(field, value, warning):
-    payload = state()
-    payload[field] = value
-    result = policy.health(payload, NOW)
-    assert result["allowed"]
-    assert warning in result["warnings"]
-    assert not policy.health(payload, NOW, projected_rows=2_000_000)["allowed"]
-
-
-def test_fence_and_calendar():
-    payload = state()
-    week = date(2026, 11, 16)
-    assert policy.writable_week(payload, week, NOW)
-    assert not policy.writable_week(payload, week - timedelta(days=7), NOW)
-    payload["collection_start_week"] = "2026-11-09"
-    assert policy.writable_week(payload, week - timedelta(days=7), NOW)
-    payload["finalized_through_week"] = "2026-11-09"
-    assert not policy.writable_week(payload, week - timedelta(days=7), NOW)
-    payload["collection_stop_week"] = "2026-11-09"
-    assert not policy.writable_week(payload, week, NOW)
-    assert not policy.writable_week(state(), week, policy.expires_at(week))
-
-
-def test_contracts_and_whole_day_horizon():
-    physical, requests = contract(), contract("requests")
-    contracts = {"cvm": {"cpu": {"contract": physical, "scope_contracts": {"job": requests}}}}
-    assert policy.expected_contract(contracts, "cvm", "cpu") == physical
-    assert policy.expected_contract(contracts, "cvm", "cpu", "job") == requests
-    policy.validate_contract(physical, "cpu", "account_class")
-    policy.validate_contract(requests, "cpu", "job")
-    for field, value in (
-        ("period", 300),
-        ("source_stat", "max"),
-        ("denominator", "allocatable"),
-        ("normalized_unit", "bytes"),
-    ):
-        bad = deepcopy(physical)
-        bad[field] = value
-        with pytest.raises(ValueError):
-            policy.validate_contract(bad, "cpu", "resource")
-    with pytest.raises(ValueError):
-        policy.validate_contract({}, "disk", "resource")
-    day = date(2026, 11, 16)
-    assert not policy.replay_allowed(day, {}, NOW)
-    assert not policy.replay_allowed(
-        day, {"verified_horizon_seconds": 86400, "timestamp_alignment_verified": True}, NOW
-    )
-    assert policy.replay_allowed(
-        day, {"verified_horizon_seconds": 3 * 86400, "timestamp_alignment_verified": True}, NOW
-    )
-    assert not policy.replay_allowed(
-        day,
-        {
-            "verified_horizon_seconds": 3 * 86400,
-            "safety_margin_seconds": 86400,
-            "timestamp_alignment_verified": True,
-        },
-        NOW,
-    )
-    day = date(2026, 11, 16)
-    assert not policy.replay_allowed(
-        day,
-        {"verified_horizon_seconds": 30 * 86400, "timestamp_alignment_verified": True},
-        policy.expires_at(day),
-    )
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("verified_horizon_seconds", value)
-        for value in (0, -1, float("nan"), float("inf"), "86400", None, True)
-    ]
-    + [
-        ("safety_margin_seconds", value)
-        for value in (-1, 3 * 86400, 4 * 86400, float("nan"), float("inf"), "0", None, True)
-    ]
-    + [("timestamp_alignment_verified", False), ("timestamp_alignment_verified", None)],
-)
-def test_invalid_source_windows_fail_configuration_and_replay(field, value):
+def test_invalid_source_window_rejected(field, value):
     entry = {
-        "verified_horizon_seconds": 3 * 86400,
-        "safety_margin_seconds": 60,
+        "verified_horizon_seconds": 100,
+        "safety_margin_seconds": 10,
         "timestamp_alignment_verified": True,
     }
     entry[field] = value
     with pytest.raises(ValueError):
         policy.validate_source_window(entry)
-    assert not policy.replay_allowed(date(2026, 11, 16), entry, NOW)
 
 
-@pytest.mark.parametrize("scale", [0, -1, float("nan"), float("inf"), "1", None, True])
-def test_source_scale_rejects_nonpositive_or_unverified_values(scale):
-    source = dict(contract(), source_scale=scale)
-    with pytest.raises(ValueError, match="source_scale"):
-        policy.validate_contract(source, "cpu", "account_class")
+def test_week_expiry_only_for_short_lived_workload_not_machine_schema():
+    assert policy.expires_at(datetime(2026, 11, 20, 4)) == datetime(2026, 11, 29, 16)
+    assert policy.usage_date(datetime(2026, 11, 20, 16)).isoformat() == "2026-11-21"
 
 
-def test_source_window_requires_alignment_and_respects_boundary():
-    entry = {"verified_horizon_seconds": 3 * 86400, "safety_margin_seconds": 0}
-    with pytest.raises(ValueError, match="timestamp alignment"):
-        policy.validate_source_window(entry)
-    entry["timestamp_alignment_verified"] = True
-    policy.validate_source_window(entry)
-    day = date(2026, 11, 16)
-    edge = policy.day_start(day) + timedelta(days=3)
-    assert policy.replay_allowed(day, entry, edge)
-    assert not policy.replay_allowed(day, entry, edge + timedelta(microseconds=1))
-    policy.validate_contract(dict(contract(), source_scale=1), "cpu", "account_class")
+@pytest.mark.parametrize("value", [True, -1, float("nan"), float("inf"), "1"])
+def test_invalid_quantity_rejected(value):
+    with pytest.raises(ValueError):
+        policy.finite(value)
+
+
+def test_conflicting_points_and_wrong_identity_rejected():
+    target = {"kind": "machine", "machine_id": "ins-a", "cpu_cores": 2, "memory_bytes": 1024}
+    point = {"entity": "ins-a", "metric": "cpu", "timestamp": START, "value": 50, "unit": "percent"}
+    with pytest.raises(ValueError, match="duplicate"):
+        summarize_window([point, {**point, "value": 60}], target, START, END)
+    with pytest.raises(ValueError, match="identity"):
+        summarize_window([{**point, "entity": "ins-b"}], target, START, END)

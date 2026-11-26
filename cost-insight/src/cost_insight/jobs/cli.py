@@ -419,23 +419,22 @@ def build_parser() -> argparse.ArgumentParser:
     utilization_probe.add_argument("--date", type=_parse_date, default=None)
     utilization_probe.set_defaults(require_database=False)
 
-    utilization_configure = subparsers.add_parser("utilization-configure", help="Explicit opt-in utilization contract/calendar")
+    utilization_configure = subparsers.add_parser("utilization-configure", help="Explicit opt-in V2 source registry")
     utilization_configure.add_argument("--profile", required=True)
-    utilization_configure.add_argument("--start-week", type=_parse_date, required=True)
-    utilization_configure.add_argument("--stop-week", type=_parse_date, default=None)
+    utilization_configure.add_argument("--start-date", type=_parse_date, required=True)
     utilization_configure.add_argument("--enable", action="store_true")
     utilization_configure.add_argument("--confirm-source-horizons", action="store_true")
     utilization_configure.add_argument("--dry-run", action="store_true")
-    utilization_maintain = subparsers.add_parser("utilization-maintain", help="Independent bounded finalization and cleanup")
+    utilization_maintain = subparsers.add_parser("utilization-maintain", help="Bounded active-work cleanup and admission checks")
     utilization_maintain.add_argument("--dry-run", action="store_true")
-    for command in ("sync-tencent-utilization", "sync-tencent-utilization-inventory"):
+    for command in ("sync-tencent-utilization", "utilization-dispatch", "utilization-worker"):
         utilization = subparsers.add_parser(command)
         utilization.add_argument("--profile", required=True)
         utilization.add_argument("--dry-run", action="store_true")
         if command == "sync-tencent-utilization":
             utilization.add_argument("--date", type=_parse_date, default=None)
-            utilization.add_argument("--repair", action="store_true")
-            utilization.add_argument("--empty-proof", default=None, help="Explicit bounded verified-empty scope proof; requires --date --repair")
+        else:
+            utilization.add_argument("--limit", type=_parse_positive_int, default=100)
 
     return parser
 
@@ -459,9 +458,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(probe(load_profile(args.profile, probe=True), usage_date=args.date), indent=2, sort_keys=True))
         return 0
 
-    if args.command in {"utilization-configure", "utilization-maintain", "sync-tencent-utilization", "sync-tencent-utilization-inventory"}:
-        from cost_insight.utilization import store
-        from cost_insight.utilization.runner import sync_daily, sync_inventory
+    if args.command in {"utilization-configure", "utilization-maintain", "sync-tencent-utilization", "utilization-dispatch", "utilization-worker"}:
+        from cost_insight.utilization import runner, store
         from cost_insight.utilization.tencent import load_profile
 
         engine = build_engine(settings)
@@ -473,26 +471,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if args.command == "utilization-configure":
                     if args.enable and not args.confirm_source_horizons:
                         raise ValueError("--enable requires --confirm-source-horizons and recorded canary evidence")
-                    if args.enable and any(not entry.get("horizon_verified_at") or not entry.get("evidence_reference") or not entry.get("timestamp_alignment_verified") for metrics in profile["contracts"].values() for entry in metrics.values()):
-                        raise ValueError("Source/unit/timestamp canary evidence is required before enabling")
-                    result = store.configure(engine, start_week=args.start_week, stop_week=args.stop_week, contracts=profile["contracts"], enabled=args.enable, dry_run=args.dry_run)
-                elif args.command == "sync-tencent-utilization-inventory":
-                    result = sync_inventory(engine, profile, dry_run=args.dry_run)
+                    result = store.configure(engine, profile, start_date=args.start_date,
+                                             enabled=args.enable, dry_run=args.dry_run)
+                elif args.command == "sync-tencent-utilization":
+                    result = runner.plan_machines(engine, profile, dry_run=args.dry_run, usage_date=args.date)
+                elif args.dry_run:
+                    result = {"dry_run": True, "state": store.load_state(engine)}
                 else:
-                    empty_proof = None
-                    if args.empty_proof:
-                        if not args.date or not args.repair:
-                            raise ValueError("--empty-proof requires --date --repair")
-                        with open(args.empty_proof, encoding="utf-8") as handle:
-                            raw_proof = handle.read(8193)
-                        if len(raw_proof) > 8192:
-                            raise ValueError("Empty proof must be <=8192 characters")
-                        empty_proof = json.loads(raw_proof)
-                        if not isinstance(empty_proof, dict):
-                            raise TypeError("Empty proof must be an object")
-                    result = sync_daily(engine, profile, dry_run=args.dry_run, usage_date=args.date, repair=args.repair, empty_proof=empty_proof)
+                    from cost_insight.utilization import transport
+                    if args.command == "utilization-dispatch":
+                        client = transport.Producer()
+                        try:
+                            result = runner.dispatch(engine, profile, client, limit=args.limit)
+                        finally:
+                            client.close()
+                    else:
+                        client = transport.consumer()
+                        try:
+                            result = runner.consume(engine, profile, client, max_messages=args.limit)
+                        finally:
+                            client.close()
             print(json.dumps(result, indent=2, sort_keys=True, default=str))
-            return 2 if any(day.get("published") is False for day in result.get("days", [])) else 0
+            incomplete_days = any(
+                day.get("skipped") or day.get("errors") for day in result.get("days", [])
+            )
+            return 2 if result.get("retry") or result.get("fenced") or incomplete_days else 0
         finally:
             engine.dispose()
 

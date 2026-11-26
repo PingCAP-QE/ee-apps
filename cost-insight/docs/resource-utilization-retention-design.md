@@ -1,6 +1,7 @@
 # 资源利用率数据：保留、自动清理与防积压设计
 
-状态：Proposal，尚未实施或执行任何线上清理。
+版本：V1 生命周期设计历史；未执行线上清理，不作为当前 V2 操作步骤。
+当前以 [V2 修订设计](resource-utilization-design-v2.md) §§14–17 和 V2 操作文档为准：机器日事实保留一年、Pod 为活跃有界工作集，不再保留固定周汇总。本文件下文的“两张短期表”、周封账和固定任务状态描述仅适用于 V1。
 范围：Cost Insight 新增的利用率数据，首版仅腾讯云 CICD 账号 `100050658403`。
 本文件是[主设计](resource-utilization-design.md)的数据生命周期约束；与早期“汇总失败先不删”的描述冲突时，以本文件为准。
 规模依据：[真实 CI 规模与费用估算](tencent-utilization-validation-and-cost-estimate.md)。

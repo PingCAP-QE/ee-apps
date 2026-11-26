@@ -10,51 +10,54 @@ let server;
 let UtilizationPage;
 let App;
 let utilizationPercent;
-let weeklyTrendPoints;
-let TrendChart;
 
 before(async () => {
   server = await createServer({ root: process.cwd(), appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
-  ({ default: UtilizationPage, utilizationPercent, weeklyTrendPoints } = await server.ssrLoadModule("/src/pages/UtilizationPage.jsx"));
+  ({ default: UtilizationPage, utilizationPercent } = await server.ssrLoadModule("/src/pages/UtilizationPage.jsx"));
   ({ default: App } = await server.ssrLoadModule("/src/App.jsx"));
-  ({ TrendChart } = await server.ssrLoadModule("/src/components/charts.jsx"));
 });
 
 after(async () => { await server?.close(); });
 
 const readyStatus = {
-  available: true, configured: true, collection_enabled: true, stale: false,
-  latest_cutoff: "2026-11-24T04:00:00Z", maintenance_stale: false,
-  missing_daily_dates: ["2026-11-20"], collection_gaps: [{ status: "final_missing" }],
-  paused: true, pause_reasons: ["maintenance unavailable"],
-  daily_window: { start_date: "2026-11-16", end_date: "2026-11-24" },
+  available: true, configured: true, collection_enabled: true, stale: false, healthy: false,
+  latest_cutoff: "2026-11-24T04:00:00Z", workload_cutoff: "2026-11-24T03:00:00Z",
+  maintenance_stale: false, paused: true, pause_reasons: ["budget"], active_contexts: 12,
+  task_backlog: { pending: 2, running: 1, retry: 3 },
+  label_keys: ["repo", "job", "test_project", "test_suite", "environment", "project", "service"],
+  machine_window: { start_date: "2025-11-25", end_date: "2026-11-24" },
+  default_window: { start_date: "2026-11-16", end_date: "2026-11-24" },
+  workload_window: { start_date: "2026-11-16", end_date: "2026-11-24" },
 };
 const metric = {
-  avg: null, peak: 143.12, coverage: 0.53, peak_coverage: 1,
-  peak_subset: 190.1, peak_subset_coverage: 0.97, peak_subset_at: "2026-11-24T03:01:00Z",
-  total_used_integral: 70, used_integral: 50, capacity_integral: 200,
-  observed_seconds: 40, expected_seconds: 60,
-  contract: { denominator: "requests", normalized_unit: "cores" },
-  quality: ["unknown_requests"], peak_at: "2026-11-24T03:00:00Z",
+  avg: null, coverage: 0.53, total_used: 70, used: 50, capacity: 200,
+  expected_capacity: 300, observed_seconds: 40, expected_seconds: 60,
+  usage_seconds: 60, unknown_seconds: 10, zero_seconds: 10,
 };
-const dailyData = {
-  available: true, has_more: true, items: [{
-    usage_date: "2026-11-24", scope: "job", resource_key: "stable-key",
-    resource_class: "tke_native", resource_spec: "2c/4GiB", repo: "unknown_repo",
-    job_name: "unknown_job", status: "partial", cutoff: "2026-11-24T04:00:00Z",
-    evidence_cutoff: "2026-11-24T03:00:00Z", metrics: { cpu: metric },
+const machineData = {
+  available: true, has_more: true, kind: "machine", items: [{
+    usage_date: "2026-11-24", machine_id: "np-actual-machine", region: "ap-beijing",
+    cluster_id: "cls-example", resource_class: "tke_native", instance_type: "4c8g",
+    cpu_cores: 4, memory_bytes: 8589934592, cutoff: "2026-11-24T04:00:00Z",
+    metrics: { cpu: { ...metric, peak: 143.12, peak_at: "2026-11-24T03:00:00Z" } },
   }],
 };
-const weeklyData = {
-  available: true, has_more: false, items: [{
-    week_start: "2026-11-16", resource_class: "tke_native", metric: "cpu",
-    status: "final_missing", values: { avg: null, peak: null, coverage: null },
-    contract: { denominator: "physical", normalized_unit: "cores" },
-  }],
+const workloadData = {
+  available: true, has_more: false, kind: "workload", group_by: null,
+  start_date: "2026-11-16", end_date: "2026-11-24",
+  items: [{ group_value: null, cutoff: "2026-11-24T03:00:00Z", metrics: { cpu: metric, memory: metric } }],
 };
+
 function field(renderer, label) {
   return renderer.root.findAllByType("label").find((node) => node.findByType("span").children.join("") === label)
     .findAll((node) => node.type === "input" || node.type === "select")[0];
+}
+
+function response(url, machine = machineData, workload = workloadData) {
+  const parsed = new URL(url, "http://localhost");
+  const data = parsed.pathname.endsWith("/status") ? readyStatus
+    : parsed.searchParams.get("kind") === "machine" ? machine : workload;
+  return { ok: true, json: async () => data };
 }
 
 for (const reason of ["disabled", "missing_schema", "database_unavailable", "unconfigured"]) {
@@ -86,50 +89,54 @@ for (const reason of ["disabled", "missing_schema", "database_unavailable", "unc
   });
 }
 
-test("shows unknown / partial / cutoff / metric quality and never invents a zero or Job cost", async () => {
+test("machine identity, dates, peaks and workload absolute usage are separate; no weekly requests", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
   let renderer;
-  globalThis.fetch = async (url) => {
-    requests.push(String(url));
-    const data = String(url).includes("/status") ? readyStatus
-      : String(url).includes("/daily") ? dailyData : weeklyData;
-    return { ok: true, json: async () => data };
-  };
+  globalThis.fetch = async (url) => { requests.push(String(url)); return response(url); };
   try {
     await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
     assert.equal(requests.length, 3);
-    assert.ok(requests[1].includes("scope=job"));
-    assert.ok(requests[1].includes("start_date=2026-11-16"));
-    assert.ok(requests[2].includes("resource_class=tke_native&metric=cpu"));
+    assert.ok(requests.some((url) => url.includes("kind=machine") && url.includes("start_date=2026-11-16")));
+    assert.ok(requests.some((url) => url.includes("kind=workload")));
+    assert.ok(!requests.some((url) => url.includes("/weekly")));
     const content = JSON.stringify(renderer.toJSON());
-    for (const text of ["unknown_repo", "unknown_job", "partial", "unknown_requests", "Evidence:", "N/A", "143.1%", "53.0%", "Observed subset peak", "190.1%", "97.0%", "not a full-population peak", "final_missing", "requests", "physical", "2026-11-20", "Collection paused:"]) {
+    for (const text of ["np-actual-machine", "cls-example", "ap-beijing", "2026-11-24", "N/A", "143.1%", "53.0%", "Absolute usage:", "70", "core·s", "byte·s", "Collection paused:", "Task backlog:", "Last machine cutoff:", "Last workload cutoff:"]) {
       assert.ok(content.includes(text), text);
     }
-    assert.doesNotMatch(content, /Mean 0\.0%/);
+    assert.doesNotMatch(content, /Mean 0\.0%|Account weekly|Observed subset|Full peak|repo →/);
     assert.match(content, /Precise Job cost: unavailable/);
-    const chart = renderer.root.findByType(TrendChart);
-    assert.deepEqual(chart.props.series[0].points, [["2026-11-16", null]]);
-    assert.equal(chart.props.showTooltipSum, undefined);
+    const workload = renderer.root.findByProps({ "aria-label": "Workload utilization" });
+    assert.ok(!workload.findAllByType("div").some((node) => node.children.join("").includes("peak")));
+    assert.equal(renderer.root.findAllByType("svg").length, 0, "no weekly chart");
     assert.equal(utilizationPercent(null), "N/A");
     assert.equal(utilizationPercent(0), "0.0%");
     assert.equal(utilizationPercent(1.43, true), "143.0%");
 
-    await act(async () => field(renderer, "Repo").props.onChange({ target: { value: "pingcap/tidb" } }));
-    assert.match(requests.at(-1), /repo=pingcap%2Ftidb/);
-    await act(async () => field(renderer, "Stable Job").props.onChange({ target: { value: "/job/tidb/job/unit_test" } }));
-    assert.match(requests.at(-1), /job_name=%2Fjob%2Ftidb%2Fjob%2Funit_test/);
-    await act(async () => field(renderer, "Stored scope").props.onChange({ target: { value: "account_class" } }));
-    assert.match(requests.at(-1), /scope=account_class/);
-    assert.doesNotMatch(requests.at(-1), /repo=|job_name=|resource_spec=/);
-    assert.ok(!renderer.root.findAllByType("label").some((node) => node.findByType("span").children.join("") === "Repo"));
-    await act(async () => field(renderer, "Weekly metric").props.onChange({ target: { value: "memory" } }));
-    assert.match(requests.at(-1), /metric=memory/);
-    await act(async () => field(renderer, "Weekly resource class").props.onChange({ target: { value: "cvm" } }));
+    assert.equal(field(renderer, "Machine start").props.min, "2025-11-25");
+    await act(async () => field(renderer, "Machine start").props.onChange({ target: { value: "2026-11-05" } }));
+    assert.match(requests.at(-1), /kind=machine.*start_date=2026-11-05/);
+    await act(async () => field(renderer, "Machine ID").props.onChange({ target: { value: "ins-actual" } }));
+    assert.match(requests.at(-1), /machine_id=ins-actual/);
+    await act(async () => field(renderer, "Machine class").props.onChange({ target: { value: "cvm" } }));
     assert.match(requests.at(-1), /resource_class=cvm/);
     const next = renderer.root.findAllByType("button").find((node) => node.children[0] === "Next");
     await act(async () => next.props.onClick());
     assert.match(requests.at(-1), /page=2/);
+    await act(async () => field(renderer, "Region").props.onChange({ target: { value: "ap-hongkong" } }));
+    assert.match(requests.at(-1), /region=ap-hongkong/);
+    assert.match(requests.at(-1), /page=1/);
+
+    const beforeKey = requests.length;
+    await act(async () => field(renderer, "Label key").props.onChange({ target: { value: "test_project" } }));
+    assert.equal(requests.length, beforeKey, "do not send a partial label filter");
+    await act(async () => field(renderer, "Label value").props.onChange({ target: { value: "tidb/test" } }));
+    assert.match(requests.at(-1), /kind=workload.*label_key=test_project&label_value=tidb%2Ftest/);
+    await act(async () => field(renderer, "Group by label").props.onChange({ target: { value: "service" } }));
+    assert.match(requests.at(-1), /group_by=service/);
+    assert.doesNotMatch(requests.at(-1), /machine_id|resource_class|job_name/);
+    const filterLabels = renderer.root.findAllByType("label").map((node) => node.findByType("span").children.join(""));
+    assert.ok(!filterLabels.includes("Repo") && !filterLabels.includes("Stable Job"));
     assert.ok(requests.every((url) => url.startsWith("/api/v1/utilization/")));
   } finally {
     await act(async () => renderer?.unmount());
@@ -137,59 +144,73 @@ test("shows unknown / partial / cutoff / metric quality and never invents a zero
   }
 });
 
-test("weekly chart inserts visible null gaps instead of connecting missing weeks", () => {
-  assert.deepEqual(weeklyTrendPoints([]), []);
-  assert.deepEqual(weeklyTrendPoints([
-    { week_start: "2026-11-23", status: "final_missing", values: { avg: 99 } },
-    { week_start: "2026-11-02", values: { avg: 0 } },
-    { week_start: "2026-11-16", values: { avg: 70 } },
-  ]), [["2026-11-02", 0], ["2026-11-09", null], ["2026-11-16", 70], ["2026-11-23", null]]);
-});
-
-test("failed daily request does not hide weekly history, and changing filters hides stale rows", async () => {
+test("failed machine request leaves workloads visible, and changed filters hide stale machine rows", async () => {
   const originalFetch = globalThis.fetch;
   let renderer;
-  let resolveDaily;
-  const requests = [];
+  let resolveMachine;
   globalThis.fetch = async (url) => {
-    requests.push(String(url));
-    if (String(url).includes("/daily")) return new Promise((resolve) => { resolveDaily = resolve; });
-    return { ok: true, json: async () => String(url).includes("/status") ? readyStatus : weeklyData };
+    if (String(url).includes("kind=machine")) return new Promise((resolve) => { resolveMachine = resolve; });
+    return response(url);
   };
   try {
     await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
-    assert.match(JSON.stringify(renderer.toJSON()), /final_missing/);
-    await act(async () => resolveDaily({ ok: true, json: async () => dailyData }));
-    assert.match(JSON.stringify(renderer.toJSON()), /unknown_repo/);
-    await act(async () => field(renderer, "Resource class").props.onChange({ target: { value: "cvm" } }));
-    assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /"unknown_repo"/);
-    await act(async () => resolveDaily({ ok: false, status: 503, statusText: "Unavailable" }));
+    assert.equal(renderer.root.findAllByProps({ "aria-label": "Workload utilization" }).length, 1);
+    await act(async () => resolveMachine(response("/daily?kind=machine")));
+    assert.match(JSON.stringify(renderer.toJSON()), /np-actual-machine/);
+    await act(async () => field(renderer, "Machine class").props.onChange({ target: { value: "cvm" } }));
+    assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /np-actual-machine/);
+    await act(async () => resolveMachine({ ok: false, status: 503, statusText: "Unavailable" }));
     assert.match(JSON.stringify(renderer.toJSON()), /503 Unavailable/);
-    assert.match(JSON.stringify(renderer.toJSON()), /final_missing/);
-    assert.ok(requests.every((url) => url.startsWith("/api/v1/utilization/")));
+    assert.equal(renderer.root.findAllByProps({ "aria-label": "Workload utilization" }).length, 1);
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;
   }
 });
 
-test("missing absolute usage is N/A while measured zero remains zero", async () => {
+test("unknown and zero requests preserve usage; unobserved usage is N/A and measured zero is zero", async () => {
   const originalFetch = globalThis.fetch;
   let renderer;
-  const data = structuredClone(dailyData);
-  data.items[0].metrics = {
-    cpu: { ...metric, avg: null, peak: null, peak_subset: null, peak_coverage: null, coverage: 0, total_used_integral: 0, observed_seconds: 0, usage_observed_seconds: 0 },
-    memory: { ...metric, avg: 0, peak: 0, peak_subset: null, peak_coverage: 1, coverage: 1, total_used_integral: 0, observed_seconds: 60, usage_observed_seconds: 60 },
-  };
-  globalThis.fetch = async (url) => ({ ok: true, json: async () => String(url).includes("/status") ? readyStatus : String(url).includes("/daily") ? data : weeklyData });
+  const data = structuredClone(workloadData);
+  data.group_by = "service";
+  data.items = [
+    { group_value: "unknown-requests", metrics: { cpu: { ...metric, avg: null, unknown_seconds: 60, zero_seconds: 0 }, memory: { ...metric, avg: null, unknown_seconds: 0, zero_seconds: 60 } } },
+    { group_value: null, metrics: { cpu: { ...metric, avg: null, usage_seconds: 0, total_used: 0 }, memory: { ...metric, avg: 0, usage_seconds: 60, total_used: 0 } } },
+  ];
+  globalThis.fetch = async (url) => response(url, machineData, data);
   try {
     await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
-    const table = renderer.root.findByProps({ "aria-label": "Daily utilization" });
-    const cells = table.findByType("tbody").findByType("tr").findAllByType("td");
-    assert.ok(cells[3].findAllByType("div").some((node) => node.children.join("").includes("N/A (no usage observations)")));
-    assert.ok(cells[4].findAllByType("div").some((node) => node.children.join("") === "Observed actual integral: 0"));
+    const rows = renderer.root.findByProps({ "aria-label": "Workload utilization" }).findByType("tbody").findAllByType("tr");
+    const cells = rows[1].findAllByType("td");
+    const cellText = (cell) => cell.findAllByType("div").map((node) => node.children.join("")).join(" | ");
+    assert.match(cellText(rows[0].findAllByType("td")[1]), /Mean N\/A.*Absolute usage: 70 core·s/);
+    assert.match(cellText(rows[0].findAllByType("td")[2]), /Mean N\/A.*Absolute usage: 70 byte·s/);
+    assert.match(cellText(cells[1]), /N\/A \(no usage observations\)/);
+    assert.match(cellText(cells[2]), /Absolute usage: 0 byte·s/);
+    assert.match(cellText(cells[2]), /Mean 0\.0%/);
+    assert.match(JSON.stringify(renderer.toJSON()), /\(missing label\)/);
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;
   }
 });
+
+for (const reason of ["query_too_large", "missing_schema", "invalid_data"]) {
+  test(`${reason} workload response is informative, not a partial or zero summary`, async () => {
+    const originalFetch = globalThis.fetch;
+    let renderer;
+    globalThis.fetch = async (url) => response(url, machineData, { available: false, reason, items: [] });
+    try {
+      await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
+      assert.equal(renderer.root.findAllByProps({ "aria-label": "Workload utilization" }).length, 0);
+      assert.equal(renderer.root.findAllByProps({ "aria-label": "Machine utilization" }).length, 1);
+      const content = JSON.stringify(renderer.toJSON());
+      if (reason === "query_too_large") assert.match(content, /10,000 workload label-set rows/);
+      if (reason === "missing_schema") assert.match(content, /V2 utilization tables are not installed/);
+      if (reason === "invalid_data") assert.match(content, /Stored measurements are invalid/);
+    } finally {
+      await act(async () => renderer?.unmount());
+      globalThis.fetch = originalFetch;
+    }
+  });
+}
