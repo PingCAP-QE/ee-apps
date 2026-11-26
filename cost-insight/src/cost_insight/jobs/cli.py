@@ -717,6 +717,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                                     export_partition_end=summary.export_partition_end,
                                     dry_run=args.dry_run,
                                     replace_existing_usage_dates=True,
+                                    split_replacement_by_day=not args.replace_existing_dates,
                                     validate_guardrail=False,
                                     source=source,
                                 )
@@ -1279,7 +1280,11 @@ def _resolve_attribution_sources(
     sources = _list_sources(engine, vendor=None)
     if sources:
         return tuple(
-            CostAttributionSource(vendor=source.vendor, account_id=source.account_id)
+            CostAttributionSource(
+                vendor=source.vendor,
+                account_id=source.account_id,
+                schema_version=source.source_schema_version if source.vendor == "aws" else None,
+            )
             for source in sources
             if (source.vendor, source.account_id) != _TENCENT_CI_SOURCE
         )
