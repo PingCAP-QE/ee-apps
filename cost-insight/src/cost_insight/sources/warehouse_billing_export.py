@@ -32,6 +32,10 @@ _PROJECT_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 Snapshot = tuple[str, int, str]
 
 
+class WarehouseSnapshotError(ValueError):
+    """The shared warehouse snapshot changed or can no longer be verified."""
+
+
 @dataclass(frozen=True)
 class WarehouseWindow:
     start: date
@@ -139,8 +143,12 @@ def _snapshot(client, tables) -> dict[str, Snapshot]:
 
 
 def assert_snapshot(client, snapshots: Mapping[str, Snapshot]) -> None:
-    if _snapshot(client, snapshots) != snapshots:
-        raise ValueError("Warehouse source snapshot changed; refusing torn reads or further writes")
+    try:
+        current = _snapshot(client, snapshots)
+    except Exception as exc:
+        raise WarehouseSnapshotError("Cannot verify warehouse source snapshot; refusing further reads or writes") from exc
+    if current != snapshots:
+        raise WarehouseSnapshotError("Warehouse source snapshot changed; refusing torn reads or further writes")
 
 
 def _query_rows(client, sql: str, params, *, label: str, heartbeat: Callable[[], None],

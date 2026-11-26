@@ -66,7 +66,10 @@ from cost_insight.jobs.sync_gcp_kubernetes_workload_allocations import (
 )
 from cost_insight.jobs.sync_gcp_unmatched_resources import run_sync_gcp_unmatched_resources
 from cost_insight.jobs.sync_gcs_cache_ac_references import run_sync_gcs_cache_ac_references
-from cost_insight.jobs.sync_warehouse_billing_summary import run_sync_warehouse_billing_summary
+from cost_insight.jobs.sync_warehouse_billing_summary import (
+    WarehouseAccountFailures,
+    run_sync_warehouse_billing_summary,
+)
 from cost_insight.jobs.validate_aws_reconciliation import (
     resolve_reconciliation_source,
     run_aws_reconciliation,
@@ -449,6 +452,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(json.dumps(summary, default=str, indent=2, sort_keys=True))
             return 0
+        except WarehouseAccountFailures as exc:
+            print(json.dumps(exc.summary, default=str, indent=2, sort_keys=True))
+            return 1
         finally:
             engine.dispose()
 

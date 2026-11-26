@@ -362,7 +362,7 @@ def test_snapshot_changes_before_or_after_any_read_fail_closed(changed_field, va
         return table
 
     client.get_table.side_effect = get_table
-    with pytest.raises(ValueError, match="snapshot changed"):
+    with pytest.raises(source.WarehouseSnapshotError, match="snapshot changed"):
         fetch(client)
     assert client.query.call_count == queries
 
@@ -380,8 +380,18 @@ def test_assert_snapshot_can_be_reused_by_writer():
     window = fetch(client)
     source.assert_snapshot(client, window.snapshots)
     client.get_table.return_value.etag = "changed"
-    with pytest.raises(ValueError, match="snapshot changed"):
+    with pytest.raises(source.WarehouseSnapshotError, match="snapshot changed"):
         source.assert_snapshot(client, window.snapshots)
+
+
+@pytest.mark.parametrize("failure", [ValueError("metadata is now invalid"), OSError("metadata lookup failed")])
+def test_snapshot_proof_failure_keeps_shared_error_type_and_cause(failure):
+    client, _ = client_for()
+    window = fetch(client)
+    client.get_table.side_effect = failure
+    with pytest.raises(source.WarehouseSnapshotError, match="Cannot verify") as raised:
+        source.assert_snapshot(client, window.snapshots)
+    assert raised.value.__cause__ is failure
 
 
 @pytest.mark.parametrize("cancel_fails", [False, True])
