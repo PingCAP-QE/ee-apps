@@ -12,8 +12,8 @@ const REASONS = {
   invalid_data: "Stored measurements are invalid. No partial aggregation is shown.",
 };
 
-export function utilizationPercent(value, fraction = false) {
-  return value == null ? "N/A" : `${(Number(value) * (fraction ? 100 : 1)).toFixed(1)}%`;
+export function utilizationPercent(value, fraction = false, digits = 1) {
+  return value == null ? "N/A" : `${(Number(value) * (fraction ? 100 : 1)).toFixed(digits)}%`;
 }
 
 function numeric(value) {
@@ -30,7 +30,7 @@ function timestamp(value) {
 export default function UtilizationPage() {
   const status = useApiData("/api/v1/utilization/status");
   const ready = Boolean(status.data?.available && status.data?.configured);
-  const [machineFilters, setMachineFilters] = useState({ machine_id: "", region: "", resource_class: "" });
+  const [machineFilters, setMachineFilters] = useState({ machine_id: "", region: "", cluster_id: "", resource_class: "" });
   const [machineDates, setMachineDates] = useState({});
   const [machinePage, setMachinePage] = useState(1);
   const [workloadFilters, setWorkloadFilters] = useState({ label_key: "", label_value: "", group_by: "" });
@@ -66,17 +66,19 @@ export default function UtilizationPage() {
         </>}
       </Panel>
       {ready && <>
-        <Panel title="Machine daily detail" subtitle="Physical-capacity basis. Up to 365 days per query; each row is one identified machine on one date. Peaks apply only to that machine, never a resource group.">
+        <Panel title="Machine daily detail" subtitle="Physical-capacity basis. Select dates within the last 365 Beijing days. Enter an exact machine ID for an interval summary. Peaks apply only to that machine, never a resource group.">
           <div className="filter-grid">
             <Dates prefix="Machine" dates={machineWindow} bounds={status.data.machine_window} onChange={(key, value) => { setMachineDates({ ...machineWindow, [key]: value }); setMachinePage(1); }} />
             <Field label="Machine ID"><input value={machineFilters.machine_id} maxLength={512} placeholder="All machines" onChange={(event) => { setMachineFilters({ ...machineFilters, machine_id: event.target.value }); setMachinePage(1); }} /></Field>
             <Field label="Region"><input value={machineFilters.region} maxLength={512} placeholder="All regions" onChange={(event) => { setMachineFilters({ ...machineFilters, region: event.target.value }); setMachinePage(1); }} /></Field>
+            <Field label="Cluster ID"><input value={machineFilters.cluster_id} maxLength={512} placeholder="All clusters" onChange={(event) => { setMachineFilters({ ...machineFilters, cluster_id: event.target.value }); setMachinePage(1); }} /></Field>
             <Field label="Machine class"><select value={machineFilters.resource_class} onChange={(event) => { setMachineFilters({ ...machineFilters, resource_class: event.target.value }); setMachinePage(1); }}>
               <option value="">All classes</option><option value="cvm">CVM</option><option value="tke_native">TKE native node</option>
             </select></Field>
           </div>
           <Panel title="Machine CPU / memory" loading={machineLoading} error={machine.error}>
-            <Measurements data={machine.data} empty="No machine facts for these dates and filters.">
+            <MachineIntervalSummary data={machine.data} />
+            <Measurements data={machine.data} empty={machinePage > 1 ? "No machine facts on this page." : "No machine facts for these dates and filters."}>
               <div className="table-scroll"><table className="data-table data-table--compact" aria-label="Machine utilization">
                 <thead><tr>{["Beijing date", "Machine identity", "Class / historical spec", "CPU", "Memory", "Cutoff (Beijing)"].map((label) => <th key={label}>{label}</th>)}</tr></thead>
                 <tbody>{(machine.data?.items || []).map((item) => <tr key={`${item.usage_date}:${item.region}:${item.cluster_id}:${item.machine_id}`}>
@@ -103,6 +105,7 @@ export default function UtilizationPage() {
           </div>
           <p>Missing labels do not discard usage. Unknown or zero requests make efficiency unavailable, but known absolute usage remains visible. No individual Pod history or personal attribution. Precise Job cost: unavailable.</p>
           <Panel title="Workload CPU / memory" loading={workloadLoading} error={workload.error}>
+            {workload.data?.partial && <p role="status">Partial data: some workload windows in these dates are not settled. Coverage shown is for settled windows only.</p>}
             <Measurements data={workload.data} empty="No retained workload statistics for these dates and labels.">
               <div className="table-scroll"><table className="data-table data-table--compact" aria-label="Workload utilization">
                 <thead><tr><th>Dates / business group</th><th>CPU</th><th>Memory</th><th>Oldest contributing cutoff (Beijing)</th></tr></thead>
@@ -126,6 +129,23 @@ function Field({ label, children }) {
 
 function Dates({ prefix, dates, bounds, onChange }) {
   return ["start", "end"].map((key) => <Field key={key} label={`${prefix} ${key}`}><input type="date" min={bounds?.start_date} max={bounds?.end_date} value={dates[`${key}_date`] || ""} onChange={(event) => { if (event.target.value) onChange(`${key}_date`, event.target.value); }} /></Field>);
+}
+
+function MachineIntervalSummary({ data }) {
+  const summary = data?.interval_summary;
+  if (!summary) return null;
+  if (summary.reason === "ambiguous_machine") {
+    return <p>More than one physical machine matches. Narrow by region, cluster ID, or class to see an interval summary.</p>;
+  }
+  if (summary.reason) return <p>Interval summary unavailable: stored measurements are invalid.</p>;
+  return <section aria-label="Machine interval summary">
+    <h4>Machine interval summary</h4>
+    <p>{summary.machine_id} · {summary.region} · {summary.cluster_id || "No cluster (CVM)"}</p>
+    <p>{data.start_date} – {data.end_date} Beijing · Days with facts: {summary.days_with_facts}. Missing dates are not filled in.</p>
+    {[["CPU", "cpu"], ["Memory", "memory"]].map(([label, key]) => <p key={key}>
+      {label} weighted mean {utilizationPercent(summary.metrics[key].avg, false, 2)} · Peak {utilizationPercent(summary.metrics[key].peak, false, 2)}
+    </p>)}
+  </section>;
 }
 
 function Measurements({ data, empty, children }) {

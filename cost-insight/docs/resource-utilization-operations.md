@@ -142,7 +142,11 @@ state. Dry-run success is not proof that the real planner will enqueue successfu
 verify those invariants with an enabled, isolated canary registry before production.
 Source windows are
 at most30min; Pod windows are10min with10min reporting allowance. Short Pods still
-get a tail window; unknown selectors cannot trigger unscoped queries.
+get a tail window for confirmed whole minutes. Selector evidence is refreshed by
+one shared, bounded Node LIST every minute when utilization is enabled. A new
+binding requires later Node evidence and a Node that predates the assignment;
+no bare IP fallback is used. Canary must measure Kubernetes LIST volume,
+selector confirmation delay and missing-selector rates, especially for short Pods.
 
 Tasks, daily contributions and completion use the shared V2 guard and DB clock.
 Lease/deadline fencing rejects stale workers. Broker-confirmed publish precedes
@@ -157,7 +161,10 @@ usage day's `errors` list (machine ID, region, reason), while continuing unrelat
 machines and days. Skipped days or nonempty `errors` make the CLI exit 2; the
 affected candidate's transaction is rolled back. Investigate and retry the affected
 date with `--date` before its verified source horizon expires; the default D-4/D-3
-scan does not automatically revisit older failed dates.
+scan does not automatically revisit older failed dates. The V2 planner also
+queries by requested usage day; it can miss late charges found only in a different
+`BillDay` partition. A complete scan for one request is not proof of complete
+usage-day population. The partition/usage-day separation is tracked in the V3 design.
 
 Ended contexts are removed by maintenance only after all confirmed whole minutes
 are finalized and their tasks are drained. Orphaned watcher intervals close at
@@ -181,7 +188,11 @@ Pod export, raw-minute archive or object-store quarantine.
 
 Watch backlog/oldest due task, `collection_failed` quality gaps, source errors, per-metric
 coverage/unknown denominator, retained rows, table+index bytes, maintenance time
-and pause reasons (`row_budget`, `byte_budget`, `cleanup_backlog`). Machine status expects the full D-3 Beijing day from the latest
+and pause reasons (`row_budget`, `byte_budget`, `bytes_unreliable`, `cleanup_backlog`).
+The workload API flags a selected date range as partial while the account has
+unsettled Pod windows or confirmed unplanned evidence in the range; this is a
+conservative warning across label filters. Coverage then describes settled windows
+only. Machine status expects the full D-3 Beijing day from the latest
 daily06:30 planner, with a one-hour dispatch/collection allowance; historical data
 is not stale merely because its cutoff is more than eight hours old.
 Current warning1M rows/4GiB (reported in maintenance output's `warnings` list);

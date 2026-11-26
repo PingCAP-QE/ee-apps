@@ -350,6 +350,48 @@ def test_sub_minute_context_never_enqueues_a_partial_minute(engine):
         assert connection.execute(select(contexts)).first() is None
 
 
+@pytest.mark.parametrize("blocked", ["no_whole_minute", "open_boundary", "open_lag", "closed_lag"])
+def test_ineligible_contexts_do_not_consume_dispatch_batch(engine, blocked):
+    row = {key: value for key, value in target("pod").items() if key in contexts.c}
+    clock = NOW + timedelta(minutes=6, seconds=5)
+    if blocked == "no_whole_minute":
+        first, last = START + timedelta(seconds=55), START + timedelta(minutes=1, seconds=5)
+        closed = last
+        ready_start, ready_end = START + timedelta(minutes=2), END
+    elif blocked == "open_boundary":
+        first, last = START, START + timedelta(minutes=9, seconds=59, microseconds=999999)
+        closed = None
+        ready_start, ready_end = START + timedelta(minutes=1), END
+    else:
+        # The next aligned window (or a closed tail not yet due) must not
+        # take priority over a later confirmed tail whose reporting lag elapsed.
+        first, last = START + timedelta(minutes=20), START + timedelta(minutes=29)
+        if blocked == "open_lag":
+            last += timedelta(minutes=1)
+        closed = last if blocked == "closed_lag" else None
+        ready_start, ready_end = START + timedelta(minutes=25), START + timedelta(minutes=26)
+    expires = NOW + timedelta(hours=24)
+    with engine.begin() as connection:
+        connection.execute(contexts.insert(), [
+            dict(row, pod_uid=f"uid-{i}", context_key=f"blocked-{i}",
+                 observed_from=first, observed_until=last, planned_until=first,
+                 closed_at=closed, expires_at=expires)
+            for i in range(100)
+        ])
+        connection.execute(contexts.insert().values(
+            **row, context_key="ready", observed_from=ready_start, observed_until=ready_end,
+            planned_until=ready_start, closed_at=ready_end, expires_at=expires,
+        ))
+    producer = Mock()
+    assert runner.dispatch(engine, profile(), producer, now=clock) == {"planned": 1, "sent": 1}
+    store.maintain(engine, now=clock)
+    with engine.connect() as connection:
+        task = connection.execute(select(tasks)).mappings().one()
+        assert task["payload_json"]["pod_uid"] == row["pod_uid"]
+        if blocked == "no_whole_minute":
+            assert connection.execute(select(contexts.c.pod_uid)).scalars().all() == [row["pod_uid"]]
+
+
 def test_expired_source_window_records_missing_before_task_purge(engine):
     enqueued(engine)
     later = NOW + timedelta(hours=1)
@@ -800,6 +842,46 @@ def test_maintenance_reports_remaining_expired_context_cleanup_backlog(engine):
     assert not store.maintain(engine, now=NOW)["paused"]
 
 
+@pytest.mark.parametrize("kind", ["machine", "workload"])
+def test_maintenance_pauses_for_overdue_task_or_workload(engine, kind):
+    if kind == "machine":
+        enqueued(engine)
+        store.enqueue_windows(engine, [(target(machine_id="ins-other"), START, END)], now=NOW)
+        with engine.begin() as connection:
+            connection.execute(tasks.update().values(deadline_at=NOW - timedelta(hours=5)))
+    else:
+        for i in range(2):
+            t = target("pod", pod_uid=f"uid-{i}", labels_json={"test_project": f"proj-{i}"})
+            store.enqueue_windows(engine, [(t, START, END)], now=NOW)
+        for task in store.due_tasks(engine, now=NOW):
+            claim = store.claim_task(engine, task["id"], now=NOW)
+            assert store.complete_task(
+                engine,
+                task["id"],
+                claim["lease_token"],
+                summarize_window([], claim["payload_json"], START, END),
+                now=NOW,
+            )
+        with engine.begin() as connection:
+            connection.execute(workloads.update().values(expires_at=NOW - timedelta(hours=5)))
+    assert store.maintain(engine, now=NOW, max_rows=1, batch_size=1)["paused"]
+    assert store.load_state(engine)["pause_reasons"] == ["cleanup_backlog"]
+    assert not store.maintain(engine, now=NOW)["paused"]
+
+
+def test_failed_byte_measurement_invalidates_previous_health(engine, monkeypatch):
+    assert not store.maintain(engine, now=NOW)["paused"]
+    with monkeypatch.context() as patch:
+        patch.setattr(store, "_bytes", Mock(side_effect=ValueError("incomplete statistics")))
+        assert store.maintain(engine, now=NOW + timedelta(minutes=15))["paused"]
+        state = store.load_state(engine)
+        assert state["pause_reasons"] == ["bytes_unreliable"]
+        assert state["observed_bytes"] is None and state["bytes_observed_at"] is None
+        with pytest.raises(ValueError, match="unhealthy"):
+            store.enqueue_windows(engine, [(target(), START, END)], now=NOW + timedelta(minutes=16))
+    assert not store.maintain(engine, now=NOW + timedelta(minutes=17))["paused"]
+
+
 def test_dry_run_no_writes_and_account_scope(engine):
     assert (
         store.enqueue_windows(engine, [(target(), START, END)], now=NOW, dry_run=True)["planned"]
@@ -809,6 +891,23 @@ def test_dry_run_no_writes_and_account_scope(engine):
         assert connection.execute(select(tasks)).first() is None
     with pytest.raises(ValueError, match="account"):
         enqueued(engine, target(account_id="other"))
+
+
+def test_result_rolls_back_when_deadline_passes_at_final_clock_check(engine, monkeypatch):
+    task = enqueued(engine)
+    claim = store.claim_task(engine, task["id"], now=NOW)
+    deadline = claim["lease_until"]
+    with engine.begin() as connection:
+        connection.execute(tasks.update().values(deadline_at=deadline))
+    clock = Mock(side_effect=[deadline - timedelta(seconds=2),
+                              deadline - timedelta(seconds=1), deadline])
+    monkeypatch.setattr(store, "database_now", clock)
+    values = summarize_window(points(target()), target(), START, END)
+    with pytest.raises(ValueError, match="lease/deadline"):
+        store.complete_task(engine, task["id"], claim["lease_token"], values)
+    with engine.connect() as connection:
+        assert connection.execute(select(machines)).first() is None
+        assert connection.execute(select(tasks.c.status)).scalar_one() == "running"
 
 
 def test_result_transaction_rolls_back_if_checkpoint_fails(engine, monkeypatch):

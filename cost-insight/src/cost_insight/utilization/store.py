@@ -10,7 +10,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import date, timedelta
 
-from sqlalchemy import and_, func, or_, select, text
+from sqlalchemy import Integer, and_, case, cast, func, literal_column, or_, select, text
 
 from cost_insight.jobs.state_store import checkpoint_job_watermark
 from cost_insight.utilization import policy
@@ -295,6 +295,34 @@ def _pod_target(row, state):
     return {**target, "kind": "pod", "region": state["scope"]["cluster_region"]}
 
 
+def _context_ready_to_plan(connection, clock):
+    """Require a whole due minute for a tail, or a due 10-minute boundary if open."""
+    observed = contexts.c.observed_until
+    closed = contexts.c.closed_at.is_not(None)
+    cutoff = minute(clock - timedelta(minutes=10))
+    last_due_boundary = cutoff.replace(minute=cutoff.minute // 10 * 10)
+    # A closed context can stop before its next boundary, but only if its
+    # confirmed end is itself due. Do not create a synthetic cutoff window.
+    due = or_(
+        contexts.c.planned_until <= last_due_boundary - timedelta(minutes=1),
+        and_(closed, observed < cutoff + timedelta(minutes=1)),
+    )
+    # Truncate before arithmetic: SQLite can round fractional seconds forward.
+    if connection.dialect.name == "sqlite":
+        observed_minute = cast(func.substr(observed, 15, 2), Integer)
+        back = case((closed, 1), else_=observed_minute % 10 + 1)
+        confirmed = (
+            func.datetime(func.substr(observed, 1, 16) + ":00", func.printf("-%d minutes", back))
+            + ".000000"
+        )
+    else:
+        back = case((closed, 1), else_=func.minute(observed) % 10 + 1)
+        confirmed = func.timestampadd(
+            literal_column("MINUTE"), -back, func.date_format(observed, "%Y-%m-%d %H:%i:00")
+        )
+    return and_(due, contexts.c.planned_until <= confirmed)
+
+
 def plan_contexts(engine, *, now=None, limit=1000):
     if not 1 <= limit <= MAX_BATCH:
         raise ValueError("invalid context planning limit")
@@ -307,7 +335,7 @@ def plan_contexts(engine, *, now=None, limit=1000):
                 .where(
                     contexts.c.account_id == policy.ACCOUNT_ID,
                     contexts.c.expires_at > clock,
-                    contexts.c.planned_until < contexts.c.observed_until,
+                    _context_ready_to_plan(connection, clock),
                 )
                 .order_by(contexts.c.planned_until, contexts.c.id)
                 .limit(limit)
@@ -516,16 +544,16 @@ def complete_task(engine, task_id, token, values, *, now=None):
         if row["payload_json"].get("contract_version") != state["contract_version"]:
             raise ValueError("task contract differs from registry")
         delta = _apply(connection, row, values, clock)
-        # Recheck authoritative clock after result work and before commit.
-        commit_clock = database_now(connection, now)
-        if commit_clock >= min(row["lease_until"], row["deadline_at"]):
-            raise ValueError("task lease/deadline passed during result commit")
         connection.execute(
             tasks.update()
             .where(tasks.c.id == task_id)
             .values(status="done", lease_token=None, lease_until=None, updated_at=clock)
         )
         _finish(connection, state, now, delta=delta)
+        # Last decision under the guard, after all writes. If either fence has
+        # passed, rollback both the contribution and its completion checkpoint.
+        if database_now(connection, now) >= min(row["lease_until"], row["deadline_at"]):
+            raise ValueError("task lease/deadline passed during result commit")
         return True
 
 
@@ -683,7 +711,9 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
                     )
                     .limit(1)
                 ).first()
-                if not has_pending and planned_until >= minute(row["observed_until"]):
+                if not has_pending and minute(planned_until, ceil=True) >= minute(
+                    row["observed_until"]
+                ):
                     removable.append(row["id"])
             # A failed window still contributes its known expected population.
             expiring = (
@@ -794,19 +824,29 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
             ).scalar_one()
             for table in TABLES
         )
-        size = _bytes(connection)
-        oldest = connection.execute(
-            select(func.min(contexts.c.expires_at)).where(
-                contexts.c.account_id == policy.ACCOUNT_ID, contexts.c.expires_at <= clock
-            )
-        ).scalar()
+        try:
+            size = _bytes(connection)
+        except ValueError:  # Known incomplete measurements must invalidate old healthy evidence.
+            size = None
+        overdue = []
+        for expiry in (contexts.c.expires_at, tasks.c.deadline_at, workloads.c.expires_at):
+            earliest = connection.execute(
+                select(func.min(expiry)).where(
+                    expiry.table.c.account_id == policy.ACCOUNT_ID, expiry <= clock
+                )
+            ).scalar()
+            if earliest is not None:
+                overdue.append(earliest)
+        oldest = min(overdue, default=None)
         recovering = state.get("paused") and "maintenance_uninitialized" not in state.get(
             "pause_reasons", []
         )
         reasons = []
         if count >= (policy.ROW_WARNING if recovering else policy.ROW_LIMIT):
             reasons.append("row_budget")
-        if size >= (policy.BYTE_WARNING if recovering else policy.BYTE_LIMIT):
+        if size is None:
+            reasons.append("bytes_unreliable")
+        elif size >= (policy.BYTE_WARNING if recovering else policy.BYTE_LIMIT):
             reasons.append("byte_budget")
         if oldest is not None and (recovering or clock - oldest > timedelta(hours=4)):
             reasons.append("cleanup_backlog")
@@ -815,7 +855,7 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
             retained_rows=count,
             counts_reliable=True,
             observed_bytes=size,
-            bytes_observed_at=clock.isoformat(),
+            bytes_observed_at=clock.isoformat() if size is not None else None,
             maintenance_at=clock.isoformat(),
             paused=hard,
             pause_reasons=reasons,

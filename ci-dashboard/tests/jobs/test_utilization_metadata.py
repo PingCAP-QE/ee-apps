@@ -4,6 +4,7 @@ import copy
 import json
 import threading
 from datetime import datetime, timedelta
+from decimal import Decimal
 from unittest.mock import Mock
 
 import pytest
@@ -24,7 +25,8 @@ def pod():
 
 
 def node(name="node-a", provider="qcloud:///ap-beijing/np-123"):
-    return {"metadata": {"uid": "node-uid", "name": name, "labels": {"owner": "private"}},
+    return {"metadata": {"uid": "node-uid", "name": name, "creationTimestamp": "2026-10-01T00:00:00Z",
+                         "labels": {"owner": "private"}},
             "spec": {"providerID": provider}, "status": {"capacity": {"cpu": "8"}}}
 
 
@@ -81,21 +83,27 @@ def observe(exporter, records, at=NOW, **kwargs):
     exporter.observe(records, at=at, now=at, **kwargs)
 
 
+def pod_evidence(obj, seen_at, **kwargs):
+    return {**u.normalize_pod(obj, **kwargs), "_node_ref": u.pod_node_ref(obj, seen_at)}
+
+
 def test_custom_label_and_real_native_selector_are_preserved(db, monkeypatch):
     monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_LABEL_KEYS", "test_campaign")
     obj = pod()
     obj["metadata"]["labels"]["test_campaign"] = "compatibility"
     cache = u.NodeSelectorCache()
-    cache.refresh([node(provider="qcloud:///ap-beijing/np-244kqxxd-j5swq")])
-    exporter = u.MetadataExporter(db)
-    record = u.normalize_pod(obj, node_cache=cache, selected_labels=exporter.selected_labels)
+    listed_at = u.time.monotonic()
+    cache.refresh([node(provider="qcloud:///ap-beijing/np-244kqxxd-j5swq")], listed_at=listed_at)
+    exporter = u.MetadataExporter(db, node_cache=cache)
+    record = pod_evidence(obj, listed_at - 1, selected_labels=exporter.selected_labels)
     assert record["labels_json"] == {"test_campaign": "compatibility"}
-    assert record["node_query_value"] == "np-244kqxxd-j5swq"
     scope = state()["scope"]
     scope["labels"] = ["test_campaign"]
     replace_state(db, scope=scope)
     observe(exporter, [record])
-    assert json.loads(rows(db)[0]["labels_json"]) == {"test_campaign": "compatibility"}
+    saved = rows(db)[0]
+    assert json.loads(saved["labels_json"]) == {"test_campaign": "compatibility"}
+    assert saved["node_query_value"] == "np-244kqxxd-j5swq"
 
 
 def test_label_configuration_is_validated_once_per_exporter(monkeypatch):
@@ -123,7 +131,7 @@ def test_opt_in_only_exact_source(monkeypatch):
 
 @pytest.mark.parametrize(("raw", "expected"), [("100m", .1), ("1Gi", 1024**3), ("1e3", 1000), ("2M", 2_000_000), ("1u", 1e-6), ("1n", 1e-9), ("2Ki", 2048)])
 def test_quantity(raw, expected):
-    assert u.quantity(raw) == expected
+    assert u.quantity(raw) == Decimal(str(expected))
 
 
 @pytest.mark.parametrize("raw", ["NaN", "-1", "Infinity", "garbage", "1GiB", "1e9999999"])
@@ -143,6 +151,11 @@ def test_scheduler_requests_init_sidecar_overhead_defaulting_and_zero():
     assert u.effective_resources({"containers": [{"resources": {"limits": {"cpu": "0.0001", "memory": "0.1"}}}]}) == {
         "cpu_request_cores": .001, "memory_request_bytes": 1}
     assert u.effective_resources({"containers": [{}]}) == {"cpu_request_cores": 0, "memory_request_bytes": 0}
+
+
+def test_cpu_requests_are_summed_without_floating_point_roundup():
+    spec = {"containers": [{"resources": {"requests": {"cpu": value}}} for value in ("100m", "200m")]}
+    assert u.effective_resources(spec)["cpu_request_cores"] == 0.300
 
 
 @pytest.mark.parametrize("kind", ["pod_level", "resize", "status_resources", "bad_quantity", "missing_containers"])
@@ -185,36 +198,60 @@ def test_unstable_job_omitted(url):
     assert u.stable_job(url) == ""
 
 
+def test_without_stable_jenkins_evidence_raw_job_does_not_become_a_dimension():
+    obj = pod()
+    obj["metadata"]["annotations"] = {}
+    obj["metadata"]["labels"]["job"] = "build-aa08f14"
+    assert u.normalize_pod(obj)["labels_json"] == {"repo": "pingcap/tidb"}
+
+
+@pytest.mark.parametrize(("node_created", "expected"), [
+    ("2026-11-24T03:30:00Z", "np-123"),  # Autoscaler added the node while the Pod was Pending.
+    ("2026-11-24T03:59:30Z", ""),        # A replacement at the same name after scheduling.
+])
+def test_pod_scheduled_evidence_disambiguates_nodes_created_after_pod(db, node_created, expected):
+    obj = pod()
+    obj["status"] = {"conditions": [{"type": "PodScheduled", "status": "True",
+                                    "lastTransitionTime": "2026-11-24T03:59:00Z"}]}
+    target = node()
+    target["metadata"]["creationTimestamp"] = node_created
+    listed_at = u.time.monotonic()
+    cache = u.NodeSelectorCache()
+    cache.refresh([target], listed_at=listed_at)
+    exporter = u.MetadataExporter(db, node_cache=cache)
+    observe(exporter, [pod_evidence(obj, listed_at - 1)])
+    assert rows(db)[0]["node_query_value"] == expected
+
+
 def test_node_selector_cache_bounded_expiring_and_provider_preferred(monkeypatch):
     clock = [0]
     monkeypatch.setattr(u.time, "monotonic", lambda: clock[0])
     cache = u.NodeSelectorCache(max_nodes=2, ttl_seconds=10)
-    assert cache.resolve("node-a") == ("", "")
-    assert cache.resolve("10.0.6.207") == ("node", "10.0.6.207")
-    cache.refresh([node(), node("10.0.6.207", "ins-abc")])
-    assert cache.resolve("node-a") == ("un_instance_id", "np-123")
-    assert cache.resolve("10.0.6.207") == ("un_instance_id", "ins-abc")
+    assert cache.snapshot()[1] == {}
+    cache.refresh([node(), node("10.0.6.207", "ins-abc")], listed_at=0)
+    _, nodes = cache.snapshot()
+    assert nodes["node-a"].instance_id == "np-123"
+    assert nodes["10.0.6.207"].instance_id == "ins-abc"
     clock[0] = 11
-    assert cache.resolve("node-a") == ("", "")
-    cache.refresh([node(provider="qcloud:///ap-hongkong/ins-abc")])
-    assert cache.resolve("node-a") == ("", "")
+    assert cache.snapshot()[1] == {}
+    cache.refresh([node("10.0.6.207", "qcloud:///ap-hongkong/ins-abc")], listed_at=11)
+    assert cache.snapshot()[1] == {}  # No IP fallback, even with a listed Node.
     with pytest.raises(ValueError, match="bound"):
-        cache.refresh([node()] * 3)
-    assert cache.resolve("node-a") == ("", "")
+        cache.refresh([node()] * 3, listed_at=11)
+    assert cache.snapshot()[1] == {}
     assert u.normalize_node({}) is None
-    assert set(u.normalize_node(node())) == {"name", "node_query_kind", "node_query_value"}
 
 
 def test_stable_change_enrichment_heartbeat_and_ended_tail(db):
-    exporter = u.MetadataExporter(db)
     cache = u.NodeSelectorCache()
-    record = u.normalize_pod(pod(), node_cache=cache)
+    exporter = u.MetadataExporter(db, node_cache=cache)
+    record = pod_evidence(pod(), u.time.monotonic() - 1)
     observe(exporter, [record])
     observe(exporter, [record], NOW + timedelta(minutes=1))
     assert len(rows(db)) == retained(db) == 1
     assert u._datetime(rows(db)[0]["observed_from"]) == NOW  # Not creationTimestamp.
-    cache.refresh([node()])
-    enriched = u.normalize_pod(pod(), node_cache=cache)
+    cache.refresh([node()], listed_at=u.time.monotonic())
+    enriched = pod_evidence(pod(), u.time.monotonic())
     observe(exporter, [enriched], NOW + timedelta(minutes=2), heartbeat=True)
     old, current = rows(db)
     assert old["node_query_kind"] == "" and current["node_query_value"] == "np-123"
@@ -456,15 +493,15 @@ def test_node_worker_is_cache_only_and_clears_on_error():
             return [node()], "rv"
     stop = Stop()
     watcher._run_utilization_node_worker(node_cache=cache, client=Client(), stop_event=stop)
-    assert stop.waits == [1800] and cache.resolve("node-a") == ("un_instance_id", "np-123")
+    assert stop.waits == [60] and cache.snapshot()[1]["node-a"].instance_id == "np-123"
     class FailingClient:
         def list_nodes(self):
             raise RuntimeError("offline")
     watcher._run_utilization_node_worker(node_cache=cache, client=FailingClient(), stop_event=Stop())
-    assert cache.resolve("node-a") == ("", "")
+    assert cache.snapshot()[1] == {}
 
 
-def _run_enabled_watch(monkeypatch, events, *, initial=None, client=None, stop=None, health_state=None):
+def _run_enabled_watch(monkeypatch, events, *, initial=None, client=None, stop=None, health_state=None, node_cache=None):
     """Real normalization/exporter, injected lifecycle and offline watch transport."""
     monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_ENABLED", "true")
     stop = stop or threading.Event()
@@ -490,7 +527,7 @@ def _run_enabled_watch(monkeypatch, events, *, initial=None, client=None, stop=N
         context=watcher.WatchRuntimeContext(u.SOURCE, u.CLUSTER, "ap-beijing", "TENCENT"),
         namespace_name="jenkins-tidb", stream_key="pods",
         health_state=health_state or watcher.WatchHealthState(stale_after_seconds=720), recorder=Recorder(),
-        jenkins_prefix_cache=None, stop_event=stop,
+        jenkins_prefix_cache=None, stop_event=stop, node_cache=node_cache,
     )
     return lifecycle
 
@@ -569,6 +606,48 @@ def test_clean_eof_last_rv_continuation_and_no_terminal_phantom(db, monkeypatch,
     assert u._datetime(saved["ending"]["closed_at"]) == NOW  # Terminal event is not live evidence.
 
 
+def test_reused_node_ip_requires_new_evidence_and_bookmarks_do_not_renew_old_binding(db, monkeypatch):
+    clock = _offline_clock(monkeypatch, db)
+    monkeypatch.setattr(watcher.time, "monotonic", lambda: (clock[0] - NOW).total_seconds())
+    address = "10.0.0.8"
+    cache = u.NodeSelectorCache()
+    old_node = node(address, "ins-old")
+    next_node = node(address, "ins-next")
+    next_node["metadata"].update(uid="next", creationTimestamp="2026-11-24T04:01:30Z")
+    old_pod = pod()
+    old_pod["spec"]["nodeName"] = address
+    new_pod = copy.deepcopy(old_pod)
+    new_pod["metadata"].update(uid="new", creationTimestamp="2026-11-24T04:01:45Z")
+    bookmark = {"type": "BOOKMARK", "object": {"metadata": {"resourceVersion": "rv"}}}
+    cache.refresh([old_node], listed_at=-1)
+
+    def events():
+        clock[0] = NOW + timedelta(minutes=1)
+        cache.refresh([old_node], listed_at=60)
+        yield bookmark
+        clock[0] = NOW + timedelta(minutes=2)
+        yield {"type": "ADDED", "object": new_pod}
+        yield bookmark
+        clock[0] = NOW + timedelta(minutes=3)
+        cache.refresh([next_node], listed_at=180)
+        yield bookmark
+        for minute in range(4, 46):
+            clock[0] = NOW + timedelta(minutes=minute)
+            cache.refresh([next_node], listed_at=minute * 60)
+            yield bookmark
+
+    lifecycle = _run_enabled_watch(monkeypatch, events(), initial=[old_pod], node_cache=cache)
+    assert len(lifecycle) == 2  # No object update after refresh for either Pod.
+    assert [(row["pod_uid"], row["node_query_value"], u._datetime(row["observed_from"]),
+             u._datetime(row["observed_until"])) for row in rows(db)] == [
+        ("pod-uid", "", NOW, NOW + timedelta(minutes=1)),
+        ("pod-uid", "ins-old", NOW + timedelta(minutes=1), NOW + timedelta(minutes=2)),
+        ("new", "", NOW + timedelta(minutes=2), NOW + timedelta(minutes=3)),
+        ("pod-uid", "", NOW + timedelta(minutes=2), NOW + timedelta(minutes=45)),
+        ("new", "ins-next", NOW + timedelta(minutes=3), NOW + timedelta(minutes=45)),
+    ]
+
+
 @pytest.mark.parametrize("repeated", [False, True])
 def test_read_burst_coalescing_bound_and_stop_flush(monkeypatch, repeated):
     batches = []
@@ -585,7 +664,8 @@ def test_read_burst_coalescing_bound_and_stop_flush(monkeypatch, repeated):
         assert len(batches) == 2
     assert len(_run_enabled_watch(monkeypatch, events())) == 1001
     assert [len(batch) for batch in batches] == ([1, 1] if repeated else [1000, 1])
-    assert batches[-1][0]["node_query_value"] == "10.0.3.232"
+    assert batches[-1][0]["_node_ref"].name == "10.0.3.232"
+    assert batches[-1][0]["node_query_value"] == ""
 
 
 def test_event_processing_deadline_flushes(monkeypatch):

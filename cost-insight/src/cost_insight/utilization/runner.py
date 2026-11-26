@@ -138,8 +138,6 @@ def work_batch(engine, profile, task_ids, *, now=None, reader=None):
         groups.setdefault(key, []).append(task)
     for (start, end, *_), batch in groups.items():
         try:
-            reader.verify_account()
-            reader.verify_contracts()
             points = reader.window(start, end, [task["payload_json"] for task in batch])
         except Exception as exc:  # noqa: BLE001 -- durable retry, no source payload in logs
             LOG.warning("utilization source attempt failed: %s", type(exc).__name__)

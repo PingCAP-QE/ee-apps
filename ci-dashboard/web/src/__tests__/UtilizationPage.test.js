@@ -76,6 +76,8 @@ for (const reason of ["disabled", "missing_schema", "database_unavailable", "unc
       assert.deepEqual(requests, ["/api/v1/utilization/status"]);
       const content = JSON.stringify(renderer.toJSON());
       assert.match(content, /Resource Utilization/);
+      assert.match(content, /Tencent machine history and workload labels/);
+      assert.doesNotMatch(content, /account weekly summaries/i);
       assert.match(content, /Tencent CICD/);
       assert.doesNotMatch(content, /Mean 0\.0%/);
       assert.equal(renderer.root.findAllByType("input").length, 0, "no unrelated CI filters");
@@ -93,7 +95,10 @@ test("machine identity, dates, peaks and workload absolute usage are separate; n
   const originalFetch = globalThis.fetch;
   const requests = [];
   let renderer;
-  globalThis.fetch = async (url) => { requests.push(String(url)); return response(url); };
+  globalThis.fetch = async (url) => {
+    requests.push(String(url));
+    return response(url, machineData, { ...workloadData, partial: true });
+  };
   try {
     await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
     assert.equal(requests.length, 3);
@@ -106,6 +111,7 @@ test("machine identity, dates, peaks and workload absolute usage are separate; n
     }
     assert.doesNotMatch(content, /Mean 0\.0%|Account weekly|Observed subset|Full peak|repo →/);
     assert.match(content, /Precise Job cost: unavailable/);
+    assert.match(content, /Partial data:.*Coverage shown is for settled windows only/);
     const workload = renderer.root.findByProps({ "aria-label": "Workload utilization" });
     assert.ok(!workload.findAllByType("div").some((node) => node.children.join("").includes("peak")));
     assert.equal(renderer.root.findAllByType("svg").length, 0, "no weekly chart");
@@ -138,6 +144,53 @@ test("machine identity, dates, peaks and workload absolute usage are separate; n
     const filterLabels = renderer.root.findAllByType("label").map((node) => node.findByType("span").children.join(""));
     assert.ok(!filterLabels.includes("Repo") && !filterLabels.includes("Stable Job"));
     assert.ok(requests.every((url) => url.startsWith("/api/v1/utilization/")));
+  } finally {
+    await act(async () => renderer?.unmount());
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("machine interval summary is scoped by cluster and stays separate from paged day detail", async () => {
+  const originalFetch = globalThis.fetch;
+  let renderer;
+  globalThis.fetch = async (url) => {
+    const params = new URL(url, "http://localhost").searchParams;
+    if (!params.has("machine_id")) return response(url);
+    const scoped = params.get("cluster_id") === "cls-example";
+    const secondPage = params.get("page") === "2";
+    return response(url, {
+      ...machineData, start_date: "2026-11-16", end_date: "2026-11-24",
+      ...(secondPage ? { has_more: false, items: [] } : {}),
+      interval_summary: scoped ? {
+        account_id: "100050658403", machine_id: "np-actual-machine", region: "ap-beijing", cluster_id: "cls-example",
+        days_with_facts: 2, metrics: { cpu: { avg: 31.25, peak: 143.12 }, memory: { avg: null, peak: 27 } },
+      } : { reason: "ambiguous_machine" },
+    });
+  };
+  const overview = () => renderer.root.findAllByProps({ "aria-label": "Machine interval summary" });
+  try {
+    await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
+    assert.equal(overview().length, 0);
+    await act(async () => field(renderer, "Machine ID").props.onChange({ target: { value: "np-actual-machine" } }));
+    assert.match(JSON.stringify(renderer.toJSON()), /More than one physical machine matches/);
+    assert.equal(overview().length, 0);
+    assert.equal(renderer.root.findAllByProps({ "aria-label": "Machine utilization" }).length, 1);
+
+    await act(async () => field(renderer, "Cluster ID").props.onChange({ target: { value: "cls-example" } }));
+    const summaryText = () => overview()[0].findAllByType("p").map((node) => node.children.join("")).join(" | ");
+    const summary = summaryText();
+    assert.match(summary, /np-actual-machine.*ap-beijing.*cls-example/);
+    assert.match(summary, /2026-11-16.*2026-11-24.*Days with facts: 2/);
+    assert.match(summary, /CPU weighted mean 31\.25% · Peak 143\.12%/);
+    assert.match(summary, /Memory weighted mean N\/A · Peak 27\.00%/);
+    assert.equal(renderer.root.findAllByProps({ "aria-label": "Machine utilization" }).length, 1);
+
+    const next = renderer.root.findAllByType("button").find((node) => node.children[0] === "Next");
+    await act(async () => next.props.onClick());
+    assert.equal(summaryText(), summary);
+    assert.ok(renderer.root.findAllByType("span").some((node) => node.children.join("") === "Page 2"));
+    assert.match(JSON.stringify(renderer.toJSON()), /No machine facts on this page/);
+    assert.equal(renderer.root.findAllByProps({ "aria-label": "Workload utilization" }).length, 1);
   } finally {
     await act(async () => renderer?.unmount());
     globalThis.fetch = originalFetch;

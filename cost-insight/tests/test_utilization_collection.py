@@ -297,6 +297,34 @@ def test_historical_billing_not_live_inventory_and_service_fee_not_additive(prof
     assert all(r["Limit"] == 100 and r["NeedRecordNum"] == 1 for r in requests)
 
 
+@pytest.mark.parametrize("product,prefix", [("p_cvm", "ins"), ("p_011691", "np")])
+@pytest.mark.parametrize("actual,cached_total", [(1, 0), (100, 100), (101, 100)])
+def test_billing_requires_short_page_even_after_cached_total(
+    profile, product, prefix, actual, cached_total
+):
+    machine_ids = [f"{prefix}-{i}" for i in range(actual)]
+    resource_prefix = "" if product == "p_cvm" else "cls-9zpon9y1_"
+    rows = [{**bill(product), "ResourceId": resource_prefix + name} for name in machine_ids]
+    offsets = []
+
+    def call(service, action, region, params):
+        if service != "billing":
+            return api_call(service, action, region, params)
+        if params["BusinessCode"] != product:
+            return {"DetailSet": [], "Total": 0}
+        offset = params["Offset"]
+        offsets.append(offset)
+        assert params["NeedRecordNum"] == int(offset == 0)
+        page = {"DetailSet": rows[offset : offset + params["Limit"]]}
+        if offset == 0:
+            page["Total"] = cached_total
+        return page
+
+    snapshots = reader(profile, call).billing_candidates(DAY)
+    assert {s["machine_id"] for s in snapshots} == set(machine_ids)
+    assert offsets == list(range(0, actual + 1, 100))
+
+
 def test_billing_complete_context_pagination_usage_filter_and_capacity_cache(profile):
     calls = []
 
@@ -309,13 +337,15 @@ def test_billing_complete_context_pagination_usage_filter_and_capacity_cache(pro
         if params["Offset"] == 0:
             outside = bill()
             outside.update(FeeBeginTime="2026-11-19 12:00:00", FeeEndTime="2026-11-19 13:00:00")
-            return {"DetailSet": [outside], "Total": 2, "Context": "opaque-context"}
-        assert params["Offset"] == 1 and params["Context"] == "opaque-context"
-        return {"DetailSet": [bill()], "Total": 2}
+            return {"DetailSet": [outside] * 99 + [bill()], "Total": 101, "Context": "opaque-context"}
+        assert params["Offset"] == 100 and params["Context"] == "opaque-context"
+        return {"DetailSet": [{**bill(), "ResourceId": "ins-two"}]}
 
-    source = reader(profile, call)
-    assert len(source.billing_candidates(DAY)) == 1
+    mock = Mock(side_effect=call)
+    snapshots = reader(profile, mock).billing_candidates(DAY)
+    assert {s["machine_id"] for s in snapshots} == {"ins-one", "ins-two"}
     assert len(calls) == 3
+    assert [c.args[1] for c in mock.call_args_list].count("DescribeInstanceTypeConfigs") == 1
 
 
 @pytest.mark.parametrize(
@@ -350,10 +380,11 @@ def test_bad_native_billing_fails_closed(profile, mutate, match):
     "page",
     [
         {"DetailSet": [], "Total": 1},
+        {"DetailSet": [bill()], "Total": 2},
         {"DetailSet": [], "Total": tencent.BILLING_ROW_LIMIT + 1},
         {"DetailSet": [], "Total": True},
         {"DetailSet": []},
-        {"DetailSet": [bill()], "Total": 0},
+        {"DetailSet": None, "Total": 0},
     ],
 )
 def test_incomplete_over_budget_billing_never_returns_partial(profile, page):
@@ -364,6 +395,30 @@ def test_incomplete_over_budget_billing_never_returns_partial(profile, page):
 
     with pytest.raises(ValueError):
         reader(profile, call).billing_candidates(DAY)
+
+
+@pytest.mark.parametrize("scenario", ["repeated", "budget", "premature_eof"])
+def test_billing_full_page_does_not_prove_completion(profile, monkeypatch, scenario):
+    # CVM succeeds first, but the TKE-native scan must not yield partial results.
+    rows = [{**bill("p_011691"), "ResourceId": f"cls-9zpon9y1_np-{i}"} for i in range(100)]
+    offsets = []
+    if scenario == "budget":
+        monkeypatch.setattr(tencent, "BILLING_ROW_LIMIT", 100)
+
+    def call(service, action, region, params):
+        if service != "billing" or params["BusinessCode"] != "p_011691":
+            return api_call(service, action, region, params)
+        offset = params["Offset"]
+        offsets.append(offset)
+        if offset == 0:
+            return {"DetailSet": rows, "Total": 101 if scenario == "premature_eof" else 100}
+        assert offset == 100
+        return {"DetailSet": rows if scenario == "repeated" else []}
+
+    match = {"repeated": "Repeated", "budget": "over budget", "premature_eof": "incomplete"}
+    with pytest.raises(ValueError, match=match[scenario]):
+        reader(profile, call).billing_candidates(DAY)
+    assert offsets == ([0] if scenario == "budget" else [0, 100])
 
 
 def test_billing_scan_has_headroom_above_ten_thousand_and_reads_the_tail(profile):
@@ -675,7 +730,39 @@ def test_cvm_values_only_allowed_after_explicit_semantics_verification(profile):
     assert len(reader(profile, call).window(START, END, [target()])) == 2
 
 
-def test_account_metadata_readonly_actions_and_contract_cache(profile):
+@pytest.mark.parametrize("kind,namespace", [("cvm", "QCE/CVM"), ("tke_native", "QCE/TKE2")])
+def test_machine_contract_cache_does_not_require_or_validate_pod_metadata(profile, kind, namespace):
+    metadata_calls = []
+    pod_available = False
+    pod_point_calls = []
+
+    def call(service, action, region, params):
+        response = api_call(service, action, region, params)
+        if action == "DescribeBaseMetrics":
+            metadata_calls.append(params["Namespace"])
+            if not pod_available:
+                response["MetricSet"] = [
+                    m for m in response["MetricSet"] if m["MetricName"] != "K8sPodMemWorkingSetBytes"
+                ]
+        if action == "DescribeStatisticData" and params["MetricNames"][0].startswith("K8sPod"):
+            pod_point_calls.append(action)
+        return response
+
+    source = reader(profile, call)
+    assert len(source.window(START, END, [target(kind)])) == 2
+    assert len(source.window(START, END, [target(kind)])) == 2
+    assert metadata_calls == [namespace]
+    with pytest.raises(ValueError, match="contract differs"):
+        source.window(START, END, [target("pod")])
+    assert not pod_point_calls
+
+    pod_available = True
+    assert len(source.window(START, END, [target("pod")])) == 2
+    assert len(source.window(START, END, [target("pod")])) == 2
+    assert metadata_calls == [namespace, "QCE/TKE2", "QCE/TKE2"]
+
+
+def test_account_and_readonly_actions(profile):
     source = reader(profile, lambda *args: {"AccountId": "other"})
     with pytest.raises(ValueError, match="Credential account"):
         source.verify_account()
@@ -689,16 +776,26 @@ def test_account_metadata_readonly_actions_and_contract_cache(profile):
             source.call(service, action, "ap-beijing")
     with pytest.raises(ValueError, match="region"):
         source.call("sts", "GetCallerIdentity", "ap-unknown")
-    call = Mock(side_effect=api_call)
-    source = reader(profile, call)
-    source.verify_contracts()
-    source.verify_contracts()
-    assert call.call_count == 2
-    for mutate in (lambda m: m.update(Unit="Bytes"), lambda m: m.update(Periods=[])):
-        metadata = metric_metadata("QCE/CVM")
-        mutate(metadata["MetricSet"][0])
-        with pytest.raises(ValueError, match="contract differs"):
-            reader(profile, lambda *args, metadata=metadata: metadata).verify_contracts()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"Unit": "Bytes"},
+        {"Periods": [{"Period": "300", "StatType": ["avg"]}]},
+        {"Periods": [{"Period": "60", "StatType": ["max"]}]},
+    ],
+)
+def test_target_metric_contract_mismatch_rejected_before_point_reads(profile, overrides):
+    def call(service, action, region, params):
+        assert action not in {"GetMonitorData", "DescribeStatisticData"}
+        response = api_call(service, action, region, params)
+        if action == "DescribeBaseMetrics":
+            response["MetricSet"][0].update(overrides)
+        return response
+
+    with pytest.raises(ValueError, match="contract differs"):
+        reader(profile, call).window(START, END, [target()])
 
 
 def test_retry_attempt_qps_and_response_budgets(profile, monkeypatch):

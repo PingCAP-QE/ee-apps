@@ -12,6 +12,7 @@ import os
 import re
 import threading
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, DecimalException
 from typing import Any
@@ -25,6 +26,7 @@ from ci_dashboard.jobs.sync_pods import (
     PodMetadataSnapshot,
     _coerce_str_mapping,
     _extract_normalized_build_url_from_metadata,
+    _parse_datetime,
 )
 
 SOURCE = "tencent:ap-beijing:cls-9zpon9y1"
@@ -47,6 +49,7 @@ def label_keys(keys):
 CONTEXT_TTL = timedelta(hours=24)
 STALE_AFTER = timedelta(minutes=15)
 NODE_SELECTOR_MAX_NODES = 10000
+NODE_SELECTOR_REFRESH_SECONDS = 60
 POD_FIELDS = (
     "account_id", "cluster_id", "namespace", "pod_uid", "pod_name", "node_query_kind",
     "node_query_value", "cpu_request_cores", "memory_request_bytes", "labels_json",
@@ -63,7 +66,7 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def quantity(value: Any) -> float:
+def quantity(value: Any) -> Decimal:
     """Kubernetes Quantity decimal/binary SI, normalized to cores or bytes."""
     match = re.fullmatch(r"([+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)([numkKMGTEP]|[KMGTPE]i)?", str(value))
     if not match:
@@ -75,10 +78,10 @@ def quantity(value: Any) -> float:
     else:
         scale = scales.get(suffix, Decimal(1000) ** ("kMGTPE".find(suffix.replace("K", "k")) + 1) if suffix else Decimal(1))
     try:
-        result = float(Decimal(match[1]) * scale)
+        result = Decimal(match[1]) * scale
     except (DecimalException, OverflowError) as exc:
         raise ValueError("invalid Kubernetes resource quantity") from exc
-    if not 0 <= result < float("inf"):
+    if not math.isfinite(result):
         raise ValueError("non-finite resource quantity")
     return result
 
@@ -104,7 +107,7 @@ def effective_resources(spec: dict[str, Any]) -> dict[str, float]:
             return quantity(raw)
 
         app = sum(amount(container) for container in containers)
-        sidecars = peak = 0.0
+        sidecars = peak = Decimal(0)
         for container in spec.get("initContainers") or []:
             current = amount(container)
             if container.get("restartPolicy") == "Always":
@@ -138,54 +141,89 @@ def _ip(value: str) -> str:
         return ""
 
 
-def normalize_node(node: dict[str, Any]) -> dict[str, str] | None:
-    """Resolve only reviewed monitor selectors, not Node inventory observations."""
-    name = (node.get("metadata") or {}).get("name")
-    if not isinstance(name, str) or not name or len(name) > 255:
+@dataclass(frozen=True)
+class _NodeIdentity:
+    uid: str
+    created: datetime
+    instance_id: str
+
+
+def normalize_node(node: dict[str, Any]) -> tuple[str, _NodeIdentity] | None:
+    """A reusable nodeName or IP alone cannot identify a historical instance."""
+    meta = node.get("metadata") or {}
+    name, uid = meta.get("name"), meta.get("uid")
+    if (not isinstance(name, str) or not 0 < len(name) <= 255 or not isinstance(uid, str)
+            or not uid or meta.get("deletionTimestamp")):
         return None
-    provider = (node.get("spec") or {}).get("providerID") or ""
+    created = _parse_datetime(meta.get("creationTimestamp"))
+    provider = (node.get("spec") or {}).get("providerID")
+    if created is None or not isinstance(provider, str):
+        return None
     match = re.fullmatch(r"(?:qcloud:///ap-beijing/)?((?:ins|np)-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)*)", provider)
-    kind, value = ("un_instance_id", match[1]) if match else (("node", _ip(name)) if _ip(name) else ("", ""))
-    return {"name": name, "node_query_kind": kind, "node_query_value": value}
+    return (name, _NodeIdentity(uid, created, match[1])) if match else None
 
 
 class NodeSelectorCache:
-    """One bounded, thread-safe cache shared by namespace WATCH workers."""
-    def __init__(self, *, max_nodes=NODE_SELECTOR_MAX_NODES, ttl_seconds=2100):
+    """One bounded, thread-safe LIST snapshot shared by namespace WATCH workers."""
+    def __init__(self, *, max_nodes=NODE_SELECTOR_MAX_NODES, ttl_seconds=2 * NODE_SELECTOR_REFRESH_SECONDS):
         self.max_nodes = max_nodes
         self.ttl_seconds = ttl_seconds
         self._lock = threading.Lock()
-        self._selectors: dict[str, tuple[str, str]] = {}
-        self._refreshed = float("-inf")
+        self._selectors: dict[str, _NodeIdentity] = {}
+        self._listed_at = float("-inf")
 
-    def refresh(self, nodes: list[dict]) -> None:
+    def refresh(self, nodes: list[dict], *, listed_at: float) -> None:
         if len(nodes) > self.max_nodes:
             self.clear()
             raise ValueError("Node selector cache exceeds bound")
-        selectors = {}
-        for node in nodes:
-            record = normalize_node(node)
-            if record is not None and record["node_query_value"]:
-                selectors[record["name"]] = (record["node_query_kind"], record["node_query_value"])
+        selectors = dict(record for node in nodes if (record := normalize_node(node)) is not None)
         with self._lock:
+            if time.monotonic() - self._listed_at <= self.ttl_seconds:
+                for name, node in selectors.items():
+                    previous = self._selectors.get(name)
+                    if previous == node:
+                        # Object identity is a continuity token. A missing row,
+                        # clear, expiry or changed mapping ends that chain.
+                        selectors[name] = previous
             self._selectors = selectors
-            self._refreshed = time.monotonic()
+            self._listed_at = listed_at
 
     def clear(self) -> None:
         with self._lock:
             self._selectors = {}
-            self._refreshed = float("-inf")
+            self._listed_at = float("-inf")
 
-    def resolve(self, name: str) -> tuple[str, str]:
+    def snapshot(self) -> tuple[float, dict[str, _NodeIdentity]]:
+        # The published dict is only replaced, never mutated.
         with self._lock:
-            if time.monotonic() - self._refreshed <= self.ttl_seconds and name in self._selectors:
-                return self._selectors[name]
-        address = _ip(name)
-        return ("node", address) if address else ("", "")
+            if time.monotonic() - self._listed_at <= self.ttl_seconds:
+                return self._listed_at, self._selectors
+        return float("-inf"), {}
+
+
+@dataclass(frozen=True)
+class PodNodeRef:
+    name: str
+    assigned_at: datetime
+    seen_at: float
+
+
+def pod_node_ref(pod: dict[str, Any], seen_at: float) -> PodNodeRef | None:
+    name = (pod.get("spec") or {}).get("nodeName")
+    created = _parse_datetime((pod.get("metadata") or {}).get("creationTimestamp"))
+    if not isinstance(name, str) or not name or created is None:
+        return None
+    for condition in (pod.get("status") or {}).get("conditions") or ():
+        if (isinstance(condition, dict) and condition.get("type") == "PodScheduled"
+                and condition.get("status") == "True"):
+            assigned = _parse_datetime(condition.get("lastTransitionTime"))
+            if assigned is not None and assigned >= created:
+                return PodNodeRef(name, assigned, seen_at)
+    # Without scheduling evidence, require the Node to predate Pod creation.
+    return PodNodeRef(name, created, seen_at)
 
 
 def normalize_pod(pod: dict[str, Any], *, linkage: dict[str, Any] | None = None,
-                  node_cache: NodeSelectorCache | None = None,
                   selected_labels: set[str] | frozenset[str] = LABELS) -> dict[str, Any] | None:
     meta = pod.get("metadata") or {}
     if not all(isinstance(meta.get(key), str) and meta[key] for key in ("uid", "namespace", "name")):
@@ -205,15 +243,11 @@ def normalize_pod(pod: dict[str, Any], *, linkage: dict[str, Any] | None = None,
         cloud_phase="TENCENT",
     )
     job = stable_job(build_url)
-    # An unverified Jenkins URL must not introduce per-build/PR identifiers.
+    # Raw job labels may be run identifiers. Do not guess stable job names.
     labels.pop("job", None)
     if job and "job" in selected:
         labels["job"] = job
-    elif "job" in selected and raw_labels.get("job") and not re.search(r"(?:^|[/_-])(?:PR[-_]?\d+|\d+)(?:$|[/_-])", raw_labels["job"], re.I):
-        labels["job"] = raw_labels["job"]
     spec = pod.get("spec") or {}
-    name = spec.get("nodeName") or ""
-    kind, value = node_cache.resolve(name) if node_cache else (("node", _ip(name)) if _ip(name) else ("", ""))
     requests = {"cpu_request_cores": None, "memory_request_bytes": None}
     try:
         status = pod.get("status") or {}
@@ -226,8 +260,8 @@ def normalize_pod(pod: dict[str, Any], *, linkage: dict[str, Any] | None = None,
     except (ValueError, TypeError, AttributeError, OverflowError):
         pass
     return {"account_id": ACCOUNT, "cluster_id": CLUSTER, "namespace": meta["namespace"],
-            "pod_uid": meta["uid"], "pod_name": meta["name"], "node_query_kind": kind,
-            "node_query_value": value, **requests, "labels_json": labels}
+            "pod_uid": meta["uid"], "pod_name": meta["name"], "node_query_kind": "",
+            "node_query_value": "", **requests, "labels_json": labels}
 
 
 def context_key(record: dict, start: datetime) -> str:
@@ -237,15 +271,16 @@ def context_key(record: dict, start: datetime) -> str:
 
 class MetadataExporter:
     """Finite confirmed intervals; reconnects never bridge missing evidence."""
-    def __init__(self, engine: Engine):
+    def __init__(self, engine: Engine, *, node_cache: NodeSelectorCache | None = None):
         configured = os.getenv("CI_DASHBOARD_UTILIZATION_LABEL_KEYS")
         self.selected_labels = label_keys(configured.split(",") if configured is not None else sorted(LABELS))
         self.engine = engine
-        self.live: dict[str, dict[str, Any]] = {}
+        self.node_cache = node_cache
+        self.live: dict[str, tuple[dict[str, Any], PodNodeRef | None, _NodeIdentity | None]] = {}
         self.last_heartbeat: datetime | None = None
 
     def reset(self) -> None:
-        previous = list(self.live.values())
+        previous = [row for row, _, _ in self.live.values()]
         self.live.clear()
         self.last_heartbeat = None
         # Best effort only: failed exports leave finite evidence for maintenance's
@@ -266,43 +301,62 @@ class MetadataExporter:
             clock = database_now(self.engine, now=now)  # BEFORE constructing any identities.
             if abs((_datetime(at) if at is not None else utc_now()) - clock) > timedelta(seconds=60):
                 raise ValueError("utilization observation clock skew exceeds 60s")
-            current = {uid: dict(row) for uid, row in self.live.items()}
+            current = dict(self.live)
             updates = {}
-            for uid, row in list(current.items()):
+            for uid, (row, _, _) in self.live.items():
                 if clock < row["observed_until"]:
                     raise ValueError("utilization database clock moved backwards")
                 if clock - row["observed_until"] >= STALE_AFTER:
                     updates[row["context_key"]] = self._closed(row)
                     del current[uid]
-            incoming = {row["pod_uid"] for row in records}
+            incoming = {row["pod_uid"]: row for row in records}
             confirm = heartbeat and (self.last_heartbeat is None or clock - self.last_heartbeat >= timedelta(seconds=60))
-            if confirm:
-                for uid, row in current.items():
-                    if uid not in incoming:
-                        row.update(observed_until=clock, expires_at=clock + CONTEXT_TTL)
-                        updates[row["context_key"]] = dict(row)
-            for record in records:
-                uid = record["pod_uid"]
-                old = current.get(uid)
-                if deleted:
+            listed_at, nodes = self.node_cache.snapshot() if self.node_cache is not None else (float("-inf"), {})
+            for uid in (dict.fromkeys([*incoming, *current]) if confirm else incoming):
+                old, ref, pinned = current.get(uid, (None, None, None))
+                if deleted and uid in incoming:
                     if old is not None:
                         updates[old["context_key"]] = self._closed(old)
                         del current[uid]
                     continue  # Never-observed-live terminal snapshots prove no interval.
-                if old and all(old[field] == record[field] for field in POD_FIELDS):
-                    old.update(observed_until=clock, expires_at=clock + CONTEXT_TTL)
-                    row = old
+                if uid in incoming:
+                    observed_ref = incoming[uid].get("_node_ref")
+                    if (ref is None or observed_ref is None
+                            or (ref.name, ref.assigned_at) != (observed_ref.name, observed_ref.assigned_at)):
+                        ref = observed_ref
+                source = incoming.get(uid, old)
+                record = {field: source[field] for field in POD_FIELDS}
+                candidate = nodes.get(ref.name) if ref is not None else None
+                bound = old is not None and bool(old["node_query_value"])
+                # A Pod object names a Node, not a Node UID. Use only a most-recent
+                # LIST begun after that Pod evidence, and reject Nodes created at
+                # or after scheduling: those could be replacements at the same name.
+                if (candidate is not None and candidate.created < ref.assigned_at
+                        and (pinned is candidate if bound else
+                             listed_at > ref.seen_at and (pinned is None or pinned == candidate))):
+                    pinned = candidate
+                    record.update(node_query_kind="un_instance_id", node_query_value=pinned.instance_id)
                 else:
+                    record.update(node_query_kind="", node_query_value="")
+                if old and all(old[field] == record[field] for field in POD_FIELDS):
+                    row = {**old, "observed_until": clock, "expires_at": clock + CONTEXT_TTL}
+                else:
+                    start = clock
                     if old:
-                        # Ordered WATCH transition: the new immutable version is
-                        # effective now, not at object creation or last LIST.
-                        old["observed_until"] = clock
-                        updates[old["context_key"]] = self._closed(old)
-                    row = {**record, "context_key": context_key(record, clock), "observed_from": clock,
-                           "observed_until": clock, "closed_at": None, "planned_until": clock,
+                        if clock == old["observed_from"]:
+                            continue  # No room for a distinct interval at the same DB timestamp.
+                        if bound and not record["node_query_value"]:
+                            # Pod liveness still covers this interval, but the old
+                            # selector must stop at its last supported confirmation.
+                            start = max(old["observed_until"], old["observed_from"] + timedelta(microseconds=1))
+                            updates[old["context_key"]] = self._closed(old)
+                        else:
+                            updates[old["context_key"]] = self._closed({**old, "observed_until": clock})
+                    row = {**record, "context_key": context_key(record, start), "observed_from": start,
+                           "observed_until": clock, "closed_at": None, "planned_until": start,
                            "expires_at": clock + CONTEXT_TTL}
-                    current[uid] = row
-                updates[row["context_key"]] = dict(row)
+                current[uid] = (row, ref, pinned)
+                updates[row["context_key"]] = row
             pending = list(updates.values())
             for offset in range(0, len(pending), 1000):
                 save_contexts(self.engine, pending[offset:offset + 1000], **({"now": now} if now is not None else {}))

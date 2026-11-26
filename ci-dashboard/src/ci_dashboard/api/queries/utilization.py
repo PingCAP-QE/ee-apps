@@ -9,7 +9,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import text
+from sqlalchemy import DateTime, bindparam, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -38,6 +38,10 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _machine_window_start(today: date) -> date:
+    return today - timedelta(days=364)
+
+
 def date_range(
     start: date | None, end: date | None, *, kind: str = "machine", now: datetime | None = None
 ) -> tuple[date, date]:
@@ -49,8 +53,8 @@ def date_range(
         start, end = monday - timedelta(days=7), today
     if start < date(1970, 1, 1) or start > end or end > today:
         raise ValueError("dates must be ordered, between 1970-01-01 and today in Asia/Shanghai")
-    if kind == "machine" and (end - start).days >= 365:
-        raise ValueError("machine range must be at most 365 days inclusive")
+    if kind == "machine" and start < _machine_window_start(today):
+        raise ValueError("machine dates must be within the last 365 Beijing days, including today")
     if kind == "workload" and start < monday - timedelta(days=7):
         raise ValueError("workloads retain only the current and previous Beijing week")
     return start, end
@@ -132,18 +136,60 @@ def _metrics(row, *, peaks: bool = False) -> dict:
     return result
 
 
+def _machine_interval_summary(rows, max_days: int) -> dict | None:
+    if not rows:
+        return None
+    keys = ("region", "cluster_id", "machine_id")
+    identity = {key: rows[0][key] for key in keys}
+    if len(rows) > max_days or any(
+        row[key] != identity[key] for row in rows for key in keys
+    ):
+        return {"reason": "ambiguous_machine"}
+    try:
+        daily = [_metrics(row, peaks=True) for row in rows]
+        metrics = {}
+        for metric in ("cpu", "memory"):
+            values = [day[metric] for day in daily]
+            matched = [value for value in values if value["used"] is not None and value["capacity"]]
+            capacity = math.fsum(value["capacity"] for value in matched)
+            avg = 100 * (math.fsum(value["used"] for value in matched) / capacity) if capacity else None
+            if avg is not None and not math.isfinite(avg):
+                raise ValueError("invalid interval mean")
+            metrics[metric] = {
+                "avg": avg,
+                "peak": max((value["peak"] for value in values if value["peak"] is not None), default=None),
+            }
+    except (ValueError, TypeError, OverflowError):
+        return {"reason": "invalid_data"}
+    return {**identity, "account_id": ACCOUNT_ID, "days_with_facts": len(rows), "metrics": metrics}
+
+
 STAT_COLUMNS = ",".join(f"{metric}_{field}" for metric in ("cpu", "memory") for field in STAT_FIELDS)
+
+# Account/date level on purpose: conservatively flag a filtered result without
+# joining potentially changing label JSON or maintaining another rollup.
+WORKLOAD_UNSETTLED = text("""
+    SELECT EXISTS (
+        SELECT 1 FROM utilization_task WHERE account_id=:account AND kind='pod'
+        AND status IN ('pending','running','retry')
+        AND window_start>=:range_start AND window_start<:range_end
+    ) OR EXISTS (
+        SELECT 1 FROM pod_utilization_context WHERE account_id=:account
+        AND planned_until<observed_until AND planned_until<:range_end AND observed_until>:range_start
+    )
+""").bindparams(bindparam("range_start", type_=DateTime), bindparam("range_end", type_=DateTime))
 
 
 def get_daily(
     engine: Engine | None, *, start_date: date | None = None, end_date: date | None = None,
     kind: str = "machine", machine_id: str | None = None, region: str | None = None,
-    resource_class: str | None = None, label_key: str | None = None,
+    cluster_id: str | None = None, resource_class: str | None = None, label_key: str | None = None,
     label_value: str | None = None, group_by: str | None = None,
     page: int = 1, page_size: int = 50, now: datetime | None = None,
 ) -> dict:
     if kind not in {"machine", "workload"} or not 1 <= page <= 1000 or not 1 <= page_size <= 100:
         raise ValueError("invalid kind or pagination (page 1..1000, page_size 1..100)")
+    now = now or utc_now()
     start, end = date_range(start_date, end_date, kind=kind, now=now)
     if label_key is not None and not _label_key(label_key):
         raise ValueError("unsupported business label key")
@@ -153,11 +199,13 @@ def get_daily(
         raise ValueError("label_key and label_value must be supplied together")
     if kind == "machine" and any(value is not None for value in (label_key, label_value, group_by)):
         raise ValueError("business labels apply only to workloads")
-    if kind == "workload" and any(value is not None for value in (machine_id, region, resource_class)):
+    machine_filters = {"machine_id": machine_id, "region": region, "cluster_id": cluster_id,
+                       "resource_class": resource_class}
+    if kind == "workload" and any(value is not None for value in machine_filters.values()):
         raise ValueError("machine filters apply only to machines")
     if resource_class is not None and resource_class not in {"cvm", "tke_native"}:
         raise ValueError("unsupported machine resource class")
-    if any(value is not None and len(value) > 512 for value in (machine_id, region, label_value)):
+    if any(value is not None and len(value) > 512 for value in (machine_id, region, cluster_id, label_value)):
         raise ValueError("filter exceeds 512 characters")
     if not is_enabled():
         return unavailable("disabled")
@@ -165,13 +213,12 @@ def get_daily(
         return unavailable("database_unavailable")
     params = {
         "account": ACCOUNT_ID, "start": start.isoformat(), "end": end.isoformat(),
-        "now": (now or utc_now()).astimezone(UTC).replace(tzinfo=None),
+        "now": now.astimezone(UTC).replace(tzinfo=None),
         "limit": page_size + 1 if kind == "machine" else WORKLOAD_ROW_LIMIT + 1,
         "offset": (page - 1) * page_size,
     }
     clauses = ["account_id=:account", "usage_date BETWEEN :start AND :end"]
-    for key, value in {"machine_id": machine_id, "region": region,
-                       "resource_class": resource_class}.items():
+    for key, value in machine_filters.items():
         if value is not None:
             clauses.append(f"{key}=:{key}")  # Column names are fixed, never user input.
             params[key] = value
@@ -192,6 +239,13 @@ def get_daily(
             "memory_peak,memory_peak_at"
         )
         table, order = "machine_utilization_daily", "usage_date DESC,region,cluster_id,machine_id"
+    select = text(
+        f"SELECT {columns} FROM {table} WHERE " + " AND ".join(clauses)
+        + f" ORDER BY {order} LIMIT :limit"
+        + (" OFFSET :offset" if kind == "machine" else "")
+    )
+    interval_rows, partial = None, False
+    max_days = (end - start).days + 1
     try:
         with engine.connect() as connection:
             state = _state(connection)
@@ -200,11 +254,25 @@ def get_daily(
             approved = state["scope"].get("labels") or []
             if any(key is not None and key not in approved for key in (label_key, group_by)):
                 raise ValueError("business label is not enabled in the collection scope")
-            rows = connection.execute(text(
-                f"SELECT {columns} FROM {table} WHERE " + " AND ".join(clauses)
-                + f" ORDER BY {order} LIMIT :limit"
-                + (" OFFSET :offset" if kind == "machine" else "")
-            ), params).mappings().all()
+            if kind == "workload":
+                # Check before reading facts: a concurrent settlement may leave a
+                # conservative warning, never hide one because it completed in between.
+                partial = bool(connection.execute(WORKLOAD_UNSETTLED, {
+                    "account": ACCOUNT_ID,
+                    "range_start": datetime.combine(start, datetime.min.time(), BEIJING).astimezone(UTC).replace(tzinfo=None),
+                    "range_end": datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING).astimezone(UTC).replace(tzinfo=None),
+                }).scalar_one())
+            if kind == "machine" and machine_id:
+                # A physical identity has at most one fact per day. Read one extra to detect
+                # overflow; reuse the same snapshot for day detail whenever a summary is possible.
+                interval_rows = connection.execute(
+                    select, {**params, "limit": max_days + 1, "offset": 0},
+                ).mappings().all()
+            if interval_rows is not None and len(interval_rows) <= max_days:
+                offset = params["offset"]
+                rows = interval_rows[offset:offset + params["limit"]]
+            else:
+                rows = connection.execute(select, params).mappings().all()
     except SQLAlchemyError as error:
         return _failure(error)
     if kind == "workload" and len(rows) > WORKLOAD_ROW_LIMIT:
@@ -260,8 +328,11 @@ def get_daily(
             has_more = len(ordered) > offset + page_size
     except (ValueError, TypeError, OverflowError):
         return unavailable("invalid_data")
+    interval_summary = _machine_interval_summary(interval_rows, max_days)
     return {
         **_base(), "available": True, "configured": True, "kind": kind,
+        **({"interval_summary": interval_summary} if interval_summary is not None else {}),
+        **({"partial": partial} if kind == "workload" else {}),
         "start_date": start.isoformat(), "end_date": end.isoformat(), "group_by": group_by,
         "page": page, "page_size": page_size, "has_more": has_more, "items": items,
         "cost": {"available": False, "reason": "precise_job_cost_not_supported"},
@@ -281,7 +352,7 @@ def get_status(engine: Engine | None, *, now: datetime | None = None) -> dict:
     now = (now or utc_now()).astimezone(UTC)
     start, end = date_range(None, None, now=now)
     params = {"account": ACCOUNT_ID, "now": now.replace(tzinfo=None),
-              "first": (end - timedelta(days=364)).isoformat(), "end": end.isoformat()}
+              "first": _machine_window_start(end).isoformat(), "end": end.isoformat()}
     try:
         with engine.connect() as connection:
             state = _state(connection)

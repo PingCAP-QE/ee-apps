@@ -527,7 +527,7 @@ def _run_pod_worker(
     exporter = None
     if utilization_metadata.enabled(context.source_project):
         try:
-            exporter = utilization_metadata.MetadataExporter(engine)
+            exporter = utilization_metadata.MetadataExporter(engine, node_cache=node_cache)
         except ValueError:
             logger.warning("invalid utilization label configuration; export disabled", exc_info=True)
 
@@ -555,12 +555,13 @@ def _run_pod_worker(
         nonlocal pending_count, pending_since, watch_continuous
         if exporter is None:
             return
+        seen_at = time.monotonic()
         by_uid = {obj.get("metadata", {}).get("uid"): obj for obj in objects}
         ended = []
         for row in rows:
             obj = by_uid.get(row.get("pod_uid"))
             record = (utilization_metadata.normalize_pod(
-                obj, linkage=row, node_cache=node_cache, selected_labels=exporter.selected_labels
+                obj, linkage=row, selected_labels=exporter.selected_labels
             ) if obj is not None else None)
             if record is not None:
                 terminal = (obj.get("status") or {}).get("phase") in {"Succeeded", "Failed"}
@@ -569,6 +570,7 @@ def _run_pod_worker(
                 else:
                     if pending_since is None:
                         pending_since = time.monotonic()
+                    record["_node_ref"] = utilization_metadata.pod_node_ref(obj, seen_at)
                     pending[record["pod_uid"]] = record
                     pending_count += 1
                     if (pending_count >= UTILIZATION_BATCH_RECORDS
@@ -720,12 +722,15 @@ def _export_utilization(exporter, records, *, deleted=False, heartbeat=False) ->
 def _run_utilization_node_worker(*, node_cache, client, stop_event) -> None:
     while not stop_event.is_set():
         try:
+            # A paginated, Most Recent LIST takes its snapshot at the first
+            # request, which must follow the Pod evidence for a new binding.
+            listed_at = time.monotonic()
             items, _ = client.list_nodes()
-            node_cache.refresh(items)  # Selectors only; no Node database observations.
+            node_cache.refresh(items, listed_at=listed_at)
         except Exception:
             node_cache.clear()
             logger.warning("utilization Node LIST unavailable; selector cache cleared", exc_info=True)
-        stop_event.wait(1800)
+        stop_event.wait(utilization_metadata.NODE_SELECTOR_REFRESH_SECONDS)
 
 
 def _run_event_worker(

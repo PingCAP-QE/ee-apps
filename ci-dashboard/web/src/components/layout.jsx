@@ -63,7 +63,7 @@ export function DashboardLayout({
           <NavItem
             to={UTILIZATION_PATH}
             label="Resource Utilization"
-            caption="Tencent repo / stable Job daily and account weekly summaries"
+            caption="Tencent machine history and workload labels"
           />
           <NavItem
             to="/cost"

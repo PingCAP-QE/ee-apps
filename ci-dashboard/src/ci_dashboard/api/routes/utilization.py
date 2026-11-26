@@ -40,6 +40,7 @@ def daily(
     kind: Literal["machine", "workload"] = "machine",
     machine_id: str | None = Query(None, max_length=512),
     region: str | None = Query(None, max_length=512),
+    cluster_id: str | None = Query(None, max_length=512),
     resource_class: Literal["cvm", "tke_native"] | None = None,
     label_key: str | None = Query(None, max_length=64),
     label_value: str | None = Query(None, max_length=512),
@@ -50,7 +51,7 @@ def daily(
 ) -> dict:
     return _call(
         request, queries.get_daily, engine, start_date=start_date, end_date=end_date,
-        kind=kind, machine_id=machine_id, region=region, resource_class=resource_class,
+        kind=kind, machine_id=machine_id, region=region, cluster_id=cluster_id, resource_class=resource_class,
         label_key=label_key, label_value=label_value, group_by=group_by,
         page=page, page_size=page_size,
     )

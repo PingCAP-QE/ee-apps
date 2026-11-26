@@ -196,7 +196,7 @@ class TencentReader:
         self._call_override = call
         self._sleep = sleep
         self._clients = {}
-        self._contracts_verified = False
+        self._verified_contract_kinds = set()
         self._account_verified = False
         self._lock = threading.Lock()
         self._last_attempt = None
@@ -287,10 +287,13 @@ class TencentReader:
                 raise ValueError("Credential account does not match configured CICD account")
             self._account_verified = True
 
-    def verify_contracts(self):
-        if self._contracts_verified:
-            return
-        for namespace in ("QCE/CVM", "QCE/TKE2"):
+    def _verify_contracts(self, kinds):
+        by_namespace = {}
+        for kind in sorted(kinds - self._verified_contract_kinds):
+            for entry in self.profile["contracts"][kind].values():
+                contract = entry["contract"]
+                by_namespace.setdefault(contract["namespace"], {})[contract["metric"]] = contract
+        for namespace, contracts in by_namespace.items():
             response = self.call(
                 "monitor",
                 "DescribeBaseMetrics",
@@ -299,24 +302,25 @@ class TencentReader:
             )
             metadata = {}
             for item in response.get("MetricSet", []):
-                name = item["MetricName"]
+                name = item.get("MetricName")
+                if name not in contracts:
+                    continue
                 if name in metadata:
                     raise ValueError("Duplicate metric metadata")
                 metadata[name] = item
-            for entries in self.profile["contracts"].values():
-                for entry in entries.values():
-                    contract = entry["contract"]
-                    if contract["namespace"] != namespace:
-                        continue
-                    metric = metadata.get(contract["metric"], {})
-                    if str(metric.get("Unit")) != contract["unit"] or not any(
-                        str(p.get("Period")) == "60" and "avg" in p.get("StatType", [])
-                        for p in metric.get("Periods", [])
-                    ):
-                        raise ValueError(
-                            "Live metric unit/statistic contract differs from pinned semantics"
-                        )
-        self._contracts_verified = True
+            for name, contract in contracts.items():
+                metric = metadata.get(name, {})
+                if str(metric.get("Unit")) != contract["unit"] or not any(
+                    str(p.get("Period")) == str(contract["period"])
+                    and contract["source_stat"] in p.get("StatType", [])
+                    for p in metric.get("Periods", [])
+                ):
+                    raise ValueError(
+                        "Live metric unit/statistic contract differs from pinned semantics"
+                    )
+        # QCE/TKE2 includes both native-machine and Pod metrics; verifying one
+        # kind does not verify another, even if they used the same namespace.
+        self._verified_contract_kinds.update(kinds)
 
     def billing_candidates(self, day: date) -> list[dict]:
         """Return snapshots only after BOTH bounded product scans complete.
@@ -330,8 +334,9 @@ class TencentReader:
         begin = datetime.combine(day, datetime.min.time(), BEIJING).astimezone(UTC)
         end = begin + timedelta(days=1)
         snapshots = []
+        page_size = 100
         for product in ("p_cvm", "p_011691"):
-            offset, total, context = 0, None, None
+            offset, expected_total, context = 0, 0, None
             pages_seen = set()
             while True:
                 params = {
@@ -339,8 +344,8 @@ class TencentReader:
                     "EndTime": f"{day.isoformat()} 23:59:59",
                     "BusinessCode": product,
                     "Offset": offset,
-                    "Limit": 100,
-                    "NeedRecordNum": 1,
+                    "Limit": page_size,
+                    "NeedRecordNum": int(offset == 0),
                 }
                 if context:
                     params["Context"] = context
@@ -350,19 +355,18 @@ class TencentReader:
                     self.profile["cluster_region"],
                     **params,
                 )
-                rows, count = page.get("DetailSet"), page.get("Total")
+                rows = page.get("DetailSet")
                 if (
                     not isinstance(rows, list)
-                    or len(rows) > 100
-                    or isinstance(count, bool)
-                    or not isinstance(count, int)
-                    or count < 0
-                    or count > BILLING_ROW_LIMIT
+                    or len(rows) > page_size
+                    or offset + len(rows) > BILLING_ROW_LIMIT
                 ):
                     raise ValueError("Incomplete or over-budget billing pagination")
-                if total is not None and count != total:
-                    raise ValueError("Billing total changed during complete scan")
-                total = count
+                if offset == 0:
+                    count = page.get("Total")
+                    if type(count) is not int or not 0 <= count <= BILLING_ROW_LIMIT:
+                        raise ValueError("Invalid or over-budget billing total")
+                    expected_total = count
                 page_hash = _hash(rows)
                 if rows and page_hash in pages_seen:
                     raise ValueError("Repeated billing page; complete scan cannot be established")
@@ -389,11 +393,16 @@ class TencentReader:
                                 }
                             )
                 offset += len(rows)
-                if offset > total:
-                    raise ValueError("Billing page exceeds declared total")
-                if offset == total:
+                # Like the billing importer, only a short page proves EOF: Total
+                # may be cached below the actual row count. A shortfall relative
+                # to the first count is still evidence of possible truncation.
+                if len(rows) < page_size:
+                    if offset < expected_total:
+                        raise ValueError(
+                            "Billing pagination incomplete: shortfall against reported total"
+                        )
                     break
-                if not rows or offset >= BILLING_ROW_LIMIT:
+                if offset >= BILLING_ROW_LIMIT:
                     raise ValueError("Billing pagination incomplete or over budget")
                 context = page.get("Context")
                 if context is not None and (not isinstance(context, str) or len(context) > 65536):
@@ -639,7 +648,7 @@ class TencentReader:
         if not checked:
             return []
         self.verify_account()
-        self.verify_contracts()
+        self._verify_contracts({kind for _, kind, _ in checked})
         points = {}
         groups = {}
         for target, kind, entity in checked:
