@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import logging
 import random
+import socket
 import time
+from collections import deque
+from contextlib import ExitStack
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, URL
@@ -55,6 +58,60 @@ def _build_engine_kwargs(database: DatabaseSettings) -> dict[str, object]:
     }
 
 
+def _connect_api_tcp(dialect, args, params, addresses, deadline):
+    """Share one TCP budget across DNS answers; PyMySQL still owns TLS and authentication."""
+    conn = dialect.connect(*args, **params, defer_connect=True)
+    if conn.unix_socket:  # Can also come from a MySQL option file.
+        conn.connect()
+        return conn
+
+    try:
+        if not addresses:
+            addresses.extend(dict.fromkeys(socket.getaddrinfo(conn.host, conn.port, type=socket.SOCK_STREAM)))
+        if not addresses:
+            raise OSError("no TCP addresses returned")
+        for left in range(len(addresses), 0, -1):
+            family, kind, proto, _, peer = addresses[0]
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("TCP connection budget exhausted")
+            try:
+                with ExitStack() as cleanup:
+                    sock = socket.socket(family, kind, proto)
+                    cleanup.callback(sock.close)
+                    sock.settimeout(remaining / left)
+                    if conn.bind_address is not None:
+                        sock.bind((conn.bind_address, 0))
+                    sock.connect(peer)
+                    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+                    cleanup.pop_all()  # Transfer ownership to the driver below.
+            except OSError:
+                addresses.rotate(-1)
+                if left == 1:
+                    raise
+            else:
+                # Retry a failed greeting on the next untried peer, or on this
+                # reachable peer rather than leading with a known dial failure.
+                if left > 1:
+                    addresses.rotate(-1)
+                break
+    except OSError as exc:
+        raise dialect.loaded_dbapi.OperationalError(2003, f"Cannot connect to MySQL ({exc})") from exc
+
+    # Do not put a numeric address in conn.host: TLS SNI / identity verification
+    # must use the configured hostname. Once passed in, PyMySQL owns the socket.
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        sock.close()
+        raise dialect.loaded_dbapi.OperationalError(2003, "MySQL connection timed out before greeting")
+    conn._read_timeout = min(params["read_timeout"], remaining)
+    conn._write_timeout = min(params["write_timeout"], remaining)
+    conn.host_info = f"socket {conn.host}:{conn.port}"
+    conn.connect(sock=sock)
+    return conn
+
+
 def _install_connection_retry(engine: Engine, *, retry_connect_timeout: bool = False) -> None:
     """Retry transport failures only before handing a new PyMySQL connection to SQLAlchemy.
 
@@ -70,8 +127,10 @@ def _install_connection_retry(engine: Engine, *, retry_connect_timeout: bool = F
         if not all(name in params for name in ("connect_timeout", "read_timeout", "write_timeout")):
             raise ValueError("Connection retry requires explicit connect/read/write timeouts")
         deadline = time.monotonic() + params["connect_timeout"]
+        addresses = deque()  # Per fresh connection, never a process-wide DNS cache.
         for attempt in range(2):
-            remaining = max(0.001, deadline - time.monotonic())
+            now = time.monotonic()
+            remaining = max(0.001, deadline - now)
             if retry_connect_timeout and attempt == 0 and remaining >= (
                 2 * (MIN_CONNECT_RETRY_BUDGET_SECONDS + CONNECT_RETRY_JITTER_SECONDS[1])
             ):
@@ -81,7 +140,10 @@ def _install_connection_retry(engine: Engine, *, retry_connect_timeout: bool = F
             for name in ("connect_timeout", "read_timeout", "write_timeout"):
                 connect_params[name] = min(params[name], remaining)
             try:
-                connection = dialect.connect(*args, **connect_params)
+                if retry_connect_timeout:
+                    connection = _connect_api_tcp(dialect, args, connect_params, addresses, now + remaining)
+                else:
+                    connection = dialect.connect(*args, **connect_params)
                 if not all(hasattr(connection, name) for name in ("_read_timeout", "_write_timeout")):
                     connection.close()
                     raise RuntimeError("Unsupported PyMySQL connection timeout interface")
