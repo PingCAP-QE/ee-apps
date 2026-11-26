@@ -152,18 +152,25 @@ func (s *tidbcloudsrvc) buildKernelImageSyncRequest(ctx context.Context, images 
 		reqImages = append(reqImages, source.req)
 	}
 
-	applicant, releaseID, changeID := s.resolveKernelImageApplicant(ctx, repo, firstSourceTag)
+	md := s.resolveKernelImageTagMetadata(ctx, repo, firstSourceTag)
 
-	return &OpsKernelImageSyncRequest{
-		SourceApplicant: applicant,
-		SourceReleaseID: releaseID,
-		SourceChangeID:  changeID,
-		Repo:            repo,
-		Branch:          branch,
-		CommitSHA:       commitSHA,
-		GitTag:          gitTag,
-		Images:          reqImages,
-	}, nil
+	req := &OpsKernelImageSyncRequest{
+		Repo:      repo,
+		Branch:    branch,
+		CommitSHA: commitSHA,
+		GitTag:    gitTag,
+		Images:    reqImages,
+	}
+	if md != nil {
+		// Every ops id is optional and independent; whatever the tag carries is
+		// forwarded as-is, and an id the tag never had stays omitted.
+		req.SourceApplicant = md.Author
+		req.SourceReleaseID = md.ReleaseID
+		req.SourceChangeID = md.ChangeID
+		req.SourceStepKey = md.StepKey
+		req.SourceExecutionID = md.ExecutionID
+	}
+	return req, nil
 }
 
 // isNextgenReleaseBuild reports whether the payload carries at least one image
@@ -242,25 +249,22 @@ func repositoryAllowed(patterns []string, repository string) bool {
 	return false
 }
 
-// resolveKernelImageApplicant resolves the applicant and ops request ids from
-// the tag metadata. Only real tidbx git tags carry this metadata; daily builds
-// have no tag to query, so the lookup is skipped and the fields stay empty.
-func (s *tidbcloudsrvc) resolveKernelImageApplicant(ctx context.Context, repo, sourceTag string) (applicant, releaseID, changeID string) {
+// resolveKernelImageTagMetadata resolves the author and the optional ops ids
+// from the tag metadata. Only real tidbx git tags carry this metadata; daily
+// builds have no tag to query, so the lookup is skipped.
+func (s *tidbcloudsrvc) resolveKernelImageTagMetadata(ctx context.Context, repo, sourceTag string) *TagMetadata {
 	if !isSupportedKernelImageTag(sourceTag) {
 		s.logger.Info().Str("repo", repo).Str("tag", sourceTag).
 			Msg("skip tibuild tag metadata query: source tag is not a supported tidbx git tag")
-		return "", "", ""
+		return nil
 	}
 	md, err := s.getTiBuildTagMetadata(ctx, repo, sourceTag)
 	if err != nil {
 		s.logger.Warn().Err(err).Str("repo", repo).Str("tag", sourceTag).
 			Msg("failed to get tibuild tag metadata for kernel image")
-		return "", "", ""
+		return nil
 	}
-	if md == nil {
-		return "", "", ""
-	}
-	return md.Author, md.ReleaseID, md.ChangeID
+	return md
 }
 
 // readKernelImageMeta reads repo, commit SHA and git ref from the labels:

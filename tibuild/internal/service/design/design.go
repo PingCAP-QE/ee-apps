@@ -602,6 +602,7 @@ var HotfixTagResult = Type("HotfixTagResult", func() {
 
 var TiDBxBumpTagMeta = Type("TiDBxBumpTagMeta", func() {
 	Attribute("ops_req", func() {
+		Description("Ops request ids of the caller. release_id, change_id, step_key and execution_id are all optional and independent.")
 		Attribute("applicant", String, func() {
 			Example("tidb")
 			Meta("struct:tag:json", "applicant,omitempty")
@@ -613,6 +614,14 @@ var TiDBxBumpTagMeta = Type("TiDBxBumpTagMeta", func() {
 		Attribute("change_id", String, func() {
 			Example("c1")
 			Meta("struct:tag:json", "change_id,omitempty")
+		})
+		Attribute("step_key", String, "Optional UUID of the ops step that requested the tag", func() {
+			Example("e38e599a-de0c-4f48-be90-80f9327cb40e")
+			Meta("struct:tag:json", "step_key,omitempty")
+		})
+		Attribute("execution_id", String, "Optional UUID of the ops execution that requested the tag", func() {
+			Example("5b022051-d3ab-4644-ba9f-b0001bbce33c")
+			Meta("struct:tag:json", "execution_id,omitempty")
 		})
 		Meta("struct:tag:json", "ops_req,omitempty")
 	})

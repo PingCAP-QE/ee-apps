@@ -104,19 +104,31 @@ type QueryTagOfTidbxInternalServerErrorResponseBody struct {
 
 // TiDBxBumpTagMetaRequestBody is used to define fields on request body types.
 type TiDBxBumpTagMetaRequestBody struct {
+	// Ops request ids of the caller. release_id, change_id, step_key and
+	// execution_id are all optional and independent.
 	OpsReq *struct {
 		Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
 		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
 		ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+		// Optional UUID of the ops step that requested the tag
+		StepKey *string `form:"step_key" json:"step_key" xml:"step_key"`
+		// Optional UUID of the ops execution that requested the tag
+		ExecutionID *string `form:"execution_id" json:"execution_id" xml:"execution_id"`
 	} `json:"ops_req,omitempty"`
 }
 
 // TiDBxBumpTagMetaResponseBody is used to define fields on response body types.
 type TiDBxBumpTagMetaResponseBody struct {
+	// Ops request ids of the caller. release_id, change_id, step_key and
+	// execution_id are all optional and independent.
 	OpsReq *struct {
 		Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
 		ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
 		ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+		// Optional UUID of the ops step that requested the tag
+		StepKey *string `form:"step_key" json:"step_key" xml:"step_key"`
+		// Optional UUID of the ops execution that requested the tag
+		ExecutionID *string `form:"execution_id" json:"execution_id" xml:"execution_id"`
 	} `json:"ops_req,omitempty"`
 }
 

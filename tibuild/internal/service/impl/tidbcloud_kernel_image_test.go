@@ -30,7 +30,13 @@ func TestRequestSyncKernelImage(t *testing.T) {
 	svc.resolveTagMetadata = func(_ context.Context, repo, tag string) (*TagMetadata, error) {
 		require.Equal(t, "pingcap/tidb", repo)
 		require.Equal(t, "v8.5.4", tag)
-		return &TagMetadata{Author: "bob@example.com", ReleaseID: "rel-9", ChangeID: "chg-9"}, nil
+		return &TagMetadata{
+			Author:      "bob@example.com",
+			ReleaseID:   "rel-9",
+			ChangeID:    "chg-9",
+			StepKey:     testStepKey,
+			ExecutionID: testExecutionID,
+		}, nil
 	}
 	svc.kernelImageMetaReader = func(_ context.Context, image string) kernelImageMeta {
 		return kernelImageMeta{
@@ -53,6 +59,8 @@ func TestRequestSyncKernelImage(t *testing.T) {
 	require.Equal(t, "bob@example.com", gotBody["source_applicant"])
 	require.Equal(t, "rel-9", gotBody["source_release_id"])
 	require.Equal(t, "chg-9", gotBody["source_change_id"])
+	require.Equal(t, "e38e599a-de0c-4f48-be90-80f9327cb40e", gotBody["source_step_key"])
+	require.Equal(t, "5b022051-d3ab-4644-ba9f-b0001bbce33c", gotBody["source_execution_id"])
 	require.Equal(t, "pingcap/tidb", gotBody["repo"])
 	require.Equal(t, "v8.5.4", gotBody["git_tag"])
 	require.Equal(t, "abcdef0123456789abcdef0123456789abcdef01", gotBody["commit_sha"])
@@ -63,6 +71,111 @@ func TestRequestSyncKernelImage(t *testing.T) {
 	first := images[0].(map[string]any)
 	require.Equal(t, "us.gcr.io/pingcap-public/tidbx/tidb", first["source_repository"])
 	require.Equal(t, "v8.5.4", first["source_tag"])
+}
+
+// TestRequestSyncKernelImageForwardsOptionalOpsIDs covers the optional fields:
+// whatever the tag annotation carries is forwarded, and an id that is absent
+// stays omitted from the callback body.
+func TestRequestSyncKernelImageForwardsOptionalOpsIDs(t *testing.T) {
+	cases := []struct {
+		name string
+		md   *TagMetadata
+		want map[string]string
+	}{
+		{
+			name: "release and change only",
+			md:   &TagMetadata{Author: "bob@example.com", ReleaseID: "rel-9", ChangeID: "chg-9"},
+			want: map[string]string{
+				"source_applicant":  "bob@example.com",
+				"source_release_id": "rel-9",
+				"source_change_id":  "chg-9",
+			},
+		},
+		{
+			name: "step and execution",
+			md: &TagMetadata{
+				Author:      "bob@example.com",
+				ReleaseID:   "rel-9",
+				ChangeID:    "chg-9",
+				StepKey:     testStepKey,
+				ExecutionID: testExecutionID,
+			},
+			want: map[string]string{
+				"source_applicant":    "bob@example.com",
+				"source_release_id":   "rel-9",
+				"source_change_id":    "chg-9",
+				"source_step_key":     testStepKey,
+				"source_execution_id": testExecutionID,
+			},
+		},
+		{
+			// The ids are independent, so a lone one is forwarded as-is.
+			name: "step key only",
+			md:   &TagMetadata{Author: "bob@example.com", StepKey: testStepKey},
+			want: map[string]string{
+				"source_applicant": "bob@example.com",
+				"source_step_key":  testStepKey,
+			},
+		},
+		{
+			name: "execution id only",
+			md:   &TagMetadata{Author: "bob@example.com", ExecutionID: testExecutionID},
+			want: map[string]string{
+				"source_applicant":    "bob@example.com",
+				"source_execution_id": testExecutionID,
+			},
+		},
+		{
+			name: "no tag metadata",
+			md:   nil,
+			// source_applicant is required by the ops contract, so it is sent
+			// empty rather than omitted; the optional ids stay absent.
+			want: map[string]string{"source_applicant": ""},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var gotBody map[string]any
+			ops := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
+				_, _ = w.Write([]byte(`{"message":"accepted"}`))
+			}))
+			t.Cleanup(ops.Close)
+
+			svc := newTidbcloudTestService(t, &OpsConfig{
+				Stages: map[string]OpsStageConfig{"dev": {APIBaseURL: ops.URL}},
+			}, nil)
+			svc.resolveTagMetadata = func(context.Context, string, string) (*TagMetadata, error) {
+				return c.md, nil
+			}
+			svc.kernelImageMetaReader = func(context.Context, string) kernelImageMeta {
+				return kernelImageMeta{
+					Repo:      "pingcap/tidb",
+					GitTag:    "v8.5.4",
+					CommitSHA: "abcdef0123456789abcdef0123456789abcdef01",
+				}
+			}
+
+			_, err := svc.RequestSyncKernelImage(context.Background(), &tidbcloud.RequestSyncKernelImagePayload{
+				Stage:  "dev",
+				Images: []string{"us.gcr.io/pingcap-public/tidbx/tidb:v8.5.4"},
+			})
+			require.NoError(t, err)
+
+			for _, key := range []string{
+				"source_applicant", "source_release_id", "source_change_id",
+				"source_step_key", "source_execution_id",
+			} {
+				want, ok := c.want[key]
+				if !ok {
+					require.NotContains(t, gotBody, key)
+					continue
+				}
+				require.Equal(t, want, gotBody[key], key)
+			}
+		})
+	}
 }
 
 func TestRequestSyncKernelImageRejectsMixedCommits(t *testing.T) {

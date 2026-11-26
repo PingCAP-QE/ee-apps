@@ -40,7 +40,7 @@ func UsageCommands() []string {
 func UsageExamples() string {
 	return os.Args[0] + " " + "artifact sync-image --body '{\n      \"source\": \"Consectetur dolor velit.\",\n      \"target\": \"Culpa harum molestiae qui earum sint vel.\"\n   }'" + "\n" +
 		os.Args[0] + " " + "devbuild list --page 8705672337734011936 --page-size 8375321644107076418 --hotfix true --sort \"createdAt\" --direction \"asc\" --created-by \"Maiores et.\" --scope \"mine\" --status \"ERROR\" --product \"Aut harum.\" --q \"Ipsa perferendis facilis pariatur enim.\"" + "\n" +
-		os.Args[0] + " " + "hotfix bump-tag-for-tidbx --body '{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'" + "\n" +
+		os.Args[0] + " " + "hotfix bump-tag-for-tidbx --body '{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"execution_id\": \"5b022051-d3ab-4644-ba9f-b0001bbce33c\",\n            \"release_id\": \"r1\",\n            \"step_key\": \"e38e599a-de0c-4f48-be90-80f9327cb40e\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'" + "\n" +
 		os.Args[0] + " " + "publish publish-images --body '{\n      \"artifactUrl\": \"Ipsa necessitatibus.\",\n      \"image\": \"Dignissimos aut sed sed consequatur.\"\n   }'" + "\n" +
 		os.Args[0] + " " + "tidbcloud update-component-version-in-cloudconfig --body '{\n      \"image\": \"xxx.com/component:v26.3.1-nextgen\",\n      \"stage\": \"prod\"\n   }'" + "\n" +
 		""
@@ -635,7 +635,7 @@ func hotfixBumpTagForTidbxUsage() {
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Example:")
-	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "hotfix bump-tag-for-tidbx --body '{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'")
+	fmt.Fprintf(os.Stderr, "    %s %s\n", os.Args[0], "hotfix bump-tag-for-tidbx --body '{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"execution_id\": \"5b022051-d3ab-4644-ba9f-b0001bbce33c\",\n            \"release_id\": \"r1\",\n            \"step_key\": \"e38e599a-de0c-4f48-be90-80f9327cb40e\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'")
 }
 
 func hotfixQueryTagOfTidbxUsage() {
