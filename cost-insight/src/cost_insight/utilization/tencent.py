@@ -322,8 +322,8 @@ class TencentReader:
         # kind does not verify another, even if they used the same namespace.
         self._verified_contract_kinds.update(kinds)
 
-    def billing_candidates(self, bill_day: date) -> list[dict]:
-        """Return fee-interval snapshots for one BillDay after both product scans complete."""
+    def billing_candidates(self, bill_day: date, *, merge=True) -> list[dict]:
+        """Read both products completely; the planner merges across BillDays per machine."""
         if not isinstance(bill_day, date) or isinstance(bill_day, datetime):
             raise TypeError("Expected a Beijing BillDay")
         self.verify_account()
@@ -413,7 +413,7 @@ class TencentReader:
                 context = page.get("Context")
                 if context is not None and (not isinstance(context, str) or len(context) > 65536):
                     raise ValueError("Invalid billing pagination context")
-        return self._merge_snapshots(snapshots)
+        return self._merge_snapshots(snapshots) if merge else snapshots
 
     @staticmethod
     def _fee_time(value):

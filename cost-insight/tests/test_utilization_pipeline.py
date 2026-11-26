@@ -115,7 +115,7 @@ def test_late_bill_partition_enqueues_prior_usage_day_and_replay_is_idempotent(c
         "observed_from": midnight - timedelta(minutes=10),
         "observed_until": midnight + timedelta(minutes=10),
     }
-    reader.billing_candidates.side_effect = lambda day: [fee] if day == bill_day else []
+    reader.billing_candidates.side_effect = lambda day, **_: [fee] if day == bill_day else []
 
     for expected in (2, 0):
         result = runner.plan_machines(engine, profile, now=NOW, reader=reader)
@@ -135,13 +135,13 @@ def test_machine_bill_revision_deduplicates_unchanged_windows_and_isolates_confl
 ):
     engine, profile, _ = configured
     reader = Mock(stats={})
-    reader.billing_candidates.side_effect = lambda day: [candidate(day)]
+    reader.billing_candidates.side_effect = lambda day, **_: [candidate(day)]
     assert all(
         day["planned"] == 1
         for day in runner.plan_machines(engine, profile, now=NOW, reader=reader)["days"]
     )
 
-    def revised_candidates(day):
+    def revised_candidates(day, **_):
         original = candidate(day)
         revised = {**original}
         if revision == "interval_extension":
@@ -366,7 +366,7 @@ def test_planner_reports_exhausted_usage_day_after_bill_scan(configured, kind, m
     usage_day = NOW.date() - timedelta(days=3)
     reader.billing_candidates.return_value = [{**candidate(usage_day), "resource_class": kind}]
     result = runner.plan_machines(engine, profile, bill_day=partition, now=NOW, reader=reader)
-    reader.billing_candidates.assert_called_once_with(partition)
+    reader.billing_candidates.assert_called_once_with(partition, merge=False)
     assert result["days"] == [{"usage_date": str(usage_day), "candidates": 1,
                                "horizon_gaps": 1, "planned": 0, "errors": []}]
     with engine.connect() as connection:

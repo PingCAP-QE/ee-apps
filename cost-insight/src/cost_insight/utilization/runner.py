@@ -46,10 +46,10 @@ def plan_machines(engine, profile, *, bill_day=None, bill_days=None, dry_run=Fal
     partitions = sorted(set(bill_days if bill_days is not None else (
         [bill_day] if bill_day else [today - timedelta(days=n) for n in (4, 3)]
     )))
-    if not 1 <= len(partitions) <= 8 or any(
+    if not 1 <= len(partitions) <= store.MAX_BILL_DAYS or any(
         not date(1970, 1, 1) <= part <= today for part in partitions
     ):
-        raise ValueError("scan 1..8 distinct BillDays between 1970-01-01 and today")
+        raise ValueError(f"scan 1..{store.MAX_BILL_DAYS} distinct BillDays between 1970-01-01 and today")
     first_open = {
         kind: _first_open_machine_day(state, kind, clock, oldest)
         for kind in ("cvm", "tke_native")
@@ -59,7 +59,7 @@ def plan_machines(engine, profile, *, bill_day=None, bill_days=None, dry_run=Fal
     # No DB writes until all requested partitions and both products have completed.
     by_machine = {}
     for partition in partitions:
-        for row in reader.billing_candidates(partition):
+        for row in reader.billing_candidates(partition, merge=False):
             key = (row["region"], row["cluster_id"], row["machine_id"])
             rows, source_days = by_machine.setdefault(key, ([], set()))
             rows.append(row)
@@ -93,9 +93,9 @@ def plan_machines(engine, profile, *, bill_day=None, bill_days=None, dry_run=Fal
             summary(policy.usage_date(start))["errors"].append(
                 {"machine_id": machine_id, "region": region, "error": str(error)}
             )
-    conflicts, hold = store.reconcile_machine_billing_conflicts(
+    conflicts, hold, generation = store.reconcile_machine_billing_conflicts(
         engine, {day.isoformat() for day in partitions}, detected,
-        scan_started=clock, now=now, dry_run=dry_run,
+        generation=state.get("machine_billing_generation", 0), now=now, dry_run=dry_run,
     )
     conflict_state = {"machine_billing_conflicts": conflicts, "machine_billing_hold_until": hold}
     for candidate, source_days in merged:
@@ -135,7 +135,9 @@ def plan_machines(engine, profile, *, bill_day=None, bill_days=None, dry_run=Fal
             try:
                 if reason := store._machine_bill_block(conflict_state, target, windows[0][1], day_end, clock):
                     raise ValueError(reason)
-                outcome = store.enqueue_windows(engine, windows, now=now, dry_run=dry_run)
+                outcome = store.enqueue_windows(
+                    engine, windows, now=now, dry_run=dry_run, billing_generation=generation,
+                )
                 result["planned"] += outcome["planned"]
             except ValueError as exc:
                 result["errors"].append(
@@ -145,6 +147,7 @@ def plan_machines(engine, profile, *, bill_day=None, bill_days=None, dry_run=Fal
         "bill_days": [day.isoformat() for day in partitions],
         "days": [summaries[day] for day in sorted(summaries)],
         "deferred": deferred,
+        **({"billing_hold_until": hold} if hold else {}),
         "source": reader.stats,
         "dry_run": dry_run,
     }

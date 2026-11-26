@@ -171,8 +171,14 @@ Do not clear done checkpoints or invent an ad-hoc repair.
 Machine planning reports per-candidate snapshot/overlap validation failures in each
 usage day's `errors` list (machine ID, region, reason), while continuing unrelated
 machines and days. Conflicts roll back the affected candidate/day transaction.
-A known billing specification conflict can persist across runs; omitting one of
-its source partitions is not evidence that the conflict is resolved.
+A known billing specification conflict persists across runs until a joint complete
+rescan finds no conflict or the affected usage-day horizon closes. Omitting one
+of its source partitions is not resolution. A scan must also retain its guard
+generation through enqueue; rescan if another process changes conflict evidence.
+At most 1,000 unresolved machines and eight BillDays per conflict are retained.
+Overflow fails closed for all machine planning until `billing_hold_until` (UTC),
+without blocking Pod dispatch or deleting existing results. Escalate repeated
+overflow for source reconciliation; never clear the hold to force a replay.
 The result separates scanned `bill_days` from the affected usage `days`.
 If a long fee interval has a tail after the source reporting cutoff, `deferred`
 reports the unplanned UTC range and BillDay partitions. Replay **all partitions

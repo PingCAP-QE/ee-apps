@@ -26,6 +26,7 @@ from cost_insight.utilization.schema import (
 )
 
 MAX_BATCH = 1000
+MAX_BILL_DAYS = 8
 
 
 @contextmanager
@@ -179,19 +180,24 @@ def _machine_billing_key(region, cluster, machine):
     return identity(region, cluster, machine)
 
 
-def reconcile_machine_billing_conflicts(engine, scanned, detected, *, scan_started, now=None, dry_run=False):
+def _check_billing_generation(state, generation):
+    if state.get("machine_billing_generation", 0) != generation:
+        raise ValueError("billing conflicts changed during scan; rescan the complete BillDay set")
+
+
+def reconcile_machine_billing_conflicts(engine, scanned, detected, *, generation, now=None, dry_run=False):
     """Only a complete rescan of every implicated BillDay can clear a conflict."""
     with transaction(engine) if not dry_run else engine.connect() as connection:
         state, clock = _state(connection, lock=not dry_run), database_now(connection, now)
         if not dry_run:
             _admit(state, clock)
+        _check_billing_generation(state, generation)
         conflicts = {
             key: entry for key, entry in state.get("machine_billing_conflicts", {}).items()
             if policy.utc_naive(entry["until"]) > clock
         }
         for key, entry in list(conflicts.items()):
-            if (key not in detected and set(entry["bill_days"]) <= scanned
-                    and scan_started > policy.utc_naive(entry["seen_at"])):
+            if key not in detected and set(entry["bill_days"]) <= scanned:
                 del conflicts[key]
         hold = state.get("machine_billing_hold_until")
         hold = hold if hold and policy.utc_naive(hold) > clock else None
@@ -206,18 +212,20 @@ def reconcile_machine_billing_conflicts(engine, scanned, detected, *, scan_start
                     "until": max(entry["until"], old["until"]),
                     "bill_days": sorted(set(entry["bill_days"]) | set(old["bill_days"])),
                 }
-            if (old is None and len(conflicts) >= MAX_BATCH) or len(entry["bill_days"]) > MAX_BATCH:
+            if (old is None and len(conflicts) >= MAX_BATCH) or len(entry["bill_days"]) > MAX_BILL_DAYS:
                 # Never forget an unpersistable conflict and admit its windows.
                 hold = max(hold or entry["until"], entry["until"])
             else:
-                conflicts[key] = {**entry, "seen_at": clock.isoformat()}
+                conflicts[key] = entry
         if not dry_run and (
             conflicts != state.get("machine_billing_conflicts", {})
             or hold != state.get("machine_billing_hold_until")
         ):
-            state.update(machine_billing_conflicts=conflicts, machine_billing_hold_until=hold)
+            generation += 1
+            state.update(machine_billing_conflicts=conflicts, machine_billing_hold_until=hold,
+                         machine_billing_generation=generation)
             _finish(connection, state, now)
-        return conflicts, hold
+        return conflicts, hold, generation
 
 
 def _machine_bill_block(state, target, start, end, clock):
@@ -352,7 +360,7 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
     return 1
 
 
-def enqueue_windows(engine, windows, *, now=None, dry_run=False):
+def enqueue_windows(engine, windows, *, now=None, dry_run=False, billing_generation=None):
     if len(windows) > MAX_BATCH:
         raise ValueError("bounded task batch required")
     if dry_run:
@@ -360,6 +368,8 @@ def enqueue_windows(engine, windows, *, now=None, dry_run=False):
     with transaction(engine) as connection:
         state, clock = _state(connection, lock=True), database_now(connection, now)
         _admit(state, clock)
+        if billing_generation is not None:
+            _check_billing_generation(state, billing_generation)
         added = sum(
             _enqueue(connection, state, target, start, end, clock) for target, start, end in windows
         )

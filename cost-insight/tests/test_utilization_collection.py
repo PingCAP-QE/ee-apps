@@ -455,7 +455,7 @@ def planning(monkeypatch, profile):
     enqueue = Mock(side_effect=lambda engine, windows, **kwargs: {"planned": len(windows)})
     monkeypatch.setattr(runner, "_ready", lambda engine, profile, now: (state, now))
     monkeypatch.setattr(store, "_admit", Mock())
-    monkeypatch.setattr(store, "reconcile_machine_billing_conflicts", lambda _, scanned, detected, **kw: (detected, None))
+    monkeypatch.setattr(store, "reconcile_machine_billing_conflicts", lambda _, scanned, detected, **kw: (detected, None, 0))
     monkeypatch.setattr(store, "enqueue_windows", enqueue)
     return enqueue
 
@@ -549,7 +549,7 @@ def test_long_charge_reports_deferred_tail_and_exact_partition_for_replay(profil
         "observed_until": end,
     }
     source = Mock(stats={})
-    source.billing_candidates.side_effect = lambda day: [machine] if day == DAY else []
+    source.billing_candidates.side_effect = lambda day, **_: [machine] if day == DAY else []
     result = runner.plan_machines(None, profile, now=clock, reader=source)
     cutoff = clock - timedelta(minutes=10)
     assert result["deferred"] == [{
@@ -570,7 +570,7 @@ def test_bill_partition_age_is_not_usage_date_retention(profile, planning):
         "observed_from": start, "observed_until": start + timedelta(minutes=5),
     }]
     result = runner.plan_machines(None, profile, bill_days=[DAY], now=clock, reader=source)
-    source.billing_candidates.assert_called_once_with(DAY)
+    source.billing_candidates.assert_called_once_with(DAY, merge=False)
     assert result["days"][0]["planned"] == 1
 
 
@@ -589,6 +589,23 @@ def test_cross_partition_capacity_conflict_does_not_block_unrelated_machine(prof
     assert sum(day["planned"] for day in result["days"]) == 1
     assert [e["machine_id"] for day in result["days"] for e in day["errors"]] == [original["machine_id"]]
     assert planning.call_args.args[1][0][0]["machine_id"] == healthy["machine_id"]
+
+
+def test_same_partition_conflict_is_isolated_after_complete_scan(profile, planning):
+    clock = policy.day_start(DAY + timedelta(days=4))
+    native = bill("p_011691")
+    corrected = json.loads(json.dumps(native))
+    corrected["ComponentSet"][0]["UsedAmount"] = "16"
+    corrected["ComponentSet"][1]["UsedAmount"] = "16"
+
+    def call(service, action, region, params):
+        if service == "billing" and params["BusinessCode"] == "p_011691":
+            return {"DetailSet": [native, corrected], "Total": 2}
+        return api_call(service, action, region, params)
+
+    result = runner.plan_machines(None, profile, bill_day=DAY, now=clock, reader=reader(profile, call))
+    assert sum(day["planned"] for day in result["days"]) > 0
+    assert [e["machine_id"] for day in result["days"] for e in day["errors"]] == ["np-one"]
 
 
 def test_machine_planner_requires_all_partitions_and_products_before_enqueue(profile, planning):

@@ -437,7 +437,7 @@ def build_parser() -> argparse.ArgumentParser:
         utilization.add_argument("--dry-run", action="store_true")
         if command == "sync-tencent-utilization":
             utilization.add_argument("--bill-day", "--date", dest="bill_days", type=_parse_date, action="append",
-                                     help="Beijing BillDay to scan (repeatable; at most two distinct days)")
+                                     help="Beijing BillDay to scan (repeatable; at most eight distinct days)")
         else:
             utilization.add_argument("--limit", type=_parse_positive_int, default=100)
 
@@ -501,7 +501,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 day.get("horizon_gaps") or day.get("errors") for day in result.get("days", [])
             )
             return 2 if (result.get("retry") or result.get("fenced")
-                         or result.get("deferred") or incomplete_days) else 0
+                         or result.get("deferred") or result.get("billing_hold_until") or incomplete_days) else 0
         finally:
             engine.dispose()
 

@@ -546,7 +546,7 @@ def test_machine_bill_conflict_survives_partition_roll_and_requires_joint_replay
     corrected = {**old, "cpu_cores": 4}
     reader = Mock(stats={})
     snapshots = {prior: [old], day: [corrected]}
-    reader.billing_candidates.side_effect = lambda part: snapshots[part]
+    reader.billing_candidates.side_effect = lambda part, **_: snapshots[part]
 
     def plan(*days, now=NOW, dry_run=False):
         return runner.plan_machines(engine, profile(), bill_days=days, reader=reader,
@@ -561,6 +561,25 @@ def test_machine_bill_conflict_survives_partition_roll_and_requires_joint_replay
     snapshots[prior] = [corrected]
     assert plan(prior, day, now=NOW + timedelta(minutes=2))["planned"] == 1
     assert not store.load_state(engine)["machine_billing_conflicts"]
+
+
+def test_machine_billing_generation_fences_unresolved_scans_and_prior_write_attempts(engine):
+    key = store._machine_billing_key("ap-beijing", "", "ins-test")
+    days = {"2026-11-24", "2026-11-25"}
+    conflict = {key: {"start": START.isoformat(), "end": END.isoformat(),
+                      "until": (NOW + timedelta(days=2)).isoformat(), "bill_days": sorted(days)}}
+    args = (engine, days)
+    _, _, before = store.reconcile_machine_billing_conflicts(*args, {}, generation=0, now=NOW)
+    _, _, pending = store.reconcile_machine_billing_conflicts(*args, conflict, generation=before, now=NOW)
+    _, _, resolved = store.reconcile_machine_billing_conflicts(*args, {}, generation=pending, now=NOW)
+    assert not store.load_state(engine)["machine_billing_conflicts"]
+    with pytest.raises(ValueError, match="conflicts changed during scan"):
+        store.reconcile_machine_billing_conflicts(*args, {}, generation=before, now=NOW)
+    for generation in (before, pending):
+        with pytest.raises(ValueError, match="conflicts changed during scan"):
+            store.enqueue_windows(engine, [(target(), START, END)], billing_generation=generation, now=NOW)
+    assert store.enqueue_windows(engine, [(target(cpu_cores=4), START, END)],
+                                 billing_generation=resolved, now=NOW)["planned"] == 1
 
 
 def test_shifted_machine_window_cannot_reopen_a_day_after_checkpoint_purge(engine):
