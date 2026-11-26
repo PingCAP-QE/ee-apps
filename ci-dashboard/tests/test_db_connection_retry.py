@@ -85,6 +85,18 @@ def test_api_retries_only_a_fresh_transport_timeout_with_budget_left(monkeypatch
         engine.dispose()
 
 
+def test_api_keeps_first_handshake_budget_if_halving_leaves_no_room_for_jitter(monkeypatch):
+    connection = SimpleNamespace(_read_timeout=5, _write_timeout=5)
+    engine, connect = mysql_engine(monkeypatch, [connection], retry_connect_timeout=True)
+    # The configured timeout is an integer, but the remaining time can be fractional.
+    monkeypatch.setattr(time, "monotonic", Mock(side_effect=[0, 2.8]))
+    try:
+        assert open_dbapi(engine) is connection
+        assert connect.call_args.kwargs["read_timeout"] == pytest.approx(2.2)
+    finally:
+        engine.dispose()
+
+
 def test_api_does_not_start_second_handshake_after_deadline(monkeypatch):
     timeout = pymysql.OperationalError(2013, "greeting timed out")
     engine, connect = mysql_engine(monkeypatch, [timeout], retry_connect_timeout=True)

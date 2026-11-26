@@ -73,7 +73,7 @@ def _install_connection_retry(engine: Engine, *, retry_connect_timeout: bool = F
         for attempt in range(2):
             remaining = max(0.001, deadline - time.monotonic())
             if retry_connect_timeout and attempt == 0 and remaining >= (
-                2 * MIN_CONNECT_RETRY_BUDGET_SECONDS + CONNECT_RETRY_JITTER_SECONDS[1]
+                2 * (MIN_CONNECT_RETRY_BUDGET_SECONDS + CONNECT_RETRY_JITTER_SECONDS[1])
             ):
                 remaining /= 2  # reserve room for a fresh connection, not a query retry
             connect_params = dict(params)

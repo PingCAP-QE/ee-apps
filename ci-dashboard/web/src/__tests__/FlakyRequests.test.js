@@ -52,7 +52,8 @@ async function withPage(check) {
   }
 }
 
-const SECTIONS = "/api/v1/pages/flaky/";
+const AGGREGATE = "/api/v1/pages/flaky";
+const SECTIONS = `${AGGREGATE}/`;
 const PAGE = `${SECTIONS}chart_sections`;
 const TOP = "/api/v1/flaky/top-cases";
 const BUCKET = "/api/v1/flaky/top-jobs";
@@ -91,6 +92,34 @@ test("a timed-out issue request neither blocks nor resets healthy Flaky panels",
     }
     assert.equal(sections().length, 8);
     assert.equal(new Set(sections().map(({ url }) => url.pathname)).size, 8, "no replay/fallback");
+  });
+});
+
+test("missing section routes share one aggregate fallback without replacing healthy panels", async () => {
+  await withPage(async ({ renderer, requests, matching, respond }) => {
+    const sections = () => requests.filter(({ url }) => url.pathname.startsWith(SECTIONS));
+    const [period, distinct, rates, chart] = sections();
+    const periodPage = (flaky_rate_pct) => ({ period_comparison: { groups: [{ name: "period_a", values: {
+      failure_like_build_count: 4, flaky_rate_pct,
+    } }] } });
+    await respond(distinct, null, 404);
+    await respond(rates, null, 405);
+    await respond(chart, null, 404);
+    assert.equal(matching(AGGREGATE).length, 0, "drain section requests before starting aggregate SQL");
+    await respond(period, periodPage(25));
+    assert.equal(sections().length, 4, "stop scheduling sections when an old API is found");
+    assert.equal(matching(AGGREGATE).length, 1);
+    const aggregate = matching(AGGREGATE)[0];
+    assert.deepEqual(Object.fromEntries(aggregate.url.searchParams), initialFilters);
+    const content = () => JSON.stringify(renderer.toJSON());
+    await respond(aggregate, {
+      ...periodPage(99),
+      ...bucketPage("2026-11-09", "2026-11-22", "2026-11-09"),
+      top_jobs: { items: [{ name: "aggregate-only-job", value: 25 }] },
+    });
+    assert.match(content(), /aggregate-only-job/);
+    assert.doesNotMatch(content(), /Section unavailable/);
+    assert.equal(renderer.root.findAllByProps({ className: "stat-card__value" })[0].children.join(""), "25.0%");
   });
 });
 
