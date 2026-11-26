@@ -52,7 +52,13 @@ func TestUpdateComponentVersionInCloudconfig(t *testing.T) {
 	svc.resolveTagMetadata = func(_ context.Context, repo, tag string) (*TagMetadata, error) {
 		require.Equal(t, "pingcap/tidb", repo)
 		require.Equal(t, "v26.3.1-nextgen", tag)
-		return &TagMetadata{Author: "alice@example.com", ReleaseID: "rel-1", ChangeID: "chg-1"}, nil
+		return &TagMetadata{
+			Author:      "alice@example.com",
+			ReleaseID:   "rel-1",
+			ChangeID:    "chg-1",
+			StepKey:     testStepKey,
+			ExecutionID: testExecutionID,
+		}, nil
 	}
 
 	res, err := svc.UpdateComponentVersionInCloudconfig(context.Background(), &tidbcloud.UpdateComponentVersionInCloudconfigPayload{
@@ -80,7 +86,51 @@ func TestUpdateComponentVersionInCloudconfig(t *testing.T) {
 		require.Equal(t, "alice@example.com", update["author"])
 		require.Equal(t, "rel-1", update["release_id"])
 		require.Equal(t, "chg-1", update["change_id"])
+		require.Equal(t, testStepKey, update["step_key"])
+		require.Equal(t, testExecutionID, update["execution_id"])
 	}
+}
+
+// TestUpdateComponentVersionInCloudconfigOmitsMissingOpsIDs keeps the optional
+// contract on this call too: a tag written before the step and execution ids
+// existed must produce the old request shape, without empty keys.
+func TestUpdateComponentVersionInCloudconfigOmitsMissingOpsIDs(t *testing.T) {
+	const repo = "us.gcr.io/pingcap-public/tidbx/tidb"
+
+	var updates []map[string]any
+	ops := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		updates = append(updates, body)
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"instance_id": 42}))
+	}))
+	t.Cleanup(ops.Close)
+
+	svc := newTidbcloudTestService(t, &OpsConfig{
+		Stages: map[string]OpsStageConfig{
+			"prod": {
+				APIBaseURL: ops.URL,
+				Components: map[string]OpsComponent{
+					"tidb": {BaseImage: repo, ClusterType: "SHARED_POOL", GitHubRepo: "pingcap/tidb"},
+				},
+			},
+		},
+	}, nil)
+	svc.resolveTagMetadata = func(context.Context, string, string) (*TagMetadata, error) {
+		return &TagMetadata{Author: "alice@example.com", ReleaseID: "rel-1", ChangeID: "chg-1"}, nil
+	}
+
+	_, err := svc.UpdateComponentVersionInCloudconfig(context.Background(), &tidbcloud.UpdateComponentVersionInCloudconfigPayload{
+		Stage: "prod",
+		Image: repo + ":v26.3.1-nextgen",
+	})
+	require.NoError(t, err)
+	require.Len(t, updates, 1)
+
+	require.Equal(t, "rel-1", updates[0]["release_id"])
+	require.Equal(t, "chg-1", updates[0]["change_id"])
+	require.NotContains(t, updates[0], "step_key")
+	require.NotContains(t, updates[0], "execution_id")
 }
 
 func TestUpdateComponentVersionInCloudconfigSkipsNonNextgenTag(t *testing.T) {

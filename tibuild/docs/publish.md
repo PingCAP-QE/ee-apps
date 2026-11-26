@@ -407,6 +407,9 @@ each other:
   the annotation carries as `source_release_id`, `source_change_id`,
   `source_step_key` and `source_execution_id` in the ops kernel-image build
   callback, and omits the ones it does not have.
+  `POST /api/v2/tidbcloud/devops/cloudconfig/versions/component` does the same
+  for the per-component roll-out, using the unprefixed names the ops config API
+  expects: `release_id`, `change_id`, `step_key`, `execution_id`.
 
 Tags written before these fields existed, and images built from a branch rather
 than from a tag, carry none of them: the callback then sends only

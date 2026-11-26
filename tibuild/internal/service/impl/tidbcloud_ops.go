@@ -130,7 +130,7 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(
 		return nil, fmt.Errorf("ops client is nil for stage %q: stage not found in config", stage)
 	}
 
-	var author, releaseID, changeID string
+	var author, releaseID, changeID, stepKey, executionID string
 	if componentCfg.GitHubRepo != "" {
 		// Tag metadata is optional: a missing lookup must not block the update.
 		md, err := s.getTiBuildTagMetadata(ctx, componentCfg.GitHubRepo, imageTag)
@@ -139,9 +139,10 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(
 				Str("github_repo", componentCfg.GitHubRepo).Str("image_tag", imageTag).
 				Msg("failed to get tibuild tag metadata")
 		} else if md != nil {
-			author = md.Author
-			releaseID = md.ReleaseID
-			changeID = md.ChangeID
+			// The ops ids are optional and independent; whatever the tag carries
+			// is forwarded, and an id it never had stays omitted.
+			author, releaseID, changeID = md.Author, md.ReleaseID, md.ChangeID
+			stepKey, executionID = md.StepKey, md.ExecutionID
 		}
 	}
 
@@ -154,6 +155,8 @@ func (s *tidbcloudsrvc) callOpsPlatformAPI(
 		Author:      author,
 		ReleaseID:   releaseID,
 		ChangeID:    changeID,
+		StepKey:     stepKey,
+		ExecutionID: executionID,
 	}
 
 	headers := map[string]string{}
