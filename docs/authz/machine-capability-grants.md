@@ -1,9 +1,15 @@
 # Machine capability grants: first reviewed baseline
 
-`authzd/policies/machine-capability-grants.json` holds the capability tuples for
-the machine callers that already reach TiBuild. Its purpose is to mirror today's
-behaviour exactly, so that turning on enforcement later is not also a policy
-change.
+The reviewed capability grants for the machine callers that already reach TiBuild.
+Their purpose is to mirror today's behaviour exactly, so that turning on
+enforcement later is not also a policy change.
+
+**The real file is not stored in this repository.** It maps service accounts to
+OpenFGA subjects, which is the authorization topology — needed by the job, not by
+anyone reading the code. It is maintained in the private operations vault and
+applied by the job from a mounted file. This repository keeps
+`authzd/policies/machine-capability-grants.example.json`, which shows the exact
+shape with placeholder subjects.
 
 ## What it contains
 
@@ -19,39 +25,49 @@ Tuples are always written on `caller`; `invoke`, `create` and `read` are derived
 relations in the model and cannot be written directly.
 
 Callers come from the machine route's service-account allowlist
-(`apps/gcp/tibuild/v2/machine-access.yaml`). Every allowlisted account can call
-every machine endpoint today, so every one of them gets all three capabilities.
-Tightening that is a product decision, deliberately not taken here.
+(`ee-ops` `apps/gcp/tibuild/v2/machine-access.yaml`). Every allowlisted account can
+call every machine endpoint today, so every one of them gets all three
+capabilities. Tightening that is a product decision, deliberately not taken here.
 
-| Service account | IAM uniqueID | Subject |
-| --- | --- | --- |
-| `tcms-tibuild-client@pingcap-testing-account` | `106613601288865186001` | `workload:google/sub/106613601288865186001` |
-| `tirelease-tibuild-client@pingcap-testing-account` | `108356868865109323956` | `workload:google/sub/108356868865109323956` |
+A caller's subject is `workload:google/sub/<IAM uniqueId>`, derived with:
 
-The first row cross-checks with a decision log: TiBuild calls arrive with
-`principal=workload:google/sub/106613601288865186001`, which is that service
-account's IAM uniqueID. That is the service-account equivalent of Gate 1, verified
-against production rather than assumed.
+```sh
+gcloud iam service-accounts describe <service-account> \
+  --project=<project> --format='value(uniqueId)'
+```
 
-## What is missing, and why it blocks enforcement
+That mapping, and the file built from it, live in the private operations vault.
+Service-account emails are public already — they appear in the `ee-ops` allowlist —
+but the id mapping is not something a reader of this repository needs, and it is
+one half of the authorization topology.
 
-| Gap | Consequence |
-| --- | --- |
-| Three callers are absent: `devops-server`, `devops-server-dev`, `devops-server-staging` in `gcp-resilience-dev` | The IAM API denies `serviceAccounts.describe` for that project, so their uniqueIDs are unknown. Adding them needs someone with access. Until then this file is **incomplete** |
-| Resource checks have no data (ADR 0005) | `devbuild#can_rerun` and `devbuild#can_read` need `devbuild` tuples that cannot be sourced; the create rule needs a body-derived project id the resolver cannot read |
+Gate 1 applies here too, in its service-account form: a decision log must show the
+same numeric id as the principal. That was verified against production traffic for
+one caller before the rest were added.
 
-So capability grants are necessary but not sufficient. With them applied, a rerun
-in `observe` still reports `resource_not_found`, and in `enforce` it would deny.
-**Enforcement stays off** until both gaps close. Do not read a green
-`relationship_denied` count as readiness to enforce.
+## What used to be missing, and what it means now
+
+The three `gcp-resilience-dev` callers were absent because this project could not
+read that project's IAM. Their uniqueIDs were supplied by someone with access, so
+the file now covers all five allowlisted callers. Resource checks are no longer a
+gap: ADR 0005 was accepted, so the registry rules
+carry a capability check only and TiBuild keeps object ownership. Enforcement is
+therefore blocked only by the decision to flip the mode, and by confirming that
+every caller the allowlist names is in this file — an allowlisted caller without a
+tuple would be denied the moment `enforce` is on.
+
+Do not read a green `relationship_denied` count as readiness to enforce: it only
+says the caller lacks the capability.
 
 ## Applying it
 
-Dry-run against the real store first:
+Dry-run against the real store first, with the file mounted from the private
+source (`--snapshot <path>`). The job does not care where the file comes from; what
+matters is that the reviewed content, not a local edit, is what gets applied:
 
 ```sh
 go run ./cmd/tuple-sync \
-  --snapshot authzd/policies/machine-capability-grants.json \
+  --snapshot /etc/authzd/machine-capability-grants.json \
   --object-type capability --relation caller \
   --dry-run
 ```
