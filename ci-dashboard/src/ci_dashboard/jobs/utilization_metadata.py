@@ -609,14 +609,14 @@ def save_contexts(engine: Engine, contexts: list[dict], *,
                 if overlap:
                     raise ValueError("overlapping or out-of-order Pod context")
                 if previous is None:
-                    # A prior exporter may have lost DB access before closing its
-                    # segment. Close only its already-confirmed evidence; never
-                    # backfill the disconnected interval or renew its expiry.
+                    # A prior exporter may have disconnected. Close its confirmed
+                    # evidence only while the row is live; maintenance owns expired rows.
                     connection.execute(text(
                         "UPDATE pod_utilization_context SET closed_at=observed_until "
                         "WHERE account_id=:account_id AND cluster_id=:cluster_id AND pod_uid=:pod_uid "
-                        "AND closed_at IS NULL AND observed_from < :observed_from AND observed_until <= :observed_from"
-                    ), row)
+                        "AND closed_at IS NULL AND expires_at>:clock "
+                        "AND observed_from < :observed_from AND observed_until <= :observed_from"
+                    ), {**row, "clock": clock})
                 params = {**row, "labels_json": json.dumps(row["labels_json"], sort_keys=True, allow_nan=False)}
                 if previous:
                     # planned_until belongs to the dispatcher: never overwrite its progress.

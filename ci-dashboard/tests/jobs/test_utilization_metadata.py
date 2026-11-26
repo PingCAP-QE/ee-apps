@@ -455,16 +455,18 @@ def test_purged_predecessor_cannot_extend_or_create_a_selector_free_gap(db, even
 
 
 @pytest.mark.parametrize("same_pod", [False, True])
-def test_expired_retained_context_does_not_block_new_observation(db, same_pod):
+@pytest.mark.parametrize("already_closed", [False, True])
+def test_expired_retained_context_does_not_block_new_observation(db, same_pod, already_closed):
     exporter = u.MetadataExporter(db)
     old = u.normalize_pod(pod())
     observe(exporter, [old])
     last = NOW + timedelta(minutes=10)
     observe(exporter, [], last, heartbeat=True)
-    # Maintenance may have closed and settled the old interval without deleting it yet.
+    # A bounded sweep may leave the old context, either closed or not yet visited.
     with db.begin() as connection:
-        connection.execute(text("UPDATE pod_utilization_context "
-                                "SET closed_at=observed_until, planned_until=observed_until"))
+        connection.execute(text("UPDATE pod_utilization_context SET planned_until=observed_until"))
+        if already_closed:
+            connection.execute(text("UPDATE pod_utilization_context SET closed_at=observed_until"))
     before, = rows(db)
     new_at = last + u.CONTEXT_TTL
     replace_state(db, retained_rows=1, maintenance_at=new_at.isoformat(), bytes_observed_at=new_at.isoformat())
