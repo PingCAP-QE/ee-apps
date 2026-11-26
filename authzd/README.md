@@ -53,6 +53,22 @@ An ID that the trusted catalog does not contain denies with reason
 `resource_not_found`; only a catalog that cannot answer (unconfigured, backend
 failure) is a dependency error. Neither case falls back to the path or body.
 
+Credential extraction accepts exactly one token per header. Every identity
+failure is distinguishable in the decision log:
+
+| `reason_code` | Meaning |
+| --- | --- |
+| `identity_missing` | The configured credential header is absent |
+| `identity_invalid` | The header is present but empty, ambiguous, or fails verification |
+| `relationship_denied` | Identity verified, relation check failed |
+| `resource_not_found` / `route_not_registered` | The catalog or registry has no entry |
+
+A forwarded identity header counts as ambiguous when it carries a comma
+(Envoy joins repeated headers with commas), embedded whitespace, or an empty
+value. A Gateway that failed to overwrite a client-supplied copy of that header
+therefore cannot authorize anything: the value is rejected instead of being
+parsed as one token.
+
 `AUTHZD_DECISION_MODE` bounds the strength of every response and defaults to
 `enforce`:
 

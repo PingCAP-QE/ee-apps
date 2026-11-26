@@ -170,7 +170,11 @@ func (a *Authorizer) Authorize(ctx context.Context, attrs *authv3.AttributeConte
 	if !ok || credential.Verifier == nil || credential.Header == "" {
 		return a.finishMode(ctx, event, mode, false, "identity_mode_unconfigured"), nil
 	}
-	token, tokenOK := extractToken(httpRequest.GetHeaders(), credential.Header)
+	raw, present := headerValue(httpRequest.GetHeaders(), credential.Header)
+	if !present {
+		return a.finishMode(ctx, event, mode, false, "identity_missing"), nil
+	}
+	token, tokenOK := parseToken(raw, credential.Header)
 	if !tokenOK {
 		return a.finishMode(ctx, event, mode, false, "identity_invalid"), nil
 	}
@@ -303,16 +307,52 @@ func deniedResponse() *authv3.CheckResponse {
 	}
 }
 
-func extractToken(headers map[string]string, name string) (string, bool) {
-	value := strings.TrimSpace(headers[strings.ToLower(strings.TrimSpace(name))])
-	if strings.EqualFold(name, "authorization") {
-		scheme, token, ok := strings.Cut(value, " ")
-		if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.ContainsAny(token, " \t\r\n,") {
+// headerValue returns the raw value of a credential header. Envoy's
+// AttributeContext collapses repeated headers into one comma-joined value, so
+// the raw value is what parseToken has to judge.
+func headerValue(headers map[string]string, name string) (string, bool) {
+	value, ok := headers[strings.ToLower(strings.TrimSpace(name))]
+	return value, ok
+}
+
+// parseToken extracts exactly one credential from a header value. Both the
+// Authorization header and any custom forwarded-identity header get the same
+// treatment: a quote of two credentials, a whitespace-separated list, or an
+// empty value is rejected rather than guessed. A forwarded identity header is
+// trusted only because the Gateway wrote it, so an ambiguous value means the
+// overwrite did not happen and the header must not authorize anything.
+func parseToken(raw, name string) (string, bool) {
+	if strings.EqualFold(strings.TrimSpace(name), "authorization") {
+		scheme, token, ok := strings.Cut(strings.TrimSpace(raw), " ")
+		if !ok || !strings.EqualFold(scheme, "Bearer") || !singleCredential(token) {
 			return "", false
 		}
 		return token, true
 	}
-	return value, value != ""
+	if !singleCredential(raw) {
+		return "", false
+	}
+	return raw, true
+}
+
+func singleCredential(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r == ' ' || r == '\t' || r == '\r' || r == '\n' || r == ',' || r == '\x00' {
+			return false
+		}
+	}
+	return true
+}
+
+func extractToken(headers map[string]string, name string) (string, bool) {
+	raw, ok := headerValue(headers, name)
+	if !ok {
+		return "", false
+	}
+	return parseToken(raw, name)
 }
 
 func resourceID(source string, pathValues map[string]string, query url.Values) (string, bool) {
