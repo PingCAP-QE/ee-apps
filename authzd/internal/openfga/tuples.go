@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/relationships"
 	fga "github.com/openfga/go-sdk"
@@ -66,6 +67,11 @@ func (s *TupleStore) WithBatchSize(size int) *TupleStore {
 }
 
 // Read returns every tuple of one object type, following pagination.
+//
+// The deployed OpenFGA rejects a type-only query (`object: "type:"`), so this
+// reads without a filter and keeps the matching object type client-side. That is
+// more traffic than a filtered read; it is bounded by the store's size, and the
+// alternative (enumerating object ids first) cannot be derived from the scope.
 func (s *TupleStore) Read(ctx context.Context, objectType string) ([]relationships.Tuple, error) {
 	if s == nil || s.client == nil {
 		return nil, errors.New("OpenFGA tuple store is not configured")
@@ -86,7 +92,7 @@ func (s *TupleStore) Read(ctx context.Context, objectType string) ([]relationshi
 		}
 		response, err := s.client.Read(ctx).
 			Options(options).
-			Body(client.ClientReadRequest{Object: fga.PtrString(objectType + ":")}).
+			Body(client.ClientReadRequest{}).
 			Execute()
 		if err != nil {
 			return nil, fmt.Errorf("read OpenFGA tuples: %w", err)
@@ -94,8 +100,12 @@ func (s *TupleStore) Read(ctx context.Context, objectType string) ([]relationshi
 		if response == nil {
 			return nil, errors.New("OpenFGA returned no read response")
 		}
+		prefix := objectType + ":"
 		for _, tuple := range response.GetTuples() {
 			key := tuple.GetKey()
+			if !strings.HasPrefix(key.GetObject(), prefix) {
+				continue
+			}
 			converted := relationships.Tuple{User: key.GetUser(), Relation: key.GetRelation(), Object: key.GetObject()}
 			if _, dup := seen[converted.Key()]; dup {
 				continue
