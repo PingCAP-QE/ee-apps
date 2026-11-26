@@ -3,12 +3,14 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,6 +30,8 @@ func (f fakeAuth) Validate(context.Context, string) (*auth.Identity, error) {
 }
 
 type fakeStore struct {
+	mu            sync.Mutex
+	cards         map[string][]store.ApprovalCard
 	requests      map[string]*store.Request
 	pending       []*store.Request
 	pendingCount  int
@@ -39,7 +43,7 @@ type fakeStore struct {
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{requests: map[string]*store.Request{}}
+	return &fakeStore{requests: map[string]*store.Request{}, cards: map[string][]store.ApprovalCard{}}
 }
 
 func (f *fakeStore) Ready(context.Context) error { return nil }
@@ -101,7 +105,20 @@ func (f *fakeStore) AppendEvent(context.Context, *store.Event) error            
 func (f *fakeStore) SetFileShare(context.Context, string, string, []byte) error { return nil }
 func (f *fakeStore) SaveFileCiphertext(context.Context, string, []byte) error   { return nil }
 func (f *fakeStore) ClearFileCiphertext(context.Context, string) error          { return nil }
-func (f *fakeStore) Close() error                                               { return nil }
+func (f *fakeStore) SaveApprovalCards(_ context.Context, requestID string, cards []store.ApprovalCard) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cards[requestID] = append(f.cards[requestID], cards...)
+	return nil
+}
+
+func (f *fakeStore) ListApprovalCards(_ context.Context, requestID string) ([]store.ApprovalCard, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]store.ApprovalCard(nil), f.cards[requestID]...), nil
+}
+
+func (f *fakeStore) Close() error { return nil }
 
 func testConfig(t *testing.T) *config.Manager {
 	t.Helper()
@@ -188,11 +205,9 @@ func TestPagesUsePublicURLPathPrefix(t *testing.T) {
 
 	csrf, cookie := obtainCSRF(t, h)
 	form := url.Values{
-		"repository": {"us-docker.pkg.dev/project/hub/package"},
-		"tag":        {"v8.1.0"},
-		"files":      {"tidb.tar.gz"},
-		"ttl":        {"3600"},
-		"csrf":       {csrf},
+		"targets": {"us-docker.pkg.dev/project/hub/package v8.1.0 tidb.tar.gz"},
+		"ttl":     {"3600"},
+		"csrf":    {csrf},
 	}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -217,6 +232,205 @@ func TestPagesUsePublicURLPathPrefix(t *testing.T) {
 	}
 }
 
+func TestFormPrefillsFromQuery(t *testing.T) {
+	h := testHandler(t, newFakeStore(), &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	// Mirrors a legacy /dl/oci-file link: repository in the path, file/tag in
+	// the query. Repeated `file` params and a comma list are both accepted and
+	// become one target line each.
+	target := "/?repository=us-docker.pkg.dev/project/hub/package&tag=v8.5.4" +
+		"&file=tidb.tar.gz&file=tikv.tar.gz&files=tiflash.tar.gz,tools.tar.gz" +
+		"&ttl=7d&note=customer%20asked"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, requestWithToken(http.MethodGet, target, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("form = %d", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		`name="targets"`,
+		"us-docker.pkg.dev/project/hub/package v8.5.4 tidb.tar.gz",
+		"us-docker.pkg.dev/project/hub/package v8.5.4 tikv.tar.gz",
+		"us-docker.pkg.dev/project/hub/package v8.5.4 tiflash.tar.gz",
+		"us-docker.pkg.dev/project/hub/package v8.5.4 tools.tar.gz",
+		`customer asked`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("prefill missing %q", want)
+		}
+	}
+	if !strings.Contains(body, `<option value="24h" selected>`) {
+		t.Fatalf("TTL must keep the default and ignore the query: %s", body)
+	}
+	if strings.Contains(body, `value="7d"`) {
+		t.Fatal("TTL must not be prefilled from the query")
+	}
+}
+
+func TestCreateAcceptsMultipleRepositories(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	// Two repositories in one request, and a repeated triple that must collapse
+	// instead of tripping the per-request unique index.
+	form := url.Values{
+		"targets": {
+			"us-docker.pkg.dev/project/hub/package v8.1.0 tidb.tar.gz\n" +
+				"us-docker.pkg.dev/project/hotfix/package v8.1.0-hotfix tikv.tar.gz\n" +
+				"us-docker.pkg.dev/project/hub/package v8.1.0 tidb.tar.gz",
+		},
+		"ttl":  {"3600"},
+		"note": {"two repositories"},
+		"csrf": {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	want := []store.File{
+		{Repository: "us-docker.pkg.dev/project/hub/package", Tag: "v8.1.0", Filename: "tidb.tar.gz"},
+		{Repository: "us-docker.pkg.dev/project/hotfix/package", Tag: "v8.1.0-hotfix", Filename: "tikv.tar.gz"},
+	}
+	if st.created == nil {
+		t.Fatal("request was not created")
+	}
+	if len(st.created.Files) != len(want) {
+		t.Fatalf("files = %+v, want %d", st.created.Files, len(want))
+	}
+	for i, file := range st.created.Files {
+		if file.Repository != want[i].Repository || file.Tag != want[i].Tag || file.Filename != want[i].Filename {
+			t.Fatalf("file %d = %+v, want %+v", i, file, want[i])
+		}
+	}
+}
+
+func TestParseTargets(t *testing.T) {
+	tooMany := make([]string, 0, 31)
+	for i := 0; i < 31; i++ {
+		tooMany = append(tooMany, fmt.Sprintf("r.example.com/a v1 file-%02d.tar.gz", i))
+	}
+	cases := []struct {
+		name    string
+		in      string
+		want    int
+		wantErr string
+	}{
+		{"tab separated", "r.example.com/a\tv1\ta.tar.gz", 1, ""},
+		{"blank lines", "\n\nr.example.com/a v1 a.tar.gz\n\n", 1, ""},
+		{"wrong field count", "r.example.com/a v1", 0, "line 1: use <repository> <tag> <filename>"},
+		{"filename with a space", "r.example.com/a v1 a b.tar.gz", 0, "line 1: use <repository> <tag> <filename>"},
+		{"invalid repository", "../evil v1 a.tar.gz", 0, "line 1: invalid repository"},
+		{"invalid tag", "r.example.com/a v1@bad a.tar.gz", 0, "line 1: invalid tag"},
+		{"filename with a slash", "r.example.com/a v1 ../secret", 0, "line 1: invalid filename"},
+		{"second line", "r.example.com/a v1 a.tar.gz\nr.example.com/b v1", 0, "line 2: use <repository> <tag> <filename>"},
+		{"nothing", "  \n \n", 0, "at least one target is required"},
+		{"too many", strings.Join(tooMany, "\n"), 0, "provide 1-30 targets"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseTargets(tc.in)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("parseTargets(%q) error = %v, want %q", tc.in, err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseTargets(%q) error: %v", tc.in, err)
+			}
+			if len(got) != tc.want {
+				t.Fatalf("parseTargets(%q) = %+v, want %d targets", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCreateKeepsTargetsAfterRejection(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"targets": {"r.example.com/a v1 a.tar.gz\nr.example.com/b v2"},
+		"ttl":     {"60"},
+		"csrf":    {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	body := w.Body.String()
+	if w.Code != http.StatusOK || !strings.Contains(body, "line 2: use &lt;repository&gt; &lt;tag&gt; &lt;filename&gt;") {
+		t.Fatalf("create = %d, body=%s", w.Code, body)
+	}
+	if !strings.Contains(body, "r.example.com/a v1 a.tar.gz") {
+		t.Fatalf("typed targets were dropped: %s", body)
+	}
+	if st.created != nil {
+		t.Fatal("an invalid form must not create a request")
+	}
+}
+
+func TestParseTTL(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    int64
+		wantErr bool
+	}{
+		{"86400", 86400, false},
+		{"24h", 86400, false},
+		{"168h", 604800, false},
+		{"1m", 60, false},
+		{"30s", 30, false},
+		{"2h30m", 9000, false},
+		{" 30s ", 30, false},
+		{"7d", 0, true},
+		{"1w", 0, true},
+		{"", 0, true},
+		{"abc", 0, true},
+	}
+	for _, tc := range cases {
+		got, err := parseTTL(tc.in)
+		if tc.wantErr {
+			if err == nil {
+				t.Fatalf("parseTTL(%q) = %d, want error", tc.in, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("parseTTL(%q) error: %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Fatalf("parseTTL(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestFormAcceptsFriendlyTTL(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"targets": {"r.example.com/a v1 a.tar.gz"},
+		"ttl":     {"2h"},
+		"csrf":    {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	if st.created == nil || st.created.TTLSeconds != 7200 {
+		t.Fatalf("ttl = %+v", st.created)
+	}
+}
+
 func TestForbiddenIdentity(t *testing.T) {
 	h := New(Options{Store: newFakeStore(), Config: testConfig(t), Auth: fakeAuth{err: auth.ErrForbidden}, Metrics: &metrics.Metrics{}})
 	w := httptest.NewRecorder()
@@ -231,11 +445,12 @@ func TestCreateRequest(t *testing.T) {
 	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
 
 	form := url.Values{
-		"repository": {"us-docker.pkg.dev/project/hub/package"},
-		"tag":        {"v8.1.0_linux_amd64"},
-		"files":      {"tidb.tar.gz\ntikv.tar.gz"},
-		"ttl":        {"3600"},
-		"note":       {"customer asked"},
+		"targets": {
+			"us-docker.pkg.dev/project/hub/package v8.1.0_linux_amd64 tidb.tar.gz\n" +
+				"us-docker.pkg.dev/project/hub/package v8.1.0_linux_amd64 tikv.tar.gz",
+		},
+		"ttl":  {"3600"},
+		"note": {"customer asked"},
 	}
 	csrf, cookie := obtainCSRF(t, h)
 	form.Set("csrf", csrf)
@@ -261,7 +476,7 @@ func TestCreateRequest(t *testing.T) {
 
 func TestCreateRejectsBadCSRFAndInput(t *testing.T) {
 	h := testHandler(t, newFakeStore(), &auth.Identity{Email: "requester@example.com"})
-	valid := url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}}
+	valid := url.Values{"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}}
 
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(valid.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -272,7 +487,7 @@ func TestCreateRejectsBadCSRFAndInput(t *testing.T) {
 	}
 
 	csrf, cookie := obtainCSRF(t, h)
-	bad := url.Values{"repository": {"../evil"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf}}
+	bad := url.Values{"targets": {"../evil v1 a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf}}
 	r = requestWithToken(http.MethodPost, "/requests", strings.NewReader(bad.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.AddCookie(cookie)
@@ -288,7 +503,7 @@ func TestRateLimits(t *testing.T) {
 	st.pendingCount = 5
 	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
 	csrf, cookie := obtainCSRF(t, h)
-	form := url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf}}
+	form := url.Values{"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf}}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	r.AddCookie(cookie)
@@ -379,10 +594,10 @@ func TestInvalidFilenameAndTTL(t *testing.T) {
 		form url.Values
 		want string
 	}{
-		{"filename", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"../secret"}, "ttl": {"60"}}, "invalid filename"},
-		{"ttl", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"0"}}, "TTL must be"},
-		{"too many", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk"}, "ttl": {"60"}}, "provide 1-10 files"},
-		{"long note", url.Values{"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "note": {strings.Repeat("x", 1025)}}, "note is too long"},
+		{"filename", url.Values{"targets": {"r.example.com/a v1 ../secret"}, "ttl": {"60"}}, "invalid filename"},
+		{"ttl", url.Values{"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"0"}}, "TTL must be"},
+		{"too many", url.Values{"targets": {manyTargets(31)}, "ttl": {"60"}}, "provide 1-30 targets"},
+		{"long note", url.Values{"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}, "note": {strings.Repeat("x", 1025)}}, "note is too long"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -433,6 +648,15 @@ func obtainCSRFFor(t *testing.T, h http.Handler) (string, *http.Cookie) {
 	return obtainCSRF(t, h)
 }
 
+// manyTargets builds a target block with n distinct lines.
+func manyTargets(n int) string {
+	lines := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		lines = append(lines, fmt.Sprintf("r.example.com/a v1 file-%02d.tar.gz", i))
+	}
+	return strings.Join(lines, "\n")
+}
+
 func TestApproveReject(t *testing.T) {
 	st := newFakeStore()
 	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
@@ -449,9 +673,14 @@ func TestApproveReject(t *testing.T) {
 		t.Fatalf("transitions = %v", st.transitions)
 	}
 
+	// A second decision (double submit or a slower approver) is refused, but the
+	// caller is sent to the detail page instead of a bare conflict page.
 	w = postDecision(t, h, "req-1", "reject", "too late", nil)
-	if w.Code != http.StatusConflict {
-		t.Fatalf("second decision = %d, want 409", w.Code)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("second decision = %d, want 303", w.Code)
+	}
+	if loc := w.Header().Get("Location"); !strings.Contains(loc, "notice=already-decided") {
+		t.Fatalf("location = %q", loc)
 	}
 }
 
@@ -566,8 +795,10 @@ func TestDecisionAndRevokeEdges(t *testing.T) {
 
 	st.requests["req-2"] = &store.Request{ID: "req-2", RequesterEmail: "requester@example.com", Status: store.StatusRejected}
 	requester := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
-	if w := postDecision(t, requester, "req-2", "revoke", "", nil); w.Code != http.StatusConflict {
-		t.Fatalf("revoke rejected = %d, want 409", w.Code)
+	if w := postDecision(t, requester, "req-2", "revoke", "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("revoke rejected = %d, want 303", w.Code)
+	} else if loc := w.Header().Get("Location"); !strings.Contains(loc, "notice=not-revocable") {
+		t.Fatalf("location = %q", loc)
 	}
 }
 
@@ -614,13 +845,51 @@ func TestApproveTriggersDelivery(t *testing.T) {
 }
 
 type fakeApprovalNotifier struct {
-	ch  chan string
-	err error
+	ch    chan string
+	cards []store.ApprovalCard
+	err   error
 }
 
-func (f *fakeApprovalNotifier) NotifyApproval(_ context.Context, req *store.Request) error {
+func (f *fakeApprovalNotifier) NotifyApproval(_ context.Context, req *store.Request) ([]store.ApprovalCard, error) {
 	f.ch <- req.ID
-	return f.err
+	return f.cards, f.err
+}
+
+// fakeCardUpdater records the card patches the handler issues after a decision.
+type fakeCardUpdater struct {
+	mu      sync.Mutex
+	updates []cardUpdate
+}
+
+type cardUpdate struct {
+	requestID string
+	outcome   string
+	actor     string
+	note      string
+	cards     int
+}
+
+func (f *fakeCardUpdater) UpdateApprovalCards(_ context.Context, req *store.Request, cards []store.ApprovalCard, outcome, actor, note string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.updates = append(f.updates, cardUpdate{requestID: req.ID, outcome: outcome, actor: actor, note: note, cards: len(cards)})
+	return nil
+}
+
+func (f *fakeCardUpdater) wait(t *testing.T) []cardUpdate {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		f.mu.Lock()
+		if len(f.updates) > 0 {
+			out := append([]cardUpdate(nil), f.updates...)
+			f.mu.Unlock()
+			return out
+		}
+		f.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }
 
 func TestCreateNotifiesApprover(t *testing.T) {
@@ -629,7 +898,7 @@ func TestCreateNotifiesApprover(t *testing.T) {
 	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, ApprovalNotifier: n, Metrics: &metrics.Metrics{}})
 	csrf, cookie := obtainCSRF(t, h)
 	form := url.Values{
-		"repository": {"r.example.com/a"}, "tag": {"v1"}, "files": {"a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
+		"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
 	}
 	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -689,5 +958,121 @@ func TestRejectAndRevokeNotify(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("revoke did not notify")
+	}
+}
+
+func TestCreateRecordsApprovalCards(t *testing.T) {
+	st := newFakeStore()
+	n := &fakeApprovalNotifier{ch: make(chan string, 1), cards: []store.ApprovalCard{{ApproverEmail: "approver@example.com", MessageID: "om-1"}}}
+	h := New(Options{Store: st, Config: testConfig(t), Auth: fakeAuth{identity: &auth.Identity{Email: "requester@example.com"}}, ApprovalNotifier: n, Metrics: &metrics.Metrics{}})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"targets": {"r.example.com/a v1 a.tar.gz"}, "ttl": {"60"}, "csrf": {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d", w.Code)
+	}
+	<-n.ch
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		st.mu.Lock()
+		saved := append([]store.ApprovalCard(nil), st.cards["req-1"]...)
+		st.mu.Unlock()
+		if len(saved) == 1 && saved[0].MessageID == "om-1" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("approval card ids were not persisted")
+}
+
+func TestApprovePatchesCards(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusPending}
+	st.cards["req-1"] = []store.ApprovalCard{{ApproverEmail: "approver@example.com", MessageID: "om-1"}}
+	updater := &fakeCardUpdater{}
+	h := New(Options{
+		Store:   st,
+		Config:  testConfig(t),
+		Auth:    fakeAuth{identity: &auth.Identity{Email: "approver@example.com"}},
+		Cards:   updater,
+		Metrics: &metrics.Metrics{},
+	})
+	w := postDecision(t, h, "req-1", "approve", "looks good", nil)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("approve = %d, body=%s", w.Code, w.Body.String())
+	}
+	updates := updater.wait(t)
+	if len(updates) != 1 {
+		t.Fatalf("updates = %+v", updates)
+	}
+	if updates[0].outcome != string(store.StatusApproved) || updates[0].actor != "approver@example.com" || updates[0].cards != 1 {
+		t.Fatalf("update = %+v", updates[0])
+	}
+}
+
+func TestDetailShowsNotice(t *testing.T) {
+	st := newFakeStore()
+	st.requests["req-1"] = &store.Request{
+		ID: "req-1", RequesterEmail: "requester@example.com", Status: store.StatusApproved, TTLSeconds: 3600,
+	}
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com"})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, requestWithToken(http.MethodGet, "/requests/req-1?notice=already-decided", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("detail = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "This request was already handled") {
+		t.Fatalf("notice missing: %s", w.Body.String())
+	}
+}
+
+func TestTTLCustomOverridesPreset(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"targets":    {"r.example.com/a v1 a.tar.gz"},
+		"ttl":        {"2h"},
+		"ttl_custom": {"90m"},
+		"csrf":       {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	if st.created == nil || st.created.TTLSeconds != 5400 {
+		t.Fatalf("ttl = %+v, want the custom 90m", st.created)
+	}
+}
+
+func TestTTLPresetIsUsedWithoutCustom(t *testing.T) {
+	st := newFakeStore()
+	h := testHandler(t, st, &auth.Identity{Email: "requester@example.com", Subject: "sub"})
+	csrf, cookie := obtainCSRF(t, h)
+	form := url.Values{
+		"targets": {"r.example.com/a v1 a.tar.gz"},
+		"ttl":     {"8h"},
+		"csrf":    {csrf},
+	}
+	r := requestWithToken(http.MethodPost, "/requests", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("create = %d, body=%s", w.Code, w.Body.String())
+	}
+	if st.created == nil || st.created.TTLSeconds != 28800 {
+		t.Fatalf("ttl = %+v, want 8h", st.created)
 	}
 }

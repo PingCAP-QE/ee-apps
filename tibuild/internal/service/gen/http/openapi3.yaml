@@ -2054,7 +2054,9 @@ paths:
                                 ops_req:
                                     applicant: tidb
                                     change_id: c1
+                                    execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                                     release_id: r1
+                                    step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
                             repo: pingcap/tidb
             responses:
                 "200":
@@ -2070,7 +2072,9 @@ paths:
                                     ops_req:
                                         applicant: tidb
                                         change_id: c1
+                                        execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                                         release_id: r1
+                                        step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
                                 repo: pingcap/tidb
                                 tag: v8.5.4-nextgen.202510.10
                 "400":
@@ -2121,7 +2125,9 @@ paths:
                                 ops_req:
                                     applicant: tidb
                                     change_id: c1
+                                    execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                                     release_id: r1
+                                    step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
                             repo: pingcap/tidb
             responses:
                 "200":
@@ -2137,7 +2143,9 @@ paths:
                                     ops_req:
                                         applicant: tidb
                                         change_id: c1
+                                        execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                                         release_id: r1
+                                        step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
                                 repo: pingcap/tidb
                                 tag: v8.5.4-nextgen.202510.10
                 "400":
@@ -2209,7 +2217,9 @@ paths:
                                     ops_req:
                                         applicant: tidb
                                         change_id: c1
+                                        execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                                         release_id: r1
+                                        step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
                                 repo: pingcap/tidb
                                 tag: v8.5.4-nextgen.202510.10
                 "400":
@@ -3586,7 +3596,9 @@ components:
                     ops_req:
                         applicant: tidb
                         change_id: c1
+                        execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                         release_id: r1
+                        step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
                 repo: pingcap/tidb
             required:
                 - repo
@@ -4517,7 +4529,9 @@ components:
                     ops_req:
                         applicant: tidb
                         change_id: c1
+                        execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                         release_id: r1
+                        step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
                 repo: pingcap/tidb
                 tag: v8.5.4-nextgen.202510.10
             required:
@@ -5380,18 +5394,31 @@ components:
                         change_id:
                             type: string
                             example: c1
+                        execution_id:
+                            type: string
+                            description: Optional UUID of the ops execution that requested the tag
+                            example: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                         release_id:
                             type: string
                             example: r1
+                        step_key:
+                            type: string
+                            description: Optional UUID of the ops step that requested the tag
+                            example: e38e599a-de0c-4f48-be90-80f9327cb40e
+                    description: Ops request ids of the caller. release_id, change_id, step_key and execution_id are all optional and independent.
                     example:
                         applicant: tidb
                         change_id: c1
+                        execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                         release_id: r1
+                        step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
             example:
                 ops_req:
                     applicant: tidb
                     change_id: c1
+                    execution_id: 5b022051-d3ab-4644-ba9f-b0001bbce33c
                     release_id: r1
+                    step_key: e38e599a-de0c-4f48-be90-80f9327cb40e
         TiUPFaultError:
             type: object
             properties:

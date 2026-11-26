@@ -15,12 +15,19 @@ import (
 // Run from the Go module: go test ../charts/github-token-broker/tests/render_test.go
 func render(t *testing.T, settings ...string) ([]map[string]any, error) {
 	t.Helper()
-	_, source, _, _ := runtime.Caller(0)
-	chart := filepath.Dir(filepath.Dir(source))
-	args := []string{"template", "broker", chart, "--namespace", "ci"}
+	args := make([]string, 0, 2*len(settings))
 	for _, setting := range settings {
 		args = append(args, "--set", setting)
 	}
+	return renderArgs(t, args...)
+}
+
+func renderArgs(t *testing.T, flags ...string) ([]map[string]any, error) {
+	t.Helper()
+	_, source, _, _ := runtime.Caller(0)
+	chart := filepath.Dir(filepath.Dir(source))
+	args := []string{"template", "broker", chart, "--namespace", "ci"}
+	args = append(args, flags...)
 	output, err := exec.Command("helm", args...).CombinedOutput()
 	if err != nil {
 		return nil, errors.New(string(output))
@@ -63,10 +70,10 @@ func mapping(value any, keys ...string) map[string]any {
 func TestRenderHTTPAndTLS(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		name := "HTTP default"
-		var settings []string
+		settings := []string{"networkPolicy.ingressNamespaces={ci}"}
 		if enabled {
 			name = "TLS custom keys and ports"
-			settings = []string{"server.tls.enabled=true", "server.tls.existingSecret=broker-tls", "server.tls.certKey=certificate", "server.tls.keyKey=privateKey", "server.tls.port=9443", "service.httpsPort=444", "serviceMonitor.enabled=true"}
+			settings = append(settings, "cache.minRemaining=1h", "server.tls.enabled=true", "server.tls.existingSecret=broker-tls", "server.tls.certKey=certificate", "server.tls.keyKey=privateKey", "server.tls.port=9443", "service.httpsPort=444", "networkPolicy.tlsIngressNamespaces={arc-runners}", "serviceMonitor.enabled=true")
 		}
 		t.Run(name, func(t *testing.T) {
 			objects, err := render(t, settings...)
@@ -81,6 +88,15 @@ func TestRenderHTTPAndTLS(t *testing.T) {
 			if server["address"] != ":8080" {
 				t.Fatalf("HTTP address changed: %v", server)
 			}
+			// Callers share a cache entry, so the lifetime floor must reach the
+			// config the broker actually reads.
+			wantRemaining := "15m"
+			if enabled {
+				wantRemaining = "1h"
+			}
+			if got := mapping(cfg, "cache")["min_remaining"]; got != wantRemaining {
+				t.Fatalf("bad cache.min_remaining: %v", got)
+			}
 			spec := mapping(object(t, objects, "Deployment"), "spec", "template", "spec")
 			container := spec["containers"].([]any)[0].(map[string]any)
 			for _, probe := range []string{"livenessProbe", "readinessProbe"} {
@@ -94,7 +110,7 @@ func TestRenderHTTPAndTLS(t *testing.T) {
 				t.Fatal("HTTP service changed")
 			}
 			containerPorts := container["ports"].([]any)
-			policyPorts := mapping(object(t, objects, "NetworkPolicy"), "spec")["ingress"].([]any)[0].(map[string]any)["ports"].([]any)
+			policyIngress := mapping(object(t, objects, "NetworkPolicy"), "spec")["ingress"].([]any)
 			var tlsVolume, tlsMount map[string]any
 			for _, volume := range spec["volumes"].([]any) {
 				if mapping(volume)["name"] == "tls" {
@@ -107,7 +123,7 @@ func TestRenderHTTPAndTLS(t *testing.T) {
 				}
 			}
 			if !enabled {
-				if server["tls"] != nil || tlsVolume != nil || tlsMount != nil || len(servicePorts) != 1 || len(containerPorts) != 1 || len(policyPorts) != 1 {
+				if server["tls"] != nil || tlsVolume != nil || tlsMount != nil || len(servicePorts) != 1 || len(containerPorts) != 1 || len(policyIngress) != 1 || len(mapping(policyIngress[0])["ports"].([]any)) != 1 {
 					t.Fatal("default render unexpectedly enables TLS")
 				}
 				return
@@ -119,8 +135,26 @@ func TestRenderHTTPAndTLS(t *testing.T) {
 			if len(servicePorts) != 2 || mapping(servicePorts[1])["name"] != "https" || mapping(servicePorts[1])["targetPort"] != "https" || mapping(servicePorts[1])["port"] != 444 {
 				t.Fatalf("bad service ports: %v", servicePorts)
 			}
-			if len(containerPorts) != 2 || mapping(containerPorts[1])["name"] != "https" || mapping(containerPorts[1])["containerPort"] != 9443 || len(policyPorts) != 2 || mapping(policyPorts[1])["port"] != 9443 {
-				t.Fatal("TLS container/network policy port mismatch")
+			if len(containerPorts) != 2 || mapping(containerPorts[1])["name"] != "https" || mapping(containerPorts[1])["containerPort"] != 9443 {
+				t.Fatal("TLS container port mismatch")
+			}
+			// The plaintext consumers keep port 8080 only; the TLS port is
+			// granted in its own rule, to its own namespace list.
+			if len(policyIngress) != 2 {
+				t.Fatalf("expected separate HTTP and TLS rules: %v", policyIngress)
+			}
+			if httpPorts := mapping(policyIngress[0])["ports"].([]any); len(httpPorts) != 1 || mapping(httpPorts[0])["port"] != 8080 {
+				t.Fatalf("HTTP rule must stay 8080-only: %v", httpPorts)
+			}
+			tlsFrom := mapping(policyIngress[1])["from"].([]any)
+			tlsPorts := mapping(policyIngress[1])["ports"].([]any)
+			if len(tlsPorts) != 1 || mapping(tlsPorts[0])["port"] != 9443 {
+				t.Fatalf("TLS rule must carry only the TLS port: %v", tlsPorts)
+			}
+			for _, source := range tlsFrom {
+				if mapping(mapping(source), "namespaceSelector", "matchLabels")["kubernetes.io/metadata.name"] != "arc-runners" {
+					t.Fatalf("TLS rule admits an unexpected namespace: %v", source)
+				}
 			}
 			if tlsMount == nil || tlsMount["mountPath"] != "/etc/github-token-broker/tls" || tlsMount["readOnly"] != true || tlsMount["subPath"] != nil {
 				t.Fatalf("bad TLS directory mount: %v", tlsMount)
@@ -135,6 +169,53 @@ func TestRenderHTTPAndTLS(t *testing.T) {
 				t.Fatal("ServiceMonitor changed")
 			}
 		})
+	}
+}
+
+func TestNetworkPolicyScopesTLSPortSeparately(t *testing.T) {
+	// A fresh install must not admit anyone: both lists default to empty.
+	objects, err := render(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ingress := mapping(object(t, objects, "NetworkPolicy"), "spec")["ingress"]; ingress != nil {
+		t.Fatalf("default install admits ingress: %v", ingress)
+	}
+
+	// A plaintext consumer must not gain the TLS port just because the listener
+	// exists, and an empty TLS list must not fall back to "any namespace".
+	objects, err = render(t, "networkPolicy.ingressNamespaces={ci}", "server.tls.enabled=true", "server.tls.existingSecret=broker-tls")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingress := mapping(object(t, objects, "NetworkPolicy"), "spec")["ingress"].([]any)
+	if len(ingress) != 1 {
+		t.Fatalf("expected the HTTP rule only: %v", ingress)
+	}
+	for _, rule := range ingress {
+		for _, port := range mapping(rule)["ports"].([]any) {
+			if mapping(port)["port"] != 8080 {
+				t.Fatalf("TLS port admitted without tlsIngressNamespaces: %v", rule)
+			}
+		}
+	}
+
+	// Without HTTP consumers the TLS rule must still stand on its own.
+	objects, err = renderArgs(t,
+		"--set", "server.tls.enabled=true", "--set", "server.tls.existingSecret=broker-tls",
+		"--set-json", "networkPolicy.ingressNamespaces=[]",
+		"--set-json", `networkPolicy.tlsIngressNamespaces=["arc-runners"]`,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ingress = mapping(object(t, objects, "NetworkPolicy"), "spec")["ingress"].([]any)
+	if len(ingress) != 1 {
+		t.Fatalf("expected the TLS rule only: %v", ingress)
+	}
+	ports := mapping(ingress[0])["ports"].([]any)
+	if len(ports) != 1 || mapping(ports[0])["port"] != 8443 {
+		t.Fatalf("bad TLS rule ports: %v", ports)
 	}
 }
 

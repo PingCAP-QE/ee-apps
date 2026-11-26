@@ -15,9 +15,22 @@ type Revoker interface {
 	RevokeShare(ctx context.Context, shareID string) error
 }
 
+// ExpiryNotifier tells the requester that their request expired. nil disables
+// the message; the sweep itself never depends on it.
+type ExpiryNotifier interface {
+	NotifyExpired(ctx context.Context, req *store.Request, hadLinks bool) error
+}
+
+// CardUpdater patches the approval cards of an expired request; nil disables it.
+type CardUpdater interface {
+	UpdateApprovalCards(ctx context.Context, req *store.Request, cards []store.ApprovalCard, outcome, actor, note string) error
+}
+
 type Sweeper struct {
 	Store    store.Store
 	Revoker  Revoker
+	Cards    CardUpdater
+	Notifier ExpiryNotifier
 	Logger   *log.Logger
 	Interval time.Duration
 	Batch    int
@@ -77,6 +90,7 @@ func (s *Sweeper) sweep(ctx context.Context) {
 				}
 			}
 		}
+		hadLinks := req.Status == store.StatusApproved
 		ok, err := s.Store.Transition(ctx, req.ID, req.Status, store.StatusExpired, "", "", now)
 		if err != nil {
 			s.Logger.Printf("approval expiry transition failed request=%s", req.ID)
@@ -84,6 +98,27 @@ func (s *Sweeper) sweep(ctx context.Context) {
 		}
 		if !ok {
 			continue
+		}
+		req.Status = store.StatusExpired
+		if s.Notifier != nil {
+			if err := s.Notifier.NotifyExpired(ctx, req, hadLinks); err != nil {
+				s.Logger.Printf("approval expiry notification failed request=%s", req.ID)
+			}
+		}
+		if s.Cards != nil {
+			decided := now
+			req.DecidedAt = &decided
+			req.ApproverEmail = ""
+			cards, err := s.Store.ListApprovalCards(ctx, req.ID)
+			if err != nil {
+				s.Logger.Printf("approval cards lookup failed request=%s", req.ID)
+				continue
+			}
+			if len(cards) > 0 {
+				if err := s.Cards.UpdateApprovalCards(ctx, req, cards, string(store.StatusExpired), "", ""); err != nil {
+					s.Logger.Printf("approval card update failed request=%s", req.ID)
+				}
+			}
 		}
 	}
 }

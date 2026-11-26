@@ -7,6 +7,7 @@ from ci_dashboard.api.dependencies import get_engine
 from ci_dashboard.api.queries.base import MAX_RANKING_LIMIT, CommonFilters
 from ci_dashboard.api.queries.cost import COST_DRILLDOWN_CHILD_GROUPS, CIWeeklyCostSection
 from ci_dashboard.api.queries.pages import (
+    FlakySection,
     get_build_trend_page,
     get_cost_budget_pace_page,
     get_cost_engineering_group_share_page,
@@ -54,6 +55,16 @@ def flaky_page(
     engine: Engine = Depends(get_engine),
 ) -> dict[str, object]:
     return get_flaky_page(engine, filters)
+
+
+@router.get("/flaky/{section}")
+def flaky_page_section(
+    section: FlakySection,
+    filters: CommonFilters = Depends(get_common_filters),
+    engine: Engine = Depends(get_engine),
+) -> dict[str, object]:
+    """Return one independent query family without waiting for unrelated panels."""
+    return get_flaky_page(engine, filters, section=section)
 
 
 @router.get("/runtime-insights")

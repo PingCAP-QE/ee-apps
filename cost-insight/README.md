@@ -99,19 +99,33 @@ needs reconciliation.
 
 Not covered: arbitrary SQL/SELECT retries, whole-pipeline replay, standalone
 state/checkpoint retries, or an independent connection-establishment retry loop.
-Generic resource-serving staging/publication is deliberately **not retried**:
-its streaming iterator and monetary accumulators cannot safely be reused after
-partial consumption. Failed staging rolls back and leaves the previous active
-publication unchanged; a publication commit with lost ACK needs inspection.
-Tencent `_import_bill_day` page writes are also deferred: mutable pagination
+Native resource-serving stages one account/day into a private version. Each
+transport retry uses the same loaded inputs and a new streaming iterator and
+amount counters. After a lost staging COMMIT acknowledgement, a matching row
+count for a newly generated private version confirms the validated stage without
+rewriting it. Publication retries compare the previous pointer and confirm a
+committed candidate without resetting TiFlash readiness; a superseded pointer
+or an ambiguous missing pointer stops the run for reconciliation. An explicitly
+supplied version must be private to the run and cannot already be active for a
+processed window. Use a new version or narrow the dates when resuming a partial run.
+Tencent `_import_bill_day` page writes are still not automatically replayed: mutable pagination
 watermarks/counters and final evidence require a separate replay design. No
 `ping(reconnect=True)`, schema changes, or automatic failed-state resets are used.
 
-Warehouse `running`/`failed` latches still require **manual inspection and
-recovery**, including run ID, committed scopes, source snapshot and monetary
-checks; do not blindly rerun/clear a failed worker. These changes bound recovery
-from transport failures; they do not fix or establish a network/provider root
-cause. `pre_ping` checks checkout, not an active transaction.
+Warehouse workers resume validated `failed` checkpoints on their next invocation.
+An orphaned `running` checkpoint requires proof that its recorded Pod is gone,
+replaced, or terminal; a live/unknown owner is never displaced. Ownership is
+rechecked under the database lock after the Pod lookup. The recovery pass finishes
+the original window's unfinished account-days, including days now outside the
+normal rolling window; the following normal invocation continues rolling refresh.
+Each incomplete day repeats summary, attribution and publication checks before it
+is marked complete. Source/schema/currency/monetary guards remain in force: a
+persistent validation problem still fails instead of being silently accepted.
+Malformed or unprovable checkpoints still require operator attention; do not
+blindly clear state. See [checkpoint resume operations](docs/warehouse-resume-operations.md)
+for runtime permissions and deployment requirements. Transaction retries and
+checkpoint recovery do not fix or establish a network/provider root cause.
+`pre_ping` checks checkout, not an active transaction.
 
 Useful GCP settings:
 
@@ -297,19 +311,45 @@ Discovery is limited to 14 days and rejects a source more than seven days old.
 Every query is dry-run first with a fixed **2 GiB per-query** cap and finite
 timeouts; source metadata must remain stable. Canonical hash collisions are
 merged before exact account/billing-partition/day replacement. All source
-windows are validated before facts are written. Each day then refreshes
+windows for eligible accounts are validated before facts are written. An ordinary
+AWS account's registry/source/preflight or write failure does not prevent other
+requested accounts from completing; a changed or unverifiable **shared source
+snapshot**, including a source query's own metadata guards, still stops all
+pending reads/writes. Each day then refreshes
 attribution and verifies the active native publication conserves all four
 monetary fields. Other accounts, sibling days and unqueried partitions remain
 untouched. Recent billing dates remain provisional; revisions older than five
 days require a separately reviewed repair rather than a wider automatic scan.
 
 `--dry-run` performs source reads and database SELECTs only, including no job-state
-writes. Removing it enables writes **inside GKE only**. Progress and failure state
-use the existing `sync_aws_warehouse_daily` / `sync_azure_warehouse_daily` job keys,
-so migration cannot bypass a running or failed ConfigMap worker. An oversized
-local backlog, failure or interrupted worker requires operator inspection; there
-is no automatic replay. Inspect the exact account/day and repair/reconcile facts,
-attribution and publication before explicitly releasing its job-state latch.
+writes. Removing it enables writes **inside GKE only**. Ordinary AWS progress and
+errors use `sync_aws_warehouse_daily:aws:<account_id>`; Azure keeps
+`sync_azure_warehouse_daily`, and F04 keeps `sync_aws_f04_warehouse_daily`.
+Under the [checkpoint recovery and ownership rules](docs/warehouse-resume-operations.md#automatic-recovery),
+the next invocation can resume an account's validated checkpoint in its original
+unfinished window, never silently skip it. An unverified failed or
+live/unknown running account blocks only itself. Multi-account CLI output includes
+per-account status/error/progress even after a shared snapshot abort, and any
+account failure returns a nonzero exit.
+There is no concurrent execution or whole-pipeline retry within an invocation.
+
+Before ordinary AWS uses account keys, it atomically fences the old singleton as
+`account_scoped`, which old workers cannot acquire. A legacy running owner must
+first be proven stopped using the same Kubernetes proof and database recheck as
+checkpoint recovery. A valid, attributable failed/interrupted singleton is split
+without losing any account's saved window or completed days; completion still
+requires native-publication verification. The original singleton evidence/error
+is retained. Multi-account legacy failures without a valid write-phase
+`current_account_day`, malformed scope/checkpoints, or overlapping old/new state
+fail closed **globally** before source reads or fact writes and require operator
+inspection. Do not clear the fence/latches or run an old-key worker to bypass them.
+After the fence is set, rolling back the image alone cannot restore ordinary AWS
+writes: the previous image cannot acquire `sync_aws_warehouse_daily`. Keep an
+account-scoped image for writes unless an operator explicitly approves a rollback
+plan that reconciles the saved account checkpoints.
+For diagnosis, extend the [resume runbook's query](docs/warehouse-resume-operations.md#scope-changes-and-failed-checkpoints)
+with the affected `sync_aws_warehouse_daily:aws:<account_id>` keys; keep the
+singleton row in the query to inspect the fence.
 
 Deploy the application image first, validate both dry runs, then switch both ops
 CronJobs to this command and remove mounted workers. Preserve legacy-source holds

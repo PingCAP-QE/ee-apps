@@ -27,6 +27,7 @@ type Config struct {
 	OpenFGAStoreID  string
 	OpenFGAModelID  string
 	OpenFGAAPIToken string
+	DecisionMode    string
 	Credentials     map[string]Credential
 }
 
@@ -40,6 +41,7 @@ func Load(getenv func(string) string) (Config, error) {
 		OpenFGAStoreID:  getenv("AUTHZD_OPENFGA_STORE_ID"),
 		OpenFGAModelID:  getenv("AUTHZD_OPENFGA_MODEL_ID"),
 		OpenFGAAPIToken: getenv("AUTHZD_OPENFGA_API_TOKEN"),
+		DecisionMode:    defaultValue(getenv("AUTHZD_DECISION_MODE"), "enforce"),
 	}
 	credentialsJSON := getenv("AUTHZD_CREDENTIAL_MODES")
 	if strings.TrimSpace(credentialsJSON) != "" {
@@ -52,12 +54,34 @@ func Load(getenv func(string) string) (Config, error) {
 			return Config{}, errors.New("AUTHZD_CREDENTIAL_MODES must contain one JSON object")
 		}
 	}
+	switch cfg.DecisionMode {
+	case "off", "observe", "shadow", "enforce":
+	default:
+		return Config{}, errors.New("AUTHZD_DECISION_MODE must be off, observe, shadow, or enforce")
+	}
 	if cfg.RegistryPath == "" || cfg.OpenFGAURL == "" || cfg.OpenFGAStoreID == "" || cfg.OpenFGAModelID == "" || len(cfg.Credentials) == 0 {
 		return Config{}, errors.New("registry, OpenFGA endpoint/store/model, and credential modes are required")
 	}
 	for mode, credential := range cfg.Credentials {
 		if strings.TrimSpace(mode) == "" || !validCredentialHeader(credential.Header) || credential.JWKSURL == "" || credential.Issuer == "" || credential.Audience == "" || credential.PrincipalPrefix == "" {
 			return Config{}, fmt.Errorf("credential mode %q is incomplete", mode)
+		}
+	}
+	browser, hasBrowser := cfg.Credentials["browser"]
+	machine, hasMachine := cfg.Credentials["machine"]
+	if hasBrowser && (!strings.HasPrefix(browser.PrincipalPrefix, "user:") ||
+		(browser.SubjectClaim != "" && browser.SubjectClaim != "sub")) {
+		return Config{}, errors.New("browser mode requires a user principal based on the signed sub claim")
+	}
+	if hasMachine && !strings.HasPrefix(machine.PrincipalPrefix, "workload:") {
+		return Config{}, errors.New("machine mode requires a workload principal")
+	}
+	if hasBrowser && hasMachine {
+		if strings.EqualFold(browser.Header, machine.Header) {
+			return Config{}, errors.New("browser and machine modes require separate token headers")
+		}
+		if browser.Issuer == machine.Issuer && browser.Audience == machine.Audience {
+			return Config{}, errors.New("browser and machine modes from the same issuer require distinct audiences")
 		}
 	}
 	return cfg, nil

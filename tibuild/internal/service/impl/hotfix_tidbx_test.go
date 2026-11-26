@@ -776,3 +776,239 @@ func TestGetLatestNextgenReleaseBranchForCommit(t *testing.T) {
 		t.Fatalf("branch = %q, want release-nextgen-202602", branch)
 	}
 }
+
+// TestBumpTagForTidbx_RejectsMalformedOpsIDs pins the write-side contract: the
+// ops ids are optional and independent, but a value that is present must be a
+// canonical UUID, because it would otherwise be frozen into the tag annotation
+// and forwarded to the ops build callback as-is.
+func TestBumpTagForTidbx_RejectsMalformedOpsIDs(t *testing.T) {
+	cases := []struct {
+		name    string
+		meta    string
+		wantErr string
+	}{
+		{
+			name:    "step key is not a uuid",
+			meta:    `{"ops_req":{"release_id":"30082","change_id":"62440","step_key":"e38e599a","execution_id":"5b022051-d3ab-4644-ba9f-b0001bbce33c"}}`,
+			wantErr: `step_key "e38e599a" is not a UUID`,
+		},
+		{
+			name:    "execution id is not a uuid",
+			meta:    `{"ops_req":{"release_id":"30082","change_id":"62440","step_key":"e38e599a-de0c-4f48-be90-80f9327cb40e","execution_id":"5b022051"}}`,
+			wantErr: `execution_id "5b022051" is not a UUID`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			svc := newServiceWithClient(newTestGithubClient(&http.Client{
+				Transport: failTransport{t: t},
+			}))
+
+			meta := &hotfix.TiDBxBumpTagMeta{}
+			if err := json.Unmarshal([]byte(c.meta), meta); err != nil {
+				t.Fatalf("failed to build meta: %v", err)
+			}
+			branch := "release-nextgen-202604"
+
+			_, err := svc.BumpTagForTidbx(context.Background(), &hotfix.BumpTagForTidbxPayload{
+				Repo:   "owner/repo",
+				Author: "developer@example.com",
+				Branch: &branch,
+				Meta:   meta,
+			})
+
+			httpErr, ok := err.(*hotfix.HTTPError)
+			if !ok {
+				t.Fatalf("expected a 400 HTTPError, got %#v", err)
+			}
+			if httpErr.Code != http.StatusBadRequest {
+				t.Fatalf("expected status %d, got %d", http.StatusBadRequest, httpErr.Code)
+			}
+			if !strings.Contains(httpErr.Message, c.wantErr) {
+				t.Fatalf("expected message to contain %q, got %q", c.wantErr, httpErr.Message)
+			}
+		})
+	}
+}
+
+// TestBumpTagForTidbx_WritesOpsIDsIntoTagAnnotation closes the loop: the ids
+// DevOps sends must land in the tag annotation verbatim, because that is the
+// only place the build callback can read them from later. Ids that carry no
+// value must not land there at all.
+func TestBumpTagForTidbx_WritesOpsIDsIntoTagAnnotation(t *testing.T) {
+	cases := []struct {
+		name string
+		meta string
+		want map[string]any
+	}{
+		{
+			name: "all ids",
+			meta: `{"ops_req":{
+				"applicant": "developer@example.com",
+				"release_id": "30082",
+				"change_id": "62440",
+				"step_key": "e38e599a-de0c-4f48-be90-80f9327cb40e",
+				"execution_id": "5b022051-d3ab-4644-ba9f-b0001bbce33c"
+			}}`,
+			want: map[string]any{
+				"applicant":    "developer@example.com",
+				"release_id":   "30082",
+				"change_id":    "62440",
+				"step_key":     "e38e599a-de0c-4f48-be90-80f9327cb40e",
+				"execution_id": "5b022051-d3ab-4644-ba9f-b0001bbce33c",
+			},
+		},
+		{
+			// An explicit empty string is a non-nil pointer, so omitempty alone
+			// would write `"step_key":""` into the annotation.
+			name: "explicit empty ids are dropped",
+			meta: `{"ops_req":{
+				"applicant": "",
+				"release_id": "30082",
+				"change_id": "  ",
+				"step_key": "",
+				"execution_id": ""
+			}}`,
+			want: map[string]any{
+				"release_id": "30082",
+			},
+		},
+		{
+			name: "no ids at all",
+			meta: `{}`,
+			want: map[string]any{},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			annotation := bumpTagAndCaptureAnnotation(t, c.meta)
+
+			got, ok := annotation["meta"].(map[string]any)
+			if !ok {
+				if len(c.want) == 0 {
+					return
+				}
+				t.Fatalf("expected meta in annotation, got %v", annotation)
+			}
+			opsReq, ok := got["ops_req"].(map[string]any)
+			if !ok {
+				opsReq = map[string]any{}
+			}
+
+			for _, key := range []string{
+				"applicant", "release_id", "change_id", "step_key", "execution_id",
+			} {
+				want, ok := c.want[key]
+				if !ok {
+					if _, present := opsReq[key]; present {
+						t.Errorf("expected %q to be absent, got %v", key, opsReq[key])
+					}
+					continue
+				}
+				if opsReq[key] != want {
+					t.Errorf("expected %q=%v, got %v", key, want, opsReq[key])
+				}
+			}
+		})
+	}
+}
+
+// bumpTagAndCaptureAnnotation runs the bootstrap path against a mocked GitHub
+// and returns the annotation the service asked to store on the new tag.
+func bumpTagAndCaptureAnnotation(t *testing.T, metaJSON string) map[string]any {
+	t.Helper()
+
+	const (
+		fullRepo    = "owner/repo"
+		branch      = "release-nextgen-202604"
+		commit      = "abc123"
+		expectedTag = "v26.4.0"
+	)
+
+	var tagMessage string
+	httpClient := mock.NewMockedHTTPClient(
+		mock.WithRequestMatchPages(
+			mock.GetReposTagsByOwnerByRepo,
+			[]*github.RepositoryTag{},
+		),
+		mock.WithRequestMatch(
+			mock.GetReposBranchesByOwnerByRepoByBranch,
+			&github.Branch{
+				Name:   new(branch),
+				Commit: &github.RepositoryCommit{SHA: new(commit)},
+			},
+		),
+		mock.WithRequestMatchHandler(
+			mock.EndpointPattern{
+				Pattern: "/repos/{owner}/{repo}/git/tags",
+				Method:  "POST",
+			},
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body struct {
+					Message string `json:"message"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Errorf("failed to decode create-tag body: %v", err)
+				}
+				tagMessage = body.Message
+				_, _ = w.Write(mock.MustMarshal(&github.Tag{
+					Tag:     new(expectedTag),
+					Message: new(body.Message),
+					Object:  &github.GitObject{Type: new("commit"), SHA: new(commit)},
+					SHA:     new(commit),
+				}))
+			}),
+		),
+		mock.WithRequestMatch(
+			mock.PostReposGitRefsByOwnerByRepo,
+			&github.Reference{
+				Ref:    new("refs/tags/" + expectedTag),
+				Object: &github.GitObject{SHA: new(commit)},
+			},
+		),
+	)
+	svc := newServiceWithClient(newTestGithubClient(httpClient))
+
+	meta := &hotfix.TiDBxBumpTagMeta{}
+	if err := json.Unmarshal([]byte(metaJSON), meta); err != nil {
+		t.Fatalf("failed to build meta: %v", err)
+	}
+	branchName := branch
+
+	res, err := svc.BumpTagForTidbx(context.Background(), &hotfix.BumpTagForTidbxPayload{
+		Repo:   fullRepo,
+		Author: "developer@example.com",
+		Branch: &branchName,
+		Meta:   meta,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.Tag != expectedTag {
+		t.Fatalf("expected tag %s, got %s", expectedTag, res.Tag)
+	}
+	if tagMessage == "" {
+		t.Fatal("the tag annotation was not written")
+	}
+
+	var annotation map[string]any
+	if err := json.Unmarshal([]byte(tagMessage), &annotation); err != nil {
+		t.Fatalf("tag annotation is not JSON: %v (%s)", err, tagMessage)
+	}
+	if annotation["author"] != "developer@example.com" {
+		t.Errorf("expected author in annotation, got %v", annotation["author"])
+	}
+	return annotation
+}
+
+// failTransport fails the test when the service reaches GitHub.
+type failTransport struct {
+	t *testing.T
+}
+
+func (f failTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	f.t.Errorf("unexpected GitHub request: %s %s", req.Method, req.URL.Path)
+	return nil, io.ErrUnexpectedEOF
+}

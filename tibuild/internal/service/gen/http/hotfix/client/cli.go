@@ -23,7 +23,7 @@ func BuildBumpTagForTidbxPayload(hotfixBumpTagForTidbxBody string) (*hotfix.Bump
 	{
 		err = json.Unmarshal([]byte(hotfixBumpTagForTidbxBody), &body)
 		if err != nil {
-			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"release_id\": \"r1\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'")
+			return nil, fmt.Errorf("invalid JSON for body, \nerror: %s, \nexample of valid JSON:\n%s", err, "'{\n      \"author\": \"abc@test.com\",\n      \"branch\": \"release-8.5\",\n      \"commit\": \"abc123def456\",\n      \"meta\": {\n         \"ops_req\": {\n            \"applicant\": \"tidb\",\n            \"change_id\": \"c1\",\n            \"execution_id\": \"5b022051-d3ab-4644-ba9f-b0001bbce33c\",\n            \"release_id\": \"r1\",\n            \"step_key\": \"e38e599a-de0c-4f48-be90-80f9327cb40e\"\n         }\n      },\n      \"repo\": \"pingcap/tidb\"\n   }'")
 		}
 	}
 	v := &hotfix.BumpTagForTidbxPayload{

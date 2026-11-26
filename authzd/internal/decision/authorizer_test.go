@@ -8,6 +8,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/identity"
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/registry"
+	"github.com/PingCAP-QE/ee-apps/authzd/internal/resolver"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 )
 
@@ -309,5 +310,115 @@ func testAttributes(token string) *authv3.AttributeContext {
 			Id: "req-1", Method: "POST", Host: "example.test", Path: "/builds/17/rerun",
 			Headers: map[string]string{"x-verified-token": token, "x-user-id": "user:attacker", "x-request-id": "req-1"},
 		}},
+	}
+}
+
+func TestRouteIdentityModeSelectsOneVerifier(t *testing.T) {
+	for _, mode := range []string{"browser", "machine"} {
+		t.Run(mode, func(t *testing.T) {
+			a := newTestAuthorizer(t, "enforce", allowChecker(), nil, testResolver(), nil)
+			headers := map[string]string{"browser": "x-forwarded-id-token", "machine": "authorization"}
+			for name, header := range headers {
+				a.credentials[name] = Credential{Header: header, Verifier: verifierFunc(func(_ context.Context, token string) (identity.Principal, error) {
+					if name != mode {
+						t.Fatalf("route selected %s but called %s verifier", mode, name)
+					}
+					if token != name+"-token" {
+						return identity.Principal{}, errors.New("unexpected credential")
+					}
+					return identity.Principal{Subject: name + "-subject"}, nil
+				})}
+			}
+			attrs := testAttributes("")
+			attrs.ContextExtensions["identity_mode"] = mode
+			requestHeaders := attrs.Request.Http.Headers
+			requestHeaders["authorization"] = "Bearer machine-token"
+			requestHeaders["x-forwarded-id-token"] = "browser-token"
+			resp, err := a.Authorize(context.Background(), attrs)
+			if err != nil || resp.GetOkResponse() == nil {
+				t.Fatalf("expected allow: %v", err)
+			}
+			delete(requestHeaders, headers[mode])
+			resp, err = a.Authorize(context.Background(), attrs)
+			if err != nil || resp.GetDeniedResponse() == nil {
+				t.Fatalf("missing selected credential must deny: %v", err)
+			}
+			requestHeaders[headers[mode]] = "invalid"
+			if mode == "machine" {
+				requestHeaders["authorization"] = "Bearer invalid"
+			}
+			resp, err = a.Authorize(context.Background(), attrs)
+			if err != nil || resp.GetDeniedResponse() == nil {
+				t.Fatalf("invalid selected credential must deny: %v", err)
+			}
+		})
+	}
+}
+
+// TestAuthorizeUsesCanonicalResourceNotThePathParent locks the tenant-isolation
+// property: a caller cannot authorize by claiming a parent in the URL. The
+// resource is the resolver's canonical object, and the path's project segment
+// never becomes an authorization input.
+func TestAuthorizeUsesCanonicalResourceNotThePathParent(t *testing.T) {
+	registryData := []byte(`{"version":"test","routes":[{"id":"nested-rerun","host":"example.test","route":"tibuild-machine","method":"POST","path":"/projects/{project}/builds/{id}/rerun","priority":10,"mode":"enforce","checks":[{"object":"capability:tibuild.devbuild.rerun","relation":"invoke"},{"object_from":"devbuild","id_from":"path.id","relation":"can_rerun"}]}]}`)
+	policyRegistry, err := registry.Parse(registryData)
+	if err != nil {
+		t.Fatalf("registry.Parse() error = %v", err)
+	}
+	catalog, err := resolver.Parse([]byte(`{"version":"catalog-v1","resources":{"devbuild/123":"devbuild:canonical-123"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var checked []string
+	denyChecker := checkerFunc{modelID: "model-1", check: func(_ context.Context, _, object, _ string, _ bool) (bool, error) {
+		checked = append(checked, object)
+		return object != "devbuild:canonical-123", nil
+	}}
+	audit := &recorder{}
+	authorizer := NewAuthorizer(policyRegistry,
+		map[string]Credential{"machine": {Header: "x-verified-token", Verifier: verifierFunc(func(context.Context, string) (identity.Principal, error) {
+			return identity.Principal{Subject: "user:issuer|attacker"}, nil
+		})}}, catalog, denyChecker, audit)
+
+	request := func(path string) *authv3.AttributeContext {
+		return &authv3.AttributeContext{
+			ContextExtensions: map[string]string{"route_id": "tibuild-machine", "identity_mode": "machine"},
+			Request: &authv3.AttributeContext_Request{Http: &authv3.AttributeContext_HttpRequest{
+				Id: "req-1", Method: "POST", Host: "example.test", Path: path,
+				Headers: map[string]string{"x-verified-token": "token"},
+			}},
+		}
+	}
+	// The build belongs to project B; the caller claims project A in the path.
+	response, err := authorizer.Authorize(context.Background(), request("/projects/A/builds/123/rerun"))
+	if err != nil {
+		t.Fatalf("Authorize() error = %v", err)
+	}
+	if response.GetDeniedResponse() == nil {
+		t.Fatal("a forged parent path authorized another project's build")
+	}
+	for _, object := range checked {
+		if object != "capability:tibuild.devbuild.rerun" && object != "devbuild:canonical-123" {
+			t.Fatalf("check used %q; the path's project segment must never reach the decision", object)
+		}
+	}
+	if len(audit.events) != 1 || audit.events[0].Reason != "relationship_denied" {
+		t.Fatalf("audit = %+v", audit.events)
+	}
+	if audit.events[0].ResourceType != "devbuild" || audit.events[0].ResourceID != "canonical-123" {
+		t.Fatalf("audit resource = %q/%q, want the canonical object", audit.events[0].ResourceType, audit.events[0].ResourceID)
+	}
+
+	// An unknown build ID has no trusted ownership data, so it must deny rather
+	// than fall back to the path.
+	response, err = authorizer.Authorize(context.Background(), request("/projects/A/builds/999/rerun"))
+	if err != nil {
+		t.Fatalf("Authorize() error = %v", err)
+	}
+	if response.GetDeniedResponse() == nil {
+		t.Fatal("an unknown build ID was authorized")
+	}
+	if got := audit.events[len(audit.events)-1].Reason; got != "resource_not_found" {
+		t.Fatalf("reason = %q, want a resolution failure", got)
 	}
 }

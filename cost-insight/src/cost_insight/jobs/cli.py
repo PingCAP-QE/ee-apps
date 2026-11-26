@@ -66,7 +66,10 @@ from cost_insight.jobs.sync_gcs_cache_last_seen import (
     run_tracked_sync_gcs_cache_last_seen,
 )
 from cost_insight.jobs.sync_tencent_billing_summary import run_sync_tencent_billing_summary
-from cost_insight.jobs.sync_warehouse_billing_summary import run_sync_warehouse_billing_summary
+from cost_insight.jobs.sync_warehouse_billing_summary import (
+    WarehouseAccountFailures,
+    run_sync_warehouse_billing_summary,
+)
 from cost_insight.jobs.validate_aws_reconciliation import (
     resolve_reconciliation_source,
     run_aws_reconciliation,
@@ -520,6 +523,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(json.dumps(summary, default=str, indent=2, sort_keys=True))
             return 0
+        except WarehouseAccountFailures as exc:
+            print(json.dumps(exc.summary, default=str, indent=2, sort_keys=True))
+            return 1
         finally:
             engine.dispose()
 
@@ -782,6 +788,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                                     export_partition_end=summary.export_partition_end,
                                     dry_run=args.dry_run,
                                     replace_existing_usage_dates=True,
+                                    split_replacement_by_day=not args.replace_existing_dates,
                                     validate_guardrail=False,
                                     source=source,
                                 )
@@ -1344,7 +1351,11 @@ def _resolve_attribution_sources(
     sources = _list_sources(engine, vendor=None)
     if sources:
         return tuple(
-            CostAttributionSource(vendor=source.vendor, account_id=source.account_id)
+            CostAttributionSource(
+                vendor=source.vendor,
+                account_id=source.account_id,
+                schema_version=source.source_schema_version if source.vendor == "aws" else None,
+            )
             for source in sources
             if (source.vendor, source.account_id) != _TENCENT_CI_SOURCE
         )

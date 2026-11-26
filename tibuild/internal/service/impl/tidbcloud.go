@@ -59,6 +59,8 @@ type OpsUpdateComponentRequest struct {
 	Author      string `json:"author,omitempty"`
 	ReleaseID   string `json:"release_id,omitempty"`
 	ChangeID    string `json:"change_id,omitempty"`
+	StepKey     string `json:"step_key,omitempty"`
+	ExecutionID string `json:"execution_id,omitempty"`
 }
 
 // OpsUpdateComponentResponse is the ops response with the ticket id.
@@ -68,14 +70,16 @@ type OpsUpdateComponentResponse struct {
 
 // OpsKernelImageSyncRequest is the ops kernel image build callback body.
 type OpsKernelImageSyncRequest struct {
-	SourceApplicant string                           `json:"source_applicant"`
-	SourceReleaseID string                           `json:"source_release_id,omitempty"`
-	SourceChangeID  string                           `json:"source_change_id,omitempty"`
-	Repo            string                           `json:"repo"`
-	Branch          string                           `json:"branch,omitempty"`
-	CommitSHA       string                           `json:"commit_sha"`
-	GitTag          string                           `json:"git_tag,omitempty"`
-	Images          []OpsKernelImageSyncRequestImage `json:"images"`
+	SourceApplicant   string                           `json:"source_applicant"`
+	SourceReleaseID   string                           `json:"source_release_id,omitempty"`
+	SourceChangeID    string                           `json:"source_change_id,omitempty"`
+	SourceStepKey     string                           `json:"source_step_key,omitempty"`
+	SourceExecutionID string                           `json:"source_execution_id,omitempty"`
+	Repo              string                           `json:"repo"`
+	Branch            string                           `json:"branch,omitempty"`
+	CommitSHA         string                           `json:"commit_sha"`
+	GitTag            string                           `json:"git_tag,omitempty"`
+	Images            []OpsKernelImageSyncRequestImage `json:"images"`
 }
 
 // OpsKernelImageSyncRequestImage is one source image in the callback body.
@@ -85,10 +89,13 @@ type OpsKernelImageSyncRequestImage struct {
 }
 
 // TagMetadata is the author and ops request ids attached to a tidbx git tag.
+// Every ops id is optional, so any of them may be empty.
 type TagMetadata struct {
-	Author    string
-	ReleaseID string
-	ChangeID  string
+	Author      string
+	ReleaseID   string
+	ChangeID    string
+	StepKey     string
+	ExecutionID string
 }
 
 // TagMetadataResolver resolves a tag's metadata. TiBuild queries its own hotfix

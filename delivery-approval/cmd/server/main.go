@@ -126,16 +126,19 @@ func main() {
 	}
 	var approvalHandler web.ApprovalNotifier
 	var decisionHandler web.DecisionNotifier
+	var cardHandler web.CardUpdater
 	if notifier != nil {
 		approvalHandler = notifier
 		decisionHandler = notifier
+		cardHandler = notifier
 	}
 	appServer := &http.Server{
 		Addr: manager.Current().Listen,
 		Handler: server.Application(server.Options{
 			Store: st, Config: manager, Auth: authn, Revoker: revoker,
 			Delivery: deliveryHandler, ApprovalNotifier: approvalHandler,
-			DecisionNotifier: decisionHandler, Metrics: m, Logger: logger,
+			DecisionNotifier: decisionHandler, Cards: cardHandler,
+			Metrics: m, Logger: logger,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       time.Minute,
@@ -153,7 +156,12 @@ func main() {
 	go config.WatchFile(ctx, *configPath, logger, func() error {
 		return manager.Reload(*configPath)
 	})
-	go approval.NewSweeper(st, revoker, logger).Run(ctx)
+	sweeper := approval.NewSweeper(st, revoker, logger)
+	if notifier != nil {
+		sweeper.Cards = notifier
+		sweeper.Notifier = notifier
+	}
+	go sweeper.Run(ctx)
 
 	errc := make(chan error, 2)
 	go func() { errc <- appServer.ListenAndServe() }()

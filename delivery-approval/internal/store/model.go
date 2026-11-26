@@ -79,6 +79,14 @@ type Event struct {
 	CreatedAt  time.Time
 }
 
+// ApprovalCard is one Lark card that announced a request. ApproverEmail is
+// empty when the card was sent to the shared approval group. Only the message
+// id is kept: patching needs nothing else, and no card body or token is stored.
+type ApprovalCard struct {
+	ApproverEmail string
+	MessageID     string
+}
+
 // Store is the durable approval state. Transition is conditional on the
 // current status so concurrent approvers cannot both win.
 type Store interface {
@@ -93,6 +101,8 @@ type Store interface {
 	Transition(ctx context.Context, id string, from, to Status, actor, note string, decidedAt time.Time) (bool, error)
 	SetDelivery(ctx context.Context, id string, status DeliveryStatus, attempts int, errorClass string) error
 	AppendEvent(ctx context.Context, event *Event) error
+	SaveApprovalCards(ctx context.Context, requestID string, cards []ApprovalCard) error
+	ListApprovalCards(ctx context.Context, requestID string) ([]ApprovalCard, error)
 	SetFileShare(ctx context.Context, fileID, shareID string, ciphertext []byte) error
 	SaveFileCiphertext(ctx context.Context, fileID string, ciphertext []byte) error
 	ClearFileCiphertext(ctx context.Context, fileID string) error

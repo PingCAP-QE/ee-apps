@@ -25,6 +25,7 @@ type Options struct {
 	Delivery         web.Deliverer
 	ApprovalNotifier web.ApprovalNotifier
 	DecisionNotifier web.DecisionNotifier
+	Cards            web.CardUpdater
 	Metrics          *metrics.Metrics
 	Logger           *log.Logger
 }
@@ -39,6 +40,7 @@ func Application(opts Options) http.Handler {
 		Delivery:         opts.Delivery,
 		ApprovalNotifier: opts.ApprovalNotifier,
 		DecisionNotifier: opts.DecisionNotifier,
+		Cards:            opts.Cards,
 		Metrics:          opts.Metrics,
 		Logger:           opts.Logger,
 	})

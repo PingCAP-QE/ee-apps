@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/approvalcard"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/request"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestevent"
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent/requestfile"
@@ -75,6 +76,7 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
+			approvalcard.Table: approvalcard.ValidColumn,
 			request.Table:      request.ValidColumn,
 			requestevent.Table: requestevent.ValidColumn,
 			requestfile.Table:  requestfile.ValidColumn,

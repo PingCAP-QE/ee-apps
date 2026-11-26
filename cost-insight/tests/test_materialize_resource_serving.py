@@ -1,11 +1,14 @@
 import json
 import weakref
+from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
+from pymysql.err import OperationalError
 from sqlalchemy import create_engine, event, text
 
+from cost_insight.common import db_retry
 from cost_insight.jobs import materialize_resource_serving as job
 from cost_insight.jobs.materialize_resource_serving import (
     build_resource_serving_rows,
@@ -689,16 +692,21 @@ def test_tencent_streaming_merges_labels_and_pools_before_yielding(resource_name
         assert all(row["resource_identity_kind"] == "attribution_fallback" for row in rows)
 
 
-@pytest.mark.parametrize("failure", (None, "conservation", "iteration", "insert", "transport", "dry_run"))
+@pytest.mark.parametrize("failure", (
+    None, "conservation", "iteration", "insert", "transport", "exhausted", "dry_run", "active_version",
+    "stage_commit_ack", "stage_commit_rollback", "active_version_casefold",
+))
 def test_streamed_staging_validates_before_publication(monkeypatch, failure) -> None:
-    from pymysql.err import OperationalError
-
+    monkeypatch.setattr(db_retry.time, "sleep", lambda _: None)
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     sources, summaries = _tencent_shared_window(resource_count=4, participant_count=3)
     window = {"usage_date": sources[0]["usage_date"], "vendor": "tencent", "account_id": "100050658403"}
     with engine.begin() as connection:
         for statement in _SCHEMA:
-            connection.execute(text(statement))
+            # Mirror the production case-insensitive comparison for version keys.
+            connection.execute(text(statement.replace(
+                "materialization_version TEXT", "materialization_version TEXT COLLATE NOCASE",
+            )))
     monkeypatch.setattr(job, "_source_windows", lambda *args, **kwargs: (window,))
     monkeypatch.setattr(job, "_load_source_rows", lambda *args, **kwargs: sources)
     monkeypatch.setattr(job, "_load_tencent_summary_rows", lambda *args, **kwargs: summaries)
@@ -711,9 +719,15 @@ def test_streamed_staging_validates_before_publication(monkeypatch, failure) -> 
         original = job.build_tencent_resource_serving_rows
         produced = 0
         inserts = 0
+        inserts_before_attempt = 0
+        attempts = 0
+        errors = []
 
         def stream(**kwargs):
-            nonlocal produced
+            nonlocal produced, attempts, inserts_before_attempt
+            attempts += 1
+            produced = 0
+            inserts_before_attempt = inserts
             for row in original(**kwargs):
                 produced += 1
                 if failure == "conservation":
@@ -727,35 +741,137 @@ def test_streamed_staging_validates_before_publication(monkeypatch, failure) -> 
             if statement.lstrip().startswith("INSERT INTO cost_resource_serving_daily"):
                 inserts += 1
                 # The first batch must reach SQL before the remaining product is built.
-                assert produced == inserts * 2
-                if failure == "insert" and inserts == 2:
-                    raise RuntimeError("insert failed")
-                if failure == "transport" and inserts == 2:
-                    raise OperationalError(2013, "Lost connection during staging")
+                assert produced == (inserts - inserts_before_attempt) * 2
+                if produced == 4:
+                    if failure == "insert":
+                        raise RuntimeError("insert failed")
+                    if failure == "exhausted" or (failure == "transport" and attempts == 1):
+                        error = OperationalError(2013, "Lost connection during staging")
+                        errors.append(error)
+                        raise error
 
         monkeypatch.setattr(job, "build_tencent_resource_serving_rows", stream)
         event.listen(engine, "before_cursor_execute", observe_insert)
-        if failure in ("conservation", "iteration", "insert", "transport"):
+        new_version = "new"
+        succeeds = failure in (None, "transport", "stage_commit_ack", "stage_commit_rollback")
+        if failure in ("stage_commit_ack", "stage_commit_rollback"):
+            class FaultEngine:
+                transactions = 0
+                connect = engine.connect
+
+                @contextmanager
+                def begin(self):
+                    self.transactions += 1
+                    with engine.begin() as connection:
+                        yield connection
+                        if self.transactions == 3 and failure == "stage_commit_rollback":
+                            raise OperationalError(2013, "Lost connection before staging commit")
+                    if self.transactions == 3 and failure == "stage_commit_ack":
+                        raise OperationalError(2013, "Lost staging commit acknowledgement")
+
+            result = run_materialize_resource_serving(
+                FaultEngine(), now=datetime(2026, 8, 11, tzinfo=UTC), **options,
+            )
+            new_version = result.materialization_version
+            assert result.rows_written == 12 and result.windows_published == 1
+        elif failure in ("active_version", "active_version_casefold"):
+            active = "OLD" if failure == "active_version_casefold" else "old"
+            with pytest.raises(ValueError, match="Cannot stage over the active"):
+                run_materialize_resource_serving(engine, materialization_version=active, **options)
+        elif not succeeds and failure != "dry_run":
             with pytest.raises((RuntimeError, OperationalError)):
                 run_materialize_resource_serving(engine, materialization_version="new", **options)
         else:
             result = run_materialize_resource_serving(
                 engine, materialization_version="new", dry_run=failure == "dry_run", **options,
             )
-            assert result.rows_written == (0 if failure else 12)
-            assert result.windows_published == (0 if failure else 1)
+            assert result.rows_written == (12 if succeeds else 0)
+            assert result.windows_published == int(succeeds)
         with engine.connect() as connection:
             version = connection.execute(text(
                 "SELECT active_materialization_version FROM cost_resource_serving_publication"
             )).scalar_one()
             staged_count = connection.execute(text(
-                "SELECT COUNT(*) FROM cost_resource_serving_daily WHERE materialization_version='new'"
-            )).scalar_one()
-        assert version == ("old" if failure else "new")
-        assert staged_count == (0 if failure else 12)
-        assert inserts == (0 if failure == "dry_run" else 2 if failure in ("insert", "transport") else 6)
+                "SELECT COUNT(*) FROM cost_resource_serving_daily WHERE materialization_version=:v"
+            ), {"v": new_version}).scalar_one()
+        assert version == (new_version if succeeds else "old")
+        assert staged_count == (12 if succeeds else 0)
+        assert inserts == {
+            "dry_run": 0, "active_version": 0, "active_version_casefold": 0,
+            "insert": 2, "transport": 8, "stage_commit_rollback": 12,
+        }.get(failure, 6)
+        assert len(errors) == {"transport": 1, "exhausted": 3}.get(failure, 0)
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("fault", (
+    "before_commit", "first_rollback", "lost_ack", "superseded", "invalidated", "totals_changed",
+))
+def test_publication_retry_reads_back_without_overwriting_a_newer_pointer(monkeypatch, fault):
+    monkeypatch.setattr(db_retry.time, "sleep", lambda _: None)
+    day = date(2026, 8, 10)
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        for statement in _SCHEMA:
+            connection.execute(text(statement))
+    options = {"basis_key": "native", "usage_date": day, "vendor": "gcp", "account_id": "project-1"}
+    native = [_source(detail_list_cost=Decimal(100))]
+    previous = None if fault in ("invalidated", "first_rollback") else "old"
+    if previous:
+        job._publish_window(engine, materialization_version=previous, previous_version=None,
+                            rows=native, source_rows=native, **options)
+
+    class FaultEngine:
+        attempts = 0
+
+        @contextmanager
+        def begin(self):
+            self.attempts += 1
+            with engine.begin() as connection:
+                yield connection
+                if self.attempts == 1 and fault in ("before_commit", "first_rollback"):
+                    raise OperationalError(2013, "Lost connection before commit")
+            if self.attempts == 1:
+                with engine.begin() as connection:
+                    if fault == "superseded":
+                        connection.execute(text("UPDATE cost_resource_serving_publication "
+                                                "SET active_materialization_version='newer'"))
+                    elif fault == "invalidated":
+                        connection.execute(text("DELETE FROM cost_resource_serving_publication"))
+                    elif fault == "totals_changed":
+                        connection.execute(text("UPDATE cost_resource_serving_publication SET total_list_cost=101"))
+                    else:
+                        connection.execute(text("UPDATE cost_resource_serving_publication "
+                                                "SET tiflash_ready_at='2026-08-11 00:00:00'"))
+                raise OperationalError(2013, "Lost commit acknowledgement")
+
+    faulty = FaultEngine()
+    refused = {
+        "superseded": "publication changed",
+        "invalidated": "Cannot confirm first",
+        "first_rollback": "Cannot confirm first",
+        "totals_changed": "readback does not match",
+    }
+    if fault in refused:
+        with pytest.raises(RuntimeError, match=refused[fault]):
+            job._publish_window(faulty, materialization_version="candidate", previous_version=previous,
+                                rows=native, source_rows=native, **options)
+    else:
+        job._publish_window(faulty, materialization_version="candidate", previous_version=previous,
+                            rows=native, source_rows=native, **options)
+    assert faulty.attempts == 2
+    with engine.connect() as connection:
+        pointer = connection.execute(text("SELECT active_materialization_version, tiflash_ready_at "
+                                          "FROM cost_resource_serving_publication")).one_or_none()
+    assert pointer == {
+        "before_commit": ("candidate", None),
+        "lost_ack": ("candidate", "2026-08-11 00:00:00"),
+        "superseded": ("newer", None),
+        "invalidated": None,
+        "first_rollback": None,
+        "totals_changed": ("candidate", None),
+    }[fault]
 
 
 def test_serving_rejects_detail_currency_mismatch() -> None:

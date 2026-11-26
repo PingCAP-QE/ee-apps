@@ -178,12 +178,11 @@ func main() {
 					md.Author = *res.Author
 				}
 				if res.Meta != nil && res.Meta.OpsReq != nil {
-					if res.Meta.OpsReq.ReleaseID != nil {
-						md.ReleaseID = *res.Meta.OpsReq.ReleaseID
-					}
-					if res.Meta.OpsReq.ChangeID != nil {
-						md.ChangeID = *res.Meta.OpsReq.ChangeID
-					}
+					opsReq := res.Meta.OpsReq
+					md.ReleaseID = stringValue(opsReq.ReleaseID)
+					md.ChangeID = stringValue(opsReq.ChangeID)
+					md.StepKey = stringValue(opsReq.StepKey)
+					md.ExecutionID = stringValue(opsReq.ExecutionID)
 				}
 				return md, nil
 			}
@@ -339,4 +338,13 @@ func main() {
 
 	wg.Wait()
 	log.Printf(ctx, "exited")
+}
+
+// stringValue dereferences an optional string from a generated payload, where
+// every field arrives as a pointer.
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

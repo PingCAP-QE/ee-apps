@@ -15,6 +15,9 @@ spec:
     - Egress
     {{- end }}
   ingress:
+    {{- if .Values.networkPolicy.ingressNamespaces }}
+    # Plaintext callers: port 8080 only. The TLS port is never added here, so a
+    # consumer of the HTTP listener does not implicitly reach the TLS listener.
     - from:
         {{- range .Values.networkPolicy.ingressNamespaces }}
         - namespaceSelector:
@@ -24,10 +27,21 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-        {{- if .Values.server.tls.enabled }}
+    {{- end }}
+    {{- if .Values.server.tls.enabled }}
+    {{- if .Values.networkPolicy.tlsIngressNamespaces }}
+    # TLS callers: the native listener port only.
+    - from:
+        {{- range .Values.networkPolicy.tlsIngressNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
+        {{- end }}
+      ports:
         - protocol: TCP
           port: {{ .Values.server.tls.port }}
-        {{- end }}
+    {{- end }}
+    {{- end }}
   {{- with .Values.networkPolicy.egress }}
   egress:
     {{- toYaml . | nindent 4 }}

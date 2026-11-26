@@ -9,7 +9,7 @@ from ci_dashboard.common.db import build_engine
 
 @lru_cache(maxsize=1)
 def _cached_engine() -> Engine:
-    return build_engine()
+    return build_engine(retry_connect_timeout=True)
 
 
 def get_engine() -> Engine:

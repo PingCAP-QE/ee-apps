@@ -72,8 +72,14 @@ func runContext(ctx context.Context, logger *slog.Logger, getenv func(string) st
 		}
 	}()
 	for mode, credential := range cfg.Credentials {
+		var excludedAudience string
+		opposite := map[string]string{"machine": "browser", "browser": "machine"}[mode]
+		if peer, ok := cfg.Credentials[opposite]; ok && peer.Issuer == credential.Issuer {
+			excludedAudience = peer.Audience
+		}
 		verifier, err := identity.NewJWTVerifier(ctx, identity.JWTConfig{
-			JWKSURL: credential.JWKSURL, Issuer: credential.Issuer, Audience: credential.Audience,
+			ExcludedAudience: excludedAudience,
+			JWKSURL:          credential.JWKSURL, Issuer: credential.Issuer, Audience: credential.Audience,
 			PrincipalPrefix: credential.PrincipalPrefix, SubjectClaim: credential.SubjectClaim,
 		})
 		if err != nil {
@@ -83,7 +89,8 @@ func runContext(ctx context.Context, logger *slog.Logger, getenv func(string) st
 		verifiers[mode] = decision.Credential{Header: credential.Header, Verifier: verifier}
 	}
 	audit := observability.NewRecorder(logger)
-	authorizer := decision.NewAuthorizer(policyRegistry, verifiers, resourceResolver, checker, audit)
+	authorizer := decision.NewAuthorizer(policyRegistry, verifiers, resourceResolver, checker, audit).
+		WithDecisionMode(cfg.DecisionMode)
 	grpcListener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {
 		return fmt.Errorf("listen for ext_authz: %w", err)
@@ -103,7 +110,9 @@ func runContext(ctx context.Context, logger *slog.Logger, getenv func(string) st
 	errorsFromServers := make(chan error, 2)
 	go func() { errorsFromServers <- grpcServer.Serve(grpcListener) }()
 	go func() { errorsFromServers <- privateServer.Serve(privateListener) }()
-	logger.Info("authzd listeners started", "grpc_address", cfg.GRPCAddress, "private_address", cfg.PrivateAddress)
+	logger.Info("authzd listeners started",
+		"grpc_address", cfg.GRPCAddress, "private_address", cfg.PrivateAddress,
+		"decision_mode", cfg.DecisionMode)
 	select {
 	case <-ctx.Done():
 	case err := <-errorsFromServers:

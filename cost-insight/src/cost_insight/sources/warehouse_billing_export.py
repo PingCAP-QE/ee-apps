@@ -32,6 +32,10 @@ _PROJECT_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 Snapshot = tuple[str, int, str]
 
 
+class WarehouseSnapshotError(ValueError):
+    """The shared warehouse snapshot changed or can no longer be verified."""
+
+
 @dataclass(frozen=True)
 class WarehouseWindow:
     start: date
@@ -139,8 +143,12 @@ def _snapshot(client, tables) -> dict[str, Snapshot]:
 
 
 def assert_snapshot(client, snapshots: Mapping[str, Snapshot]) -> None:
-    if _snapshot(client, snapshots) != snapshots:
-        raise ValueError("Warehouse source snapshot changed; refusing torn reads or further writes")
+    try:
+        current = _snapshot(client, snapshots)
+    except Exception as exc:
+        raise WarehouseSnapshotError("Cannot verify warehouse source snapshot; refusing further reads or writes") from exc
+    if current != snapshots:
+        raise WarehouseSnapshotError("Warehouse source snapshot changed; refusing torn reads or further writes")
 
 
 def _query_rows(client, sql: str, params, *, label: str, heartbeat: Callable[[], None],
@@ -191,8 +199,13 @@ def fetch_warehouse_window(
     client, *, vendor: str, account_id: str, project: str, today: date,
     heartbeat: Callable[[], None], f04: bool = False,
     start_date: date | None = None, end_date: date | None = None,
+    recovery_window: tuple[date, date] | None = None,
 ) -> WarehouseWindow:
-    """Read a complete trailing window, or an explicit 1..5-day F04 repair window."""
+    """Read a trailing window, F04 repair, or the runner's persisted recovery window.
+
+    recovery_window is internal: the runner must obtain it from an owned durable
+    checkpoint, never from CLI dates for ordinary accounts.
+    """
     table = source_table(vendor, project)
     if not isinstance(account_id, str) or not account_id or account_id.strip() != account_id:
         raise ValueError("An explicit nonempty warehouse account ID is required")
@@ -202,13 +215,17 @@ def fetch_warehouse_window(
         raise ValueError("F04 warehouse reads require the exact AWS F04 account")
     if vendor == "aws" and account_id == F04_ACCOUNT_ID and not f04:
         raise ValueError("F04 cannot be queried as an ordinary account-wide source")
+    if recovery_window is not None:
+        if start_date is not None or end_date is not None or len(recovery_window) != 2:
+            raise ValueError("Recovery requires only the persisted window bounds")
+        start_date, end_date = recovery_window
     if (start_date is None) != (end_date is None):
         raise ValueError("start_date and end_date must be set together")
     yesterday = today - timedelta(days=1)
-    if start_date is not None:
-        if (not f04 or type(start_date) is not date or type(end_date) is not date
-                or not 0 <= (end_date - start_date).days <= 4 or end_date > yesterday):
-            raise ValueError("Historical F04 reads require 1..5 inclusive past usage days")
+    if start_date is not None and (
+            (not f04 and recovery_window is None) or type(start_date) is not date or type(end_date) is not date
+            or not 0 <= (end_date - start_date).days <= 4 or end_date > yesterday):
+        raise ValueError("Historical F04/recovery reads require 1..5 inclusive past usage days")
     lookup_start = start_date if start_date is not None else yesterday - timedelta(days=13)
     lookup_end = end_date if end_date is not None else yesterday
     tables = (table,) if vendor == "aws" else azure_warehouse_tables(table, lookup_start, lookup_end).values()
@@ -239,7 +256,7 @@ def fetch_warehouse_window(
     if start_date is not None:
         controls = read(start_date, end_date, "control")
         if not controls:
-            raise ValueError("No actual usage in explicit F04 repair window")
+            raise ValueError("No actual usage in explicit F04/recovery window")
         rows = read(start_date, end_date, "summary", summary=True)
         return WarehouseWindow(start_date, end_date, rows, controls, snapshots)
 

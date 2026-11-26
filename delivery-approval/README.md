@@ -10,6 +10,10 @@ Delivery approval service for the `dl` capability links. It owns:
 `dl` stays the low-level capability service. This module talks to it over HTTP;
 it does not import `dl` and does not share its database.
 
+The operator runbook — request lifecycle, approval/revocation, audit queries,
+log fields and the Lark/TiDB/`dl` degradation paths — is
+[`docs/approval.md`](docs/approval.md).
+
 ## Phase 1 scope
 
 This phase adds the service skeleton, configuration and storage:
@@ -32,8 +36,10 @@ This phase adds the service skeleton, configuration and storage:
 - CSRF double-submit cookie plus strict same-origin form action, CSP
   `default-src 'self'`, no inline scripts, `X-Frame-Options: DENY`.
 - Per-requester limits: pending count and requests in the last 24 hours.
-- Exact, unambiguous artifact input: one repository/tag and 1–10 filenames per
-  request; the store keeps one `request_file` per filename.
+- Exact, unambiguous artifact input: one `request_file` per requested
+  repository/tag/filename (a single repository with up to 10 files in this
+  phase; the form accepts several repositories per request since the multi-target
+  change below).
 
 ## Phase 3 scope
 
@@ -76,12 +82,30 @@ This phase adds the service skeleton, configuration and storage:
   - private text message with the one-time delivery links;
   - private rejection/revocation messages and a fixed-class delivery-failure
     message (no upstream error body or token).
+- Approval cards are patched after the decision: `request_events` stays the
+  audit log, `approval_cards` stores one `(request_id, approver_email,
+  message_id)` row per delivered card, and approve/reject/revoke/expire patch
+  each card to its decided state so nobody clicks a stale button. Patching is
+  best effort (Lark only patches cards sent in the last 14 days) and never
+  changes a decision.
 - Server wiring enables delivery when `DL_APPROVAL_LARK_APP_ID`,
   `DL_APPROVAL_LARK_APP_SECRET`, `DL_APPROVAL_DL_ISSUER_SECRET` and
   `DL_APPROVAL_URL_ENCRYPTION_KEY` are present. `lark_notification_chat_id` is
   optional: empty means per-approver DM. A partially configured provider fails
   startup.
 - The expiry sweeper now uses the same `dl` client as revoker.
+
+## Later changes
+
+- Form prefill from `repository`/`tag`/`file`/`files` and TTL presets with an
+  optional override; TTL is displayed as a standard duration.
+- Decided cards state the outcome in the header colour, the decision line and the
+  button label, and the expiry sweep also DMs the requester (see
+  `docs/approval.md`).
+- Multi-target requests: the form asks for one `<repository> <tag> <filename>`
+  line per file, up to 30 per request, so one approval can cover several
+  repositories. There is no append-after-submit path on purpose — an approver
+  must see the whole set before deciding. The approval card lists the same lines.
 
 ## Configuration
 
@@ -108,6 +132,48 @@ mount point: the HTTP route publishes `/dl/grants`, rewrites that prefix to `/`
 before forwarding, and the handler rebuilds it for every link and redirect.
 Changing the mount point therefore means changing both the route and
 `public_url`, and keeping the two in sync.
+
+## Pages
+
+`public_url` is the browser-facing base, and its path is also the mount point:
+the HTTP route publishes `/dl/grants`, rewrites the prefix to `/`, and the
+handler rebuilds it for every link and redirect.
+
+The form asks for a target block: one line per file, whitespace separated, up to
+30 lines per request. A request may span several repositories, and one approval
+covers exactly the list that was submitted.
+
+```text
+registry.example.com/project/hub/package      v8.5.4  tidb.tar.gz
+registry.example.com/project/hub/package      v8.5.4  tikv.tar.gz
+registry.example.com/project/hotfix/package   v8.5.4  tikv-hotfix.tar.gz
+```
+
+Every line is validated on its own (`repository`, `tag`, `filename`), an error
+names the offending line, and an identical repository/tag/filename is only kept
+once — the store's unique index is per request. The approver card lists the same
+lines, so what was approved is what gets issued.
+
+The form can also be prefilled from the query string, which lets an existing
+`/dl/oci-file/<repository>?file=…&tag=…` link be turned into an approval request
+by pointing it at the form:
+
+```text
+<public_url path>?repository=registry.example.com/project/hub/package&tag=v8.5.4
+                 &file=tidb.tar.gz&file=tikv.tar.gz&note=customer%20asked
+```
+
+- `file` may repeat; `files` also accepts a newline- or comma-separated list.
+  Each entry becomes one `<repository> <tag> <filename>` line using the query's
+  `repository`/`tag`; edit the lines to add another repository.
+- `ttl` is **not** read from the query: it always starts at
+  `default_ttl_seconds`. In the form it accepts seconds (`86400`) or a Go
+  duration with hour/minute/second units (`24h`, `1m`, `30s`, `2h30m`), bounded
+  by `max_ttl_seconds`; day and week units are rejected so each TTL has one
+  spelling. The request stores seconds and the detail page renders the standard
+  duration form (`24h0m0s (86400s)`).
+- Unknown or malformed values are ignored; the query never influences
+  authorization.
 
 ## Database
 

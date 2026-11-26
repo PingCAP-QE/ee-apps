@@ -16,26 +16,26 @@
       <input type="hidden" name="csrf" value="{{.CSRF}}">
 
       <p>
-        <label for="repository">OCI repository</label><br>
-        <input id="repository" name="repository" maxlength="512" required
-               value="{{.Form.Repository}}" placeholder="us-docker.pkg.dev/project/hub/package">
+        <label for="targets">Targets (one per line: &lt;repository&gt; &lt;tag&gt; &lt;filename&gt;, 1–30)</label><br>
+        <textarea id="targets" name="targets" rows="8" cols="80" required
+                  placeholder="us-docker.pkg.dev/project/hub/package v8.1.0_linux_amd64 tidb.tar.gz">{{.Form.Targets}}</textarea>
+        <br>
+        <small>One file per line, whitespace separated. Several repositories may
+          share one request, and the approver sees exactly this list.</small>
       </p>
 
       <p>
-        <label for="tag">Tag</label><br>
-        <input id="tag" name="tag" maxlength="128" required
-               value="{{.Form.Tag}}" placeholder="v8.1.0_linux_amd64">
-      </p>
-
-      <p>
-        <label for="files">Files (one filename per line, 1–10)</label><br>
-        <textarea id="files" name="files" rows="5" cols="60" required
-                  placeholder="tidb.tar.gz">{{.Form.Files}}</textarea>
-      </p>
-
-      <p>
-        <label for="ttl">TTL (seconds)</label><br>
-        <input id="ttl" name="ttl" type="number" min="1" max="604800" required value="{{.Form.TTL}}">
+        <label for="ttl">TTL</label><br>
+        <select id="ttl" name="ttl">
+          {{- range .TTLOptions}}
+          <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+          {{- end}}
+        </select>
+        <input id="ttl_custom" name="ttl_custom" maxlength="32" value="{{.Form.TTLCustom}}"
+               placeholder="customize: 1h30m / 90s">
+        <br>
+        <small>The custom value overrides the selection; units
+          <code>h</code>/<code>m</code>/<code>s</code>, max {{.MaxTTL}}</small>
       </p>
 
       <p>

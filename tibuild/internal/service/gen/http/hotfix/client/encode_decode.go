@@ -268,10 +268,16 @@ func marshalHotfixTiDBxBumpTagMetaToTiDBxBumpTagMetaRequestBody(v *hotfix.TiDBxB
 			Applicant *string `form:"applicant" json:"applicant" xml:"applicant"`
 			ReleaseID *string `form:"release_id" json:"release_id" xml:"release_id"`
 			ChangeID  *string `form:"change_id" json:"change_id" xml:"change_id"`
+			// Optional UUID of the ops step that requested the tag
+			StepKey *string `form:"step_key" json:"step_key" xml:"step_key"`
+			// Optional UUID of the ops execution that requested the tag
+			ExecutionID *string `form:"execution_id" json:"execution_id" xml:"execution_id"`
 		}{
-			Applicant: v.OpsReq.Applicant,
-			ReleaseID: v.OpsReq.ReleaseID,
-			ChangeID:  v.OpsReq.ChangeID,
+			Applicant:   v.OpsReq.Applicant,
+			ReleaseID:   v.OpsReq.ReleaseID,
+			ChangeID:    v.OpsReq.ChangeID,
+			StepKey:     v.OpsReq.StepKey,
+			ExecutionID: v.OpsReq.ExecutionID,
 		}
 	}
 
@@ -291,10 +297,16 @@ func marshalTiDBxBumpTagMetaRequestBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpTagM
 			Applicant *string `json:"applicant,omitempty"`
 			ReleaseID *string `json:"release_id,omitempty"`
 			ChangeID  *string `json:"change_id,omitempty"`
+			// Optional UUID of the ops step that requested the tag
+			StepKey *string `json:"step_key,omitempty"`
+			// Optional UUID of the ops execution that requested the tag
+			ExecutionID *string `json:"execution_id,omitempty"`
 		}{
-			Applicant: v.OpsReq.Applicant,
-			ReleaseID: v.OpsReq.ReleaseID,
-			ChangeID:  v.OpsReq.ChangeID,
+			Applicant:   v.OpsReq.Applicant,
+			ReleaseID:   v.OpsReq.ReleaseID,
+			ChangeID:    v.OpsReq.ChangeID,
+			StepKey:     v.OpsReq.StepKey,
+			ExecutionID: v.OpsReq.ExecutionID,
 		}
 	}
 
@@ -314,10 +326,16 @@ func unmarshalTiDBxBumpTagMetaResponseBodyToHotfixTiDBxBumpTagMeta(v *TiDBxBumpT
 			Applicant *string `json:"applicant,omitempty"`
 			ReleaseID *string `json:"release_id,omitempty"`
 			ChangeID  *string `json:"change_id,omitempty"`
+			// Optional UUID of the ops step that requested the tag
+			StepKey *string `json:"step_key,omitempty"`
+			// Optional UUID of the ops execution that requested the tag
+			ExecutionID *string `json:"execution_id,omitempty"`
 		}{
-			Applicant: v.OpsReq.Applicant,
-			ReleaseID: v.OpsReq.ReleaseID,
-			ChangeID:  v.OpsReq.ChangeID,
+			Applicant:   v.OpsReq.Applicant,
+			ReleaseID:   v.OpsReq.ReleaseID,
+			ChangeID:    v.OpsReq.ChangeID,
+			StepKey:     v.OpsReq.StepKey,
+			ExecutionID: v.OpsReq.ExecutionID,
 		}
 	}
 

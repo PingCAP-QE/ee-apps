@@ -1539,6 +1539,9 @@ def test_sync_flaky_issue_helpers_cover_fallbacks_and_payload_shapes(monkeypatch
     assert _parse_case_name("Flaky test: TestCase") == "TestCase"
     assert _parse_case_name("Flaky test TestCase") == "TestCase"
     assert _parse_case_name("flaky test TestSomeOfStoreUnsupported") == "TestSomeOfStoreUnsupported"
+    assert _parse_case_name("`TestScheduler` is flaky") == "TestScheduler"
+    assert _parse_case_name("TestAffinityListWithIDs is flaky") == "TestAffinityListWithIDs"
+    assert _parse_case_name("Large integration suite is flaky") == "Large integration suite is flaky"
     assert _parse_case_name("Plain title") == "Plain title"
     assert _parse_timeline(None) == []
     assert _parse_timeline('[{"event":"closed"},"bad"]') == [{"event": "closed"}]

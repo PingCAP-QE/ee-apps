@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Engine
 
 from cost_insight.common.config import TENCENT_CI_SOURCE
@@ -13,18 +13,21 @@ from cost_insight.common.db_retry import replay_safe_transaction
 from cost_insight.jobs import state_store
 from cost_insight.jobs.job_keys import source_job_name
 from cost_insight.jobs.materialize_resource_serving import run_materialize_resource_serving
+from cost_insight.jobs.sync_aws_billing_summary import AWS_SPLIT_COST_SCHEMA_VERSION
 
 LOG = logging.getLogger(__name__)
 
 SUMMARY_JOB_NAME = "refresh_cost_attribution_from_summary"
 _TENCENT_CI_SOURCE = TENCENT_CI_SOURCE
 _TCMS_ALLOCATION_VENDORS = frozenset({"aws", "azure"})
+_SPLIT_ATTRIBUTION_BATCH_SIZE = 100
 
 
 @dataclass(frozen=True)
 class CostAttributionSource:
     vendor: str
     account_id: str
+    schema_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,13 +92,20 @@ def run_refresh_cost_attribution_from_summary(
 
         def refresh(connection):
             delete_result = connection.execute(_DELETE_ATTRIBUTION_DAILY, params)
-            rows_inserted = 0
-            for insert_statement in _summary_insert_statements(
-                source=source,
-                tcms_allocation_table=tcms_allocation_table,
+            if (
+                source.vendor == "aws"
+                and source.schema_version == AWS_SPLIT_COST_SCHEMA_VERSION
+                and start_date == end_date
+                and tcms_allocation_table
             ):
-                insert_result = connection.execute(insert_statement, params)
-                rows_inserted += _positive_rowcount(insert_result.rowcount)
+                rows_inserted = _insert_split_attribution_day(connection, params, tcms_allocation_table)
+            else:
+                rows_inserted = sum(
+                    _positive_rowcount(connection.execute(statement, params).rowcount)
+                    for statement in _summary_insert_statements(
+                        source=source, tcms_allocation_table=tcms_allocation_table,
+                    )
+                )
             _invalidate_resource_serving_publications(connection, params)
             state_store.mark_job_succeeded(connection, job_name, watermark)
             return _positive_rowcount(delete_result.rowcount), rows_inserted
@@ -191,6 +201,35 @@ def _summary_insert_statements(
         return (_INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY,)
     quoted_tcms_table = _quote_table_identifier(tcms_allocation_table)
     return (_build_insert_attribution_daily_from_summary_with_tcms(quoted_tcms_table),)
+
+
+def _insert_split_attribution_day(connection, params: dict[str, Any], tcms_table: str) -> int:
+    source_rows = connection.execute(_SPLIT_ATTRIBUTION_SOURCE_IDS, params).all()
+    if not source_rows:
+        return 0
+    quoted_table = _quote_table_identifier(tcms_table)
+    # The INSERT groups by source hash, not ID. A duplicate hash must stay in
+    # one statement even if it spans IDs (e.g. historical rows in two partitions).
+    if any(hash_count > 1 for _, hash_count in source_rows):
+        LOG.warning("Duplicate AWS split summary hashes; using unbatched attribution for this day")
+        statement = _build_insert_attribution_daily_from_summary_with_tcms(quoted_table)
+        return _positive_rowcount(connection.execute(statement, params).rowcount)
+    statement = _build_insert_attribution_daily_from_summary_with_tcms(quoted_table, batch_by_id=True)
+    rows_inserted = 0
+    for offset in range(0, len(source_rows), _SPLIT_ATTRIBUTION_BATCH_SIZE):
+        ids = [row_id for row_id, _ in source_rows[offset : offset + _SPLIT_ATTRIBUTION_BATCH_SIZE]]
+        result = connection.execute(statement, {**params, "summary_ids": ids})
+        rows_inserted += _positive_rowcount(result.rowcount)
+    return rows_inserted
+
+
+_SPLIT_ATTRIBUTION_SOURCE_IDS = text("""
+SELECT id, COUNT(*) OVER (PARTITION BY source_row_hash) AS hash_count
+FROM cost_bq_export_summary_daily
+WHERE usage_date BETWEEN :start_date AND :end_date
+  AND vendor = :vendor AND account_id = :account_id
+ORDER BY id
+""")
 
 
 def _quote_table_identifier(table_name: str) -> str:
@@ -746,8 +785,9 @@ _INSERT_ATTRIBUTION_DAILY_FROM_SUMMARY = text(
 )
 
 
-def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
-    return text(
+def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str, *, batch_by_id=False):
+    id_filter = "AND summary.id IN :summary_ids" if batch_by_id else ""
+    statement = text(
         f"""
         INSERT INTO cost_attribution_daily (
           usage_date,
@@ -1144,6 +1184,7 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
                 WHERE summary.usage_date BETWEEN :start_date AND :end_date
                   AND summary.vendor = :vendor
                   AND summary.account_id = :account_id
+                  {id_filter}
               ) ranked_allocation
               WHERE match_rank = 1
             ) allocation
@@ -1160,11 +1201,13 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
               WHERE summary.usage_date BETWEEN :start_date AND :end_date
                 AND summary.vendor = :vendor
                 AND summary.account_id = :account_id
+                {id_filter}
             ) account_allocation
               ON account_allocation.summary_id = summary.id
             WHERE summary.usage_date BETWEEN :start_date AND :end_date
               AND summary.vendor = :vendor
               AND summary.account_id = :account_id
+              {id_filter}
           ) base
           LEFT JOIN roster_employees owner_email_employee
             ON base.identity_kind IN ('owner_email', 'source_label')
@@ -1245,3 +1288,4 @@ def _build_insert_attribution_daily_from_summary_with_tcms(tcms_table: str):
           attributed.source_summary_row_hash
         """
     )
+    return statement.bindparams(bindparam("summary_ids", expanding=True)) if batch_by_id else statement

@@ -1,8 +1,9 @@
 # authzd authorization core
 
 This module contains the versioned route registry, the proposed OpenFGA model
-v1, and the first `authzd` service implementation. It is not deployed or
-connected to production traffic. The ADRs and model still need owner approval;
+v1, the first `authzd` service implementation, and the one-shot relationship
+sync job. It is deployed in GCP without a Gateway attachment and receives no
+production traffic. The ADRs and model still need owner approval;
 the checked-in registry is a three-route TiBuild example, not a complete
 production policy. Do not attach Envoy routes to this service or enable
 `enforce` until the identity handoff, resource ownership source, model, and
@@ -48,15 +49,72 @@ body-based rules such as the sample create policy remain observe-only.
 `AUTHZD_GRPC_ADDR` defaults to `:9002`; `AUTHZD_PRIVATE_ADDR` defaults to
 `127.0.0.1:9003`.
 
-The service supports `off`, `observe`, `shadow`, and `enforce` semantics from
-the registry. `observe` and `shadow` record the authorization result but return
-allow so the existing authn/authz chain can continue. Use them only after
-existing controls are verified to run before this filter. Dependency errors in
+Principal prefixes must be OpenFGA-safe: an identifier may not contain `:` after
+the type prefix, so issuers appear as a short token (`user:google/sub/<sub>`,
+`workload:google/sub/<sub>`) rather than as a URL. OpenFGA rejects the URL form
+with `invalid relation: the 'user' field is malformed`.
+
+An ID that the trusted catalog does not contain denies with reason
+`resource_not_found`; only a catalog that cannot answer (unconfigured, backend
+failure) is a dependency error. Neither case falls back to the path or body.
+
+Credential extraction accepts exactly one token per header. Every identity
+failure is distinguishable in the decision log:
+
+| `reason_code` | Meaning |
+| --- | --- |
+| `identity_missing` | The configured credential header is absent |
+| `identity_invalid` | The header is present but empty, ambiguous, or fails verification |
+| `relationship_denied` | Identity verified, relation check failed |
+| `resource_not_found` / `route_not_registered` | The catalog or registry has no entry |
+
+A forwarded identity header counts as ambiguous when it carries a comma
+(Envoy joins repeated headers with commas), embedded whitespace, or an empty
+value. A Gateway that failed to overwrite a client-supplied copy of that header
+therefore cannot authorize anything: the value is rejected instead of being
+parsed as one token.
+
+`AUTHZD_DECISION_MODE` bounds the strength of every response and defaults to
+`enforce`:
+
+| Mode | Behaviour |
+| --- | --- |
+| `off` | Allow everything. No decision is recorded. |
+| `observe` / `shadow` | Allow every request and record the decision that `enforce` would have made, including `route_not_registered`, identity, resolver, OpenFGA and context-policy failures. |
+| `enforce` | Rule modes decide; an unmatched route denies. |
+
+Use `observe` when attaching `extAuth` to a live route for the first time: with
+`enforce`, a route the registry does not list yet is denied for every path it
+serves. At this service `shadow` and `observe` are identical, because Envoy only
+reaches the ext_authz filter after its own authentication passed; the
+distinction is which traffic reaches the filter, not how the decision is made.
+
+Each rule in the registry also carries `off`, `observe`, `shadow`, or `enforce`; a
+weaker global mode wins over a stronger rule mode, and rule modes only decide
+when the global mode is `enforce`. Use them only after existing controls are
+verified to run before this filter. Dependency errors in
 `enforce` return a gRPC error and must be paired with Envoy
 `failure_mode_allow: false`. This service does not yet prove that any live
 Envoy route can only be reached through the verified Gateway.
 An optional `ContextPolicyEvaluator` hook accepts normalized, verified
 attributes for future ABAC rules; no OPA implementation is installed.
+
+## Relationship sync
+
+`cmd/tuple-sync` reconciles one reviewed snapshot into OpenFGA. It owns only the
+object types and relations passed as `--object-type` and `--relation`, deletes
+before it writes, refuses an incomplete snapshot, and refuses to empty its scope
+without `--allow-empty`. Run it once per reviewed change or from a scheduled job:
+
+```sh
+go run ./cmd/tuple-sync \
+  --snapshot ./policies/capability-grants.example.json \
+  --object-type capability --relation caller --dry-run
+```
+
+`--dry-run` reports the plan as `outcome="planned"` without writing. The metric
+and ownership contract, including which tuple families are still unimplemented,
+is in [`docs/authz/tuple-sync.md`](../docs/authz/tuple-sync.md).
 
 ## Registry
 

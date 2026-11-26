@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useFlakySections } from "./useFlakySections";
 
 import {
   formatDelta,
@@ -151,15 +152,29 @@ function SnapshotProgressCard({ title, subtitle, tone = "default", items, loadin
 }
 
 export default function FlakyPage({ filters }) {
-  const pageRequest = useApiData("/api/v1/pages/flaky", filters);
-  const page = {
-    ...pageRequest,
-    loading: pageRequest.loading || pageRequest.responseKey !== JSON.stringify(filters),
+  const pageRequestKey = JSON.stringify(filters);
+  const section = useFlakySections(filters);
+  const period = section("period_comparison");
+  const distinct = section("distinct_flaky_case_counts");
+  const issues = section("issue_sections");
+  const rates = section("issue_case_rates");
+  const chart = section("chart_sections");
+  const allTopJobs = section("top_jobs");
+  const failureShare = section("failure_category_share");
+  const failureTrend = section("failure_category_trend");
+  // The reported-case ranking ignores issue status and chart bucket granularity.
+  const topCaseFilters = {
+    repo: filters.repo,
+    branch: filters.branch,
+    job_name: filters.job_name,
+    cloud_phase: filters.cloud_phase,
+    start_date: filters.start_date,
+    end_date: filters.end_date,
   };
-  const topCasesRequest = useApiData("/api/v1/flaky/top-cases", filters);
+  const topCasesRequest = useApiData("/api/v1/flaky/top-cases", topCaseFilters);
   const topCases = {
     ...topCasesRequest,
-    loading: topCasesRequest.loading || topCasesRequest.responseKey !== JSON.stringify(filters),
+    loading: topCasesRequest.loading || topCasesRequest.responseKey !== JSON.stringify(topCaseFilters),
   };
   const topCasesMeta = topCases.data?.meta;
   const topCasesTitle = topCasesMeta?.limit ? `Top ${topCasesMeta.limit} flaky cases` : "Top flaky cases";
@@ -170,13 +185,15 @@ export default function FlakyPage({ filters }) {
       ? `Expand a row for the latest ${topCasesMeta.build_links_per_case} build or workflow-run URLs.`
       : null,
   ].filter(Boolean).join(" ");
-  const [selectedBucketTime, setSelectedBucketTime] = useState(null);
-  const showPanelActions = !page.loading && !page.error;
-  const currentPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_a")?.values;
-  const previousPeriod = page.data?.period_comparison?.groups?.find((group) => group.name === "period_b")?.values;
-  const distinctRows = page.data?.distinct_flaky_case_counts?.rows || [];
-  const issueWeeks = page.data?.issue_case_weekly_rates?.weeks || [];
-  const issueRows = page.data?.issue_case_weekly_rates?.rows || [];
+  const [selectedBucket, setSelectedBucket] = useState(null);
+  // Ignore a prior scope synchronously, before effects can fire a mixed-scope request.
+  const selectedBucketTime = selectedBucket?.requestKey === pageRequestKey ? selectedBucket.time : null;
+  const setSelectedBucketTime = (time) => setSelectedBucket(time ? { time, requestKey: pageRequestKey } : null);
+  const currentPeriod = period.data?.period_comparison?.groups?.find((group) => group.name === "period_a")?.values;
+  const previousPeriod = period.data?.period_comparison?.groups?.find((group) => group.name === "period_b")?.values;
+  const distinctRows = distinct.data?.distinct_flaky_case_counts?.rows || [];
+  const issueWeeks = rates.data?.issue_case_weekly_rates?.weeks || [];
+  const issueRows = rates.data?.issue_case_weekly_rates?.rows || [];
   const latestDistinctTotal = distinctRows.reduce(
     (sum, row) => sum + Number(row.values?.[row.values.length - 1] || 0),
     0,
@@ -192,17 +209,19 @@ export default function FlakyPage({ filters }) {
       return metric?.total_runs_est > 0 && metric.flaky_runs === 0 && metric.flaky_rate_pct === 0;
     })
   )).length;
-  const latestIssueWeekLabel = issueWeeks[issueWeeks.length - 1] || "latest bucket";
+  const latestDistinctWeek = distinct.data?.distinct_flaky_case_counts?.weeks?.at(-1) || "latest bucket";
   const failureLikeBuildCount = Number(currentPeriod?.failure_like_build_count || 0);
   const totalPrCount = Number(currentPeriod?.total_pr_count || 0);
-  const issueFixProgress = page.data?.issue_fix_progress || {};
+  const issueFixProgress = issues.data?.issue_fix_progress || {};
   const snapshotSubtitle = buildSnapshotSubtitle(issueFixProgress.meta);
-  const bucketedFlakyRate = page.data?.bucketed_flaky_rate || {};
+  const bucketedFlakyRate = chart.data?.bucketed_flaky_rate || {};
   const bucketedFlakyRateRows = bucketedFlakyRate.rows || [];
   const bucketedFlakyRateMeta = bucketedFlakyRate.meta || {};
   const bucketedFlakyRateSubtitle = buildBucketedFlakyRateSubtitle(bucketedFlakyRateMeta);
   const bucketedFlakyRateAxisMax = buildCenteredPercentAxisMax(bucketedFlakyRateRows);
-  const selectedBucketRange = resolveSelectedBucketRange(selectedBucketTime, bucketedFlakyRateMeta);
+  const selectedBucketRange = !chart.loading && !chart.error
+    ? resolveSelectedBucketRange(selectedBucketTime, bucketedFlakyRateMeta)
+    : null;
   const bucketTopJobFilters = selectedBucketRange
     ? {
         repo: filters.repo,
@@ -220,21 +239,21 @@ export default function FlakyPage({ filters }) {
     bucketTopJobFilters,
     Boolean(selectedBucketRange),
   );
-  const topJobsItems = selectedBucketRange ? bucketTopJobs.data?.items : page.data?.top_jobs?.items;
+  const topJobsItems = selectedBucketRange ? bucketTopJobs.data?.items : allTopJobs.data?.top_jobs?.items;
   const topJobsLoading = selectedBucketRange
     ? bucketTopJobs.loading || bucketTopJobs.responseKey !== JSON.stringify(bucketTopJobFilters)
-    : page.loading;
-  const topJobsError = selectedBucketRange ? bucketTopJobs.error : page.error;
+    : allTopJobs.loading;
+  const topJobsError = selectedBucketRange ? bucketTopJobs.error : allTopJobs.error;
   const topJobsSubtitle = buildTopJobsSubtitle(selectedBucketRange);
 
   useEffect(() => {
-    if (!selectedBucketTime) {
-      return;
+    if (selectedBucket && (
+      selectedBucket.requestKey !== pageRequestKey
+      || (!chart.loading && !bucketedFlakyRateRows.some((row) => row.time === selectedBucket.time))
+    )) {
+      setSelectedBucket(null);
     }
-    if (!bucketedFlakyRateRows.some((row) => row.time === selectedBucketTime)) {
-      setSelectedBucketTime(null);
-    }
-  }, [bucketedFlakyRateRows, selectedBucketTime]);
+  }, [bucketedFlakyRateRows, selectedBucket, pageRequestKey, chart.loading]);
 
   return (
     <div className="page-stack">
@@ -247,8 +266,8 @@ export default function FlakyPage({ filters }) {
       <section className="stats-grid">
         <StatCard
           label="Flaky Rate"
-          loading={page.loading}
-          error={page.error}
+          loading={period.loading}
+          error={period.error}
           value={failureLikeBuildCount ? formatPercent(currentPeriod?.flaky_rate_pct) : "N/A"}
           detail={`${formatNumber(currentPeriod?.flaky_build_count || 0)} flaky / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="rose"
@@ -265,8 +284,8 @@ export default function FlakyPage({ filters }) {
               <InfoHint text={BLIND_RETRY_LOOP_HINT} />
             </span>
           )}
-          loading={page.loading}
-          error={page.error}
+          loading={period.loading}
+          error={period.error}
           value={failureLikeBuildCount ? formatPercent(currentPeriod?.retry_loop_rate_pct) : "N/A"}
           detail={`${formatNumber(currentPeriod?.retry_loop_build_count || 0)} blind-retry-loop / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="amber"
@@ -282,8 +301,8 @@ export default function FlakyPage({ filters }) {
         />
         <StatCard
           label="Combined Noisy Rate"
-          loading={page.loading}
-          error={page.error}
+          loading={period.loading}
+          error={period.error}
           value={failureLikeBuildCount ? formatPercent(currentPeriod?.noisy_rate_pct) : "N/A"}
           detail={`${formatNumber(currentPeriod?.noisy_build_count || 0)} noisy / ${formatNumber(failureLikeBuildCount)} failure-like builds`}
           tone="teal"
@@ -295,8 +314,8 @@ export default function FlakyPage({ filters }) {
         />
         <StatCard
           label="Affected PR Rate"
-          loading={page.loading}
-          error={page.error}
+          loading={period.loading}
+          error={period.error}
           value={totalPrCount ? formatPercent(currentPeriod?.affected_pr_rate_pct) : "N/A"}
           detail={`${formatNumber(currentPeriod?.affected_pr_count || 0)} / ${formatNumber(totalPrCount)} PRs`}
           tone="default"
@@ -311,9 +330,9 @@ export default function FlakyPage({ filters }) {
       <Panel
         title="Distinct flaky case number"
         subtitle="Weekly distinct flaky testcase counts by tested repository and branch, including tests run by other repositories' CI jobs."
-        loading={page.loading}
-        error={page.error}
-        actions={showPanelActions ? (
+        loading={distinct.loading}
+        error={distinct.error}
+        actions={distinct.data ? (
           <div className="panel-badge-row">
             <span className="panel-badge">
               <strong>{formatNumber(distinctRows.length)}</strong>
@@ -321,14 +340,14 @@ export default function FlakyPage({ filters }) {
             </span>
             <span className="panel-badge">
               <strong>{formatNumber(latestDistinctTotal)}</strong>
-              <span>{latestIssueWeekLabel}</span>
+              <span>{latestDistinctWeek}</span>
             </span>
           </div>
         ) : null}
       >
         <DistinctCaseCountTable
-          weeks={page.data?.distinct_flaky_case_counts?.weeks}
-          rows={page.data?.distinct_flaky_case_counts?.rows}
+          weeks={distinct.data?.distinct_flaky_case_counts?.weeks}
+          rows={distinctRows}
           scrollClassName="table-scroll--compact-y"
         />
       </Panel>
@@ -338,8 +357,8 @@ export default function FlakyPage({ filters }) {
           title="Flaky issue progress"
           subtitle={snapshotSubtitle}
           tone="rose"
-          loading={page.loading}
-          error={page.error}
+          loading={issues.loading}
+          error={issues.error}
           items={[
             {
               label: "Filed",
@@ -361,8 +380,8 @@ export default function FlakyPage({ filters }) {
           title="Fix PR progress"
           subtitle={snapshotSubtitle}
           tone="teal"
-          loading={page.loading}
-          error={page.error}
+          loading={issues.loading}
+          error={issues.error}
           items={[
             {
               label: "In review",
@@ -381,11 +400,11 @@ export default function FlakyPage({ filters }) {
       <Panel
         title="Issue lifecycle by week"
         subtitle="Weekly created, closed, reopened, and week-end open issue counts in the current repo and branch scope."
-        loading={page.loading}
-        error={page.error}
+        loading={issues.loading}
+        error={issues.error}
       >
         <TrendChart
-          series={page.data?.issue_lifecycle_weekly?.series}
+          series={issues.data?.issue_lifecycle_weekly?.series}
           yFormatter={formatNumber}
           rightYFormatter={formatNumber}
           height={220}
@@ -395,9 +414,9 @@ export default function FlakyPage({ filters }) {
       <Panel
         title="Filtered-issue weekly case table"
         subtitle="Weekly cells and Total show rate (flaky runs / estimated job builds), including cross-repository CI, not actual testcase execution counts. N/A means no attributable job-build estimate, not proof that the testcase did not run. Total aggregates the selected range."
-        loading={page.loading}
-        error={page.error}
-        actions={showPanelActions ? (
+        loading={rates.loading}
+        error={rates.error}
+        actions={rates.data ? (
           <div className="panel-badge-row">
             <span className="panel-badge">
               <strong>{formatNumber(issueRows.length)}</strong>
@@ -411,8 +430,8 @@ export default function FlakyPage({ filters }) {
         ) : null}
       >
         <IssueWeeklyRateTable
-          weeks={page.data?.issue_case_weekly_rates?.weeks}
-          rows={page.data?.issue_case_weekly_rates?.rows}
+          weeks={issueWeeks}
+          rows={issueRows}
           scrollClassName="table-scroll--tall"
         />
       </Panel>
@@ -471,9 +490,9 @@ export default function FlakyPage({ filters }) {
           <Panel
             title="Flaky rate trend"
             subtitle={bucketedFlakyRateSubtitle}
-            loading={page.loading}
-            error={page.error}
-            actions={showPanelActions ? (
+            loading={chart.loading}
+            error={chart.error}
+            actions={chart.data ? (
               <div className="panel-badge-row">
                 <span className="panel-badge">
                   <strong>{formatNumber(bucketedFlakyRateRows.length)}</strong>
@@ -504,9 +523,9 @@ export default function FlakyPage({ filters }) {
           <Panel
             title="Filtered-issue flaky rate"
             subtitle="Weekly flaky rate for the testcase set currently tracked by flaky GitHub issues in this scope."
-            loading={page.loading}
-            error={page.error}
-            actions={showPanelActions ? (
+            loading={rates.loading}
+            error={rates.error}
+            actions={rates.data ? (
               <div className="panel-badge-row">
                 <span className="panel-badge">
                   <strong>{formatNumber(issueRows.length)}</strong>
@@ -524,7 +543,7 @@ export default function FlakyPage({ filters }) {
             ) : null}
           >
             <TrendChart
-              series={page.data?.issue_filtered_weekly_trend?.series}
+              series={rates.data?.issue_filtered_weekly_trend?.series}
               yFormatter={formatPercent}
               yMax={100}
               compactY
@@ -561,33 +580,33 @@ export default function FlakyPage({ filters }) {
         <Panel
           title="Failure category share (draft)"
           subtitle="Current V1 split between explicit flaky evidence and everything else."
-          loading={page.loading}
-          error={page.error}
+          loading={failureShare.loading}
+          error={failureShare.error}
         >
           <ShareBars
-            categories={page.data?.failure_category_share?.categories}
-            groups={page.data?.failure_category_share?.groups}
+            categories={failureShare.data?.failure_category_share?.categories}
+            groups={failureShare.data?.failure_category_share?.groups}
           />
         </Panel>
 
         <Panel
           title="Failure category trend (draft)"
           subtitle="Useful for spotting when unclassified failures start dominating the page."
-          loading={page.loading}
-          error={page.error}
+          loading={failureTrend.loading}
+          error={failureTrend.error}
         >
-          <TrendChart series={page.data?.failure_category_trend?.series} />
+          <TrendChart series={failureTrend.data?.failure_category_trend?.series} />
         </Panel>
 
         <Panel
           title="Period comparison (draft)"
           subtitle="Current window against the immediately preceding window."
-          loading={page.loading}
-          error={page.error}
+          loading={period.loading}
+          error={period.error}
         >
           <PeriodComparisonTable
-            groups={page.data?.period_comparison?.groups}
-            meta={page.data?.period_comparison?.meta}
+            groups={period.data?.period_comparison?.groups}
+            meta={period.data?.period_comparison?.meta}
           />
         </Panel>
       </div>

@@ -45,7 +45,7 @@ func TestJWTVerifierValidatesSignatureIssuerAudienceAndExpiry(t *testing.T) {
 	defer server.Close()
 
 	verifier, err := NewJWTVerifier(ctx, JWTConfig{
-		JWKSURL: server.URL, Issuer: "https://issuer.example", Audience: "authzd-test",
+		ExcludedAudience: "machine-client", JWKSURL: server.URL, Issuer: "https://issuer.example", Audience: "authzd-test",
 		PrincipalPrefix: "user:https://issuer.example|", SubjectClaim: "sub",
 	})
 	if err != nil {
@@ -63,6 +63,7 @@ func TestJWTVerifierValidatesSignatureIssuerAudienceAndExpiry(t *testing.T) {
 		wantSubject string
 	}{
 		{name: "valid", issuer: "https://issuer.example", audience: []string{"authzd-test"}, expires: time.Now().Add(time.Minute), key: privateKey, wantSubject: "user:https://issuer.example|user-123"},
+		{name: "dual audience", issuer: "https://issuer.example", audience: []string{"authzd-test", "machine-client"}, expires: time.Now().Add(time.Minute), key: privateKey, wantErr: true},
 		{name: "wrong issuer", issuer: "https://attacker.example", audience: []string{"authzd-test"}, expires: time.Now().Add(time.Minute), key: privateKey, wantErr: true},
 		{name: "wrong audience", issuer: "https://issuer.example", audience: []string{"other"}, expires: time.Now().Add(time.Minute), key: privateKey, wantErr: true},
 		{name: "expired", issuer: "https://issuer.example", audience: []string{"authzd-test"}, expires: time.Now().Add(-time.Minute), key: privateKey, wantErr: true},

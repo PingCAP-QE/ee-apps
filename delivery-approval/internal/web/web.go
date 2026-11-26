@@ -31,7 +31,9 @@ import (
 
 const (
 	csrfCookie = "approval_csrf"
-	maxFiles   = 10
+	// maxTargets bounds one request. A release set of one product needs roughly
+	// 10-30 files, and the approval card has to stay readable.
+	maxTargets = 30
 	maxBody    = 64 * 1024
 	maxNote    = 1024
 )
@@ -51,7 +53,14 @@ type Deliverer interface {
 }
 
 type ApprovalNotifier interface {
-	NotifyApproval(ctx context.Context, req *store.Request) error
+	NotifyApproval(ctx context.Context, req *store.Request) ([]store.ApprovalCard, error)
+}
+
+// CardUpdater patches the approval cards that were already delivered, so an
+// approver does not open a card whose buttons no longer apply. Implementations
+// are best effort: a stale or recalled card must never fail a decision.
+type CardUpdater interface {
+	UpdateApprovalCards(ctx context.Context, req *store.Request, cards []store.ApprovalCard, outcome, actor, note string) error
 }
 
 type DecisionNotifier interface {
@@ -66,6 +75,7 @@ type Options struct {
 	Delivery         Deliverer
 	ApprovalNotifier ApprovalNotifier
 	DecisionNotifier DecisionNotifier
+	Cards            CardUpdater
 	Metrics          *metrics.Metrics
 	Logger           *log.Logger
 }
@@ -79,6 +89,7 @@ type handler struct {
 	delivery         Deliverer
 	approvalNotifier ApprovalNotifier
 	decisionNotifier DecisionNotifier
+	cards            CardUpdater
 	logger           *log.Logger
 	tmpl             *template.Template
 	mux              *http.ServeMux
@@ -98,6 +109,7 @@ func New(opts Options) http.Handler {
 		delivery:         opts.Delivery,
 		approvalNotifier: opts.ApprovalNotifier,
 		decisionNotifier: opts.DecisionNotifier,
+		cards:            opts.Cards,
 		logger:           logger,
 		tmpl:             template.Must(template.ParseFS(templateFS, "templates/*.html")),
 	}
@@ -150,8 +162,13 @@ type pageData struct {
 	Identity *auth.Identity
 	CSRF     string
 	Error    string
+	Notice   string
 	Form     formValues
 
+	TTL        string
+	TTLCustom  string
+	TTLOptions []ttlOption
+	MaxTTL     string
 	Request    *store.Request
 	Files      []*store.Request
 	Pending    []*store.Request
@@ -161,23 +178,127 @@ type pageData struct {
 }
 
 type formValues struct {
-	Repository string
-	Tag        string
-	Files      string
-	TTL        string
-	Note       string
+	// Targets is the raw one-target-per-line block, kept verbatim so a rejected
+	// submission can be corrected instead of retyped.
+	Targets string
+	// TTL is the selected preset; TTLCustom overrides it when filled.
+	TTL       string
+	TTLCustom string
+	Note      string
+}
+
+// ttlOption is one entry of the TTL dropdown. Presets keep the common lifetimes
+// one click away while the free-text field stays available for odd values.
+type ttlOption struct {
+	Value    string
+	Label    string
+	Selected bool
+}
+
+var ttlPresets = []struct{ value, label string }{
+	{"30m", "30 minutes"},
+	{"1h", "1 hour"},
+	{"2h", "2 hours"},
+	{"4h", "4 hours"},
+	{"8h", "8 hours"},
+	{"24h", "24 hours (default)"},
+	{"72h", "72 hours"},
+	{"168h", "168 hours (max)"},
+}
+
+// ttlOptions lists the presets that fit under the configured maximum and marks
+// the configured default. When the default is not a preset, it is added so the
+// form never silently falls back to a different lifetime.
+func ttlOptions(defaultSeconds, maxSeconds int64) []ttlOption {
+	out := make([]ttlOption, 0, len(ttlPresets)+1)
+	selected := false
+	for _, preset := range ttlPresets {
+		seconds, err := parseTTL(preset.value)
+		if err != nil || seconds > maxSeconds {
+			continue
+		}
+		option := ttlOption{Value: preset.value, Label: preset.label}
+		if seconds == defaultSeconds {
+			option.Selected = true
+			selected = true
+		}
+		out = append(out, option)
+	}
+	if !selected && defaultSeconds > 0 && defaultSeconds <= maxSeconds {
+		value := (time.Duration(defaultSeconds) * time.Second).String()
+		out = append([]ttlOption{{Value: value, Label: "default (" + value + ")", Selected: true}}, out...)
+	}
+	return out
 }
 
 func (h *handler) form(w http.ResponseWriter, r *http.Request) {
+	cfg := h.config.Current()
 	identity, _ := auth.IdentityFrom(r.Context())
+	values := formValuesFromQuery(r)
+	if values.TTL == "" {
+		for _, option := range ttlOptions(cfg.DefaultTTLSeconds, cfg.MaxTTLSeconds) {
+			if option.Selected {
+				values.TTL = option.Value
+				break
+			}
+		}
+	}
 	h.render(w, "form.html", pageData{
-		Identity: identity,
-		CSRF:     csrfToken(w, r),
-		Form: formValues{
-			TTL: strconv.FormatInt(h.config.Current().DefaultTTLSeconds, 10),
-		},
-		Approver: h.config.IsApprover(identity.Email),
+		Identity:   identity,
+		CSRF:       csrfToken(w, r),
+		Form:       values,
+		TTLOptions: ttlOptions(cfg.DefaultTTLSeconds, cfg.MaxTTLSeconds),
+		MaxTTL:     (time.Duration(cfg.MaxTTLSeconds) * time.Second).String(),
+		Approver:   h.config.IsApprover(identity.Email),
 	})
+}
+
+// formValuesFromQuery prefills the form from the URL so a legacy
+// /dl/oci-file/<repo>?file=&tag= link can be turned into an approval request by
+// editing the host and prefix. The repository and tag are shared by every
+// prefilled target; unknown or malformed values are ignored, and the query never
+// influences authorization.
+func formValuesFromQuery(r *http.Request) formValues {
+	q := r.URL.Query()
+	// TTL is deliberately not taken from the query: it is a decision the
+	// requester makes in the form, and defaulting it keeps the URL harmless.
+	repo := clip(strings.TrimSpace(q.Get("repository")), 512)
+	tag := clip(strings.TrimSpace(q.Get("tag")), 128)
+	values := formValues{Note: clip(strings.TrimSpace(q.Get("note")), maxNote)}
+	seen := map[string]bool{}
+	var lines []string
+	add := func(raw string) {
+		for _, name := range splitFiles(strings.ReplaceAll(raw, ",", "\n")) {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			lines = append(lines, strings.Join(nonEmpty(repo, tag, name), " "))
+		}
+	}
+	for _, raw := range q["file"] {
+		add(raw)
+	}
+	add(q.Get("files"))
+	values.Targets = strings.Join(lines, "\n")
+	return values
+}
+
+func nonEmpty(values ...string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func clip(value string, limit int) string {
+	if limit > 0 && utf8.RuneCountInString(value) > limit {
+		return string([]rune(value)[:limit])
+	}
+	return value
 }
 
 func (h *handler) create(w http.ResponseWriter, r *http.Request) {
@@ -192,9 +313,18 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form", http.StatusForbidden)
 		return
 	}
-	values, ttl, err := h.parseForm(r)
+	values, ttl, targets, err := h.parseForm(r)
 	if err != nil {
-		h.render(w, "form.html", pageData{Identity: identity, CSRF: csrfToken(w, r), Error: err.Error(), Form: values, Approver: h.config.IsApprover(identity.Email)})
+		cfg := h.config.Current()
+		h.render(w, "form.html", pageData{
+			Identity:   identity,
+			CSRF:       csrfToken(w, r),
+			Error:      err.Error(),
+			Form:       values,
+			TTLOptions: ttlOptions(cfg.DefaultTTLSeconds, cfg.MaxTTLSeconds),
+			MaxTTL:     (time.Duration(cfg.MaxTTLSeconds) * time.Second).String(),
+			Approver:   h.config.IsApprover(identity.Email),
+		})
 		return
 	}
 
@@ -228,9 +358,7 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		Note:           values.Note,
 		Status:         store.StatusPending,
 		TTLSeconds:     ttl,
-	}
-	for _, filename := range splitFiles(values.Files) {
-		req.Files = append(req.Files, store.File{Repository: values.Repository, Tag: values.Tag, Filename: filename})
+		Files:          targets,
 	}
 	if err := h.store.CreateRequest(ctx, req); err != nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
@@ -240,13 +368,20 @@ func (h *handler) create(w http.ResponseWriter, r *http.Request) {
 		h.metrics.Created.Add(1)
 	}
 	if h.approvalNotifier != nil {
-		go func(id string) {
+		go func(req *store.Request) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if err := h.approvalNotifier.NotifyApproval(ctx, req); err != nil {
-				h.logger.Printf("approval notification failed request=%s", id)
+			cards, err := h.approvalNotifier.NotifyApproval(ctx, req)
+			if err != nil {
+				h.logger.Printf("approval notification failed request=%s", req.ID)
 			}
-		}(req.ID)
+			if len(cards) == 0 {
+				return
+			}
+			if err := h.store.SaveApprovalCards(ctx, req.ID, cards); err != nil {
+				h.logger.Printf("approval card persist failed request=%s", req.ID)
+			}
+		}(req)
 	}
 	http.Redirect(w, r, h.basePath()+"/requests/"+req.ID, http.StatusSeeOther)
 }
@@ -285,10 +420,19 @@ func (h *handler) detail(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	notice := ""
+	switch r.URL.Query().Get("notice") {
+	case "already-decided":
+		notice = "This request was already handled; the page shows its current state."
+	case "not-revocable":
+		notice = "This request can no longer be revoked."
+	}
 	approver := h.config.IsApprover(identity.Email)
 	h.render(w, "detail.html", pageData{
 		Identity:   identity,
 		CSRF:       csrfToken(w, r),
+		TTL:        (time.Duration(req.TTLSeconds) * time.Second).String(),
+		Notice:     notice,
 		Request:    req,
 		Approver:   approver,
 		CanApprove: approver && req.Status == store.StatusPending && req.RequesterEmail != identity.Email,
@@ -352,8 +496,11 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 		return
 	}
 	if req.Status != store.StatusPending {
+		// Another approver (or a double submit) already decided it. Send the
+		// caller to the detail page so they see the outcome instead of a raw
+		// conflict page.
 		h.deny(w)
-		http.Error(w, "request is not pending", http.StatusConflict)
+		http.Redirect(w, r, h.basePath()+"/requests/"+req.ID+"?notice=already-decided", http.StatusSeeOther)
 		return
 	}
 	note := strings.TrimSpace(r.PostFormValue("note"))
@@ -361,7 +508,8 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 		http.Error(w, "note is too long", http.StatusBadRequest)
 		return
 	}
-	ok, err := h.store.Transition(r.Context(), req.ID, store.StatusPending, to, identity.Email, note, now())
+	decidedAt := now()
+	ok, err := h.store.Transition(r.Context(), req.ID, store.StatusPending, to, identity.Email, note, decidedAt)
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
@@ -371,6 +519,11 @@ func (h *handler) decide(w http.ResponseWriter, r *http.Request, to store.Status
 		http.Error(w, "request was already decided", http.StatusConflict)
 		return
 	}
+	req.Status = to
+	req.DecidedAt = &decidedAt
+	req.ApproverEmail = identity.Email
+	req.DecisionNote = note
+	h.updateCards(req, string(to), identity.Email, note)
 	if h.metrics != nil {
 		if to == store.StatusApproved {
 			h.metrics.Approved.Add(1)
@@ -427,11 +580,12 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Status != store.StatusPending && req.Status != store.StatusApproved {
 		h.deny(w)
-		http.Error(w, "request cannot be revoked", http.StatusConflict)
+		http.Redirect(w, r, h.basePath()+"/requests/"+req.ID+"?notice=not-revocable", http.StatusSeeOther)
 		return
 	}
 	wasApproved := req.Status == store.StatusApproved
-	ok, err := h.store.Transition(r.Context(), req.ID, req.Status, store.StatusRevoked, identity.Email, "", now())
+	decidedAt := now()
+	ok, err := h.store.Transition(r.Context(), req.ID, req.Status, store.StatusRevoked, identity.Email, "", decidedAt)
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
@@ -441,6 +595,10 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "request was already decided", http.StatusConflict)
 		return
 	}
+	req.Status = store.StatusRevoked
+	req.DecidedAt = &decidedAt
+	req.ApproverEmail = identity.Email
+	h.updateCards(req, string(store.StatusRevoked), identity.Email, "")
 	if wasApproved && h.revoker != nil {
 		for _, file := range req.Files {
 			if file.ShareID == "" {
@@ -461,6 +619,30 @@ func (h *handler) revoke(w http.ResponseWriter, r *http.Request) {
 		}(req)
 	}
 	http.Redirect(w, r, h.basePath()+"/requests/"+req.ID, http.StatusSeeOther)
+}
+
+// updateCards patches the cards that announced the request. It runs in the
+// background: a stale card must never block or fail the decision.
+func (h *handler) updateCards(req *store.Request, outcome, actor, note string) {
+	if h.cards == nil {
+		return
+	}
+	snapshot := *req
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cards, err := h.store.ListApprovalCards(ctx, snapshot.ID)
+		if err != nil {
+			h.logger.Printf("approval cards lookup failed request=%s", snapshot.ID)
+			return
+		}
+		if len(cards) == 0 {
+			return
+		}
+		if err := h.cards.UpdateApprovalCards(ctx, &snapshot, cards, outcome, actor, note); err != nil {
+			h.logger.Printf("approval card update failed request=%s", snapshot.ID)
+		}
+	}()
 }
 
 func (h *handler) render(w http.ResponseWriter, name string, data pageData) {
@@ -538,48 +720,101 @@ func validToken(token string) bool {
 	return err == nil && len(raw) == 32
 }
 
-func (h *handler) parseForm(r *http.Request) (formValues, int64, error) {
+func (h *handler) parseForm(r *http.Request) (formValues, int64, []store.File, error) {
 	cfg := h.config.Current()
 	values := formValues{
-		Repository: strings.TrimSpace(r.PostFormValue("repository")),
-		Tag:        strings.TrimSpace(r.PostFormValue("tag")),
-		Files:      strings.TrimSpace(r.PostFormValue("files")),
-		TTL:        strings.TrimSpace(r.PostFormValue("ttl")),
-		Note:       strings.TrimSpace(r.PostFormValue("note")),
+		Targets:   strings.TrimSpace(r.PostFormValue("targets")),
+		TTL:       strings.TrimSpace(r.PostFormValue("ttl")),
+		TTLCustom: strings.TrimSpace(r.PostFormValue("ttl_custom")),
+		Note:      strings.TrimSpace(r.PostFormValue("note")),
 	}
-	if values.Repository == "" || values.Tag == "" || values.Files == "" {
-		return values, 0, errors.New("repository, tag and files are required")
+	if values.Targets == "" {
+		return values, 0, nil, errors.New("at least one target is required")
 	}
-	if !validRepository(values.Repository) {
-		return values, 0, errors.New("invalid repository")
-	}
-	if !tagPattern.MatchString(values.Tag) {
-		return values, 0, errors.New("invalid tag")
-	}
-	files := splitFiles(values.Files)
-	if len(files) == 0 || len(files) > maxFiles {
-		return values, 0, fmt.Errorf("provide 1-%d files", maxFiles)
-	}
-	for _, file := range files {
-		if !validFilename(file) {
-			return values, 0, fmt.Errorf("invalid filename %q", file)
-		}
+	targets, err := parseTargets(values.Targets)
+	if err != nil {
+		return values, 0, nil, err
 	}
 	if utf8.RuneCountInString(values.Note) > maxNote {
-		return values, 0, errors.New("note is too long")
+		return values, 0, nil, errors.New("note is too long")
+	}
+	rawTTL := values.TTLCustom
+	if rawTTL == "" {
+		rawTTL = values.TTL
 	}
 	ttl := cfg.DefaultTTLSeconds
-	if values.TTL != "" {
-		parsed, err := strconv.ParseInt(values.TTL, 10, 64)
+	if rawTTL != "" {
+		parsed, err := parseTTL(rawTTL)
 		if err != nil {
-			return values, 0, errors.New("invalid TTL")
+			return values, 0, nil, errors.New("invalid TTL, use seconds or 2h30m/90s")
 		}
 		ttl = parsed
 	}
 	if ttl < 1 || ttl > cfg.MaxTTLSeconds {
-		return values, 0, fmt.Errorf("TTL must be between 1 and %d seconds", cfg.MaxTTLSeconds)
+		return values, 0, nil, fmt.Errorf("TTL must be between 1 and %d seconds", cfg.MaxTTLSeconds)
 	}
-	return values, ttl, nil
+	return values, ttl, targets, nil
+}
+
+// parseTargets reads the one-target-per-line block into the files to request.
+// Each line is "<repository> <tag> <filename>" separated by whitespace, so one
+// request may span several repositories. Blank lines are skipped, and an
+// identical repository/tag/filename is only kept once: the store's unique index
+// is per request, and approving the same file twice would issue two shares.
+func parseTargets(raw string) ([]store.File, error) {
+	seen := map[string]bool{}
+	targets := make([]store.File, 0, maxTargets)
+	for i, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("line %d: use <repository> <tag> <filename>", i+1)
+		}
+		repo, tag, name := fields[0], fields[1], fields[2]
+		if !validRepository(repo) {
+			return nil, fmt.Errorf("line %d: invalid repository", i+1)
+		}
+		if !tagPattern.MatchString(tag) {
+			return nil, fmt.Errorf("line %d: invalid tag", i+1)
+		}
+		if !validFilename(name) {
+			return nil, fmt.Errorf("line %d: invalid filename %q", i+1, name)
+		}
+		key := repo + "\x00" + tag + "\x00" + name
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		targets = append(targets, store.File{Repository: repo, Tag: tag, Filename: name})
+	}
+	if len(targets) == 0 {
+		return nil, errors.New("at least one target is required")
+	}
+	if len(targets) > maxTargets {
+		return nil, fmt.Errorf("provide 1-%d targets", maxTargets)
+	}
+	return targets, nil
+}
+
+// parseTTL accepts a plain number of seconds (86400) or a Go duration such as
+// 24h, 1m, 30s or 2h30m. Day and week units are rejected so each TTL has one
+// spelling. Only the bare-seconds fallback is ours; the rest is time.
+func parseTTL(raw string) (int64, error) {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	if s == "" {
+		return 0, errors.New("empty TTL")
+	}
+	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return v, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, errors.New("invalid TTL")
+	}
+	return int64(d / time.Second), nil
 }
 
 func splitFiles(raw string) []string {

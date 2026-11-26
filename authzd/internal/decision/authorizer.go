@@ -11,6 +11,7 @@ import (
 
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/identity"
 	"github.com/PingCAP-QE/ee-apps/authzd/internal/registry"
+	"github.com/PingCAP-QE/ee-apps/authzd/internal/resolver"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	rpcstatus "google.golang.org/genproto/googleapis/rpc/status"
@@ -84,6 +85,45 @@ type Authorizer struct {
 	checker       Checker
 	audit         AuditSink
 	contextPolicy ContextPolicyEvaluator
+	// decisionMode bounds how strongly this instance may deny. It exists so an
+	// operator can attach external authorization to a live route before the
+	// route registry is complete: unmatched routes would otherwise deny every
+	// path the registry does not list yet.
+	decisionMode string
+}
+
+// Decision modes for WithDecisionMode. "shadow" is accepted as a synonym for
+// "observe": at this service the two are identical, because Envoy only reaches
+// the ext_authz filter after its own authentication has already passed.
+const (
+	ModeOff     = "off"
+	ModeObserve = "observe"
+	ModeEnforce = "enforce"
+)
+
+// WithDecisionMode bounds the strength of every response. The zero value is
+// ModeEnforce, and rule modes still apply inside it.
+func (a *Authorizer) WithDecisionMode(mode string) *Authorizer {
+	a.decisionMode = mode
+	return a
+}
+
+// effectiveMode resolves the mode for one decision: a global mode weaker than
+// enforce wins, because the operator selected it for the whole instance.
+func (a *Authorizer) effectiveMode(ruleMode string) string {
+	switch a.decisionMode {
+	case ModeOff:
+		return ModeOff
+	case "observe", "shadow":
+		return ModeObserve
+	case "", ModeEnforce:
+		if ruleMode == "" {
+			return ModeEnforce
+		}
+		return ruleMode
+	default:
+		return ModeEnforce
+	}
 }
 
 func (a *Authorizer) WithContextPolicyEvaluator(evaluator ContextPolicyEvaluator) *Authorizer {
@@ -120,22 +160,27 @@ func (a *Authorizer) Authorize(ctx context.Context, attrs *authv3.AttributeConte
 		ExternalPath: pathValue, UpstreamPath: upstreamPath,
 	})
 	if !ok {
-		return a.finish(ctx, event, false, "route_not_registered"), nil
+		return a.finishMode(ctx, event, a.effectiveMode(ModeEnforce), false, "route_not_registered"), nil
 	}
-	if matched.Rule.Mode == "off" {
-		return a.finish(ctx, event, true, "mode_off"), nil
+	mode := a.effectiveMode(matched.Rule.Mode)
+	if mode == ModeOff || matched.Rule.Mode == "off" {
+		return a.finishMode(ctx, event, ModeOff, true, "mode_off"), nil
 	}
 	credential, ok := a.credentials[identityMode]
 	if !ok || credential.Verifier == nil || credential.Header == "" {
-		return a.finishMode(ctx, event, matched.Rule.Mode, false, "identity_mode_unconfigured"), nil
+		return a.finishMode(ctx, event, mode, false, "identity_mode_unconfigured"), nil
 	}
-	token, tokenOK := extractToken(httpRequest.GetHeaders(), credential.Header)
+	raw, present := headerValue(httpRequest.GetHeaders(), credential.Header)
+	if !present {
+		return a.finishMode(ctx, event, mode, false, "identity_missing"), nil
+	}
+	token, tokenOK := parseToken(raw, credential.Header)
 	if !tokenOK {
-		return a.finishMode(ctx, event, matched.Rule.Mode, false, "identity_invalid"), nil
+		return a.finishMode(ctx, event, mode, false, "identity_invalid"), nil
 	}
 	principal, err := credential.Verifier.Verify(ctx, token)
 	if err != nil {
-		return a.finishMode(ctx, event, matched.Rule.Mode, false, "identity_invalid"), nil
+		return a.finishMode(ctx, event, mode, false, "identity_invalid"), nil
 	}
 	event.Principal = safeLogValue(principal.Subject)
 	policyContext := PolicyContext{Principal: principal.Subject, RouteID: routeID, Host: httpRequest.GetHost(), Method: httpRequest.GetMethod()}
@@ -143,16 +188,19 @@ func (a *Authorizer) Authorize(ctx context.Context, attrs *authv3.AttributeConte
 		object := check.Object
 		if object == "" {
 			if a.resolver == nil {
-				return a.dependencyFailure(ctx, event, matched.Rule.Mode, "resolver_unavailable", errors.New("resource resolver unavailable"))
+				return a.dependencyFailure(ctx, event, mode, "resolver_unavailable", errors.New("resource resolver unavailable"))
 			}
 			id, found := resourceID(check.IDFrom, matched.PathValues, query)
 			if !found {
-				return a.finishMode(ctx, event, matched.Rule.Mode, false, "resource_id_missing"), nil
+				return a.finishMode(ctx, event, mode, false, "resource_id_missing"), nil
 			}
 			event.ResourceType, event.ResourceID = check.ObjectFrom, safeLogValue(id)
 			object, err = a.resolver.Resolve(ctx, check.ObjectFrom, id)
 			if err != nil {
-				return a.dependencyFailure(ctx, event, matched.Rule.Mode, "resource_resolution_error", fmt.Errorf("resource resolution unavailable: %w", err))
+				if errors.Is(err, resolver.ErrNotFound) {
+					return a.finishMode(ctx, event, mode, false, "resource_not_found"), nil
+				}
+				return a.dependencyFailure(ctx, event, mode, "resource_resolution_error", fmt.Errorf("resource resolution unavailable: %w", err))
 			}
 			event.ResourceType, event.ResourceID = splitObject(object)
 			policyContext.Resources = append(policyContext.Resources, object)
@@ -161,31 +209,39 @@ func (a *Authorizer) Authorize(ctx context.Context, attrs *authv3.AttributeConte
 			policyContext.Capability = object
 		}
 		if a.checker == nil {
-			return a.dependencyFailure(ctx, event, matched.Rule.Mode, "openfga_unavailable", errors.New("OpenFGA checker unavailable"))
+			return a.dependencyFailure(ctx, event, mode, "openfga_unavailable", errors.New("OpenFGA checker unavailable"))
 		}
 		higherConsistency := httpRequest.GetMethod() != "GET" && httpRequest.GetMethod() != "HEAD"
 		allowed, err := a.checker.Check(ctx, principal.Subject, object, check.Relation, higherConsistency)
 		if err != nil {
-			return a.dependencyFailure(ctx, event, matched.Rule.Mode, "openfga_error", fmt.Errorf("authorization backend unavailable: %w", err))
+			return a.dependencyFailure(ctx, event, mode, "openfga_error", fmt.Errorf("authorization backend unavailable: %w", err))
 		}
 		if !allowed {
-			return a.finishMode(ctx, event, matched.Rule.Mode, false, "relationship_denied"), nil
+			return a.finishMode(ctx, event, mode, false, "relationship_denied"), nil
 		}
 	}
 	if a.contextPolicy != nil {
 		allowed, err := a.contextPolicy.Evaluate(ctx, policyContext)
 		if err != nil {
-			return a.dependencyFailure(ctx, event, matched.Rule.Mode, "context_policy_error", fmt.Errorf("context policy evaluation failed: %w", err))
+			return a.dependencyFailure(ctx, event, mode, "context_policy_error", fmt.Errorf("context policy evaluation failed: %w", err))
 		}
 		if !allowed {
-			return a.finishMode(ctx, event, matched.Rule.Mode, false, "context_policy_denied"), nil
+			return a.finishMode(ctx, event, mode, false, "context_policy_denied"), nil
 		}
 	}
 	event.ModelID = a.checker.ModelID()
-	return a.finishMode(ctx, event, matched.Rule.Mode, true, "authorized"), nil
+	return a.finishMode(ctx, event, mode, true, "authorized"), nil
 }
 
 func (a *Authorizer) finishMode(ctx context.Context, event AuditEvent, mode string, allowed bool, reason string) *authv3.CheckResponse {
+	if mode == ModeOff {
+		event.Outcome = "allow"
+		event.Reason = reason
+		if a.audit != nil {
+			a.audit.Record(ctx, event)
+		}
+		return allowedResponse()
+	}
 	if mode == "observe" || mode == "shadow" {
 		if a.checker != nil {
 			event.ModelID = a.checker.ModelID()
@@ -202,7 +258,7 @@ func (a *Authorizer) finishMode(ctx context.Context, event AuditEvent, mode stri
 }
 
 func (a *Authorizer) dependencyFailure(ctx context.Context, event AuditEvent, mode, reason string, err error) (*authv3.CheckResponse, error) {
-	if mode == "observe" || mode == "shadow" {
+	if mode != ModeEnforce {
 		return a.finishMode(ctx, event, mode, false, reason), nil
 	}
 	event.Outcome = "error"
@@ -251,16 +307,52 @@ func deniedResponse() *authv3.CheckResponse {
 	}
 }
 
-func extractToken(headers map[string]string, name string) (string, bool) {
-	value := strings.TrimSpace(headers[strings.ToLower(strings.TrimSpace(name))])
-	if strings.EqualFold(name, "authorization") {
-		scheme, token, ok := strings.Cut(value, " ")
-		if !ok || !strings.EqualFold(scheme, "Bearer") || token == "" || strings.ContainsAny(token, " \t\r\n,") {
+// headerValue returns the raw value of a credential header. Envoy's
+// AttributeContext collapses repeated headers into one comma-joined value, so
+// the raw value is what parseToken has to judge.
+func headerValue(headers map[string]string, name string) (string, bool) {
+	value, ok := headers[strings.ToLower(strings.TrimSpace(name))]
+	return value, ok
+}
+
+// parseToken extracts exactly one credential from a header value. Both the
+// Authorization header and any custom forwarded-identity header get the same
+// treatment: a quote of two credentials, a whitespace-separated list, or an
+// empty value is rejected rather than guessed. A forwarded identity header is
+// trusted only because the Gateway wrote it, so an ambiguous value means the
+// overwrite did not happen and the header must not authorize anything.
+func parseToken(raw, name string) (string, bool) {
+	if strings.EqualFold(strings.TrimSpace(name), "authorization") {
+		scheme, token, ok := strings.Cut(strings.TrimSpace(raw), " ")
+		if !ok || !strings.EqualFold(scheme, "Bearer") || !singleCredential(token) {
 			return "", false
 		}
 		return token, true
 	}
-	return value, value != ""
+	if !singleCredential(raw) {
+		return "", false
+	}
+	return raw, true
+}
+
+func singleCredential(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r == ' ' || r == '\t' || r == '\r' || r == '\n' || r == ',' || r == '\x00' {
+			return false
+		}
+	}
+	return true
+}
+
+func extractToken(headers map[string]string, name string) (string, bool) {
+	raw, ok := headerValue(headers, name)
+	if !ok {
+		return "", false
+	}
+	return parseToken(raw, name)
 }
 
 func resourceID(source string, pathValues map[string]string, query url.Values) (string, bool) {

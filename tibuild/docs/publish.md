@@ -385,6 +385,37 @@ good one. The ops file carries the per-stage base URL, key and the
 `base_image → component` catalogue; the test platforms file carries the TCMS
 base URL and token.
 
+### Ops request ids on release builds
+
+The ops platform identifies the caller of a release build with four ids:
+`release_id`, `change_id`, `step_key` and `execution_id`.
+`POST /api/v2/hotfix/bump-tag-for-tidbx` takes them in `meta.ops_req` and writes
+the whole meta into the git tag annotation verbatim, so the annotation is the
+only record of which ops step asked for the tag.
+`GET /api/v2/hotfix/tidbx/tag` reads them back.
+
+All four are optional and independent — the service does not judge them against
+each other:
+
+- **write side**: `step_key` and `execution_id` are the only fields whose format
+  is checked. A value that is present must be a canonical UUID, otherwise the
+  request is rejected with `400` before any GitHub call. A value that is empty
+  (or whitespace-only) is normalized away before validation and never reaches
+  the annotation: `omitempty` alone would keep an explicit `""`, because it only
+  omits a nil pointer.
+- **read side**: `POST /api/v2/tidbcloud/sync-kernel-images` forwards whatever
+  the annotation carries as `source_release_id`, `source_change_id`,
+  `source_step_key` and `source_execution_id` in the ops kernel-image build
+  callback, and omits the ones it does not have.
+  `POST /api/v2/tidbcloud/devops/cloudconfig/versions/component` does the same
+  for the per-component roll-out, using the unprefixed names the ops config API
+  expects: `release_id`, `change_id`, `step_key`, `execution_id`.
+
+Tags written before these fields existed, and images built from a branch rather
+than from a tag, carry none of them: the callback then sends only
+`source_applicant` (empty when unknown) plus the build's own `repo`,
+`commit_sha`, `git_tag` and `images`.
+
 ### Commit metadata forwarded to TCMS
 
 `POST /api/v2/tidbcloud/tidbx-component-image-builds` also reads two optional

@@ -9,6 +9,18 @@ import (
 	"github.com/PingCAP-QE/ee-apps/delivery-approval/internal/database/ent"
 )
 
+// The ApprovalCardFunc type is an adapter to allow the use of ordinary
+// function as ApprovalCard mutator.
+type ApprovalCardFunc func(context.Context, *ent.ApprovalCardMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ApprovalCardFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ApprovalCardMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ApprovalCardMutation", m)
+}
+
 // The RequestFunc type is an adapter to allow the use of ordinary
 // function as Request mutator.
 type RequestFunc func(context.Context, *ent.RequestMutation) (ent.Value, error)

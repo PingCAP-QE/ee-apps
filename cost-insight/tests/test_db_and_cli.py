@@ -1140,6 +1140,8 @@ def test_cli_rejects_unsafe_aws_summary_usage_windows(monkeypatch, arguments, me
     ("arguments", "refresh_detail", "resource_error"),
     (
         ([], True, False),
+        (["--replace-existing-dates", "--usage-start-date", "2026-08-02",
+          "--usage-end-date", "2026-08-03"], True, False),
         (["--limit", "1"], False, False),
         (["--dry-run"], False, False),
         (["--replace-existing-partitions", "--export-partition-start", "2026-08-01",
@@ -1232,7 +1234,9 @@ def test_cli_sync_aws_summary_refreshes_ledger_and_details_for_split_source(
     monkeypatch.setattr(cli, "configure_logging", lambda _level: None)
     monkeypatch.setattr(cli, "build_engine", lambda _settings: Engine())
     monkeypatch.setattr(
-        cli, "_resolve_aws_sources", lambda *_args, **_kwargs: (split_source, legacy_source)
+        cli, "_resolve_aws_sources", lambda *_args, **_kwargs: (
+            (split_source,) if "--replace-existing-dates" in arguments else (split_source, legacy_source)
+        )
     )
     monkeypatch.setattr(cli, "run_sync_aws_billing_summary", fake_summary)
     monkeypatch.setattr(cli, "run_sync_aws_parent_residual_allocations", fake_residual)
@@ -1264,12 +1268,15 @@ def test_cli_sync_aws_summary_refreshes_ledger_and_details_for_split_source(
             "export_partition_start": date(2026, 8, 1),
             "export_partition_end": date(2026, 8, 1),
             "dry_run": False, "replace_existing_usage_dates": True,
+            "split_replacement_by_day": "--replace-existing-dates" not in arguments,
             "validate_guardrail": False, "source": split_source,
         }
     output = capsys.readouterr().out
     assert '"parent_days": 1' in output
     assert '"residual_allocation_rows_seen": 1' in output
-    assert f'"account_id": "{legacy_source.account_id}"' in output
+    assert (f'"account_id": "{legacy_source.account_id}"' in output) == (
+        "--replace-existing-dates" not in arguments
+    )
     assert output.count('"rows_seen": 2') == int(refresh_detail and not resource_error)
 
 
@@ -1418,11 +1425,17 @@ def test_cli_source_resolution_prefers_active_registry() -> None:
             engine,
             settings=AwsBillingSettings(account_id="000000000000"),
         )
+        with engine.begin() as connection:
+            connection.execute(text("""
+                UPDATE cost_sources SET source_schema_version = 'aws_split_cost_v1',
+                    source_table = 'project.dataset.split' WHERE account_id = '946646677266'
+            """))
         attribution_sources = cli._resolve_attribution_sources(
             engine,
             gcp_settings=GcpBillingSettings(account_id="fallback-project"),
             aws_settings=AwsBillingSettings(account_id="000000000000"),
         )
+        assert attribution_sources[0].schema_version == AWS_SPLIT_COST_SCHEMA_VERSION
 
         assert [settings.account_id for settings in gcp_sources] == [
             "pingcap-testing-account",

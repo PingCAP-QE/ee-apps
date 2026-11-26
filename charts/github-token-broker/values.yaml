@@ -76,6 +76,10 @@ github:
 cache:
   ttlMargin: 5m
   maxEntries: 1000
+  # Least lifetime a caller may be handed. Entries are shared by callers asking
+  # for the same repository set and permissions, so a slow job can otherwise
+  # receive a token that expires mid-run; those are re-minted instead.
+  minRemaining: 15m
 
 auth:
   # Empty means in-cluster discovery.
@@ -127,9 +131,15 @@ podDisruptionBudget:
 
 networkPolicy:
   enabled: true
-  # Callers are expected to live in these namespaces.
-  ingressNamespaces:
-    - ci
+  # Callers of the plaintext HTTP listener (port 8080). Empty grants port 8080
+  # to nobody, so a fresh install stays closed until the real consumer
+  # namespaces are listed.
+  ingressNamespaces: []
+  # Callers of the native TLS listener, when server.tls.enabled is true. Kept
+  # separate from ingressNamespaces so enabling TLS does not silently grant the
+  # TLS port to every HTTP consumer (or vice versa). Empty grants it to nobody;
+  # use a dedicated NetworkPolicy for a namespace-scoped rollout.
+  tlsIngressNamespaces: []
   # Empty means unrestricted egress. Restrict to the GitHub API in production.
   egress: []
 
