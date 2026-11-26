@@ -1,6 +1,6 @@
 {
   "source": "reviewed-capability-grants",
-  "revision": "machine-baseline-2026-11-26",
+  "revision": "machine-baseline-2026-11-26-r2",
   "generated_at": "2026-11-26T00:00:00Z",
   "complete": true,
   "tuples": [
@@ -31,6 +31,51 @@
     },
     {
       "user": "workload:google/sub/108356868865109323956",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.read"
+    },
+    {
+      "user": "workload:google/sub/102958450220350375744",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.rerun"
+    },
+    {
+      "user": "workload:google/sub/102958450220350375744",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.create"
+    },
+    {
+      "user": "workload:google/sub/102958450220350375744",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.read"
+    },
+    {
+      "user": "workload:google/sub/102659811527506589949",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.rerun"
+    },
+    {
+      "user": "workload:google/sub/102659811527506589949",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.create"
+    },
+    {
+      "user": "workload:google/sub/102659811527506589949",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.read"
+    },
+    {
+      "user": "workload:google/sub/102079013862015475144",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.rerun"
+    },
+    {
+      "user": "workload:google/sub/102079013862015475144",
+      "relation": "caller",
+      "object": "capability:tibuild.devbuild.create"
+    },
+    {
+      "user": "workload:google/sub/102079013862015475144",
       "relation": "caller",
       "object": "capability:tibuild.devbuild.read"
     }

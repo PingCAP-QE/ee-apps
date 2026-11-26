@@ -27,22 +27,25 @@ Tightening that is a product decision, deliberately not taken here.
 | --- | --- | --- |
 | `tcms-tibuild-client@pingcap-testing-account` | `106613601288865186001` | `workload:google/sub/106613601288865186001` |
 | `tirelease-tibuild-client@pingcap-testing-account` | `108356868865109323956` | `workload:google/sub/108356868865109323956` |
+| `devops-server@gcp-resilience-dev` | `102958450220350375744` | `workload:google/sub/102958450220350375744` |
+| `devops-server-dev@gcp-resilience-dev` | `102659811527506589949` | `workload:google/sub/102659811527506589949` |
+| `devops-server-staging@gcp-resilience-dev` | `102079013862015475144` | `workload:google/sub/102079013862015475144` |
 
 The first row cross-checks with a decision log: TiBuild calls arrive with
 `principal=workload:google/sub/106613601288865186001`, which is that service
 account's IAM uniqueID. That is the service-account equivalent of Gate 1, verified
 against production rather than assumed.
 
-## What is missing, and why it blocks enforcement
+## What used to be missing, and what it means now
 
-| Gap | Consequence |
-| --- | --- |
-| Three callers are absent: `devops-server`, `devops-server-dev`, `devops-server-staging` in `gcp-resilience-dev` | The IAM API denies `serviceAccounts.describe` for that project, so their uniqueIDs are unknown. Adding them needs someone with access. Until then this file is **incomplete** |
-
-Resource checks are no longer a gap: ADR 0005 was accepted, so the registry rules
+The three `gcp-resilience-dev` callers were absent because this project could not
+read that project's IAM. Their uniqueIDs were supplied by someone with access, so
+the file now covers all five allowlisted callers. Resource checks are no longer a
+gap: ADR 0005 was accepted, so the registry rules
 carry a capability check only and TiBuild keeps object ownership. Enforcement is
-therefore blocked by the three missing callers and by the decision to flip the
-mode — not by missing ownership data.
+therefore blocked only by the decision to flip the mode, and by confirming that
+every caller the allowlist names is in this file — an allowlisted caller without a
+tuple would be denied the moment `enforce` is on.
 
 Do not read a green `relationship_denied` count as readiness to enforce: it only
 says the caller lacks the capability.
