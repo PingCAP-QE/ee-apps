@@ -123,9 +123,9 @@ After review and explicit production approval:
 ## Commands and recovery
 
 ```bash
-# Read an explicit historical BillDay partition (not a usage date).
-cost-insight sync-tencent-utilization --profile PROFILE --bill-day YYYY-MM-DD --dry-run
-cost-insight sync-tencent-utilization --profile PROFILE --bill-day YYYY-MM-DD
+# Replay the original BillDay partitions together (not usage dates).
+cost-insight sync-tencent-utilization --profile PROFILE --bill-day 2026-11-21 --bill-day 2026-11-22 --dry-run
+cost-insight sync-tencent-utilization --profile PROFILE --bill-day 2026-11-21 --bill-day 2026-11-22
 
 # No per-Pod timers: dispatcher plans confirmed ten-minute windows and due tails.
 cost-insight utilization-dispatch --profile PROFILE --limit 100
@@ -134,11 +134,15 @@ cost-insight utilization-maintain --dry-run
 ```
 
 By default the machine planner reads the D-4 and D-3 Beijing `BillDay`
-partitions. `--date` remains an alias for `--bill-day`. Both products in every
+partitions. To override that set, repeat `--bill-day` (or its alias `--date`)
+for each partition, with at most eight distinct dates per invocation. The planner
+rejects dates before 1970-01-01 or after today in Beijing. Historical billing
+partitions are not limited by the reporting year or usage-day horizon, but Tencent
+can reject old partitions that are no longer available. Both products in every
 requested partition must complete bounded scans before creating any tasks. A
-product-filtered response can include
-other days in the same bill month; those rows count toward the pagination budget
-but are not evidence that the other partitions were requested. Machine planning
+product-filtered response can include other days in the same bill month; those
+rows count toward the pagination budget but are not evidence that the other
+partitions were requested. Machine planning
 `--dry-run` checks source reachability/contracts and counts candidate windows only;
 it does **not** validate enqueue scope, admission, expiry or existing-window
 snapshot/overlap conflicts. Configure/maintenance dry runs only return registry
@@ -167,17 +171,21 @@ Do not clear done checkpoints or invent an ad-hoc repair.
 Machine planning reports per-candidate snapshot/overlap validation failures in each
 usage day's `errors` list (machine ID, region, reason), while continuing unrelated
 machines and days. Conflicts roll back the affected candidate/day transaction.
+A known billing specification conflict can persist across runs; omitting one of
+its source partitions is not evidence that the conflict is resolved.
 The result separates scanned `bill_days` from the affected usage `days`.
 If a long fee interval has a tail after the source reporting cutoff, `deferred`
-reports the unplanned UTC range and BillDay partitions. Rerun those partitions
-with `--bill-day` after the tail's end plus the reporting allowance, before the
-relevant usage-day horizon closes; the default scan may no longer include them.
-For long tails, run periodic retries before earlier usage days close. Nonempty
-`deferred` or `errors`, or nonzero `horizon_gaps`, makes the CLI exit 2. Retry the
-relevant partition with `--bill-day` before its usage-day planning deadline; the
-default D-4/D-3 scan does not revisit older failed partitions. `BillDay` determines
-which data is read; the actual fee interval determines which Beijing dates and
-windows are planned, including usage in a different month. A complete billing scan
+reports the unplanned UTC range and BillDay partitions. Replay **all partitions
+in that entry's `bill_days` together in one invocation**, with one `--bill-day`
+per partition. Separate invocations may fail the existing-window overlap check.
+Run after the tail's end plus the reporting allowance, before the relevant
+usage-day horizon closes. For long tails, run periodic retries before earlier
+usage days close. Nonempty `deferred` or `errors`, or nonzero `horizon_gaps`,
+makes the CLI exit 2. Retry the relevant original partition set before the
+usage-day planning deadline; the default D-4/D-3 scan does not revisit older
+failed partitions. `BillDay` determines which data is read; the actual fee
+interval determines which Beijing dates and windows are planned, including usage
+in a different month. A complete billing scan
 still does not prove an entire usage day's population is final: other partitions
 may contain late records. V3 plans to reuse completed importer evidence.
 

@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 
 from cost_insight.utilization import policy, store
 from cost_insight.utilization.aggregate import minute, summarize_window
@@ -35,15 +35,21 @@ def _first_open_machine_day(state, kind, clock, oldest):
     return policy.day_start(last_closed_day + timedelta(days=1))
 
 
-def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, reader=None):
+def plan_machines(engine, profile, *, bill_day=None, bill_days=None, dry_run=False, now=None, reader=None):
     state, clock = _ready(engine, profile, now)
     if not dry_run:
         store._admit(state, clock)
     today = policy.usage_date(clock)
     oldest = today - timedelta(days=364)
-    bill_days = [bill_day] if bill_day else [today - timedelta(days=n) for n in (4, 3)]
-    if any(not oldest <= partition <= today for partition in bill_days):
-        raise ValueError("BillDay outside retained year")
+    if bill_day is not None and bill_days is not None:
+        raise ValueError("supply bill_day or bill_days, not both")
+    partitions = sorted(set(bill_days if bill_days is not None else (
+        [bill_day] if bill_day else [today - timedelta(days=n) for n in (4, 3)]
+    )))
+    if not 1 <= len(partitions) <= 8 or any(
+        not date(1970, 1, 1) <= part <= today for part in partitions
+    ):
+        raise ValueError("scan 1..8 distinct BillDays between 1970-01-01 and today")
     first_open = {
         kind: _first_open_machine_day(state, kind, clock, oldest)
         for kind in ("cvm", "tke_native")
@@ -52,12 +58,12 @@ def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, re
     reader.verify_account()
     # No DB writes until all requested partitions and both products have completed.
     by_machine = {}
-    for partition in bill_days:
+    for partition in partitions:
         for row in reader.billing_candidates(partition):
             key = (row["region"], row["cluster_id"], row["machine_id"])
-            rows, partitions = by_machine.setdefault(key, ([], set()))
+            rows, source_days = by_machine.setdefault(key, ([], set()))
             rows.append(row)
-            partitions.add(partition)
+            source_days.add(partition)
     summaries, deferred = {}, []
     cutoff = minute(clock - timedelta(minutes=10))
 
@@ -68,20 +74,31 @@ def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, re
              "horizon_gaps": 0, "errors": []},
         )
 
-    def merged_candidates():
-        for (region, _, machine_id), (rows, partitions) in by_machine.items():
-            try:
-                candidates = TencentReader._merge_snapshots(rows)
-            except ValueError as error:
-                day = policy.usage_date(min(row["observed_from"] for row in rows))
-                summary(day)["errors"].append(
-                    {"machine_id": machine_id, "region": region, "error": str(error)}
-                )
-                continue
-            for candidate in candidates:
-                yield candidate, partitions
-
-    for candidate, partitions in merged_candidates():
+    merged, detected = [], {}
+    for (region, cluster, machine_id), (rows, source_days) in by_machine.items():
+        try:
+            merged.extend((row, source_days) for row in TencentReader._merge_snapshots(rows))
+        except ValueError as error:
+            start = min(row["observed_from"] for row in rows)
+            end = max(row["observed_until"] for row in rows)
+            last_day = policy.usage_date(end - timedelta(microseconds=1))
+            until = max(
+                store.deadline(state, {**row, "kind": "machine"}, policy.day_start(last_day), end)
+                for row in rows
+            )
+            detected[store._machine_billing_key(region, cluster, machine_id)] = {
+                "start": start.isoformat(), "end": end.isoformat(), "until": until.isoformat(),
+                "bill_days": [day.isoformat() for day in sorted(source_days)],
+            }
+            summary(policy.usage_date(start))["errors"].append(
+                {"machine_id": machine_id, "region": region, "error": str(error)}
+            )
+    conflicts, hold = store.reconcile_machine_billing_conflicts(
+        engine, {day.isoformat() for day in partitions}, detected,
+        scan_started=clock, now=now, dry_run=dry_run,
+    )
+    conflict_state = {"machine_billing_conflicts": conflicts, "machine_billing_hold_until": hold}
+    for candidate, source_days in merged:
         start = minute(candidate["observed_from"], ceil=True)
         fee_end = minute(candidate["observed_until"])
         tail_start = max(start, cutoff)
@@ -89,7 +106,7 @@ def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, re
             deferred.append({
                 "machine_id": candidate["machine_id"], "region": candidate["region"],
                 "cluster_id": candidate["cluster_id"], "start": tail_start.isoformat(),
-                "end": fee_end.isoformat(), "bill_days": [day.isoformat() for day in sorted(partitions)],
+                "end": fee_end.isoformat(), "bill_days": [day.isoformat() for day in sorted(source_days)],
             })
         end = min(fee_end, cutoff)
         if start >= end:
@@ -116,6 +133,8 @@ def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, re
                 start = stop
             # A conflicting snapshot rolls back only this candidate's usage day.
             try:
+                if reason := store._machine_bill_block(conflict_state, target, windows[0][1], day_end, clock):
+                    raise ValueError(reason)
                 outcome = store.enqueue_windows(engine, windows, now=now, dry_run=dry_run)
                 result["planned"] += outcome["planned"]
             except ValueError as exc:
@@ -123,7 +142,7 @@ def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, re
                     {"machine_id": target["machine_id"], "region": target["region"], "error": str(exc)}
                 )
     return {
-        "bill_days": [day.isoformat() for day in bill_days],
+        "bill_days": [day.isoformat() for day in partitions],
         "days": [summaries[day] for day in sorted(summaries)],
         "deferred": deferred,
         "source": reader.stats,

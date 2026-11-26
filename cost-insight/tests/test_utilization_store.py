@@ -539,6 +539,30 @@ def test_at_row_headroom_zero_existing_fact_can_still_be_updated(engine, monkeyp
     assert store.load_state(engine)["retained_rows"] == 3
 
 
+def test_machine_bill_conflict_survives_partition_roll_and_requires_joint_replay(engine):
+    day = policy.usage_date(START)
+    prior = day - timedelta(days=1)
+    old = {**target(), "observed_from": START, "observed_until": END}
+    corrected = {**old, "cpu_cores": 4}
+    reader = Mock(stats={})
+    snapshots = {prior: [old], day: [corrected]}
+    reader.billing_candidates.side_effect = lambda part: snapshots[part]
+
+    def plan(*days, now=NOW, dry_run=False):
+        return runner.plan_machines(engine, profile(), bill_days=days, reader=reader,
+                                    now=now, dry_run=dry_run)["days"][0]
+
+    assert plan(prior, day, dry_run=True)["errors"]
+    assert not store.load_state(engine).get("machine_billing_conflicts")
+    assert plan(prior, day)["errors"]
+    assert len(store.load_state(engine)["machine_billing_conflicts"]) == 1
+    rolled = plan(day, now=NOW + timedelta(minutes=1))
+    assert rolled["planned"] == 0 and "unresolved" in rolled["errors"][0]["error"]
+    snapshots[prior] = [corrected]
+    assert plan(prior, day, now=NOW + timedelta(minutes=2))["planned"] == 1
+    assert not store.load_state(engine)["machine_billing_conflicts"]
+
+
 def test_shifted_machine_window_cannot_reopen_a_day_after_checkpoint_purge(engine):
     start = policy.day_start(NOW.date() - timedelta(days=1))
     end = start + timedelta(minutes=30)

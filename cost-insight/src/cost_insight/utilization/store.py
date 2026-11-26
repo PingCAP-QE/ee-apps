@@ -175,6 +175,63 @@ def deadline(state, target, start, end):
     return min(ends)
 
 
+def _machine_billing_key(region, cluster, machine):
+    return identity(region, cluster, machine)
+
+
+def reconcile_machine_billing_conflicts(engine, scanned, detected, *, scan_started, now=None, dry_run=False):
+    """Only a complete rescan of every implicated BillDay can clear a conflict."""
+    with transaction(engine) if not dry_run else engine.connect() as connection:
+        state, clock = _state(connection, lock=not dry_run), database_now(connection, now)
+        if not dry_run:
+            _admit(state, clock)
+        conflicts = {
+            key: entry for key, entry in state.get("machine_billing_conflicts", {}).items()
+            if policy.utc_naive(entry["until"]) > clock
+        }
+        for key, entry in list(conflicts.items()):
+            if (key not in detected and set(entry["bill_days"]) <= scanned
+                    and scan_started > policy.utc_naive(entry["seen_at"])):
+                del conflicts[key]
+        hold = state.get("machine_billing_hold_until")
+        hold = hold if hold and policy.utc_naive(hold) > clock else None
+        for key, entry in detected.items():
+            if policy.utc_naive(entry["until"]) <= clock:
+                continue
+            old = conflicts.get(key)
+            if old:
+                entry = {
+                    "start": min(entry["start"], old["start"]),
+                    "end": max(entry["end"], old["end"]),
+                    "until": max(entry["until"], old["until"]),
+                    "bill_days": sorted(set(entry["bill_days"]) | set(old["bill_days"])),
+                }
+            if (old is None and len(conflicts) >= MAX_BATCH) or len(entry["bill_days"]) > MAX_BATCH:
+                # Never forget an unpersistable conflict and admit its windows.
+                hold = max(hold or entry["until"], entry["until"])
+            else:
+                conflicts[key] = {**entry, "seen_at": clock.isoformat()}
+        if not dry_run and (
+            conflicts != state.get("machine_billing_conflicts", {})
+            or hold != state.get("machine_billing_hold_until")
+        ):
+            state.update(machine_billing_conflicts=conflicts, machine_billing_hold_until=hold)
+            _finish(connection, state, now)
+        return conflicts, hold
+
+
+def _machine_bill_block(state, target, start, end, clock):
+    hold = state.get("machine_billing_hold_until")
+    if hold and policy.utc_naive(hold) > clock:
+        return "billing conflict storage limit exceeded; wait for the affected horizon to close"
+    key = _machine_billing_key(target["region"], target.get("cluster_id", ""), target["machine_id"])
+    conflict = state.get("machine_billing_conflicts", {}).get(key)
+    if (conflict and policy.utc_naive(conflict["until"]) > clock
+            and start < policy.utc_naive(conflict["end"]) and end > policy.utc_naive(conflict["start"])):
+        return "unresolved historical billing conflict; rescan BillDays together: " + ", ".join(conflict["bill_days"])
+    return None
+
+
 def _machine_snapshot(payload):
     # The enclosing bill interval selects windows but does not change a task's snapshot.
     return {k: v for k, v in payload.items() if k not in {"observed_from", "observed_until"}}
@@ -209,6 +266,8 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
     ):
         raise ValueError("Pod outside collection scope")
     is_machine = target["kind"] == "machine"
+    if is_machine and (reason := _machine_bill_block(state, target, start, end, clock)):
+        raise ValueError(reason)
     payload = {**target, "contract_version": state["contract_version"]}
     if is_machine:
         payload = _machine_snapshot(payload)

@@ -3,7 +3,7 @@
 
 import importlib.util
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -424,7 +424,11 @@ def test_cli_dryrun_does_not_construct_kafka(configured, monkeypatch):
 @pytest.mark.parametrize("command", ["sync-tencent-utilization", "utilization-probe"])
 def test_cli_selects_billing_partition(command, option):
     args = cli.build_parser().parse_args([command, "--profile", "test.json", option, "2026-11-01"])
-    assert args.bill_day.isoformat() == "2026-11-01"
+    day = date(2026, 11, 1)
+    if command == "utilization-probe":
+        assert args.bill_day == day
+    else:
+        assert args.bill_days == [day]
 
 
 @pytest.mark.parametrize(
@@ -454,6 +458,30 @@ def test_cli_machine_planning_signals_incomplete_days(configured, monkeypatch, d
         }),
     )
     assert cli.main(["sync-tencent-utilization", "--profile", str(path)]) == expected
+    runner.plan_machines.assert_called_once_with(engine, profile, dry_run=False, bill_days=None)
+
+
+def test_cli_replays_all_deferred_bill_days_together(configured, monkeypatch, capsys):
+    engine, profile, path = configured
+    monkeypatch.setenv("COST_INSIGHT_DB_URL", "sqlite:///:memory:")
+    monkeypatch.setattr(cli, "build_engine", lambda settings: engine)
+    monkeypatch.setattr(tencent, "load_profile", lambda path: profile)
+    result = {"days": [], "deferred": [{
+        "start": "2026-11-24T22:20:00+00:00",
+        "end": "2026-11-26T23:00:00+00:00",
+        "bill_days": ["2026-11-21", "2026-11-22"],
+    }]}
+    plan = Mock(return_value=result)
+    monkeypatch.setattr(runner, "plan_machines", plan)
+
+    assert cli.main([
+        "sync-tencent-utilization", "--profile", str(path),
+        "--bill-day", "2026-11-21", "--date", "2026-11-22",
+    ]) == 2
+    plan.assert_called_once_with(
+        engine, profile, dry_run=False, bill_days=[date(2026, 11, 21), date(2026, 11, 22)]
+    )
+    assert json.loads(capsys.readouterr().out) == result
 
 
 def test_kafka_transport_requires_tls_and_no_auto_create(monkeypatch):

@@ -436,8 +436,8 @@ def build_parser() -> argparse.ArgumentParser:
         utilization.add_argument("--profile", required=True)
         utilization.add_argument("--dry-run", action="store_true")
         if command == "sync-tencent-utilization":
-            utilization.add_argument("--bill-day", "--date", type=_parse_date, default=None,
-                                     help="Beijing BillDay to scan; fee intervals determine usage dates")
+            utilization.add_argument("--bill-day", "--date", dest="bill_days", type=_parse_date, action="append",
+                                     help="Beijing BillDay to scan (repeatable; at most two distinct days)")
         else:
             utilization.add_argument("--limit", type=_parse_positive_int, default=100)
 
@@ -479,7 +479,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     result = store.configure(engine, profile, start_date=args.start_date,
                                              enabled=args.enable, dry_run=args.dry_run)
                 elif args.command == "sync-tencent-utilization":
-                    result = runner.plan_machines(engine, profile, dry_run=args.dry_run, bill_day=args.bill_day)
+                    result = runner.plan_machines(engine, profile, dry_run=args.dry_run, bill_days=args.bill_days)
                 elif args.dry_run:
                     result = {"dry_run": True, "state": store.load_state(engine)}
                 else:

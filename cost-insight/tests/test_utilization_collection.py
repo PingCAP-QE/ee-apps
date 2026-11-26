@@ -455,6 +455,7 @@ def planning(monkeypatch, profile):
     enqueue = Mock(side_effect=lambda engine, windows, **kwargs: {"planned": len(windows)})
     monkeypatch.setattr(runner, "_ready", lambda engine, profile, now: (state, now))
     monkeypatch.setattr(store, "_admit", Mock())
+    monkeypatch.setattr(store, "reconcile_machine_billing_conflicts", lambda _, scanned, detected, **kw: (detected, None))
     monkeypatch.setattr(store, "enqueue_windows", enqueue)
     return enqueue
 
@@ -558,6 +559,19 @@ def test_long_charge_reports_deferred_tail_and_exact_partition_for_replay(profil
     assert max(window[2] for call in planning.call_args_list for window in call.args[1]) == cutoff
     later = end + timedelta(minutes=10)
     assert not runner.plan_machines(None, profile, bill_day=DAY, now=later, reader=source)["deferred"]
+
+
+def test_bill_partition_age_is_not_usage_date_retention(profile, planning):
+    clock = policy.day_start(DAY + timedelta(days=365)) + timedelta(hours=6, minutes=30)
+    start = clock - timedelta(hours=1)
+    source = Mock(stats={})
+    source.billing_candidates.return_value = [{
+        **target("cvm"), "instance_type": "", "cpu_cores": 2, "memory_bytes": 1024,
+        "observed_from": start, "observed_until": start + timedelta(minutes=5),
+    }]
+    result = runner.plan_machines(None, profile, bill_days=[DAY], now=clock, reader=source)
+    source.billing_candidates.assert_called_once_with(DAY)
+    assert result["days"][0]["planned"] == 1
 
 
 def test_cross_partition_capacity_conflict_does_not_block_unrelated_machine(profile, planning):
