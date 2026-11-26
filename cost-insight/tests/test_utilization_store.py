@@ -571,7 +571,13 @@ def test_machine_billing_generation_fences_unresolved_scans_and_prior_write_atte
     args = (engine, days)
     _, _, before = store.reconcile_machine_billing_conflicts(*args, {}, generation=0, now=NOW)
     _, _, pending = store.reconcile_machine_billing_conflicts(*args, conflict, generation=before, now=NOW)
-    _, _, resolved = store.reconcile_machine_billing_conflicts(*args, {}, generation=pending, now=NOW)
+    _, _, reconfirmed = store.reconcile_machine_billing_conflicts(
+        *args, conflict, generation=pending, now=NOW
+    )
+    assert reconfirmed == pending + 1
+    with pytest.raises(ValueError, match="conflicts changed during scan"):
+        store.reconcile_machine_billing_conflicts(*args, {}, generation=pending, now=NOW)
+    _, _, resolved = store.reconcile_machine_billing_conflicts(*args, {}, generation=reconfirmed, now=NOW)
     assert not store.load_state(engine)["machine_billing_conflicts"]
     with pytest.raises(ValueError, match="conflicts changed during scan"):
         store.reconcile_machine_billing_conflicts(*args, {}, generation=before, now=NOW)

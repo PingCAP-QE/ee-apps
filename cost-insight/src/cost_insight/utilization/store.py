@@ -201,9 +201,13 @@ def reconcile_machine_billing_conflicts(engine, scanned, detected, *, generation
                 del conflicts[key]
         hold = state.get("machine_billing_hold_until")
         hold = hold if hold and policy.utc_naive(hold) > clock else None
+        reconfirmed = False
         for key, entry in detected.items():
             if policy.utc_naive(entry["until"]) <= clock:
                 continue
+            # New conflicting evidence invalidates older scans even if the
+            # window, known partitions and conservative hold are unchanged.
+            reconfirmed = True
             old = conflicts.get(key)
             if old:
                 entry = {
@@ -218,7 +222,7 @@ def reconcile_machine_billing_conflicts(engine, scanned, detected, *, generation
             else:
                 conflicts[key] = entry
         if not dry_run and (
-            conflicts != state.get("machine_billing_conflicts", {})
+            reconfirmed or conflicts != state.get("machine_billing_conflicts", {})
             or hold != state.get("machine_billing_hold_until")
         ):
             generation += 1
