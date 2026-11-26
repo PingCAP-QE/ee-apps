@@ -72,7 +72,6 @@ def _connect_api_tcp(dialect, args, params, addresses, deadline):
             raise OSError("no TCP addresses returned")
         for left in range(len(addresses), 0, -1):
             family, kind, proto, _, peer = addresses[0]
-            addresses.rotate(-1)  # A failed greeting should not retry the same peer first.
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("TCP connection budget exhausted")
@@ -87,10 +86,16 @@ def _connect_api_tcp(dialect, args, params, addresses, deadline):
                     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
                     cleanup.pop_all()  # Transfer ownership to the driver below.
-                break
             except OSError:
+                addresses.rotate(-1)
                 if left == 1:
                     raise
+            else:
+                # Retry a failed greeting on the next untried peer, or on this
+                # reachable peer rather than leading with a known dial failure.
+                if left > 1:
+                    addresses.rotate(-1)
+                break
     except OSError as exc:
         raise dialect.loaded_dbapi.OperationalError(2003, f"Cannot connect to MySQL ({exc})") from exc
 
