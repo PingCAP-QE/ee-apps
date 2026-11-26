@@ -38,6 +38,10 @@ def context(at=NOW, **changes):
             "expires_at": at + u.CONTEXT_TTL, **changes}
 
 
+def insert_context(engine, row, *, now=None):
+    return u.save_contexts(engine, [row], create_keys={row["context_key"]}, now=now)
+
+
 def state(**changes):
     return {"version": 3, "enabled": True, "pod_collection_enabled": True, "pod_stop_at": None,
             "paused": False, "pause_reasons": [], "counts_reliable": True,
@@ -122,6 +126,16 @@ def test_label_configuration_is_validated_once_per_exporter(monkeypatch):
         assert u.normalize_pod(obj, selected_labels=exporter.selected_labels)["labels_json"] == {
             "test_campaign": "compatibility"}
     assert validate.call_count == 1
+
+
+@pytest.mark.parametrize("key", [
+    "pod_uid", "Pod.Name", "build-id", "BUILD_NUMBER", "run.id", "execution_id",
+    "test.execution-id", "job_uid", "JOB.RUN-ID", "Employee.ID",
+])
+def test_run_and_pod_identity_labels_are_rejected(monkeypatch, key):
+    monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_LABEL_KEYS", f"test_campaign,{key}")
+    with pytest.raises(ValueError, match="label keys"):
+        u.MetadataExporter(None)
 
 
 def test_opt_in_only_exact_source(monkeypatch):
@@ -360,9 +374,7 @@ def test_no_week_slicing_and_stale_heartbeat_does_not_bridge(db):
 
 
 def test_reset_closes_last_evidence_and_relist_never_backdates(db, monkeypatch):
-    clock = [NOW]
-    real_save = u.save_contexts
-    monkeypatch.setattr(u, "save_contexts", lambda engine, contexts, **kwargs: real_save(db, contexts, now=clock[0]))
+    clock = _offline_clock(monkeypatch, db)
     exporter = u.MetadataExporter(db)
     record = u.normalize_pod(pod())
     observe(exporter, [record])
@@ -372,6 +384,93 @@ def test_reset_closes_last_evidence_and_relist_never_backdates(db, monkeypatch):
     observe(exporter, [record], clock[0])
     assert len(rows(db)) == retained(db) == 2
     assert u._datetime(rows(db)[1]["observed_from"]) == clock[0]
+
+
+def purge_settled_context(db, at):
+    # Mirror the maintenance outcome after settling the whole confirmed interval.
+    with db.begin() as c:
+        c.execute(text("UPDATE pod_utilization_context SET planned_until=:at, closed_at=observed_until"), {"at": at})
+        c.exec_driver_sql("DELETE FROM pod_utilization_context WHERE closed_at=planned_until")
+        c.execute(text("UPDATE cost_job_state SET watermark_json=:state"), {"state": json.dumps(state())})
+    assert not rows(db) and retained(db) == 0
+
+
+@pytest.mark.parametrize("event", ["bookmark", "reset", "deleted", "modified"])
+def test_orphan_cleanup_cannot_be_undone_by_a_live_watcher(db, monkeypatch, event):
+    clock = _offline_clock(monkeypatch, db)
+    exporter = u.MetadataExporter(db)
+    record = u.normalize_pod(pod())
+    observe(exporter, [record])
+    last = clock[0] = NOW + timedelta(minutes=10)
+    observe(exporter, [], last, heartbeat=True)
+    clock[0] = last + timedelta(minutes=16)
+    purge_settled_context(db, last)
+
+    if event == "reset":
+        exporter.reset()
+    elif event == "modified":
+        observe(exporter, [record], clock[0])
+    else:
+        observe(exporter, [record] if event == "deleted" else [], clock[0],
+                deleted=event == "deleted", heartbeat=True)
+    if event != "modified":
+        assert not rows(db) and not exporter.live and retained(db) == 0
+        clock[0] += timedelta(minutes=1)
+        observe(exporter, [record], clock[0])
+    fresh, = rows(db)
+    assert retained(db) == 1
+    assert fresh["context_key"] == u.context_key(record, clock[0])
+    assert u._datetime(fresh["observed_from"]) == u._datetime(fresh["planned_until"]) == clock[0]
+
+
+@pytest.mark.parametrize("event", ["renew", "bookmark", "modified"])
+def test_purged_predecessor_cannot_extend_or_create_a_selector_free_gap(db, event):
+    cache = u.NodeSelectorCache()
+    listed_at = u.time.monotonic()
+    cache.refresh([node()], listed_at=listed_at)
+    exporter = u.MetadataExporter(db, node_cache=cache)
+    obj = pod()
+    obj["metadata"]["labels"]["service"] = "first"
+    record = pod_evidence(obj, listed_at - 1)
+    observe(exporter, [record])
+    last = NOW + timedelta(minutes=10)
+    observe(exporter, [], last, heartbeat=True)
+    # A different writer may already have closed this context; maintenance can
+    # remove a closed, settled context even before it appears stale in this watcher.
+    purge_settled_context(db, last)
+    if event != "renew":
+        cache.clear()
+        obj["metadata"]["labels"]["service"] = "second"
+    record = pod_evidence(obj, listed_at + 1)
+    changed = last + timedelta(minutes=5)
+    observe(exporter, [] if event == "bookmark" else [record], changed, heartbeat=True)
+    if event == "bookmark":
+        assert not rows(db) and not exporter.live and retained(db) == 0
+    else:
+        new, = rows(db)
+        assert retained(db) == 1 and new["closed_at"] is None
+        assert new["node_instance_id"] is None  # Old Node evidence cannot bind the new interval.
+        assert u._datetime(new["observed_from"]) == u._datetime(new["planned_until"]) == changed
+        assert json.loads(new["labels_json"])["service"] == ("first" if event == "renew" else "second")
+
+
+def test_selector_loss_rolls_back_close_and_both_inserts_if_guard_write_fails(db):
+    cache = u.NodeSelectorCache()
+    listed_at = u.time.monotonic()
+    cache.refresh([node()], listed_at=listed_at)
+    exporter = u.MetadataExporter(db, node_cache=cache)
+    obj = pod()
+    observe(exporter, [pod_evidence(obj, listed_at - 1)])
+    observe(exporter, [], NOW + timedelta(minutes=1), heartbeat=True)
+    before = rows(db)
+    cache.clear()
+    obj["metadata"]["labels"]["service"] = "second"
+    with db.begin() as c:
+        c.exec_driver_sql("CREATE TRIGGER reject_guard_update BEFORE UPDATE ON cost_job_state "
+                          "BEGIN SELECT RAISE(ABORT, 'offline failure'); END")
+    with pytest.raises(Exception, match="offline failure"):
+        observe(exporter, [pod_evidence(obj, listed_at + 1)], NOW + timedelta(minutes=6))
+    assert rows(db) == before and retained(db) == 1 and not exporter.live
 
 
 def test_terminal_only_does_not_invent_context(db):
@@ -392,7 +491,7 @@ def test_terminal_only_does_not_invent_context(db):
 def test_guard_fail_closed_and_atomic_caps(db, changes):
     replace_state(db, **changes)
     with pytest.raises(ValueError):
-        u.save_contexts(db, [context()], now=NOW)
+        insert_context(db, context(), now=NOW)
     assert not rows(db)
 
 
@@ -411,7 +510,7 @@ def test_db_cut_rejects_heartbeat_closure_and_new_contexts(db):
     with pytest.raises(u.PodCollectionDisabled):
         u.save_contexts(db, [context(closed_at=NOW)], now=later)
     with pytest.raises(u.PodCollectionDisabled):
-        u.save_contexts(db, [context(later)], now=later)
+        insert_context(db, context(later), now=later)
     assert rows(db) == saved and retained(db) == 1 and not exporter.live
 
 
@@ -427,7 +526,7 @@ def test_reopening_does_not_admit_stale_observations(db):
     with pytest.raises(u.PodCollectionDisabled, match="current collection window"):
         observe(exporter, [], resumed, heartbeat=True)
     with pytest.raises(u.PodCollectionDisabled):
-        u.save_contexts(db, [context(cutoff)], now=resumed)
+        insert_context(db, context(cutoff), now=resumed)
     assert rows(db) == saved and not exporter.live
 
 
@@ -436,31 +535,32 @@ def test_namespace_and_labels_guard_scope(db):
     scope["namespaces"] = ["other"]
     replace_state(db, scope=scope)
     with pytest.raises(ValueError, match="scope"):
-        u.save_contexts(db, [context()], now=NOW)
+        insert_context(db, context(), now=NOW)
     scope["namespaces"] = ["jenkins-tidb"]
     scope["labels"] = ["service"]
     replace_state(db, scope=scope)
     with pytest.raises(ValueError, match="scope"):
-        u.save_contexts(db, [context()], now=NOW)
+        insert_context(db, context(), now=NOW)
 
 
 def test_missing_guard_and_rollback_counter(db):
     with db.begin() as c:
         c.exec_driver_sql("DELETE FROM cost_job_state")
     with pytest.raises(ValueError):
-        u.save_contexts(db, [context()], now=NOW)
+        insert_context(db, context(), now=NOW)
     replace_state(db)
     with db.begin() as c:
         c.execute(text("INSERT INTO cost_job_state VALUES (:key,:state)"), {"key": u.GUARD_KEY, "state": json.dumps(state())})
         c.exec_driver_sql("CREATE TRIGGER reject_guard_update BEFORE UPDATE ON cost_job_state BEGIN SELECT RAISE(ABORT, 'offline failure'); END")
     with pytest.raises(Exception, match="offline failure"):
-        u.save_contexts(db, [context()], now=NOW)
+        insert_context(db, context(), now=NOW)
     assert not rows(db) and retained(db) == 0
 
 
 @pytest.mark.parametrize("changes", [
     {"cpu_request_cores": -1}, {"memory_request_bytes": float("inf")}, {"pod_uid": "x" * 256},
     {"labels_json": {"author": "person"}}, {"labels_json": {"service": "x" * 513}},
+    {"labels_json": {"Test-Execution.ID": "run"}},
     {"node_query_kind": "node", "node_query_value": "10.0.0.8"},
     {"node_instance_id": "10.0.0.8"}, {"node_instance_id": "::1"}, {"node_instance_id": ""},
     {"node_instance_id": "qcloud:///ap-beijing/ins-abc"}, {"node_instance_id": "ins-" + "a" * 252},
@@ -470,13 +570,13 @@ def test_missing_guard_and_rollback_counter(db):
 ])
 def test_sink_rejects_invalid_context(db, changes):
     with pytest.raises(ValueError):
-        u.save_contexts(db, [context(**changes)], now=NOW)
+        insert_context(db, context(**changes), now=NOW)
     assert not rows(db) and retained(db) == 0
 
 
 def test_closed_context_immutable_and_stale_writer_rejected(db):
     original = context()
-    u.save_contexts(db, [original], now=NOW)
+    insert_context(db, original, now=NOW)
     changed = {**original, "cpu_request_cores": 5}
     with pytest.raises(ValueError, match="conflicting"):
         u.save_contexts(db, [changed], now=NOW)
@@ -487,7 +587,7 @@ def test_closed_context_immutable_and_stale_writer_rejected(db):
         u.save_contexts(db, [original], now=NOW)
     later = NOW + timedelta(minutes=1)
     newer = context(later, observed_until=later + timedelta(minutes=1), expires_at=later + timedelta(minutes=1) + u.CONTEXT_TTL)
-    u.save_contexts(db, [newer], now=later + timedelta(minutes=1))
+    insert_context(db, newer, now=later + timedelta(minutes=1))
     stale = {**original, "closed_at": later + timedelta(minutes=1), "observed_until": later + timedelta(minutes=1),
              "expires_at": later + timedelta(minutes=1) + u.CONTEXT_TTL}
     with pytest.raises(ValueError):
@@ -533,7 +633,7 @@ def test_commit_clock_freshness_fence_rolls_back(db, monkeypatch):
     with db.connect() as c:
         c.connection.driver_connection.create_function("current_timestamp", 0, lambda: next(clocks))
     with pytest.raises(ValueError, match="stale"):
-        u.save_contexts(db, [context(before)])
+        insert_context(db, context(before))
     assert not rows(db) and retained(db) == 0
 
 
@@ -705,7 +805,7 @@ def _run_enabled_watch(monkeypatch, events, *, initial=None, client=None, stop=N
     return lifecycle
 
 
-@pytest.mark.parametrize("configured", ["", "repo, job", "owner"])
+@pytest.mark.parametrize("configured", ["", "repo, job", "owner", "repo,Test-Execution.ID"])
 def test_invalid_label_configuration_disables_only_utilization(monkeypatch, configured, caplog):
     monkeypatch.setenv("CI_DASHBOARD_UTILIZATION_LABEL_KEYS", configured)
     stop = threading.Event()
@@ -733,7 +833,11 @@ def _offline_clock(monkeypatch, db):
     real_save = u.save_contexts
     monkeypatch.setattr(u, "database_now", lambda *args, **kwargs: clock[0])
     monkeypatch.setattr(u, "utc_now", lambda: clock[0])
-    monkeypatch.setattr(u, "save_contexts", lambda engine, contexts: real_save(db, contexts, now=clock[0]))
+
+    def save(engine, contexts, *, now=None, **kwargs):
+        return real_save(db, contexts, now=now if now is not None else clock[0], **kwargs)
+
+    monkeypatch.setattr(u, "save_contexts", save)
     return clock
 
 
@@ -925,11 +1029,11 @@ def test_export_failure_forces_relist_and_never_replays(db, monkeypatch, stage):
     clock = _offline_clock(monkeypatch, db)
     real_save = u.save_contexts
     calls = []
-    def save(engine, contexts):
+    def save(engine, contexts, **kwargs):
         calls.append(copy.deepcopy(contexts))
         if len(calls) == 2:
             raise RuntimeError("offline metadata sink")
-        return real_save(engine, contexts)
+        return real_save(engine, contexts, **kwargs)
     monkeypatch.setattr(u, "save_contexts", save)
     stop = threading.Event()
     class Client:

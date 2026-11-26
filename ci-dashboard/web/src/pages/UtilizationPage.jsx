@@ -25,7 +25,10 @@ export default function UtilizationPage() {
   const status = useApiData("/api/v1/utilization/status");
   const ready = status.data?.version === 3 && Boolean(status.data.available && status.data.configured);
   const podEnabled = status.data?.pod_collection_enabled;
-  const workloadReady = ready && Boolean(podEnabled || status.data?.workload_history_available);
+  const podStopped = status.data?.pod_collection_stopped;
+  const workloadDraining = status.data?.workload_draining;
+  const workloadHistory = status.data?.workload_history_available;
+  const workloadReady = ready && Boolean(podEnabled || workloadDraining || workloadHistory);
   const [machineFilters, setMachineFilters] = useState({ machine_id: "", region: "", cluster_id: "", resource_class: "" });
   const [machineDates, setMachineDates] = useState({});
   const [machinePage, setMachinePage] = useState(1);
@@ -57,9 +60,11 @@ export default function UtilizationPage() {
           <p>Collection: {status.data.collection_enabled ? "enabled" : "disabled"} · Maintenance: {status.data.maintenance_stale ? "stale / missing" : "current"} · Health: {status.data.healthy ? "healthy" : "unhealthy"}</p>
           {!status.data.healthy && <p>Health checks: {status.data.health_reasons?.join(", ") || "unavailable"}</p>}
           {status.data.paused && <p role="status">Collection paused: {(status.data.pause_reasons || []).join(", ") || "reason unavailable"}</p>}
-          <p>Pod collection: {podEnabled ? "enabled" : "not enabled"}{!podEnabled && workloadReady && " · Workload results are retained history"}</p>
+          <p>Pod collection: {podEnabled ? "enabled" : podStopped ? "stopped" : "not enabled"}
+            {workloadDraining ? " · Still settling confirmed workload windows" : !podEnabled && workloadHistory && " · Workload results are retained history"}
+          </p>
           {podEnabled && <p>Active Pod contexts: {numeric(status.data.active_contexts)}</p>}
-          <p>Task backlog: {podEnabled ? "machines and Pods" : "machines only"} · pending {numeric(status.data.task_backlog?.pending)}, running {numeric(status.data.task_backlog?.running)}, retry {numeric(status.data.task_backlog?.retry)}</p>
+          <p>Task backlog: {podEnabled || workloadDraining ? "machines and Pods" : "machines only"} · pending {numeric(status.data.task_backlog?.pending)}, running {numeric(status.data.task_backlog?.running)}, retry {numeric(status.data.task_backlog?.retry)}</p>
         </>}
       </Panel>
       {ready && (

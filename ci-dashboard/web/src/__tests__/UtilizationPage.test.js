@@ -240,17 +240,21 @@ test("failed machine request leaves workloads visible, and changed filters hide 
   }
 });
 
-for (const history of [false, true]) {
-  test(`Pod collection off ${history ? "with" : "without"} retained statistics`, async () => {
+for (const state of ["never enabled", "stopped", "draining", "retained history"]) {
+  test(`Pod collection off: ${state}`, async () => {
     const originalFetch = globalThis.fetch;
     const requests = [];
     let renderer;
     const { active_contexts, workload_window, label_keys, ...machineStatus } = readyStatus;
+    const history = state === "retained history";
+    const draining = state === "draining";
+    const stopped = state !== "never enabled";
     const status = {
       ...machineStatus, latest_machine_usage_date: null, pod_collection_enabled: false,
-      workload_history_available: history, ...(history ? { workload_window, label_keys } : {}),
+      pod_collection_stopped: stopped, workload_draining: draining, workload_history_available: history,
+      ...(history || draining ? { workload_window, label_keys } : {}),
     };
-    const workload = {
+    const workload = draining ? { ...workloadData, partial: true, items: [] } : {
       ...workloadData,
       items: [{ group_value: null, metrics: { cpu: { avg: 0, coverage: 1 }, memory: { avg: null, coverage: null } } }],
     };
@@ -263,13 +267,20 @@ for (const history of [false, true]) {
       await act(async () => { renderer = TestRenderer.create(React.createElement(UtilizationPage)); });
       const content = JSON.stringify(renderer.toJSON());
       assert.match(content, /Latest saved machine observation \(Beijing date\): .*None saved/);
-      assert.match(content, /Pod collection: .*not enabled/);
-      assert.match(content, /Task backlog: .*machines only/);
+      assert.match(content, stopped ? /Pod collection: .*stopped/ : /Pod collection: .*not enabled/);
+      assert.match(content, draining ? /Task backlog: .*machines and Pods/ : /Task backlog: .*machines only/);
       assert.match(content, /No machine facts for these dates and filters/);
       assert.doesNotMatch(content, /Active Pod contexts/);
       assert.ok(requests.some((url) => url.includes("kind=machine")));
-      assert.equal(requests.some((url) => url.includes("kind=workload")), history);
-      if (history) {
+      const workloadRequest = requests.find((url) => url.includes("kind=workload"));
+      assert.equal(Boolean(workloadRequest), history || draining);
+      if (workloadRequest) assert.match(workloadRequest, /start_date=2026-11-16/);
+      if (draining) {
+        assert.match(content, /Still settling confirmed workload windows/);
+        assert.match(content, /Partial data:.*Coverage shown is for settled windows only/);
+        assert.match(content, /No retained workload statistics for these dates and labels/);
+        assert.doesNotMatch(content, /Workload results are retained history|Mean 0\.0%/);
+      } else if (history) {
         assert.match(content, /Workload results are retained history/);
         assert.equal(field(renderer, "Workload start").props.min, "2026-11-16");
         await act(async () => field(renderer, "Group by label").props.onChange({ target: { value: "service" } }));

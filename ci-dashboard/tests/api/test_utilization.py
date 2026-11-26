@@ -127,9 +127,10 @@ def add_unsettled(engine, kind, start, end, *, account=queries.ACCOUNT_ID):
     with engine.begin() as connection:
         if kind == "task":
             connection.execute(text(
-                "INSERT INTO utilization_task (id,account_id,status,kind,window_start,window_end) "
-                "VALUES (:start,:account,'pending','pod',:start,:end)"
-            ), {"account": account, "start": start, "end": end})
+                "INSERT INTO utilization_task (id,account_id,status,kind,window_start,window_end,deadline_at) "
+                "VALUES (:start,:account,'pending','pod',:start,:end,:deadline)"
+            ), {"account": account, "start": start, "end": end,
+                "deadline": (NOW + timedelta(days=1)).replace(tzinfo=None)})
         else:
             connection.execute(text(
                 "INSERT INTO pod_utilization_context (account_id,planned_until,observed_until) "
@@ -443,6 +444,7 @@ def test_machine_only_source_works_without_pod_tables_or_status(client, engine):
     status = client.get("/api/v1/utilization/status").json()
     assert status["healthy"] is True and status["latest_machine_usage_date"] == "2026-11-24"
     assert status["pod_collection_enabled"] is False and status["workload_history_available"] is False
+    assert status["pod_collection_stopped"] is False and status["workload_draining"] is False
     assert {"workload_window", "active_contexts", "label_keys"}.isdisjoint(status)
     assert status["task_backlog"] == {"pending": 1, "running": 0, "retry": 0}
     assert client.get("/api/v1/utilization/daily").json()["available"] is True
@@ -467,8 +469,63 @@ def test_disabled_pod_collection_can_read_retained_history_and_caps_partial_at_s
     # The settled fact is physically present, but has aged out of the serving window.
     with engine.begin() as connection:
         connection.execute(text("UPDATE workload_utilization_daily SET usage_date='2026-11-15'"))
-    assert client.get("/api/v1/utilization/status").json()["workload_history_available"] is False
+        if unsettled == "task":
+            connection.execute(text("UPDATE utilization_task SET status='done' WHERE window_end<='2026-11-24 04:10:30'"))
+        else:
+            connection.execute(text("UPDATE pod_utilization_context SET planned_until=observed_until"))
+    status = client.get("/api/v1/utilization/status").json()
+    assert status["workload_history_available"] is False and status["workload_draining"] is False
+    assert status["pod_collection_stopped"] is True
     assert client.get(path).json()["reason"] == "pod_collection_disabled"
+
+
+@pytest.mark.parametrize("unsettled,end", [("task", "04:10:00"), ("tail", "04:30:00")])
+def test_stopped_workload_drains_before_the_first_fact(client, engine, unsettled, end):
+    configure(engine, pod_collection_enabled=False, pod_stop_at="2026-11-24T04:10:30Z")
+    add_unsettled(engine, unsettled, "2026-11-24 04:00:00.000000", f"2026-11-24 {end}.000000")
+    path = "/api/v1/utilization/daily?kind=workload&label_key=service&label_value=build"
+    result = client.get(path).json()
+    assert result["available"] is True and result["partial"] is True and result["items"] == []
+    status = client.get("/api/v1/utilization/status").json()
+    assert status["pod_collection_enabled"] is False and status["pod_collection_stopped"] is True
+    assert status["workload_draining"] is True and status["workload_history_available"] is False
+    assert status["task_backlog"]["pending"] == (1 if unsettled == "task" else 0)
+    assert status["workload_window"] == status["default_window"] and "service" in status["label_keys"]
+    other_day = client.get(path + "&start_date=2026-11-23&end_date=2026-11-23").json()
+    assert other_day["available"] is True and other_day["partial"] is False and other_day["items"] == []
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM utilization_task"))
+        connection.execute(text("DELETE FROM pod_utilization_context"))
+    insert(engine, "workload")
+    status = client.get("/api/v1/utilization/status").json()
+    assert status["workload_history_available"] is True and status["workload_draining"] is False
+    result = client.get(path).json()
+    assert result["available"] is True and result["partial"] is False and len(result["items"]) == 1
+
+
+def test_stopped_workload_ignores_out_of_scope_or_unconfirmed_work(client, engine):
+    configure(engine, pod_collection_enabled=False, pod_stop_at="2026-11-24T04:10:30Z")
+    for unsettled in ("task", "tail"):
+        # Nov 15 Beijing is out of retention; absence of whole minutes around the cutoff is not work.
+        add_unsettled(engine, unsettled, "2026-11-15 15:50:00.000000", "2026-11-15 16:00:00.000000")
+        add_unsettled(engine, unsettled, "2026-11-24 04:10:00.000000", "2026-11-24 04:30:00.000000")
+        add_unsettled(engine, unsettled, "2026-11-24 04:00:00.000000", "2026-11-24 04:10:00.000000",
+                      account="other")
+    add_unsettled(engine, "task", "2026-11-24 04:09:00.000000", "2026-11-24 04:11:00.000000")
+    add_unsettled(engine, "tail", "2026-11-24 04:09:01.000000", "2026-11-24 04:11:00.000000")
+    status = client.get("/api/v1/utilization/status").json()
+    assert status["pod_collection_stopped"] is True and status["workload_draining"] is False
+    assert "workload_window" not in status
+    assert client.get("/api/v1/utilization/daily?kind=workload").json()["reason"] == "pod_collection_disabled"
+
+
+@pytest.mark.parametrize("cutoff", [None, "not a date", "2026-11-24T04:10:30", "2026-11-24T12:10:30+08:00"])
+def test_pod_drain_requires_a_trusted_cutoff(client, engine, cutoff):
+    configure(engine, pod_collection_enabled=False, pod_stop_at=cutoff)
+    add_unsettled(engine, "task", "2026-11-24 04:00:00.000000", "2026-11-24 04:10:00.000000")
+    status = client.get("/api/v1/utilization/status").json()
+    assert status["pod_collection_stopped"] is False and status["workload_draining"] is False
+    assert client.get("/api/v1/utilization/daily?kind=workload").json()["reason"] == "pod_collection_disabled"
 
 
 def test_workload_partial_requires_a_whole_minute_and_not_future_or_other_account(client, engine):
@@ -476,6 +533,7 @@ def test_workload_partial_requires_a_whole_minute_and_not_future_or_other_accoun
     path = "/api/v1/utilization/daily?kind=workload&start_date=2026-11-24&end_date=2026-11-24"
     status = client.get("/api/v1/utilization/status").json()
     assert status["pod_collection_enabled"] is True and status["workload_history_available"] is False
+    assert status["pod_collection_stopped"] is False and status["workload_draining"] is False
     add_unsettled(engine, "tail", "2026-11-24 04:00:01.000000", "2026-11-24 04:01:59.999999")
     add_unsettled(engine, "tail", "2026-11-24 05:00:00.000000", "2026-11-24 05:10:00.000000")
     add_unsettled(engine, "task", "2026-11-24 04:00:00.000000", "2026-11-24 04:01:00.000000", account="other")
@@ -565,6 +623,24 @@ def test_invalid_guard_json_is_unconfigured(client, engine):
 def test_labels_must_also_be_enabled_in_guard_scope(client, engine):
     configure(engine, scope={"account_id": queries.ACCOUNT_ID, "labels": ["service"]})
     assert client.get("/api/v1/utilization/daily?kind=workload&group_by=repo").status_code == 422
+
+
+def test_identity_labels_cannot_be_advertised_filtered_or_grouped(client, engine):
+    canonical = ["pod_uid", "pod_name", "build_id", "build_number", "run_id", "execution_id",
+                 "test_execution_id", "job_uid", "job_run_id"]
+    denied = [*canonical, *(key.upper().replace("_", ".", 1).replace("_", "-") for key in canonical), "Author", "Employee-ID"]
+    allowed = ["repo", "job", "test_project", "test_plan", "job_name", "service.name"]
+    configure(engine, scope={"account_id": queries.ACCOUNT_ID, "labels": [*denied, *allowed]})
+    status = client.get("/api/v1/utilization/status").json()
+    assert status["label_keys"] == allowed
+    for key in denied:
+        for filters in ({"group_by": key}, {"label_key": key, "label_value": "one"}):
+            result = client.get("/api/v1/utilization/daily", params={"kind": "workload", **filters})
+            assert result.status_code == 422, (key, filters)
+    result = client.get("/api/v1/utilization/daily", params={
+        "kind": "workload", "group_by": "service.name", "label_key": "job_name", "label_value": "compile",
+    })
+    assert result.status_code == 200 and result.json()["available"] is True
 
 
 def test_beijing_week_boundary():

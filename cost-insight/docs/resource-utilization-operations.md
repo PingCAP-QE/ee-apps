@@ -70,8 +70,10 @@ ISO verification time, evidence reference and timestamp-alignment confirmation.
 `labels` is an explicit bounded list of approved non-personal business keys;
 standard repo/job/test-project keys are defaults, not fixed schema columns.
 Configure watcher `CI_DASHBOARD_UTILIZATION_LABEL_KEYS` to the same comma-separated
-list. Use stable Repo/Job values, not person or run identifiers. Empty labels
-and unknown requests remain valid; missing is not zero. `pod_collection_enabled`
+list. Use stable Repo/Job values, not person or run identifiers. Known identity
+keys such as `pod_uid`, `build_id` and `test_execution_id` are rejected; do not
+put instance or run identifiers in values of otherwise allowed keys. Empty
+labels and unknown requests remain valid; missing is not zero. `pod_collection_enabled`
 defaults to false, independently of machine collection. A machine-only profile
 can omit Pod metric settings.
 
@@ -242,6 +244,8 @@ collection, register `pod_collection_enabled: false` with `--enable` so machines
 continue. The registry stops new Pod admission at its DB cutoff; keep workers and
 maintenance running for already registered windows and confirmed unplanned tails.
 Completed workload results retain their normal query lifetime. Wait for the old
-Pod workset to drain before re-enabling or changing its metric contract. To stop
-all new collection, configure without `--enable` and keep maintenance running.
+Pod workset to drain before re-enabling or changing its metric contract. Any
+consumer still holding the old reader retries new-version tasks without querying
+or writing results; a subsequent consumer with the new contract can settle them.
+To stop all new collection, configure without `--enable` and keep maintenance running.
 API disabled/missing-schema states must not break cost pages.

@@ -3,7 +3,7 @@
 
 import importlib.util
 import json
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -13,6 +13,7 @@ from sqlalchemy import create_engine, select, text
 from cost_insight.jobs import cli
 from cost_insight.utilization import policy, runner, store, tencent, transport
 from cost_insight.utilization.schema import contexts, machines, metadata, tasks, workloads
+from test_utilization_collection import api_call
 
 NOW = datetime(2026, 11, 25, 4, 30)
 
@@ -268,6 +269,80 @@ def test_pod_off_keeps_old_work_replayable_and_settles_only_confirmed_tail(confi
         assert connection.execute(select(contexts.c.id)).first() is None
     assert runner.work_one(engine, off, task_id, now=stopped, reader=reader) == "ignored"
     reader.window.assert_called_once()
+
+
+def test_live_consumer_cannot_apply_old_pod_scale_to_new_contract(configured, monkeypatch):
+    engine, old, path = configured
+    raw = json.loads(path.read_text())
+    raw["measurement"]["source_scales"]["pod"]["memory"] = 1048576
+    path.write_text(json.dumps(raw))
+    new = tencent.load_profile(str(path))
+    assert new["pod_contract_version"] != old["pod_contract_version"]
+    # Keep the fake provider window inside the real reader's replay horizon.
+    base = datetime.now(UTC).replace(tzinfo=None, second=0, microsecond=0) - timedelta(hours=1)
+    cutover = base + timedelta(minutes=1)
+    ready = cutover + timedelta(minutes=12)
+    window_end = cutover + timedelta(minutes=1)
+    start_date = NOW.date() - timedelta(days=10)
+    clock = [base]
+    monkeypatch.setattr(store, "database_now", lambda _connection, now=None: now or clock[0])
+    store.configure(engine, {**old, "pod_collection_enabled": False},
+                    start_date=start_date, enabled=True, now=base)
+    store.maintain(engine, now=base)
+    pod_queries = []
+
+    def sdk(_reader, service, action, region, query):
+        if action != "DescribeStatisticData":
+            return api_call(service, action, region, query)
+        pod_queries.append(action)
+        return {"Period": 60, "Data": [{
+            "MetricName": tencent.ALLOWED_METRICS["pod"]["memory"],
+            "Points": [{
+                "Dimensions": [{"Name": d["Key"], "Value": d["Value"][0]} for d in query["Conditions"]],
+                "Values": [{"Timestamp": datetime.fromisoformat(query["StartTime"]).timestamp(), "Value": 1}],
+            }],
+        }]}
+
+    monkeypatch.setattr(tencent.TencentReader, "_sdk_call", sdk)
+
+    def reopen_after_reader_setup(**_):
+        store.configure(engine, new, start_date=start_date, enabled=True, now=cutover)
+        with engine.begin() as connection:
+            connection.execute(contexts.insert().values(
+                context_key="new-context", account_id=new["account_id"], cluster_id=new["cluster_id"],
+                namespace=new["namespaces"][0], pod_uid="uid-new", pod_name="pod-new", node_instance_id="ins-pod",
+                cpu_request_cores=1, memory_request_bytes=2**21, labels_json={},
+                observed_from=cutover, observed_until=window_end, planned_until=cutover, closed_at=window_end,
+                expires_at=cutover + timedelta(days=1),
+            ))
+        clock[0] = ready
+        assert store.plan_contexts(engine)["planned"] == 1
+        with engine.connect() as connection:
+            task = connection.execute(select(tasks)).mappings().one()
+        assert task["payload_json"]["contract_version"] == new["pod_contract_version"]
+        return {0: [Mock(value={"task_id": task["id"]})]}
+
+    consumer = Mock()
+    consumer.poll.side_effect = reopen_after_reader_setup
+
+    def check_retry_before_ack():
+        with engine.connect() as connection:
+            assert connection.execute(select(tasks.c.status)).scalar_one() == "retry"
+            assert connection.execute(select(workloads)).first() is None
+
+    consumer.commit.side_effect = check_retry_before_ack
+    assert runner.consume(engine, new, consumer, max_messages=1)["retry"] == 1
+    consumer.commit.assert_called_once()
+    assert not pod_queries
+
+    with engine.connect() as connection:
+        task_id = connection.execute(select(tasks.c.id)).scalar_one()
+    clock[0] += policy.RETRY_INTERVAL
+    assert runner.work_one(engine, new, task_id) == "done"
+    with engine.connect() as connection:
+        row = connection.execute(select(workloads)).mappings().one()
+    assert pod_queries and row["memory_used"] == 1048576 * 60
+    assert row["expected_pod_minutes"] == row["memory_matched_pod_minutes"] == 1
 
 
 def test_oversized_multi_partition_poll_is_chunked_before_ack(configured):

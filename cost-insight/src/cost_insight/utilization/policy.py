@@ -13,9 +13,13 @@ RETRY_INTERVAL = timedelta(minutes=5)
 ROW_WARNING, ROW_LIMIT = 1_000_000, 2_000_000
 BYTE_WARNING, BYTE_LIMIT = 4 * 1024**3, 8 * 1024**3
 METRICS = ("cpu", "memory")
-PERSONAL_KEYS = frozenset(
-    {"author", "owner", "email", "user", "username", "employee", "employee_id"}
-)
+# This denylist is mirrored in the dashboard writer and reader. Operators must
+# still choose stable business labels, not encode run identities in their values.
+IDENTITY_KEYS = frozenset({
+    "author", "owner", "email", "user", "username", "employee", "employee_id",
+    "pod_uid", "pod_name", "build_id", "build_number", "run_id", "execution_id",
+    "test_execution_id", "job_uid", "job_run_id",
+})
 
 
 def label_keys(keys):
@@ -25,12 +29,12 @@ def label_keys(keys):
         or any(
             not isinstance(key, str)
             or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,62}", key)
-            or key.lower() in PERSONAL_KEYS
+            or key.lower().replace("-", "_").replace(".", "_") in IDENTITY_KEYS
             for key in keys
         )
         or len(set(keys)) != len(keys)
     ):
-        raise ValueError("explicit bounded non-personal label keys required")
+        raise ValueError("explicit bounded non-personal label keys without instance or execution identifiers required")
     return keys
 
 

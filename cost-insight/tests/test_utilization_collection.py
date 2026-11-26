@@ -204,6 +204,18 @@ def test_profile_is_v3_scoped_stable_and_example_is_unverified(tmp_path, profile
     )
 
 
+@pytest.mark.parametrize("key", ["Author", "pod_uid", "test_execution_id", "Run-ID", "job.run.id"])
+def test_profile_rejects_personal_or_per_execution_labels(tmp_path, raw_profile, key):
+    path = tmp_path / "identity-labels.json"
+    raw_profile["labels"] = ["test_project", key]
+    path.write_text(json.dumps(raw_profile))
+    with pytest.raises(ValueError, match="without instance or execution identifiers"):
+        tencent.load_profile(str(path))
+    raw_profile["labels"] = ["test_project", "test_plan"]
+    path.write_text(json.dumps(raw_profile))
+    assert tencent.load_profile(str(path))["labels"] == ["test_project", "test_plan"]
+
+
 def test_pod_opt_in_versions_and_default_off_drain(tmp_path, raw_profile, profile):
     path = tmp_path / "variants.json"
 

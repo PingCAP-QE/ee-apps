@@ -17,12 +17,16 @@ VENDOR = "tencent"
 ACCOUNT_ID = "100050658403"
 STATE_KEY = f"utilization:{VENDOR}:{ACCOUNT_ID}"
 BEIJING = ZoneInfo("Asia/Shanghai")
-PERSONAL_KEYS = {"author", "owner", "email", "user", "username", "employee", "employee_id"}
+IDENTITY_KEYS = {
+    "author", "owner", "email", "user", "username", "employee", "employee_id",
+    "pod_uid", "pod_name", "build_id", "build_number", "run_id", "execution_id",
+    "test_execution_id", "job_uid", "job_run_id",
+}
 
 
 def _label_key(key):
     return (isinstance(key, str) and bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,62}", key))
-            and key.lower() not in PERSONAL_KEYS)
+            and key.lower().replace(".", "_").replace("-", "_") not in IDENTITY_KEYS)
 
 
 METRICS = ("cpu", "memory")
@@ -201,12 +205,15 @@ def _workload_partial(connection, start: date, end: date, now: datetime, stop: d
         last_confirmed_minute = "datetime(substr(observed_until,1,16),'-1 minute') || '.000000'"
     else:
         last_confirmed_minute = "TIMESTAMPADD(MINUTE,-1,DATE_FORMAT(observed_until,'%Y-%m-%d %H:%i:00'))"
+    # Registered tasks are whole-minute, single-day windows; a valid pre-stop
+    # task must be wholly in bounds. Unplanned tails can be clipped at the stop.
+    task_bounds = ("window_start>=:range_start AND window_end<=:range_end" if stop is not None
+                   else "window_start<:range_end AND window_end>:range_start")
     # Account/date-level evidence also applies conservatively to label filters.
     query = text(f"""
         SELECT EXISTS (
             SELECT 1 FROM utilization_task WHERE account_id=:account AND kind='pod'
-            AND status IN ('pending','running','retry')
-            AND window_start<:range_end AND window_end>:range_start
+            AND status IN ('pending','running','retry') AND {task_bounds}
         ) OR EXISTS (
             SELECT 1 FROM pod_utilization_context WHERE account_id=:account
             AND planned_until<=:last_start AND observed_until>=:first_end
@@ -291,17 +298,27 @@ def get_daily(
             if kind == "workload":
                 pod_enabled = state.get("pod_collection_enabled") is True
                 stop = None if pod_enabled else _pod_stop_at(state)
-                today = now.astimezone(BEIJING).date()
-                if not pod_enabled and (
-                    stop is None or not _workload_history(connection, _workload_window_start(today), today)
-                ):
-                    return {**unavailable("pod_collection_disabled"), "configured": True}
+                if not pod_enabled:
+                    if stop is None:
+                        return {**unavailable("pod_collection_disabled"), "configured": True}
+                    # Check before reading facts so concurrent settlement can
+                    # leave a conservative warning, not hide the workload.
+                    partial = _workload_partial(connection, start, end, now, stop)
+                    if not partial:
+                        today = now.astimezone(BEIJING).date()
+                        retained_start = _workload_window_start(today)
+                        # Other dates can keep workloads available without
+                        # marking the selected range partial.
+                        draining_elsewhere = (start, end) != (retained_start, today) and _workload_partial(
+                            connection, retained_start, today, now, stop,
+                        )
+                        if not draining_elsewhere and not _workload_history(connection, retained_start, today):
+                            return {**unavailable("pod_collection_disabled"), "configured": True}
                 approved = state["scope"].get("labels") or []
                 if any(key is not None and key not in approved for key in (label_key, group_by)):
                     raise ValueError("business label is not enabled in the collection scope")
-                # Check before reading facts so concurrent settlement can only
-                # leave a conservative warning.
-                partial = _workload_partial(connection, start, end, now, stop)
+                if pod_enabled:
+                    partial = _workload_partial(connection, start, end, now, None)
             if kind == "machine" and machine_id:
                 # A physical identity has at most one fact per day. Read one extra to detect
                 # overflow; reuse the same snapshot for day detail whenever a summary is possible.
@@ -387,11 +404,10 @@ def get_status(engine: Engine | None, *, now: datetime | None = None) -> dict:
             if not _configured(state):
                 return {**_base(), "available": True, "configured": False, "reason": "unconfigured"}
             pod_enabled = state.get("pod_collection_enabled") is True
-            # A stopped source retains its stop marker and approved labels even
-            # after maintenance removes the now-unused Pod monitoring contract.
-            workload_history = (pod_enabled or _pod_stop_at(state) is not None) and _workload_history(
-                connection, start, end,
-            )
+            # The stop marker outlives the drained Pod contract.
+            stop = None if pod_enabled else _pod_stop_at(state)
+            workload_draining = stop is not None and _workload_partial(connection, start, end, now, stop)
+            workload_history = (pod_enabled or stop is not None) and _workload_history(connection, start, end)
             active_contexts = connection.execute(text(
                 "SELECT COUNT(*) FROM pod_utilization_context WHERE account_id=:account "
                 "AND closed_at IS NULL AND expires_at>:now"
@@ -399,7 +415,8 @@ def get_status(engine: Engine | None, *, now: datetime | None = None) -> dict:
             backlog = dict(connection.execute(text(
                 "SELECT status,COUNT(*) FROM utilization_task WHERE account_id=:account "
                 "AND status IN ('pending','running','retry') AND deadline_at>:now "
-                + ("" if pod_enabled else "AND kind='machine' ") + "GROUP BY status"
+                + ("" if pod_enabled or workload_draining else "AND kind='machine' ")
+                + "GROUP BY status"
             ), params).all())
     except SQLAlchemyError as error:
         return _failure(error)
@@ -437,14 +454,15 @@ def get_status(engine: Engine | None, *, now: datetime | None = None) -> dict:
         "maintenance_at": timestamps["maintenance_at"], "maintenance_stale": maintenance_stale,
         "counts_reliable": state.get("counts_reliable") is True,
         "latest_machine_usage_date": str(latest_machine_usage_date)[:10] if latest_machine_usage_date else None,
-        "pod_collection_enabled": pod_enabled, "workload_history_available": workload_history,
+        "pod_collection_enabled": pod_enabled, "pod_collection_stopped": stop is not None,
+        "workload_draining": workload_draining, "workload_history_available": workload_history,
         "task_backlog": {key: backlog.get(key, 0) for key in ("pending", "running", "retry")},
         "machine_window": {"start_date": params["first"], "end_date": end.isoformat()},
         "default_window": default_window,
     }
     if pod_enabled:
         result["active_contexts"] = active_contexts
-    if pod_enabled or workload_history:
+    if pod_enabled or workload_draining or workload_history:
         approved = state["scope"].get("labels") or []
         result.update(workload_window=default_window, label_keys=[key for key in approved[:32] if _label_key(key)])
     return result

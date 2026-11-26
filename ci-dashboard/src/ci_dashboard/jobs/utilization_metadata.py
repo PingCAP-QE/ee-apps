@@ -33,15 +33,19 @@ CLUSTER = "cls-9zpon9y1"
 ACCOUNT = "100050658403"
 GUARD_KEY = f"utilization:tencent:{ACCOUNT}"
 LABELS = frozenset({"repo", "job", "test_project", "test_suite", "environment", "project", "service"})
-PERSONAL_KEYS = frozenset({"author", "owner", "email", "user", "username", "employee", "employee_id"})
+IDENTITY_KEYS = frozenset({
+    "author", "owner", "email", "user", "username", "employee", "employee_id",
+    "pod_uid", "pod_name", "build_id", "build_number", "run_id", "execution_id",
+    "test_execution_id", "job_uid", "job_run_id",
+})
 
 
 def label_keys(keys):
     if (not isinstance(keys, list) or not 1 <= len(keys) <= 32
             or any(not isinstance(key, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]{0,62}", key)
-                   or key.lower() in PERSONAL_KEYS for key in keys)
+                   or key.lower().replace(".", "_").replace("-", "_") in IDENTITY_KEYS for key in keys)
             or len(set(keys)) != len(keys)):
-        raise ValueError("bounded non-personal configured label keys required")
+        raise ValueError("bounded non-personal, non-identity configured label keys required")
     return set(keys)
 
 
@@ -328,21 +332,38 @@ class MetadataExporter:
             if abs((_datetime(at) if at is not None else utc_now()) - clock) > timedelta(seconds=60):
                 raise ValueError("utilization observation clock skew exceeds 60s")
             current = dict(self.live)
-            updates = {}
+            updates: dict[str, list[dict]] = {}
+            create_keys: set[str] = set()
             for uid, (row, _, _) in self.live.items():
                 if clock < row["observed_until"]:
                     raise ValueError("utilization database clock moved backwards")
                 if clock - row["observed_until"] >= STALE_AFTER:
-                    updates[row["context_key"]] = self._closed(row)
+                    updates[uid] = [self._closed(row)]
                     del current[uid]
             incoming = {row["pod_uid"]: row for row in records}
             confirm = heartbeat and (self.last_heartbeat is None or clock - self.last_heartbeat >= timedelta(seconds=60))
             listed_at, nodes = self.node_cache.snapshot() if self.node_cache is not None else (float("-inf"), {})
+
+            def snapshot(source, ref, pinned=None, *, bound=False):
+                record = {field: source[field] for field in POD_FIELDS}
+                candidate = nodes.get(ref.name) if ref is not None else None
+                # A Pod object names a Node, not a Node UID. Use only a most-recent
+                # LIST begun after that Pod evidence, and reject Nodes created at
+                # or after scheduling: those could be replacements at the same name.
+                if (candidate is not None and candidate.created < ref.assigned_at
+                        and (pinned is candidate if bound else
+                             listed_at > ref.seen_at and (pinned is None or pinned == candidate))):
+                    record["node_instance_id"] = candidate.instance_id
+                    return record, candidate
+                record["node_instance_id"] = None
+                return record, pinned
+
             for uid in (dict.fromkeys([*incoming, *current]) if confirm else incoming):
                 old, ref, pinned = current.get(uid, (None, None, None))
+                changes = updates.setdefault(uid, [])
                 if deleted and uid in incoming:
                     if old is not None:
-                        updates[old["context_key"]] = self._closed(old)
+                        changes.append(self._closed(old))
                         del current[uid]
                     continue  # Never-observed-live terminal snapshots prove no interval.
                 if uid in incoming:
@@ -350,20 +371,8 @@ class MetadataExporter:
                     if (ref is None or observed_ref is None
                             or (ref.name, ref.assigned_at) != (observed_ref.name, observed_ref.assigned_at)):
                         ref = observed_ref
-                source = incoming.get(uid, old)
-                record = {field: source[field] for field in POD_FIELDS}
-                candidate = nodes.get(ref.name) if ref is not None else None
                 bound = old is not None and old["node_instance_id"] is not None
-                # A Pod object names a Node, not a Node UID. Use only a most-recent
-                # LIST begun after that Pod evidence, and reject Nodes created at
-                # or after scheduling: those could be replacements at the same name.
-                if (candidate is not None and candidate.created < ref.assigned_at
-                        and (pinned is candidate if bound else
-                             listed_at > ref.seen_at and (pinned is None or pinned == candidate))):
-                    pinned = candidate
-                    record["node_instance_id"] = pinned.instance_id
-                else:
-                    record["node_instance_id"] = None
+                record, pinned = snapshot(incoming.get(uid, old), ref, pinned, bound=bound)
                 if old and all(old[field] == record[field] for field in POD_FIELDS):
                     row = {**old, "observed_until": clock, "expires_at": clock + CONTEXT_TTL}
                 else:
@@ -376,22 +385,48 @@ class MetadataExporter:
                             # instance ID nor newly observed metadata applies to it.
                             # Even a zero-length old row owns its start timestamp.
                             gap_start = max(old["observed_until"], old["observed_from"] + timedelta(microseconds=1))
-                            updates[old["context_key"]] = self._closed(old)
+                            changes.append(self._closed(old))
                             unbound = {field: old[field] for field in POD_FIELDS}
                             unbound["node_instance_id"] = None
                             if unbound == record:
                                 start = gap_start
                             elif gap_start < clock:
                                 gap = self._closed(self._new_context(unbound, gap_start, clock))
-                                updates[gap["context_key"]] = gap
+                                changes.append(gap)
+                                create_keys.add(gap["context_key"])
                         else:
-                            updates[old["context_key"]] = self._closed({**old, "observed_until": clock})
+                            changes.append(self._closed({**old, "observed_until": clock}))
                     row = self._new_context(record, start, clock)
+                    create_keys.add(row["context_key"])
                 current[uid] = (row, ref, pinned)
-                updates[row["context_key"]] = row
-            pending = list(updates.values())
-            for offset in range(0, len(pending), 1000):
-                save_contexts(self.engine, pending[offset:offset + 1000], **({"now": now} if now is not None else {}))
+                changes.append(row)
+
+            def flush(batch):
+                missing = save_contexts(self.engine, batch, create_keys=create_keys, now=now)
+                fresh = []
+                for uid in missing:
+                    current.pop(uid, None)
+                    # A BOOKMARK can't restore continuity after collection has
+                    # purged it. Only an actual Pod record can start again at clock.
+                    if deleted or uid not in incoming or clock <= self.live[uid][0]["observed_from"]:
+                        continue
+                    ref = incoming[uid].get("_node_ref")
+                    record, pinned = snapshot(incoming[uid], ref)
+                    row = self._new_context(record, clock, clock)
+                    current[uid] = (row, ref, pinned)
+                    fresh.append(row)
+                if fresh:
+                    save_contexts(self.engine, fresh, create_keys={row["context_key"] for row in fresh}, now=now)
+
+            pending = []
+            for changes in updates.values():
+                # Keep a Pod's close and dependent inserts in one guarded transaction.
+                if len(pending) + len(changes) > 1000:
+                    flush(pending)
+                    pending = []
+                pending.extend(changes)
+            if pending:
+                flush(pending)
             self.live = current
             if confirm:
                 self.last_heartbeat = clock
@@ -512,8 +547,13 @@ def _prepare(row: dict, clock: datetime) -> dict:
     return item
 
 
-def save_contexts(engine: Engine, contexts: list[dict], *, now=None) -> dict:
-    """Locked immutable-context upserts + atomic shared counts, no network I/O."""
+def save_contexts(engine: Engine, contexts: list[dict], *,
+                  create_keys: set[str] | frozenset[str] = frozenset(), now=None) -> set[str]:
+    """Save contexts under the shared guard, returning Pod UIDs whose updates lost continuity.
+
+    Only explicit create keys may insert. A Pod's existing-row mutation must come
+    before any inserts that depend on it, in the same transaction.
+    """
     if len(contexts) > 1000:
         raise ValueError("context batch exceeds 1000")
     with engine.connect() as connection:
@@ -527,14 +567,23 @@ def save_contexts(engine: Engine, contexts: list[dict], *, now=None) -> dict:
             clock = _clock(connection, now)
             if now is None and abs(utc_now() - clock) > timedelta(seconds=60):
                 raise ValueError("utilization database clock skew exceeds 60s")
-            prepared = [_prepare(row, clock) for row in contexts]
-            prepared = list({row["context_key"]: row for row in prepared}.values())
-            _admit(state, clock, state.get("retained_rows", 0), prepared)
-            inserted = 0
-            for row in prepared:
+            missing = set()
+            prepared = []
+            for row in {row["context_key"]: row for row in contexts}.values():
+                uid = row["pod_uid"]
+                if uid in missing:
+                    continue
                 previous = connection.execute(text(
                     "SELECT * FROM pod_utilization_context WHERE context_key=:context_key"
                 ), row).mappings().first()
+                if previous is None and row["context_key"] not in create_keys:
+                    missing.add(uid)
+                    continue
+                prepared.append((_prepare(row, clock), previous))
+            active = [row for row, _ in prepared]
+            _admit(state, clock, state.get("retained_rows", 0), active)
+            inserted = 0
+            for row, previous in prepared:
                 if previous:
                     before = dict(previous)
                     before["labels_json"] = before["labels_json"] if isinstance(before["labels_json"], dict) else json.loads(before["labels_json"])
@@ -586,14 +635,14 @@ def save_contexts(engine: Engine, contexts: list[dict], *, now=None) -> dict:
                 raise ValueError("utilization database clock moved backwards")
             if now is None and abs(utc_now() - commit_clock) > timedelta(seconds=60):
                 raise ValueError("utilization database clock skew exceeds 60s")
-            _admit(state, commit_clock, state["retained_rows"], prepared)
-            if any(commit_clock >= row["expires_at"] for row in prepared):
+            _admit(state, commit_clock, state["retained_rows"], active)
+            if any(commit_clock >= row["expires_at"] for row in active):
                 raise ValueError("Pod context expired before commit")
             json_state = ":state" if connection.dialect.name == "sqlite" else "CAST(:state AS JSON)"
             connection.execute(text(f"UPDATE cost_job_state SET watermark_json={json_state} WHERE job_name=:key"),
                                {"state": json.dumps(state), "key": GUARD_KEY})
             connection.commit()
-            return {"rows": inserted, "updated": len(prepared) - inserted}
+            return missing
         except BaseException:
             connection.rollback()
             raise

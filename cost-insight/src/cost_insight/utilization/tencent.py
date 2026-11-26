@@ -545,6 +545,11 @@ class TencentReader:
         return result
 
     def _target(self, target):
+        # A consumer can outlive a Pod contract cutover. Check the version of
+        # the reader doing the conversion, not just the task against the DB.
+        version_key = "pod_contract_version" if target.get("kind") == "pod" else "contract_version"
+        if "contract_version" in target and target["contract_version"] != self.profile.get(version_key):
+            raise ValueError("Task contract version differs from the reader contract")
         region = target.get("region")
         if region not in self.profile["regions"]:
             raise ValueError("Target region outside collection scope")
