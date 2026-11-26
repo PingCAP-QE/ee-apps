@@ -36,7 +36,8 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 	flags := flag.NewFlagSet("tuple-sync", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	snapshotPath := flags.String("snapshot", "", "path to the reviewed relationship snapshot (--source file)")
-	sourceKind := flags.String("source", "file", "relationship source: file or workspace-group")
+	sourceKind := flags.String("source", "file",
+		"relationship source: file, or workspace-group (kept for a future need; not on the roadmap, see docs/authz/workspace-group-membership.md)")
 	workspaceGroup := flags.String("workspace-group", "", "Workspace group key for --source workspace-group")
 	teamObject := flags.String("team-object", "", "team object that receives members, e.g. team:all-staff")
 	workspaceTokenFile := flags.String("workspace-token-file", "", "file holding a Directory API bearer token")
@@ -119,6 +120,9 @@ func buildSource(cfg sourceConfig, logger *slog.Logger) (relationships.Source, e
 			return nil, errors.New("--snapshot is required for --source file")
 		}
 		return relationships.NewFileSource(cfg.snapshotPath)
+	// Dormant: the owner decided not to query groups (docs/authz/special-operation-grants.md).
+	// The path is kept so a future "everyone in group X" requirement has a starting
+	// point, not because anything is expected to use it.
 	case "workspace-group":
 		if strings.TrimSpace(cfg.group) == "" || strings.TrimSpace(cfg.teamObject) == "" {
 			return nil, errors.New("--workspace-group and --team-object are required for --source workspace-group")
