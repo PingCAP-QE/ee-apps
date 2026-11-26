@@ -94,11 +94,16 @@ needs reconciliation.
 
 Not covered: arbitrary SQL/SELECT retries, whole-pipeline replay, standalone
 state/checkpoint retries, or an independent connection-establishment retry loop.
-Generic resource-serving staging/publication is deliberately **not retried**:
-its streaming iterator and monetary accumulators cannot safely be reused after
-partial consumption. Failed staging rolls back and leaves the previous active
-publication unchanged; a publication commit with lost ACK needs inspection.
-Tencent `_import_bill_day` page writes are also deferred: mutable pagination
+Native resource-serving stages one account/day into a private version. Each
+transport retry uses the same loaded inputs and a new streaming iterator and
+amount counters. After a lost staging COMMIT acknowledgement, a matching row
+count for a newly generated private version confirms the validated stage without
+rewriting it. Publication retries compare the previous pointer and confirm a
+committed candidate without resetting TiFlash readiness; a superseded pointer
+or an ambiguous missing pointer stops the run for reconciliation. An explicitly
+supplied version must be private to the run and cannot already be active for a
+processed window. Use a new version or narrow the dates when resuming a partial run.
+Tencent `_import_bill_day` page writes are still not automatically replayed: mutable pagination
 watermarks/counters and final evidence require a separate replay design. No
 `ping(reconnect=True)`, schema changes, or automatic failed-state resets are used.
 
