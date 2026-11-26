@@ -1,4 +1,4 @@
-"""Offline V2 source tests: all SDK/cloud calls mocked, no runner or database imports."""
+"""Offline V2 source and machine planning tests: SDK calls and task admission mocked."""
 
 import json
 from datetime import UTC, date, datetime, timedelta
@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from cost_insight.utilization import tencent
+from cost_insight.utilization import policy, runner, store, tencent
 
 EXAMPLE = Path(__file__).parents[1] / "config/tencent-utilization.example.json"
 DAY = date(2026, 11, 20)
@@ -143,17 +143,17 @@ def bill(product="p_cvm", **overrides):
             component("sv_011691_nn_sa9_mem_servicefee", "32", "GiB"),
         ]
     )
-    return dict(
-        OwnerUin=tencent.ACCOUNT_ID,
-        BusinessCode=product,
-        ResourceId="ins-one" if product == "p_cvm" else "cls-9zpon9y1_np-one",
-        RegionId="8",
-        BillDay="2026-11-25",  # Not the usage day; must not be used as identity.
-        FeeBeginTime="2026-11-20 11:36:36",
-        FeeEndTime="2026-11-20 12:26:24",
-        ComponentSet=components,
+    return {
+        "OwnerUin": tencent.ACCOUNT_ID,
+        "BusinessCode": product,
+        "ResourceId": "ins-one" if product == "p_cvm" else "cls-9zpon9y1_np-one",
+        "RegionId": "8",
+        "BillDay": DAY.isoformat(),
+        "FeeBeginTime": "2026-11-20 11:36:36",
+        "FeeEndTime": "2026-11-20 12:26:24",
+        "ComponentSet": components,
         **overrides,
-    )
+    }
 
 
 def api_call(service, action, region, params):
@@ -325,7 +325,7 @@ def test_billing_requires_short_page_even_after_cached_total(
     assert offsets == list(range(0, actual + 1, 100))
 
 
-def test_billing_complete_context_pagination_usage_filter_and_capacity_cache(profile):
+def test_billing_complete_context_pagination_partition_filter_and_capacity_cache(profile):
     calls = []
 
     def call(service, action, region, params):
@@ -335,8 +335,7 @@ def test_billing_complete_context_pagination_usage_filter_and_capacity_cache(pro
         if params["BusinessCode"] == "p_011691":
             return {"DetailSet": [], "Total": 0}
         if params["Offset"] == 0:
-            outside = bill()
-            outside.update(FeeBeginTime="2026-11-19 12:00:00", FeeEndTime="2026-11-19 13:00:00")
+            outside = bill(BillDay="2026-11-19", ResourceId="ins-outside-partition")
             return {"DetailSet": [outside] * 99 + [bill()], "Total": 101, "Context": "opaque-context"}
         assert params["Offset"] == 100 and params["Context"] == "opaque-context"
         return {"DetailSet": [{**bill(), "ResourceId": "ins-two"}]}
@@ -354,6 +353,8 @@ def test_billing_complete_context_pagination_usage_filter_and_capacity_cache(pro
         (lambda r: r.update(OwnerUin="other"), "OwnerUin"),
         (lambda r: r.update(BusinessCode="p_tke"), "product"),
         (lambda r: r.update(RegionId="999", ComponentSet=[component()]), "region"),
+        (lambda r: r.update(BillDay=None), "BillDay"),
+        (lambda r: r.update(BillDay="2026-12-01"), "BillDay"),
         (lambda r: r.update(FeeEndTime=r["FeeBeginTime"]), "interval"),
         (lambda r: r.update(ResourceId="bad"), "identity"),
         (lambda r: r["ComponentSet"][0].update(UsedAmount="9"), "Conflicting"),
@@ -438,8 +439,7 @@ def test_billing_scan_has_headroom_above_ten_thousand_and_reads_the_tail(profile
             if index < total - 1:
                 row.update(
                     ResourceId=f"ins-outside-{index}",
-                    FeeBeginTime="2026-11-19 12:00:00",
-                    FeeEndTime="2026-11-19 13:00:00",
+                    BillDay="2026-11-19",
                 )
             rows.append(row)
         return {"DetailSet": rows, "Total": total}
@@ -447,6 +447,109 @@ def test_billing_scan_has_headroom_above_ten_thousand_and_reads_the_tail(profile
     snapshots = reader(profile, call).billing_candidates(DAY)
     assert offsets == list(range(0, total, 100))
     assert len(snapshots) == 1 and snapshots[0]["machine_id"] == "ins-one"
+
+
+@pytest.fixture
+def planning(monkeypatch, profile):
+    state = {"contracts": profile["contracts"]}
+    enqueue = Mock(side_effect=lambda engine, windows, **kwargs: {"planned": len(windows)})
+    monkeypatch.setattr(runner, "_ready", lambda engine, profile, now: (state, now))
+    monkeypatch.setattr(store, "_admit", Mock())
+    monkeypatch.setattr(store, "enqueue_windows", enqueue)
+    return enqueue
+
+
+@pytest.mark.parametrize("partition_prefix", [10, 7], ids=["exact-bill-day", "bill-month"])
+@pytest.mark.parametrize("bill_day", [date(2026, 11, 1), date(2027, 1, 1)])
+def test_machine_planner_uses_fee_dates_for_late_cross_month_or_year_charges(
+    profile, planning, partition_prefix, bill_day
+):
+    previous = bill_day - timedelta(days=1)
+    clock = policy.day_start(bill_day + timedelta(days=3)) + timedelta(hours=6, minutes=30)
+    rows = [
+        bill(BillDay=str(bill_day), FeeBeginTime=f"{previous} 22:00:00", FeeEndTime=f"{previous} 23:00:00"),
+        bill(BillDay=str(bill_day), ResourceId="ins-midnight",
+             FeeBeginTime=f"{previous} 23:45:00", FeeEndTime=f"{bill_day} 00:15:00"),
+        # A month-wide endpoint can include another partition with overlapping fees.
+        bill(BillDay=str(bill_day + timedelta(days=1)), ResourceId="ins-unrequested",
+             FeeBeginTime=f"{previous} 22:00:00", FeeEndTime=f"{previous} 23:00:00"),
+    ]
+    requested = []
+
+    def call(service, action, region, params):
+        if service != "billing":
+            return api_call(service, action, region, params)
+        requested.append((params["BeginTime"][:10], params["BusinessCode"]))
+        response_rows = [
+            row for row in rows
+            if params["BusinessCode"] == row["BusinessCode"]
+            and params["BeginTime"][:partition_prefix] == row["BillDay"][:partition_prefix]
+        ]
+        return {"DetailSet": response_rows, "Total": len(response_rows)}
+
+    result = runner.plan_machines(None, profile, now=clock, reader=reader(profile, call))
+    assert requested == [(str(d), p) for d in (previous, bill_day) for p in ("p_cvm", "p_011691")]
+    midnight = policy.day_start(bill_day)
+    assert [
+        (target["machine_id"], start, end)
+        for entry in planning.call_args_list for target, start, end in entry.args[1]
+    ] == [
+        ("ins-one", midnight - timedelta(hours=2), midnight - timedelta(minutes=90)),
+        ("ins-one", midnight - timedelta(minutes=90), midnight - timedelta(hours=1)),
+        ("ins-midnight", midnight - timedelta(minutes=15), midnight),
+        ("ins-midnight", midnight, midnight + timedelta(minutes=15)),
+    ]
+    assert result["bill_days"] == [str(previous), str(bill_day)]
+    assert [(d["usage_date"], d["planned"]) for d in result["days"]] == [
+        (str(previous), 3), (str(bill_day), 1)
+    ]
+
+
+def test_machine_planner_scans_default_partitions_and_skips_closed_usage_day_by_kind(profile, planning):
+    bill_day = date(2026, 11, 1)
+    previous = bill_day - timedelta(days=1)
+    clock = policy.day_start(bill_day + timedelta(days=3)) + timedelta(hours=6, minutes=30)
+    previous_start = policy.day_start(previous)
+    cutoff = previous_start + timedelta(hours=22, minutes=30)
+    metric = profile["contracts"]["cvm"]["cpu"]
+    metric["verified_horizon_seconds"] = (clock - cutoff).total_seconds() + metric["safety_margin_seconds"]
+    repin(profile)
+    requests = []
+
+    def call(service, action, region, params):
+        if service != "billing":
+            return api_call(service, action, region, params)
+        partition = params["BeginTime"][:10]
+        requests.append(partition)
+        rows = [bill(params["BusinessCode"], BillDay=partition,
+                     FeeBeginTime=f"{previous} 22:00:00", FeeEndTime=f"{previous} 23:30:00")
+                ] if partition == str(bill_day) else []
+        return {"DetailSet": rows, "Total": len(rows)}
+
+    result = runner.plan_machines(None, profile, now=clock, reader=reader(profile, call))
+    assert requests == [str(previous), str(previous), str(bill_day), str(bill_day)]
+    assert result["days"] == [
+        {"usage_date": str(previous), "candidates": 2, "planned": 3, "errors": [], "horizon_gaps": 1}
+    ]
+    assert [(target["resource_class"], start) for entry in planning.call_args_list
+            for target, start, _ in entry.args[1]] == [
+        ("tke_native", previous_start + timedelta(hours=22)),
+        ("tke_native", cutoff),
+        ("tke_native", previous_start + timedelta(hours=23)),
+    ]
+
+
+def test_machine_planner_requires_all_partitions_and_products_before_enqueue(profile, planning):
+    clock = policy.day_start(DAY + timedelta(days=4))
+    call = Mock(side_effect=lambda service, action, region, params: (
+        {"DetailSet": [], "Total": 1}
+        if service == "billing" and params["BeginTime"].startswith(str(DAY + timedelta(days=1)))
+        and params["BusinessCode"] == "p_011691"
+        else api_call(service, action, region, params)
+    ))
+    with pytest.raises(ValueError, match="pagination incomplete"):
+        runner.plan_machines(None, profile, now=clock, reader=reader(profile, call))
+    planning.assert_not_called()
 
 
 def test_bill_capacity_overlap_merge_does_not_bridge_gaps_or_sum_fees():
@@ -869,7 +972,8 @@ def test_probe_unverified_profile_is_readonly_billing_and_capabilities_only():
     profile = tencent.load_profile(str(EXAMPLE), probe=True)
     call = Mock(side_effect=api_call)
     source = tencent.TencentReader(profile, call=call, sleep=Mock(), probe=True)
-    result = tencent.probe(profile, reader=source, usage_date=DAY)
+    result = tencent.probe(profile, reader=source, bill_day=DAY)
+    assert result["bill_day"] == str(DAY)
     assert result["dry_run"] and result["billing_candidates"] == 2 and result["metric_metadata"]
     assert not result["full_replay_horizon_verified"] and not result["unit_conversion_verified"]
     assert not any(

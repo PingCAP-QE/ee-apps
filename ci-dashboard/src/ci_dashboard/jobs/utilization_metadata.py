@@ -295,6 +295,12 @@ class MetadataExporter:
     def _closed(row: dict) -> dict:
         return {**row, "closed_at": row["observed_until"], "expires_at": row["observed_until"] + CONTEXT_TTL}
 
+    @staticmethod
+    def _new_context(record: dict, start: datetime, until: datetime) -> dict:
+        return {**record, "context_key": context_key(record, start), "observed_from": start,
+                "observed_until": until, "closed_at": None, "planned_until": start,
+                "expires_at": until + CONTEXT_TTL}
+
     def observe(self, records: list[dict[str, Any]], *, at: datetime | None = None, deleted: bool = False,
                 heartbeat: bool = False, now: datetime | None = None) -> None:
         try:
@@ -346,15 +352,21 @@ class MetadataExporter:
                         if clock == old["observed_from"]:
                             continue  # No room for a distinct interval at the same DB timestamp.
                         if bound and not record["node_query_value"]:
-                            # Pod liveness still covers this interval, but the old
-                            # selector must stop at its last supported confirmation.
-                            start = max(old["observed_until"], old["observed_from"] + timedelta(microseconds=1))
+                            # Pod liveness still covers the gap, but neither the old
+                            # selector nor newly observed metadata applies to it.
+                            # Even a zero-length old row owns its start timestamp.
+                            gap_start = max(old["observed_until"], old["observed_from"] + timedelta(microseconds=1))
                             updates[old["context_key"]] = self._closed(old)
+                            unbound = {field: old[field] for field in POD_FIELDS}
+                            unbound.update(node_query_kind="", node_query_value="")
+                            if unbound == record:
+                                start = gap_start
+                            elif gap_start < clock:
+                                gap = self._closed(self._new_context(unbound, gap_start, clock))
+                                updates[gap["context_key"]] = gap
                         else:
                             updates[old["context_key"]] = self._closed({**old, "observed_until": clock})
-                    row = {**record, "context_key": context_key(record, start), "observed_from": start,
-                           "observed_until": clock, "closed_at": None, "planned_until": start,
-                           "expires_at": clock + CONTEXT_TTL}
+                    row = self._new_context(record, start, clock)
                 current[uid] = (row, ref, pinned)
                 updates[row["context_key"]] = row
             pending = list(updates.values())

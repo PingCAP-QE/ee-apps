@@ -20,78 +20,86 @@ def _ready(engine, profile, now=None):
     return state, clock
 
 
-def _horizon_open(state, day, clock):
-    for cls in ("cvm", "tke_native"):
-        for entry in state["contracts"][cls].values():
-            policy.validate_source_window(entry)
-            if clock >= policy.day_start(day) + timedelta(
-                seconds=entry["verified_horizon_seconds"] - entry.get("safety_margin_seconds", 0)
-            ):
-                return False
-    return True
+def _first_open_machine_day(state, kind, clock, oldest):
+    horizons = []
+    retained_seconds = (clock - policy.day_start(oldest)).total_seconds()
+    for entry in state["contracts"][kind].values():
+        policy.validate_source_window(entry)
+        horizons.append(entry["verified_horizon_seconds"] - entry.get("safety_margin_seconds", 0))
+    horizon = min(horizons)
+    if horizon > retained_seconds:
+        return policy.day_start(oldest)
+    # Match the store fence: once any early checkpoint could have expired,
+    # no new windows can be planned for that whole usage day.
+    last_closed_day = policy.usage_date(clock - timedelta(seconds=horizon))
+    return policy.day_start(last_closed_day + timedelta(days=1))
 
 
-def plan_machines(engine, profile, *, usage_date=None, dry_run=False, now=None, reader=None):
+def plan_machines(engine, profile, *, bill_day=None, dry_run=False, now=None, reader=None):
     state, clock = _ready(engine, profile, now)
     if not dry_run:
         store._admit(state, clock)
-    days = (
-        [usage_date]
-        if usage_date
-        else [policy.usage_date(clock) - timedelta(days=n) for n in (4, 3)]
-    )
+    today = policy.usage_date(clock)
+    oldest = today - timedelta(days=364)
+    bill_days = [bill_day] if bill_day else [today - timedelta(days=n) for n in (4, 3)]
+    if any(not oldest <= partition <= today for partition in bill_days):
+        raise ValueError("BillDay outside retained year")
+    first_open = {
+        kind: _first_open_machine_day(state, kind, clock, oldest)
+        for kind in ("cvm", "tke_native")
+    }
     reader = reader or TencentReader(profile)
     reader.verify_account()
-    result = []
-    for day in days:
-        if day > policy.usage_date(clock) or day < policy.usage_date(clock) - timedelta(days=365):
-            raise ValueError("machine date outside retained year")
-        # Reject exhausted sources before doing a potentially large bill scan.
-        if not _horizon_open(state, day, clock):
-            if usage_date is not None:
-                raise ValueError("machine date exceeds verified source horizon")
-            result.append({"usage_date": day.isoformat(), "skipped": "source_horizon"})
+    # No DB writes until all requested partitions and both products have completed.
+    snapshots = [candidate for day in bill_days for candidate in reader.billing_candidates(day)]
+    summaries = {}
+
+    def summary(day):
+        return summaries.setdefault(
+            day,
+            {"usage_date": day.isoformat(), "candidates": 0, "planned": 0,
+             "horizon_gaps": 0, "errors": []},
+        )
+
+    for candidate in TencentReader._merge_snapshots(snapshots):
+        start = minute(candidate["observed_from"], ceil=True)
+        end = min(minute(candidate["observed_until"]), minute(clock - timedelta(minutes=10)))
+        if start >= end:
             continue
-        candidates = reader.billing_candidates(day)
-        planned, errors = 0, []
-        for candidate in candidates:
+        floor = first_open[candidate["resource_class"]]
+        if start < floor:
+            # Report one gap for the unreplayable prefix instead of iterating
+            # arbitrarily long expired/prepaid billing intervals.
+            expired = summary(policy.usage_date(start))
+            expired["candidates"] += 1
+            expired["horizon_gaps"] += 1
+            start = floor
+        target = {**candidate, "kind": "machine", "account_id": policy.ACCOUNT_ID}
+        while start < end:
+            day = policy.usage_date(start)
+            day_end = min(end, policy.day_start(day + timedelta(days=1)))
+            result = summary(day)
+            result["candidates"] += 1
             windows = []
-            target = {**candidate, "kind": "machine", "account_id": policy.ACCOUNT_ID}
-            start = max(policy.day_start(day), minute(candidate["observed_from"], ceil=True))
-            end = min(
-                policy.day_start(day + timedelta(days=1)),
-                minute(candidate["observed_until"]),
-                minute(clock - timedelta(minutes=10)),
-            )
-            while start < end:
-                stop = min(
-                    end, start.replace(minute=start.minute // 30 * 30) + timedelta(minutes=30)
-                )
+            while start < day_end:
+                boundary = start.replace(minute=start.minute // 30 * 30) + timedelta(minutes=30)
+                stop = min(day_end, boundary)
                 windows.append((target, start, stop))
                 start = stop
-            # One candidate has at most 48 windows. A revised immutable snapshot
-            # must not block unrelated machines or the next usage day.
+            # A conflicting snapshot rolls back only this candidate's usage day.
             try:
-                planned += store.enqueue_windows(engine, windows, now=now, dry_run=dry_run)[
-                    "planned"
-                ]
+                outcome = store.enqueue_windows(engine, windows, now=now, dry_run=dry_run)
+                result["planned"] += outcome["planned"]
             except ValueError as exc:
-                errors.append(
-                    {
-                        "machine_id": target["machine_id"],
-                        "region": target["region"],
-                        "error": str(exc),
-                    }
+                result["errors"].append(
+                    {"machine_id": target["machine_id"], "region": target["region"], "error": str(exc)}
                 )
-        result.append(
-            {
-                "usage_date": day.isoformat(),
-                "candidates": len(candidates),
-                "planned": planned,
-                "errors": errors,
-            }
-        )
-    return {"days": result, "source": reader.stats, "dry_run": dry_run}
+    return {
+        "bill_days": [day.isoformat() for day in bill_days],
+        "days": [summaries[day] for day in sorted(summaries)],
+        "source": reader.stats,
+        "dry_run": dry_run,
+    }
 
 
 def dispatch(engine, profile, producer, *, now=None, limit=100, dry_run=False):

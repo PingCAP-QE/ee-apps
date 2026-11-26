@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from datetime import date, timedelta
 
 from sqlalchemy import Integer, and_, case, cast, func, literal_column, or_, select, text
+from sqlalchemy.exc import DBAPIError
 
 from cost_insight.jobs.state_store import checkpoint_job_watermark
 from cost_insight.utilization import policy
@@ -202,6 +203,11 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
     ):
         raise ValueError("Pod outside collection scope")
     payload = {**target, "contract_version": state["contract_version"]}
+    if target["kind"] == "machine":
+        # The enclosing bill interval only selects windows. It is not part of
+        # the queries or capacity snapshot for an unchanged individual window.
+        payload.pop("observed_from", None)
+        payload.pop("observed_until", None)
     payload = json.loads(json.dumps(payload, default=str, allow_nan=False))
     if len(json.dumps(payload)) > 16384:
         raise ValueError("unbounded task payload")
@@ -217,12 +223,22 @@ def _enqueue(connection, state, target, start, end, clock, *, context_id=None):
     )
     previous = connection.execute(select(tasks).where(tasks.c.id == key)).mappings().first()
     if previous:
-        if previous["payload_json"] != payload:
+        snapshot = dict(previous["payload_json"])
+        if target["kind"] == "machine":
+            snapshot.pop("observed_from", None)
+            snapshot.pop("observed_until", None)
+        if snapshot != payload:
             raise ValueError("conflicting snapshot for existing window; explicit repair required")
         return 0
     limit = deadline(state, target, start, end)
     if limit <= clock and context_id is None:
         raise ValueError("source window has expired; never recreate a purged checkpoint")
+    if target["kind"] == "machine" and deadline(
+        state, target, policy.day_start(policy.usage_date(start)), end
+    ) <= clock:
+        # Once the day's earliest checkpoint could have expired, a shifted
+        # boundary must not re-add time already represented in the daily fact.
+        raise ValueError("machine usage day has expired; never reopen purged checkpoints")
     # An active context's unplanned exhausted tail is registered once while its
     # planned_until advances atomically; maintenance records expected missing use.
     identity_field = "machine_id" if target["kind"] == "machine" else "pod_uid"
@@ -268,7 +284,7 @@ def enqueue_windows(engine, windows, *, now=None, dry_run=False):
         return {"dry_run": True, "planned": len(windows)}
     with transaction(engine) as connection:
         state, clock = _state(connection, lock=True), database_now(connection, now)
-        _admit(state, clock, delta=len(windows))
+        _admit(state, clock)
         added = sum(
             _enqueue(connection, state, target, start, end, clock) for target, start, end in windows
         )
@@ -328,7 +344,12 @@ def plan_contexts(engine, *, now=None, limit=1000):
         raise ValueError("invalid context planning limit")
     with transaction(engine) as connection:
         state, clock = _state(connection, lock=True), database_now(connection, now)
-        _admit(state, clock, delta=limit)
+        _admit(state, clock)
+        # Limit new Pod tasks by real headroom; an empty planning batch must
+        # still let the dispatcher publish existing tasks.
+        limit = min(limit, policy.ROW_LIMIT - 1 - state["retained_rows"])
+        if limit <= 0:
+            return {"planned": 0}
         rows = (
             connection.execute(
                 select(contexts)
@@ -525,7 +546,7 @@ def _apply(connection, task, values, clock):
 def complete_task(engine, task_id, token, values, *, now=None):
     with transaction(engine) as connection:
         state, clock = _state(connection, lock=True), database_now(connection, now)
-        _admit(state, clock, delta=1)
+        _admit(state, clock)
         row = (
             connection.execute(
                 select(tasks).where(tasks.c.id == task_id, tasks.c.account_id == policy.ACCOUNT_ID)
@@ -827,6 +848,10 @@ def maintain(engine, *, now=None, dry_run=False, batch_size=1000, max_rows=50000
         try:
             size = _bytes(connection)
         except ValueError:  # Known incomplete measurements must invalidate old healthy evidence.
+            size = None
+        except DBAPIError as error:
+            if error.connection_invalidated:
+                raise  # A lost DB connection cannot persist guard state in this transaction.
             size = None
         overdue = []
         for expiry in (contexts.c.expires_at, tasks.c.deadline_at, workloads.c.expires_at):

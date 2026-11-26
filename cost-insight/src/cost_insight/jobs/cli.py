@@ -416,7 +416,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     utilization_probe = subparsers.add_parser("utilization-probe", help="Read-only Tencent capability sample; no database")
     utilization_probe.add_argument("--profile", required=True)
-    utilization_probe.add_argument("--date", type=_parse_date, default=None)
+    utilization_probe.add_argument("--bill-day", "--date", type=_parse_date, default=None,
+                                   help="Beijing BillDay to scan, not the usage date")
     utilization_probe.set_defaults(require_database=False)
 
     utilization_configure = subparsers.add_parser("utilization-configure", help="Explicit opt-in V2 source registry")
@@ -432,7 +433,8 @@ def build_parser() -> argparse.ArgumentParser:
         utilization.add_argument("--profile", required=True)
         utilization.add_argument("--dry-run", action="store_true")
         if command == "sync-tencent-utilization":
-            utilization.add_argument("--date", type=_parse_date, default=None)
+            utilization.add_argument("--bill-day", "--date", type=_parse_date, default=None,
+                                     help="Beijing BillDay to scan; fee intervals determine usage dates")
         else:
             utilization.add_argument("--limit", type=_parse_positive_int, default=100)
 
@@ -455,7 +457,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "utilization-probe":
         from cost_insight.utilization.tencent import load_profile, probe
 
-        print(json.dumps(probe(load_profile(args.profile, probe=True), usage_date=args.date), indent=2, sort_keys=True))
+        print(json.dumps(probe(load_profile(args.profile, probe=True), bill_day=args.bill_day), indent=2, sort_keys=True))
         return 0
 
     if args.command in {"utilization-configure", "utilization-maintain", "sync-tencent-utilization", "utilization-dispatch", "utilization-worker"}:
@@ -474,7 +476,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     result = store.configure(engine, profile, start_date=args.start_date,
                                              enabled=args.enable, dry_run=args.dry_run)
                 elif args.command == "sync-tencent-utilization":
-                    result = runner.plan_machines(engine, profile, dry_run=args.dry_run, usage_date=args.date)
+                    result = runner.plan_machines(engine, profile, dry_run=args.dry_run, bill_day=args.bill_day)
                 elif args.dry_run:
                     result = {"dry_run": True, "state": store.load_state(engine)}
                 else:
@@ -493,7 +495,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             client.close()
             print(json.dumps(result, indent=2, sort_keys=True, default=str))
             incomplete_days = any(
-                day.get("skipped") or day.get("errors") for day in result.get("days", [])
+                day.get("horizon_gaps") or day.get("errors") for day in result.get("days", [])
             )
             return 2 if result.get("retry") or result.get("fenced") or incomplete_days else 0
         finally:

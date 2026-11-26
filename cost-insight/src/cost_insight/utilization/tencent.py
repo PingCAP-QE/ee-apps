@@ -34,7 +34,7 @@ ALLOWED_METRICS = {
     "pod": {"cpu": "K8sPodCpuCoreUsed", "memory": "K8sPodMemWorkingSetBytes"},
 }
 REGION_IDS = {"5": "ap-hongkong", "8": "ap-beijing"}
-BILLING_ROW_LIMIT = 30_000  # Per product/day; 3.4x the measured 8,804-row sample.
+BILLING_ROW_LIMIT = 30_000  # Per product scan, including non-target rows in a month-wide reply.
 BEIJING = ZoneInfo("Asia/Shanghai")
 # Exact observed resource/service components, not a speculative family-name matcher.
 NATIVE_COMPONENTS = {
@@ -322,17 +322,11 @@ class TencentReader:
         # kind does not verify another, even if they used the same namespace.
         self._verified_contract_kinds.update(kinds)
 
-    def billing_candidates(self, day: date) -> list[dict]:
-        """Return snapshots only after BOTH bounded product scans complete.
-
-        Billing Begin/End can return month-wide rows. BillDay is deliberately not
-        a usage filter: only actual FeeBeginTime/FeeEndTime overlap is evidence.
-        """
-        if not isinstance(day, date) or isinstance(day, datetime):
-            raise TypeError("Expected a Beijing usage date")
+    def billing_candidates(self, bill_day: date) -> list[dict]:
+        """Return fee-interval snapshots for one BillDay after both product scans complete."""
+        if not isinstance(bill_day, date) or isinstance(bill_day, datetime):
+            raise TypeError("Expected a Beijing BillDay")
         self.verify_account()
-        begin = datetime.combine(day, datetime.min.time(), BEIJING).astimezone(UTC)
-        end = begin + timedelta(days=1)
         snapshots = []
         page_size = 100
         for product in ("p_cvm", "p_011691"):
@@ -340,8 +334,8 @@ class TencentReader:
             pages_seen = set()
             while True:
                 params = {
-                    "BeginTime": f"{day.isoformat()} 00:00:00",
-                    "EndTime": f"{day.isoformat()} 23:59:59",
+                    "BeginTime": f"{bill_day.isoformat()} 00:00:00",
+                    "EndTime": f"{bill_day.isoformat()} 23:59:59",
                     "BusinessCode": product,
                     "Offset": offset,
                     "Limit": page_size,
@@ -376,22 +370,34 @@ class TencentReader:
                         raise ValueError("Billing OwnerUin does not match configured account")
                     if row.get("BusinessCode") != product:
                         raise ValueError("Unexpected billing product")
+                    value = row.get("BillDay")
+                    if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+                        raise ValueError("Missing or invalid billing BillDay")
+                    try:
+                        partition = date.fromisoformat(value)
+                    except ValueError as exc:
+                        raise ValueError("Invalid billing BillDay") from exc
+                    # Some product-filtered requests return the bill month. All
+                    # rows still count toward pagination, but not toward usage.
+                    if partition.replace(day=1) != bill_day.replace(day=1):
+                        raise ValueError("Billing BillDay is outside the requested month")
+                    if partition != bill_day:
+                        continue
                     left, right = (
                         self._fee_time(row.get("FeeBeginTime")),
                         self._fee_time(row.get("FeeEndTime")),
                     )
                     if right <= left:
                         raise ValueError("Invalid charge interval")
-                    if left < end and right > begin:
-                        snapshot = self._bill_snapshot(row, product)
-                        if snapshot is not None:
-                            snapshots.append(
-                                {
-                                    **snapshot,
-                                    "observed_from": max(left, begin).replace(tzinfo=None),
-                                    "observed_until": min(right, end).replace(tzinfo=None),
-                                }
-                            )
+                    snapshot = self._bill_snapshot(row, product)
+                    if snapshot is not None:
+                        snapshots.append(
+                            {
+                                **snapshot,
+                                "observed_from": left.replace(tzinfo=None),
+                                "observed_until": right.replace(tzinfo=None),
+                            }
+                        )
                 offset += len(rows)
                 # Like the billing importer, only a short page proves EOF: Total
                 # may be cached below the actual row count. A shortfall relative
@@ -804,12 +810,12 @@ class TencentReader:
                     )
 
 
-def probe(profile, *, reader=None, now=None, usage_date=None):
+def probe(profile, *, reader=None, now=None, bill_day=None):
     """Read-only capability metadata and complete bounded billing sample; no monitor ingestion."""
     reader = reader or TencentReader(profile, probe=True)
     reader.verify_account()
     now = _utc(now or datetime.now(UTC))
-    day = usage_date or (now.astimezone(BEIJING).date() - timedelta(days=1))
+    day = bill_day or (now.astimezone(BEIJING).date() - timedelta(days=1))
     candidates = reader.billing_candidates(day)
     metadata = []
     for namespace in ("QCE/CVM", "QCE/TKE2"):
@@ -834,7 +840,7 @@ def probe(profile, *, reader=None, now=None, usage_date=None):
         )
     return {
         "dry_run": True,
-        "usage_date": day.isoformat(),
+        "bill_day": day.isoformat(),
         "billing_candidates": len(candidates),
         "source": reader.stats,
         "metric_metadata": metadata,

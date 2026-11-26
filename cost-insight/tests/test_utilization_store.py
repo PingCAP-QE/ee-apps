@@ -392,6 +392,73 @@ def test_ineligible_contexts_do_not_consume_dispatch_batch(engine, blocked):
             assert connection.execute(select(contexts.c.pod_uid)).scalars().all() == [row["pod_uid"]]
 
 
+@pytest.mark.parametrize("available", [0, 1])
+def test_dispatch_uses_actual_row_headroom_and_still_sends_existing_work(
+    engine, monkeypatch, available
+):
+    enqueued(engine)
+    row = {key: value for key, value in target("pod").items() if key in contexts.c}
+    with engine.begin() as connection:
+        connection.execute(
+            contexts.insert().values(
+                **row,
+                context_key="due",
+                observed_from=START,
+                observed_until=START + timedelta(minutes=20),
+                planned_until=START,
+                expires_at=NOW + timedelta(hours=24),
+            )
+        )
+    store.maintain(engine, now=NOW)
+    # One task plus one context; admit at most one more row, not a full batch.
+    monkeypatch.setattr(policy, "ROW_LIMIT", 3 + available)
+    producer = Mock()
+    assert runner.dispatch(engine, profile(), producer, now=NOW) == {
+        "planned": available,
+        "sent": available + 1,
+    }
+    assert store.load_state(engine)["retained_rows"] == available + 2
+    assert producer.publish.call_count == available + 1
+
+
+def test_at_row_headroom_zero_existing_fact_can_still_be_updated(engine, monkeypatch):
+    t = target()
+    store.enqueue_windows(engine, [(t, START, END), (t, END, END + timedelta(minutes=10))], now=NOW)
+    ordered = sorted(store.due_tasks(engine, now=NOW), key=lambda row: row["window_start"])
+    for index, task in enumerate(ordered):
+        if index:
+            # Both tasks and the machine day already exist; the second result
+            # updates that day without creating a fourth row.
+            monkeypatch.setattr(policy, "ROW_LIMIT", 4)
+        claim = store.claim_task(engine, task["id"], now=NOW)
+        result = summarize_window([], t, task["window_start"], task["window_end"])
+        assert store.complete_task(engine, task["id"], claim["lease_token"], result, now=NOW)
+    with engine.connect() as connection:
+        assert connection.execute(select(machines.c.cpu_expected_seconds)).scalar_one() == 1200
+    assert store.load_state(engine)["retained_rows"] == 3
+
+
+def test_shifted_machine_window_cannot_reopen_a_day_after_checkpoint_purge(engine):
+    start = policy.day_start(NOW.date() - timedelta(days=1))
+    end = start + timedelta(minutes=30)
+    t = target()
+    store.enqueue_windows(engine, [(t, start, end)], now=NOW)
+    task = store.due_tasks(engine, now=NOW)[0]
+    claimed = store.claim_task(engine, task["id"], now=NOW)
+    assert store.complete_task(
+        engine, task["id"], claimed["lease_token"], summarize_window([], t, start, end), now=NOW
+    )
+    expired = task["deadline_at"]
+    store.maintain(engine, now=expired)
+    # A late bill shifts the start 15 minutes later. That individual window
+    # could still be queried, but the prior overlapping checkpoint is gone.
+    with pytest.raises(ValueError, match="usage day has expired"):
+        store.enqueue_windows(engine, [(t, start + timedelta(minutes=15), end)], now=expired)
+    with engine.connect() as connection:
+        assert connection.execute(select(tasks)).first() is None
+        assert connection.execute(select(machines.c.cpu_expected_seconds)).scalar_one() == 1800
+
+
 def test_expired_source_window_records_missing_before_task_purge(engine):
     enqueued(engine)
     later = NOW + timedelta(hours=1)
@@ -869,11 +936,25 @@ def test_maintenance_pauses_for_overdue_task_or_workload(engine, kind):
     assert not store.maintain(engine, now=NOW)["paused"]
 
 
-def test_failed_byte_measurement_invalidates_previous_health(engine, monkeypatch):
+@pytest.mark.parametrize("failure", ["incomplete", "sql_error"])
+def test_failed_byte_measurement_invalidates_previous_health(engine, monkeypatch, failure):
     assert not store.maintain(engine, now=NOW)["paused"]
+
+    def reject_dbstat(connection, cursor, statement, parameters, *args):
+        if "FROM dbstat" in statement:
+            return "SELECT * FROM unavailable_stats", ()
+        return statement, parameters
+
     with monkeypatch.context() as patch:
-        patch.setattr(store, "_bytes", Mock(side_effect=ValueError("incomplete statistics")))
-        assert store.maintain(engine, now=NOW + timedelta(minutes=15))["paused"]
+        if failure == "incomplete":
+            patch.setattr(store, "_bytes", Mock(side_effect=ValueError("incomplete statistics")))
+        else:
+            event.listen(engine, "before_cursor_execute", reject_dbstat, retval=True)
+        try:
+            assert store.maintain(engine, now=NOW + timedelta(minutes=15))["paused"]
+        finally:
+            if failure == "sql_error":
+                event.remove(engine, "before_cursor_execute", reject_dbstat)
         state = store.load_state(engine)
         assert state["pause_reasons"] == ["bytes_unreliable"]
         assert state["observed_bytes"] is None and state["bytes_observed_at"] is None

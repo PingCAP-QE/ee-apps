@@ -69,18 +69,9 @@ def test_historical_plan_dispatch_consume_is_idempotent(configured):
     day = NOW.date() - timedelta(days=5)
     reader = Mock(stats={"calls": 1})
     reader.billing_candidates.return_value = [candidate(day)]
-    assert (
-        runner.plan_machines(engine, profile, usage_date=day, now=NOW, reader=reader)["days"][0][
-            "planned"
-        ]
-        == 1
-    )
-    assert (
-        runner.plan_machines(engine, profile, usage_date=day, now=NOW, reader=reader)["days"][0][
-            "planned"
-        ]
-        == 0
-    )
+    for expected in (1, 0):
+        result = runner.plan_machines(engine, profile, bill_day=day, now=NOW, reader=reader)
+        assert result["days"][0]["planned"] == expected
     producer = Mock()
     assert runner.dispatch(engine, profile, producer, now=NOW)["sent"] == 1
     message = producer.publish.call_args.args[0]
@@ -113,8 +104,33 @@ def test_historical_plan_dispatch_consume_is_idempotent(configured):
         assert c.execute(select(tasks)).first() is None
 
 
-@pytest.mark.parametrize("revision", ["interval_extension", "overlap"])
-def test_machine_bill_revision_is_reported_without_blocking_other_machines_or_days(
+def test_late_bill_partition_enqueues_prior_usage_day_and_replay_is_idempotent(configured):
+    engine, profile, _ = configured
+    bill_day = NOW.date() - timedelta(days=3)
+    usage_day = bill_day - timedelta(days=1)
+    midnight = policy.day_start(bill_day)
+    reader = Mock(stats={})
+    fee = {
+        **candidate(usage_day),
+        "observed_from": midnight - timedelta(minutes=10),
+        "observed_until": midnight + timedelta(minutes=10),
+    }
+    reader.billing_candidates.side_effect = lambda day: [fee] if day == bill_day else []
+
+    for expected in (2, 0):
+        result = runner.plan_machines(engine, profile, now=NOW, reader=reader)
+        assert sum(day["planned"] for day in result["days"]) == expected
+    with engine.connect() as connection:
+        assert connection.execute(
+            select(tasks.c.window_start, tasks.c.window_end).order_by(tasks.c.window_start)
+        ).all() == [
+            (midnight - timedelta(minutes=10), midnight),
+            (midnight, midnight + timedelta(minutes=10)),
+        ]
+
+
+@pytest.mark.parametrize("revision", ["interval_extension", "overlap", "capacity_change"])
+def test_machine_bill_revision_deduplicates_unchanged_windows_and_isolates_conflicts(
     configured, revision
 ):
     engine, profile, _ = configured
@@ -130,27 +146,44 @@ def test_machine_bill_revision_is_reported_without_blocking_other_machines_or_da
         revised = {**original}
         if revision == "interval_extension":
             revised["observed_until"] += timedelta(minutes=30)
-        else:
+        elif revision == "overlap":
             revised["observed_from"] += timedelta(minutes=1)
             revised["observed_until"] -= timedelta(minutes=1)
+        else:
+            revised["cpu_cores"] = 8
         return [revised, {**original, "machine_id": "ins-unaffected"}]
 
+    if revision == "interval_extension":
+        # Previously planned tasks may still carry the enclosing bill interval.
+        with engine.begin() as connection:
+            for task in connection.execute(select(tasks)).mappings().all():
+                payload = {
+                    **task["payload_json"],
+                    "observed_from": str(task["window_start"]),
+                    "observed_until": str(task["window_end"]),
+                }
+                connection.execute(
+                    tasks.update().where(tasks.c.id == task["id"]).values(payload_json=payload)
+                )
     reader.billing_candidates.side_effect = revised_candidates
     result = runner.plan_machines(engine, profile, now=NOW, reader=reader)
     assert len(result["days"]) == 2
     for day in result["days"]:
-        assert day["planned"] == 1
-        assert len(day["errors"]) == 1
-        error = day["errors"][0]
-        assert error["machine_id"] == "ins-one" and error["region"] == "ap-beijing"
-        assert ("conflicting snapshot" if revision == "interval_extension" else "overlapping") in error["error"]
+        if revision == "interval_extension":
+            assert day["planned"] == 2 and not day["errors"]
+        else:
+            assert day["planned"] == 1 and len(day["errors"]) == 1
+            error = day["errors"][0]
+            assert error["machine_id"] == "ins-one" and error["region"] == "ap-beijing"
+            expected_error = "overlapping" if revision == "overlap" else "conflicting snapshot"
+            assert expected_error in error["error"]
     with engine.connect() as connection:
         rows = connection.execute(select(tasks)).mappings().all()
-        assert len(rows) == 4
-        for row in rows:
-            start = policy.day_start(policy.usage_date(row["window_start"]))
-            assert row["window_start"] == start
-            assert row["window_end"] == start + timedelta(minutes=30)
+        assert len(rows) == (6 if revision == "interval_extension" else 4)
+        tails = [row for row in rows if row["window_start"].minute == 30]
+        assert len(tails) == (2 if revision == "interval_extension" else 0)
+        assert all(row["payload_json"]["machine_id"] == "ins-one" for row in tails)
+        assert all(row["window_end"] - row["window_start"] == timedelta(minutes=30) for row in rows)
 
 
 def test_ready_compatible_machine_tasks_share_one_monitor_read(configured):
@@ -159,7 +192,7 @@ def test_ready_compatible_machine_tasks_share_one_monitor_read(configured):
     reader = Mock(stats={})
     first = candidate(day)
     reader.billing_candidates.return_value = [first, {**first, "machine_id": "ins-two"}]
-    runner.plan_machines(engine, profile, usage_date=day, now=NOW, reader=reader)
+    runner.plan_machines(engine, profile, bill_day=day, now=NOW, reader=reader)
     with engine.connect() as connection:
         ids = connection.execute(select(tasks.c.id)).scalars().all()
     start = policy.day_start(day)
@@ -228,7 +261,7 @@ def test_oversized_multi_partition_poll_is_chunked_before_ack(configured):
     reader.billing_candidates.return_value = [
         {**candidate(day), "machine_id": f"ins-{index}"} for index in range(23)
     ]
-    runner.plan_machines(engine, profile, usage_date=day, now=NOW, reader=reader)
+    runner.plan_machines(engine, profile, bill_day=day, now=NOW, reader=reader)
     with engine.connect() as connection:
         ids = connection.execute(select(tasks.c.id)).scalars().all()
     start = policy.day_start(day)
@@ -262,7 +295,7 @@ def test_per_task_rejection_persists_retry_and_does_not_block_other_tasks(config
     reader = Mock(stats={})
     first = candidate(day)
     reader.billing_candidates.return_value = [first, {**first, "machine_id": "ins-two"}]
-    runner.plan_machines(engine, profile, usage_date=day, now=NOW, reader=reader)
+    runner.plan_machines(engine, profile, bill_day=day, now=NOW, reader=reader)
     with engine.connect() as connection:
         rows = connection.execute(select(tasks)).mappings().all()
     if rejection == "contract":
@@ -307,7 +340,7 @@ def test_database_failure_prevents_ack(configured, monkeypatch):
     reader = Mock(stats={})
     day = NOW.date() - timedelta(days=5)
     reader.billing_candidates.return_value = [candidate(day)]
-    runner.plan_machines(engine, profile, usage_date=day, now=NOW, reader=reader)
+    runner.plan_machines(engine, profile, bill_day=day, now=NOW, reader=reader)
     with engine.connect() as connection:
         task_id = connection.execute(select(tasks.c.id)).scalar_one()
     reader.window.return_value = [{"entity": "ins-one", "metric": "cpu",
@@ -321,7 +354,7 @@ def test_database_failure_prevents_ack(configured, monkeypatch):
 
 
 @pytest.mark.parametrize("kind,metric", [("cvm", "cpu"), ("tke_native", "memory")])
-def test_planner_skips_exhausted_horizons_before_bill_scan(configured, kind, metric):
+def test_planner_reports_exhausted_usage_day_after_bill_scan(configured, kind, metric):
     engine, profile, _ = configured
     state = store.load_state(engine)
     state["contracts"][kind][metric]["verified_horizon_seconds"] = 2 * 86400
@@ -329,12 +362,15 @@ def test_planner_skips_exhausted_horizons_before_bill_scan(configured, kind, met
     with engine.begin() as connection:
         store._save(connection, state)
     reader = Mock(stats={})
-    result = runner.plan_machines(engine, profile, now=NOW, reader=reader)
-    assert all(day["skipped"] == "source_horizon" for day in result["days"])
-    with pytest.raises(ValueError, match="exceeds verified source horizon"):
-        runner.plan_machines(engine, profile, usage_date=NOW.date() - timedelta(days=3),
-                             now=NOW, reader=reader)
-    reader.billing_candidates.assert_not_called()
+    partition = NOW.date() - timedelta(days=1)
+    usage_day = NOW.date() - timedelta(days=3)
+    reader.billing_candidates.return_value = [{**candidate(usage_day), "resource_class": kind}]
+    result = runner.plan_machines(engine, profile, bill_day=partition, now=NOW, reader=reader)
+    reader.billing_candidates.assert_called_once_with(partition)
+    assert result["days"] == [{"usage_date": str(usage_day), "candidates": 1,
+                               "horizon_gaps": 1, "planned": 0, "errors": []}]
+    with engine.connect() as connection:
+        assert connection.execute(select(tasks)).first() is None
 
 
 def test_configuration_immutable_disable_and_dryrun(configured):
@@ -384,11 +420,18 @@ def test_cli_dryrun_does_not_construct_kafka(configured, monkeypatch):
     assert args.limit == 2
 
 
+@pytest.mark.parametrize("option", ["--bill-day", "--date"])
+@pytest.mark.parametrize("command", ["sync-tencent-utilization", "utilization-probe"])
+def test_cli_selects_billing_partition(command, option):
+    args = cli.build_parser().parse_args([command, "--profile", "test.json", option, "2026-11-01"])
+    assert args.bill_day.isoformat() == "2026-11-01"
+
+
 @pytest.mark.parametrize(
     "day_result,expected",
     [
         ({"candidates": 1, "planned": 1, "errors": []}, 0),
-        ({"skipped": "source_horizon"}, 2),
+        ({"horizon_gaps": 1}, 2),
         ({"errors": [{"machine_id": "ins-one", "error": "conflicting snapshot"}]}, 2),
         ({"errors": [{"machine_id": "ins-one", "error": "utilization disabled/unhealthy"}]}, 2),
     ],

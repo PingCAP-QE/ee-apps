@@ -123,9 +123,9 @@ After review and explicit production approval:
 ## Commands and recovery
 
 ```bash
-# Plan an explicit historical machine date; no live inventory polling.
-cost-insight sync-tencent-utilization --profile PROFILE --date YYYY-MM-DD --dry-run
-cost-insight sync-tencent-utilization --profile PROFILE --date YYYY-MM-DD
+# Read an explicit historical BillDay partition (not a usage date).
+cost-insight sync-tencent-utilization --profile PROFILE --bill-day YYYY-MM-DD --dry-run
+cost-insight sync-tencent-utilization --profile PROFILE --bill-day YYYY-MM-DD
 
 # No per-Pod timers: dispatcher plans confirmed ten-minute windows and due tails.
 cost-insight utilization-dispatch --profile PROFILE --limit 100
@@ -133,8 +133,12 @@ cost-insight utilization-worker --profile PROFILE --limit 100
 cost-insight utilization-maintain --dry-run
 ```
 
-Without `--date`, the machine planner scans D-4 and D-3, subject to the verified
-horizon. A successful bounded bill scan precedes task creation. Machine planning
+By default the machine planner reads the D-4 and D-3 Beijing `BillDay`
+partitions. `--date` remains an alias for `--bill-day`. Both products in every
+requested partition must complete bounded scans before creating any tasks. A
+product-filtered response can include
+other days in the same bill month; those rows count toward the pagination budget
+but are not evidence that the other partitions were requested. Machine planning
 `--dry-run` checks source reachability/contracts and counts candidate windows only;
 it does **not** validate enqueue scope, admission, expiry or existing-window
 snapshot/overlap conflicts. Configure/maintenance dry runs only return registry
@@ -154,17 +158,24 @@ marking dispatched; DB result/done commit precedes offset acknowledgement. Faile
 attempts retry with backoff capped at five minutes until the fixed task deadline;
 there is no attempt-count expiry. Maintenance records missing usage at expiry.
 Crash replays may repeat messages or an unfinished source window but not its committed
-contribution. A conflicting completed snapshot is rejected, not silently added as
-a second version; do not clear done checkpoints or invent an ad-hoc repair.
+contribution. A bill extension at an existing window boundary only adds new,
+non-overlapping windows when the retained snapshot is unchanged. Conflicting
+specifications or overlapping shifted windows are rejected, not silently added
+as a second version. New machine planning closes at the usage day's earliest
+possible task expiry, so a shifted window cannot replace a purged checkpoint.
+Do not clear done checkpoints or invent an ad-hoc repair.
 Machine planning reports per-candidate snapshot/overlap validation failures in each
 usage day's `errors` list (machine ID, region, reason), while continuing unrelated
-machines and days. Skipped days or nonempty `errors` make the CLI exit 2; the
-affected candidate's transaction is rolled back. Investigate and retry the affected
-date with `--date` before its verified source horizon expires; the default D-4/D-3
-scan does not automatically revisit older failed dates. The V2 planner also
-queries by requested usage day; it can miss late charges found only in a different
-`BillDay` partition. A complete scan for one request is not proof of complete
-usage-day population. The partition/usage-day separation is tracked in the V3 design.
+machines and days. Conflicts roll back the affected candidate/day transaction.
+The result separates scanned `bill_days` from the affected usage `days`.
+Nonempty `errors` or nonzero `horizon_gaps` (candidate intervals with any portion
+outside the allowed usage-day planning range) make the CLI exit 2. Retry the
+relevant partition with `--bill-day` before its usage-day planning deadline; the
+default D-4/D-3 scan does not revisit older failed partitions. `BillDay` determines
+which data is read; the actual fee interval determines which Beijing dates and
+windows are planned, including usage in a different month. A complete billing scan
+still does not prove an entire usage day's population is final: other partitions
+may contain late records. V3 plans to reuse completed importer evidence.
 
 Ended contexts are removed by maintenance only after all confirmed whole minutes
 are finalized and their tasks are drained. Orphaned watcher intervals close at
@@ -189,6 +200,9 @@ Pod export, raw-minute archive or object-store quarantine.
 Watch backlog/oldest due task, `collection_failed` quality gaps, source errors, per-metric
 coverage/unknown denominator, retained rows, table+index bytes, maintenance time
 and pause reasons (`row_budget`, `byte_budget`, `bytes_unreliable`, `cleanup_backlog`).
+A failed byte-statistics query invalidates previously healthy evidence if the
+maintenance transaction can still update the guard. If the DB transaction cannot
+write, the maintenance command fails instead of claiming it persisted a pause.
 The workload API flags a selected date range as partial while the account has
 unsettled Pod windows or confirmed unplanned evidence in the range; this is a
 conservative warning across label filters. Coverage then describes settled windows

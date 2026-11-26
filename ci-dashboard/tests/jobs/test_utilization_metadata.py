@@ -273,6 +273,75 @@ def test_stable_change_enrichment_heartbeat_and_ended_tail(db):
     assert retained(db) == 2
 
 
+@pytest.mark.parametrize(("gap_minutes", "confirm_unbound"), [(0, False), (5, False), (5, True)])
+def test_selector_loss_and_metadata_change_keep_old_metadata_until_observed(db, gap_minutes, confirm_unbound):
+    cache = u.NodeSelectorCache()
+    listed_at = u.time.monotonic()
+    cache.refresh([node()], listed_at=listed_at)
+    exporter = u.MetadataExporter(db, node_cache=cache)
+    obj = pod()
+    obj["metadata"]["labels"]["service"] = "first"
+    observe(exporter, [pod_evidence(obj, listed_at - 1)])
+    last_bound = NOW + timedelta(minutes=1)
+    observe(exporter, [], last_bound, heartbeat=True)
+    with db.begin() as c:
+        c.execute(text("UPDATE pod_utilization_context SET planned_until=:at"), {"at": last_bound})
+
+    cache.clear()
+    if confirm_unbound:
+        observe(exporter, [], last_bound + timedelta(minutes=2), heartbeat=True)
+    obj["metadata"]["labels"]["service"] = "second"
+    obj["spec"]["containers"][0]["resources"]["requests"].update(cpu="4", memory="4Gi")
+    changed = last_bound + timedelta(minutes=gap_minutes)
+    observe(exporter, [pod_evidence(obj, listed_at + 1)], changed, heartbeat=True)
+    # A fresh Node LIST can bind the Pod again, but not the unresolved history.
+    rebound = changed + timedelta(minutes=1)
+    cache.refresh([node()], listed_at=listed_at + 2)
+    observe(exporter, [], rebound, heartbeat=True)
+    end = rebound + timedelta(minutes=1)
+    observe(exporter, [], end, heartbeat=True)
+
+    saved = rows(db)
+    expected = [(NOW, last_bound, "un_instance_id", "np-123", "first", 2.1, 2 * 1024**3)]
+    if gap_minutes:
+        expected.append((last_bound, changed, "", "", "first", 2.1, 2 * 1024**3))
+    expected += [(changed, rebound, "", "", "second", 4.0, 4 * 1024**3),
+                 (rebound, end, "un_instance_id", "np-123", "second", 4.0, 4 * 1024**3)]
+    assert [(u._datetime(row["observed_from"]), u._datetime(row["observed_until"]),
+             row["node_query_kind"], row["node_query_value"], json.loads(row["labels_json"])["service"],
+             row["cpu_request_cores"], row["memory_request_bytes"]) for row in saved] == expected
+    assert len(saved) == retained(db)
+    assert u._datetime(saved[0]["planned_until"]) == last_bound
+    for row, (start, until, *_) in zip(saved, expected, strict=True):
+        assert row["context_key"] == u.context_key(row, start)
+        assert u._datetime(row["expires_at"]) == until + u.CONTEXT_TTL
+        closed_at = row["closed_at"]
+        assert (u._datetime(closed_at) if closed_at else None) == (None if start == rebound else until)
+        if start != NOW:
+            assert u._datetime(row["planned_until"]) == start
+
+
+def test_selector_loss_without_room_for_a_gap_does_not_collide_with_initial_context(db):
+    cache = u.NodeSelectorCache()
+    listed_at = u.time.monotonic()
+    cache.refresh([node()], listed_at=listed_at)
+    exporter = u.MetadataExporter(db, node_cache=cache)
+    obj = pod()
+    observe(exporter, [pod_evidence(obj, listed_at - 1)])
+    cache.clear()
+    obj["metadata"]["labels"]["service"] = "second"
+    changed = pod_evidence(obj, listed_at + 1)
+    observe(exporter, [changed])  # The original start already owns this DB timestamp.
+    next_tick = NOW + timedelta(microseconds=1)
+    observe(exporter, [changed], next_tick)
+    old, new = rows(db)
+    assert len(rows(db)) == retained(db) == 2
+    assert u._datetime(old["closed_at"]) == NOW
+    assert u._datetime(new["observed_from"]) == u._datetime(new["observed_until"]) == next_tick
+    assert new["context_key"] == u.context_key(new, next_tick)
+    assert new["node_query_value"] == "" and json.loads(new["labels_json"])["service"] == "second"
+
+
 def test_no_week_slicing_and_stale_heartbeat_does_not_bridge(db):
     boundary = datetime(2026, 11, 22, 16)
     first = boundary - timedelta(minutes=1)
