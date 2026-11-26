@@ -54,12 +54,15 @@ func TestTupleStoreReadsEveryPageForAnObjectType(t *testing.T) {
 		if !strings.HasSuffix(request.path, "/stores/"+testULID+"/read") {
 			t.Errorf("unexpected read path %q", request.path)
 		}
-		tupleKey, _ := request.body["tuple_key"].(map[string]any)
-		if tupleKey["object"] != "capability:" {
-			t.Errorf("read tuple_key.object = %v, want the object type query", tupleKey["object"])
+		// The deployed OpenFGA rejects a type-only query, so the store must read
+		// unfiltered and select the object type itself.
+		if tupleKey, ok := request.body["tuple_key"].(map[string]any); ok {
+			if object, present := tupleKey["object"]; present && object != nil {
+				t.Errorf("read sent a type-only filter (object=%v), which this OpenFGA rejects", object)
+			}
 		}
 		if request.body["continuation_token"] == nil {
-			return http.StatusOK, `{"tuples":[{"key":{"user":"team:release#member","relation":"caller","object":"capability:a"},"timestamp":"2026-11-25T09:00:00Z"}],"continuation_token":"page-2"}`
+			return http.StatusOK, `{"tuples":[{"key":{"user":"team:release#member","relation":"caller","object":"capability:a"},"timestamp":"2026-11-25T09:00:00Z"},{"key":{"user":"user:google|bob","relation":"viewer","object":"project:tidb"},"timestamp":"2026-11-25T09:00:00Z"}],"continuation_token":"page-2"}`
 		}
 		return http.StatusOK, `{"tuples":[{"key":{"user":"user:google|alice","relation":"caller","object":"capability:b"},"timestamp":"2026-11-25T09:00:00Z"}]}`
 	})

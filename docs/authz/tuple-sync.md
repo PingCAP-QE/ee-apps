@@ -76,6 +76,15 @@ The job is one-shot: run it from a reviewed change pipeline (after the grants
 file merges) or a scheduled `CronJob`. It never runs inside request-serving code,
 so a slow or failing OpenFGA cannot affect decision latency.
 
+### Reading the store
+
+The deployed OpenFGA rejects a type-only read: `{"tuple_key":{"object":"capability:"}}`
+answers `validation_error: the object type field is required and both the object id
+and user cannot be empty`. An empty body returns every tuple, so the store reads
+unfiltered and selects the object type client-side. Expect the read volume to
+follow the whole store, not the owned scope, and keep that in mind before the store
+grows.
+
 ## Observability
 
 Every run prints Prometheus text and one JSON log line:
