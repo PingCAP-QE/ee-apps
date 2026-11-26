@@ -25,6 +25,29 @@ External paths that matter for reads, after the `/tibuild` → `/` rewrite:
 | Read one build | `GET /tibuild/api/v2/devbuilds/{id}` | single row |
 | Capabilities | `GET /tibuild/api/v2/devbuilds/capabilities` | what the caller may do |
 
+## Scope boundary: authorization only
+
+This contract decides *who may act*, never *who someone is*. Authentication stays
+where it is: the Gateway verifies OIDC sessions and Google ID tokens, `authzd`
+independently verifies the token it is given, and nothing here changes issuer,
+audience, session handling or claims parsing.
+
+That boundary rules out an otherwise tempting shortcut. A Google ID token carries
+`hd: <workspace-domain>`, so "any account in the domain" could be treated as "any
+employee" with no directory access at all. It is rejected:
+
+| Approach | Why it is out of scope |
+| --- | --- |
+| Grant access when a verified claim such as `hd` matches a domain | Uses an identity attribute as the authority for access. It belongs to authentication, it cannot express a team, and revocation, per-member audit and future granularity all disappear |
+| Revoke access by requiring an email suffix | Same problem, plus the value is display metadata |
+| Read a Workspace group and emit `team#member` tuples | **In scope**: the identity system is the data source, the authorization model still decides, and every grant is a reviewable, revocable tuple |
+
+So the only accepted source for "all staff" is a membership relation with an
+authoritative owner, synced into tuples — see
+`docs/authz/workspace-group-membership.md`. If a future change needs a
+claim-based check, it is an authentication change and belongs in a different
+track, not here.
+
 ## Capability, not resource
 
 ADR 0002 keeps read visibility as it is: an authenticated employee can read any
