@@ -112,9 +112,8 @@ go run ./cmd/tuple-sync \
   --object-type capability --relation caller --dry-run
 ```
 
-`--dry-run` reports the plan as `outcome="planned"` without writing. The metric
-and ownership contract, including which tuple families are still unimplemented,
-is in [`docs/authz/tuple-sync.md`](../docs/authz/tuple-sync.md).
+`--dry-run` reports the plan as `outcome="planned"` without writing. The reviewed
+grants file is kept outside this repository: it maps real subjects to capabilities.
 
 ## Registry
 
@@ -126,10 +125,10 @@ checks external and upstream rewritten paths explicitly, and a miss has no
 fallback. A `Store` only publishes fully parsed immutable snapshots.
 
 Static checks use `object`; resource checks use both `object_from` and
-`id_from`. A rule may intentionally have one check or several; when a route
-requires capability and resource checks, each must be represented as a separate
-check. Product decisions such as TiBuild read visibility remain subject to
-[ADR 0002](../docs/adr/0002-tibuild-read-visibility.md).
+`id_from`. A rule may intentionally have one check or several.
+
+TiBuild rules carry a capability check only: object-level ownership stays in the
+service, so the gateway never resolves an owner it cannot see.
 
 Run the registry suite with:
 
