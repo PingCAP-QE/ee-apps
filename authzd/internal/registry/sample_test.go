@@ -17,8 +17,18 @@ func TestTiBuildSampleRegistryIsValid(t *testing.T) {
 	if r.Version() != "1" {
 		t.Fatalf("version = %q, want 1", r.Version())
 	}
-	if len(r.rules) != 3 {
-		t.Fatalf("routes = %d, want 3", len(r.rules))
+	// Every TiBuild operation that can reach the machine route needs a rule before
+	// enforcement is considered; the count is pinned so a new operation without a
+	// rule is a deliberate change to this test, not an accidental gap.
+	if len(r.rules) != 22 {
+		t.Fatalf("routes = %d, want 22", len(r.rules))
+	}
+	seen := map[string]struct{}{}
+	for _, rule := range r.Rules() {
+		if _, dup := seen[rule.ID]; dup {
+			t.Fatalf("duplicate rule id %q", rule.ID)
+		}
+		seen[rule.ID] = struct{}{}
 	}
 	// TiBuild keeps object ownership in its own authorization, so the gateway
 	// rules carry a capability check and no resource check. A resource check here
