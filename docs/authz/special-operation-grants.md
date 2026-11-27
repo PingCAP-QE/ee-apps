@@ -26,6 +26,14 @@ capability:<operation>#caller@user:google/sub/<sub>
 ```
 
 `caller` is the only writable relation; `invoke`, `read`, `create` resolve to it.
+
+That has a consequence for naming: **one tuple on `caller` grants every alias of
+that object**, so a privilege level needs its own object. That is why reads live on
+`capability:tibuild.devbuild.read` and writes on
+`capability:tibuild.devbuild.create`; putting both actions on one object would
+make a read grant imply a write grant. Operations that differ only in business
+policy — creating a build versus rerunning someone else's — can share an object,
+because the service decides the rest.
 The subject is the person's Google ID-token `sub`, taken from their own decision
 log line (`principal=user:google/sub/<sub>`), never from an email address.
 

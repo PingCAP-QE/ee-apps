@@ -7,11 +7,6 @@
     {
       "user": "workload:google/sub/100000000000000000001",
       "relation": "caller",
-      "object": "capability:tibuild.devbuild.rerun"
-    },
-    {
-      "user": "workload:google/sub/100000000000000000001",
-      "relation": "caller",
       "object": "capability:tibuild.devbuild.create"
     },
     {
@@ -22,11 +17,6 @@
     {
       "user": "workload:google/sub/100000000000000000002",
       "relation": "caller",
-      "object": "capability:tibuild.devbuild.rerun"
-    },
-    {
-      "user": "workload:google/sub/100000000000000000002",
-      "relation": "caller",
       "object": "capability:tibuild.devbuild.create"
     },
     {
@@ -37,11 +27,6 @@
     {
       "user": "workload:google/sub/100000000000000000003",
       "relation": "caller",
-      "object": "capability:tibuild.devbuild.rerun"
-    },
-    {
-      "user": "workload:google/sub/100000000000000000003",
-      "relation": "caller",
       "object": "capability:tibuild.devbuild.create"
     },
     {
@@ -52,22 +37,12 @@
     {
       "user": "workload:google/sub/100000000000000000004",
       "relation": "caller",
-      "object": "capability:tibuild.devbuild.rerun"
-    },
-    {
-      "user": "workload:google/sub/100000000000000000004",
-      "relation": "caller",
       "object": "capability:tibuild.devbuild.create"
     },
     {
       "user": "workload:google/sub/100000000000000000004",
       "relation": "caller",
       "object": "capability:tibuild.devbuild.read"
-    },
-    {
-      "user": "workload:google/sub/100000000000000000005",
-      "relation": "caller",
-      "object": "capability:tibuild.devbuild.rerun"
     },
     {
       "user": "workload:google/sub/100000000000000000005",

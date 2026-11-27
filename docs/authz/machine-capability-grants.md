@@ -1,6 +1,7 @@
 # Machine capability grants: first reviewed baseline
 
-The reviewed capability grants for the machine callers that already reach TiBuild.
+Ten tuples: two capabilities × five callers, for the machine callers that already
+reach TiBuild.
 Their purpose is to mirror today's behaviour exactly, so that turning on
 enforcement later is not also a policy change.
 
@@ -13,12 +14,13 @@ shape with placeholder subjects.
 
 ## What it contains
 
-Six tuples: three capabilities × two callers.
+Two capabilities per caller, one tuple each. Rerun and create share a capability:
+the gateway decides that a caller may create builds, and TiBuild decides whether a
+particular build may be rerun by that person.
 
 | Capability object | Relation written | Checked by the registry as |
 | --- | --- | --- |
-| `capability:tibuild.devbuild.rerun` | `caller` | `#invoke` |
-| `capability:tibuild.devbuild.create` | `caller` | `#create` |
+| `capability:tibuild.devbuild.create` | `caller` | `#create` (create and rerun) |
 | `capability:tibuild.devbuild.read` | `caller` | `#read` |
 
 Tuples are always written on `caller`; `invoke`, `create` and `read` are derived

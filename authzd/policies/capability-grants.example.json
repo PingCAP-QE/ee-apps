@@ -7,7 +7,7 @@
     {
       "user": "team:release#member",
       "relation": "caller",
-      "object": "capability:tibuild.devbuild.rerun"
+      "object": "capability:tibuild.devbuild.create"
     }
   ]
 }

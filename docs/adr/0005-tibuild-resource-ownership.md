@@ -23,9 +23,15 @@ Registry rules for TiBuild carry a capability check and no resource check:
 
 | Operation | Gateway check | Service check |
 | --- | --- | --- |
-| rerun | `capability:tibuild.devbuild.rerun#invoke` | owner / mutation policy in TiBuild |
+| rerun | `capability:tibuild.devbuild.create#create` | owner / mutation policy in TiBuild, including "may I rerun someone else's build" |
 | create | `capability:tibuild.devbuild.create#create` | TiBuild's existing checks |
 | get | `capability:tibuild.devbuild.read#read` | read visibility, ADR 0002 |
+
+Rerun deliberately shares the create capability: the gateway only answers "may this
+caller create builds", and whether a caller may rerun *another person's* build is
+business logic inside TiBuild. Splitting them at the gateway would duplicate a
+decision the service already makes, and the log would still not tell ownership from
+a capability.
 
 This is the layered model already recorded in `ee-ops`
 `docs/gcp-gateway-auth.md`: the Gateway enforces route-level principals, the

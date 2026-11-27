@@ -11,8 +11,8 @@
       "mode": "observe",
       "checks": [
         {
-          "object": "capability:tibuild.devbuild.rerun",
-          "relation": "invoke"
+          "object": "capability:tibuild.devbuild.create",
+          "relation": "create"
         }
       ]
     },
