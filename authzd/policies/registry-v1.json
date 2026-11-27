@@ -45,6 +45,291 @@
           "relation": "read"
         }
       ]
+    },
+    {
+      "id": "tibuild-devbuild-list",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/devbuilds",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.devbuild.read",
+          "relation": "read"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-devbuild-capabilities",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/devbuilds/capabilities",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.devbuild.read",
+          "relation": "read"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-artifact-sync-list",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/artifact/sync-images",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.artifact.read",
+          "relation": "read"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-artifact-sync-get",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/artifact/sync-images/{id}",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.artifact.read",
+          "relation": "read"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-artifact-sync-start",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/artifact/sync-images",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.artifact.sync",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-hotfix-bump-tidbx",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/hotfix/bump-tag-for-tidbx",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.hotfix",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-hotfix-bump-tidbx-tag",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/hotfix/tidbx/bump-tag",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.hotfix",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-hotfix-read-tidbx-tag",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/hotfix/tidbx/tag",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.hotfix.read",
+          "relation": "read"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-publish-images",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/publish/images",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.publish.images",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-publish-tiup-delivery",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/publish/tiup/delivery-by-rules",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.publish.tiup",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-publish-tiup-request",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/publish/tiup/publish-request",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.publish.tiup",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-publish-tiup-request-single",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/publish/tiup/publish-request-single",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.publish.tiup",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-publish-tiup-request-get",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/publish/tiup/publish-request/{request_id}",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.publish.tiup.read",
+          "relation": "read"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-publish-units-list",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/publish/units",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.publish.units.read",
+          "relation": "read"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-publish-units-get",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "GET",
+      "path": "/tibuild/api/v2/publish/units/{id}",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.publish.units.read",
+          "relation": "read"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-publish-units-retry",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/publish/units/{id}/retry",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.publish.units",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-tidbcloud-component",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/tidbcloud/devops/cloudconfig/versions/component",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.tidbcloud",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-tidbcloud-kernel-images",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/tidbcloud/sync-kernel-images",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.tidbcloud",
+          "relation": "invoke"
+        }
+      ]
+    },
+    {
+      "id": "tibuild-tidbcloud-image-builds",
+      "host": "prow.tidb.net",
+      "route": "tibuild-v2-machine",
+      "method": "POST",
+      "path": "/tibuild/api/v2/tidbcloud/tidbx-component-image-builds",
+      "priority": 100,
+      "mode": "observe",
+      "checks": [
+        {
+          "object": "capability:tibuild.tidbcloud",
+          "relation": "invoke"
+        }
+      ]
     }
   ]
 }
